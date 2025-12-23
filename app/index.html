@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+    <title>European Roulette Tracker Pro</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+        <h1>🎯 European Roulette Tracker - Phase 1 FINAL</h1>
+        <div class="grid-wrapper">
+            <table id="mainTable">
+                <thead>
+                    <tr>
+                        <th style="min-width:30px">Dir</th>
+                        <th style="min-width:40px">Actual</th>
+                        <th style="min-width:30px">P</th>
+                        <th style="min-width:50px">P_PAIR</th>
+                        <th style="min-width:40px">P-13OPP</th>
+                        <th style="min-width:60px">P-13OPP_PAIR</th>
+                        <th style="min-width:140px">P_PROJ</th>
+                        <th style="min-width:30px">P+1</th>
+                        <th style="min-width:50px">P+1_PAIR</th>
+                        <th style="min-width:40px">P+1-13OPP</th>
+                        <th style="min-width:60px">P+1-13OPP_PAIR</th>
+                        <th style="min-width:140px">P+1_PROJ</th>
+                        <th style="min-width:30px">P-1</th>
+                        <th style="min-width:50px">P-1_PAIR</th>
+                        <th style="min-width:40px">P-1-13OPP</th>
+                        <th style="min-width:60px">P-1-13OPP_PAIR</th>
+                        <th style="min-width:140px">P-1_PROJ</th>
+                        <th style="min-width:30px">P+2</th>
+                        <th style="min-width:50px">P+2_PAIR</th>
+                        <th style="min-width:40px">P+2-13OPP</th>
+                        <th style="min-width:60px">P+2-13OPP_PAIR</th>
+                        <th style="min-width:140px">P+2_PROJ</th>
+                        <th style="min-width:30px">P-2</th>
+                        <th style="min-width:50px">P-2_PAIR</th>
+                        <th style="min-width:40px">P-2-13OPP</th>
+                        <th style="min-width:60px">P-2-13OPP_PAIR</th>
+                        <th style="min-width:140px">P-2_PROJ</th>
+                        <th style="min-width:30px">P2</th>
+                        <th style="min-width:50px">P2_PAIR</th>
+                        <th style="min-width:40px">P2-13OPP</th>
+                        <th style="min-width:60px">P2-13OPP_PAIR</th>
+                        <th style="min-width:140px">P2_PROJ</th>
+                    </tr>
+                </thead>
+                <tbody id="gridBody"></tbody>
+            </table>
+        </div>
+        <div class="input-section">
+            <h3 style="margin-bottom: 10px;">Quick Input</h3>
+            <div class="input-row">
+                <div class="input-field">
+                    <label>Number (0-36)</label>
+                    <input type="number" id="spinNumber" min="0" max="36" placeholder="e.g. 28" style="width: 100px;">
+                </div>
+                <div class="input-field">
+                    <label>Direction (auto-alternates)</label>
+                    <select id="direction" style="width: 100px;">
+                        <option value="C">C</option>
+                        <option value="AC">AC</option>
+                    </select>
+                </div>
+                <button class="btn-add" onclick="addSpin()">ADD</button>
+                <button class="btn-undo" onclick="undoLast()">UNDO</button>
+                <button class="btn-reset" onclick="resetAll()">RESET</button>
+            </div>
+            <div id="info" style="margin-top: 10px; font-size: 11px; color: #666;"></div>
+        </div>
+    </div>
+    <script src="renderer.js"></script>
+</body>
+</html>
