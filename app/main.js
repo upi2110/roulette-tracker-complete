@@ -13,14 +13,20 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
+            preload: path.join(__dirname, 'preload.js'),
+            // DISABLE ALL CACHING
+            cache: false,
+            devTools: true
         },
         backgroundColor: '#f5f5f5',
         title: 'European Roulette Tracker Pro',
         icon: path.join(__dirname, 'icon.png')
     });
 
-    mainWindow.loadFile('index.html');
+    // FORCE RELOAD WITHOUT CACHE ON EVERY START
+    mainWindow.loadFile('index.html').then(() => {
+        mainWindow.webContents.reloadIgnoringCache();
+    });
 
     // Create menu
     const template = [
@@ -186,8 +192,14 @@ ipcMain.handle('export-csv-dialog', async (event, csvContent) => {
     return { success: false, cancelled: true };
 });
 
-// App lifecycle
-app.whenReady().then(createWindow);
+// CLEAR ALL CACHES ON START
+app.on('ready', () => {
+    const { session } = require('electron');
+    session.defaultSession.clearCache().then(() => {
+        console.log('Cache cleared on startup');
+        createWindow();
+    });
+});
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
