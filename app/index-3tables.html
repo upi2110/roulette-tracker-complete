@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+    <title>European Roulette Tracker - 3 Tables</title>
+    <link rel="stylesheet" href="styles-3tables.css">
+</head>
+<body>
+<div class="container">
+    <h1>🎯 European Roulette Tracker - 3 Projection Systems</h1>
+    
+    <!-- TABLE 1: 10 Position Codes -->
+    <div class="table-section">
+        <h2 class="table-title">TABLE 1 - Basic Projections (10 codes)</h2>
+        <div class="grid-wrapper">
+            <table id="table1">
+                <thead>
+                    <tr>
+                        <th rowspan="2">Dir</th>
+                        <th rowspan="2">Actual</th>
+                        <th class="set-header set-1" colspan="7">0</th>
+                        <th class="set-header set-2" colspan="7">19</th>
+                        <th class="set-header set-3" colspan="14">P</th>
+                        <th class="set-header set-4" colspan="14">P+1</th>
+                        <th class="set-header set-5" colspan="14">P-1</th>
+                        <th class="set-header set-6" colspan="14">P+2</th>
+                        <th class="set-header set-7" colspan="14">P-2</th>
+                    </tr>
+                    <tr>
+                        <!-- 0 -->
+                        <th class="set-header set-1">Ref</th>
+                        <th class="set-header set-1">1st</th><th class="set-header set-1">C</th>
+                        <th class="set-header set-1">2nd</th><th class="set-header set-1">C</th>
+                        <th class="set-header set-1">3rd</th><th class="set-header set-1">C</th>
+                        
+                        <!-- 19 -->
+                        <th class="set-header set-2">Ref</th>
+                        <th class="set-header set-2">1st</th><th class="set-header set-2">C</th>
+                        <th class="set-header set-2">2nd</th><th class="set-header set-2">C</th>
+                        <th class="set-header set-2">3rd</th><th class="set-header set-2">C</th>
+                        
+                        <!-- P -->
+                        <th class="set-header set-3">Ref</th>
+                        <th class="set-header set-3">1st</th><th class="set-header set-3">C</th>
+                        <th class="set-header set-3">2nd</th><th class="set-header set-3">C</th>
+                        <th class="set-header set-3">3rd</th><th class="set-header set-3">C</th>
+                        <!-- P-13OPP -->
+                        <th class="set-header set-3">Ref</th>
+                        <th class="set-header set-3">1st</th><th class="set-header set-3">C</th>
+                        <th class="set-header set-3">2nd</th><th class="set-header set-3">C</th>
+                        <th class="set-header set-3">3rd</th><th class="set-header set-3">C</th>
+                        
+                        <!-- P+1 -->
+                        <th class="set-header set-4">Ref</th>
+                        <th class="set-header set-4">1st</th><th class="set-header set-4">C</th>
+                        <th class="set-header set-4">2nd</th><th class="set-header set-4">C</th>
+                        <th class="set-header set-4">3rd</th><th class="set-header set-4">C</th>
+                        <!-- P+1-13OPP -->
+                        <th class="set-header set-4">Ref</th>
+                        <th class="set-header set-4">1st</th><th class="set-header set-4">C</th>
+                        <th class="set-header set-4">2nd</th><th class="set-header set-4">C</th>
+                        <th class="set-header set-4">3rd</th><th class="set-header set-4">C</th>
+                        
+                        <!-- P-1 -->
+                        <th class="set-header set-5">Ref</th>
+                        <th class="set-header set-5">1st</th><th class="set-header set-5">C</th>
+                        <th class="set-header set-5">2nd</th><th class="set-header set-5">C</th>
+                        <th class="set-header set-5">3rd</th><th class="set-header set-5">C</th>
+                        <!-- P-1-13OPP -->
+                        <th class="set-header set-5">Ref</th>
+                        <th class="set-header set-5">1st</th><th class="set-header set-5">C</th>
+                        <th class="set-header set-5">2nd</th><th class="set-header set-5">C</th>
+                        <th class="set-header set-5">3rd</th><th class="set-header set-5">C</th>
+                        
+                        <!-- P+2 -->
+                        <th class="set-header set-6">Ref</th>
+                        <th class="set-header set-6">1st</th><th class="set-header set-6">C</th>
+                        <th class="set-header set-6">2nd</th><th class="set-header set-6">C</th>
+                        <th class="set-header set-6">3rd</th><th class="set-header set-6">C</th>
+                        <!-- P+2-13OPP -->
+                        <th class="set-header set-6">Ref</th>
+                        <th class="set-header set-6">1st</th><th class="set-header set-6">C</th>
+                        <th class="set-header set-6">2nd</th><th class="set-header set-6">C</th>
+                        <th class="set-header set-6">3rd</th><th class="set-header set-6">C</th>
+                        
+                        <!-- P-2 -->
+                        <th class="set-header set-7">Ref</th>
+                        <th class="set-header set-7">1st</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7">2nd</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7">3rd</th><th class="set-header set-7">C</th>
+                        <!-- P-2-13OPP -->
+                        <th class="set-header set-7">Ref</th>
+                        <th class="set-header set-7">1st</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7">2nd</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7">3rd</th><th class="set-header set-7">C</th>
+                    </tr>
+                </thead>
+                <tbody id="table1Body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TABLE 2: 18 Position Codes -->
+    <div class="table-section">
+        <h2 class="table-title">TABLE 2 - Extended Projections (18 codes)</h2>
+        <div class="grid-wrapper">
+            <table id="table2">
+                <thead>
+                    <tr>
+                        <th rowspan="2">Dir</th>
+                        <th rowspan="2">Actual</th>
+                        <th class="set-header set-1" colspan="7">0</th>
+                        <th class="set-header set-2" colspan="7">19</th>
+                        <th class="set-header set-3" colspan="14">P</th>
+                        <th class="set-header set-4" colspan="14">P+1</th>
+                        <th class="set-header set-5" colspan="14">P-1</th>
+                        <th class="set-header set-6" colspan="14">P+2</th>
+                        <th class="set-header set-7" colspan="14">P-2</th>
+                    </tr>
+                    <tr>
+                        <!-- 0 -->
+                        <th class="set-header set-1">Ref</th>
+                        <th class="set-header set-1">1st</th><th class="set-header set-1">C</th>
+                        <th class="set-header set-1">2nd</th><th class="set-header set-1">C</th>
+                        <th class="set-header set-1">3rd</th><th class="set-header set-1">C</th>
+                        
+                        <!-- 19 -->
+                        <th class="set-header set-2">Ref</th>
+                        <th class="set-header set-2">1st</th><th class="set-header set-2">C</th>
+                        <th class="set-header set-2">2nd</th><th class="set-header set-2">C</th>
+                        <th class="set-header set-2">3rd</th><th class="set-header set-2">C</th>
+                        
+                        <!-- P -->
+                        <th class="set-header set-3">Ref</th>
+                        <th class="set-header set-3">1st</th><th class="set-header set-3">C</th>
+                        <th class="set-header set-3">2nd</th><th class="set-header set-3">C</th>
+                        <th class="set-header set-3">3rd</th><th class="set-header set-3">C</th>
+                        <!-- P-13OPP -->
+                        <th class="set-header set-3">Ref</th>
+                        <th class="set-header set-3">1st</th><th class="set-header set-3">C</th>
+                        <th class="set-header set-3">2nd</th><th class="set-header set-3">C</th>
+                        <th class="set-header set-3">3rd</th><th class="set-header set-3">C</th>
+                        
+                        <!-- P+1 -->
+                        <th class="set-header set-4">Ref</th>
+                        <th class="set-header set-4">1st</th><th class="set-header set-4">C</th>
+                        <th class="set-header set-4">2nd</th><th class="set-header set-4">C</th>
+                        <th class="set-header set-4">3rd</th><th class="set-header set-4">C</th>
+                        <!-- P+1-13OPP -->
+                        <th class="set-header set-4">Ref</th>
+                        <th class="set-header set-4">1st</th><th class="set-header set-4">C</th>
+                        <th class="set-header set-4">2nd</th><th class="set-header set-4">C</th>
+                        <th class="set-header set-4">3rd</th><th class="set-header set-4">C</th>
+                        
+                        <!-- P-1 -->
+                        <th class="set-header set-5">Ref</th>
+                        <th class="set-header set-5">1st</th><th class="set-header set-5">C</th>
+                        <th class="set-header set-5">2nd</th><th class="set-header set-5">C</th>
+                        <th class="set-header set-5">3rd</th><th class="set-header set-5">C</th>
+                        <!-- P-1-13OPP -->
+                        <th class="set-header set-5">Ref</th>
+                        <th class="set-header set-5">1st</th><th class="set-header set-5">C</th>
+                        <th class="set-header set-5">2nd</th><th class="set-header set-5">C</th>
+                        <th class="set-header set-5">3rd</th><th class="set-header set-5">C</th>
+                        
+                        <!-- P+2 -->
+                        <th class="set-header set-6">Ref</th>
+                        <th class="set-header set-6">1st</th><th class="set-header set-6">C</th>
+                        <th class="set-header set-6">2nd</th><th class="set-header set-6">C</th>
+                        <th class="set-header set-6">3rd</th><th class="set-header set-6">C</th>
+                        <!-- P+2-13OPP -->
+                        <th class="set-header set-6">Ref</th>
+                        <th class="set-header set-6">1st</th><th class="set-header set-6">C</th>
+                        <th class="set-header set-6">2nd</th><th class="set-header set-6">C</th>
+                        <th class="set-header set-6">3rd</th><th class="set-header set-6">C</th>
+                        
+                        <!-- P-2 -->
+                        <th class="set-header set-7">Ref</th>
+                        <th class="set-header set-7">1st</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7">2nd</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7">3rd</th><th class="set-header set-7">C</th>
+                        <!-- P-2-13OPP -->
+                        <th class="set-header set-7">Ref</th>
+                        <th class="set-header set-7">1st</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7">2nd</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7">3rd</th><th class="set-header set-7">C</th>
+                    </tr>
+                </thead>
+                <tbody id="table2Body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TABLE 3: Current Anchor System -->
+    <div class="table-section">
+        <h2 class="table-title">TABLE 3 - Anchor Projections (Current System)</h2>
+        <div class="grid-wrapper">
+            <table id="table3">
+                <thead>
+                    <tr>
+                        <th>Dir</th>
+                        <th>Actual</th>
+                        <th class="set-header set-1">P</th>
+                        <th class="set-header set-1">P_PAIR</th>
+                        <th class="set-header set-1">P-13OPP</th>
+                        <th class="set-header set-1">P-13OPP_PAIR</th>
+                        <th class="set-header set-1">P_PROJ</th>
+                        <th class="set-header set-2">P+1</th>
+                        <th class="set-header set-2">P+1_PAIR</th>
+                        <th class="set-header set-2">P+1-13OPP</th>
+                        <th class="set-header set-2">P+1-13OPP_PAIR</th>
+                        <th class="set-header set-2">P+1_PROJ</th>
+                        <th class="set-header set-3">P-1</th>
+                        <th class="set-header set-3">P-1_PAIR</th>
+                        <th class="set-header set-3">P-1-13OPP</th>
+                        <th class="set-header set-3">P-1-13OPP_PAIR</th>
+                        <th class="set-header set-3">P-1_PROJ</th>
+                        <th class="set-header set-4">P+2</th>
+                        <th class="set-header set-4">P+2_PAIR</th>
+                        <th class="set-header set-4">P+2-13OPP</th>
+                        <th class="set-header set-4">P+2-13OPP_PAIR</th>
+                        <th class="set-header set-4">P+2_PROJ</th>
+                        <th class="set-header set-5">P-2</th>
+                        <th class="set-header set-5">P-2_PAIR</th>
+                        <th class="set-header set-5">P-2-13OPP</th>
+                        <th class="set-header set-5">P-2-13OPP_PAIR</th>
+                        <th class="set-header set-5">P-2_PROJ</th>
+                        <th class="set-header set-6">P2</th>
+                        <th class="set-header set-6">P2_PAIR</th>
+                        <th class="set-header set-6">P2-13OPP</th>
+                        <th class="set-header set-6">P2-13OPP_PAIR</th>
+                        <th class="set-header set-6">P2_PROJ</th>
+                    </tr>
+                </thead>
+                <tbody id="table3Body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Input Section -->
+    <div class="input-section">
+        <div class="input-row">
+            <div class="input-field">
+                <label for="spinNumber">Number (0-36)</label>
+                <input type="number" id="spinNumber" min="0" max="36" placeholder="e.g. 28">
+            </div>
+            <div class="input-field">
+                <label for="direction">Direction (auto-alternates)</label>
+                <select id="direction">
+                    <option value="C">C</option>
+                    <option value="AC">AC</option>
+                </select>
+            </div>
+            <div class="input-field">
+                <button class="btn-add" id="addBtn">ADD</button>
+                <button class="btn-undo" id="undoBtn">UNDO</button>
+                <button class="btn-reset" id="resetBtn">RESET</button>
+            </div>
+        </div>
+        <div id="info"></div>
+    </div>
+</div>
+
+<!-- Load all JavaScript files -->
+<script src="table-lookup.js"></script>
+<script src="renderer-3tables.js"></script>
+</body>
+</html>

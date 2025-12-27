@@ -24,7 +24,7 @@ function createWindow() {
     });
 
     // FORCE RELOAD WITHOUT CACHE ON EVERY START
-    mainWindow.loadFile('index.html').then(() => {
+    mainWindow.loadFile('index-3tables.html').then(() => {
         mainWindow.webContents.reloadIgnoringCache();
     });
 
