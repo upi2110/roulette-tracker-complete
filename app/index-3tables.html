@@ -246,27 +246,22 @@
         </div>
     </div>
 
-    <!-- Input Section -->
+    <!-- Input Section - FIXED AT BOTTOM -->
     <div class="input-section">
-        <div class="input-row">
-            <div class="input-field">
-                <label for="spinNumber">Number (0-36)</label>
-                <input type="number" id="spinNumber" min="0" max="36" placeholder="e.g. 28">
-            </div>
-            <div class="input-field">
-                <label for="direction">Direction (auto-alternates)</label>
-                <select id="direction">
-                    <option value="C">C</option>
-                    <option value="AC">AC</option>
-                </select>
-            </div>
-            <div class="input-field">
-                <button class="btn-add" id="addBtn">ADD</button>
-                <button class="btn-undo" id="undoBtn">UNDO</button>
-                <button class="btn-reset" id="resetBtn">RESET</button>
-            </div>
-        </div>
-        <div id="info"></div>
+        <label for="spinNumber">Number (0-36):</label>
+        <input type="number" id="spinNumber" min="0" max="36" placeholder="e.g. 28">
+        
+        <label for="direction">Direction:</label>
+        <select id="direction">
+            <option value="C">C</option>
+            <option value="AC">AC</option>
+        </select>
+        
+        <button class="btn-add" id="addBtn">ADD</button>
+        <button class="btn-undo" id="undoBtn">UNDO</button>
+        <button class="btn-reset" id="resetBtn">RESET</button>
+        
+        <span id="info">Spins: 0</span>
     </div>
 </div>
 
