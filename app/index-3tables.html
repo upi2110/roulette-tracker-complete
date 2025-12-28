@@ -3,18 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
     <title>European Roulette Tracker - 3 Tables</title>
     <link rel="stylesheet" href="styles-3tables.css">
 </head>
 <body>
 <div class="container">
     <h1>🎯 European Roulette Tracker - 3 Projection Systems</h1>
+
+    <!-- Zoom Controls -->
+    <div class="zoom-controls">
+        <label for="zoomSlider">Zoom:</label>
+        <input type="range" id="zoomSlider" min="50" max="150" value="100" step="5">
+        <span class="zoom-value" id="zoomValue">100%</span>
+    </div>
     
     <!-- TABLE 1: 10 Position Codes -->
     <div class="table-section">
         <h2 class="table-title">TABLE 1 - Basic Projections (10 codes)</h2>
-        <div class="grid-wrapper">
+        <div class="grid-wrapper" id="gridWrapper1">
             <table id="table1">
                 <thead>
                     <tr>
@@ -105,7 +112,7 @@
     <!-- TABLE 2: 18 Position Codes -->
     <div class="table-section">
         <h2 class="table-title">TABLE 2 - Extended Projections (18 codes)</h2>
-        <div class="grid-wrapper">
+        <div class="grid-wrapper" id="gridWrapper2">
             <table id="table2">
                 <thead>
                     <tr>
@@ -196,7 +203,7 @@
     <!-- TABLE 3: Current Anchor System -->
     <div class="table-section">
         <h2 class="table-title">TABLE 3 - Anchor Projections (Current System)</h2>
-        <div class="grid-wrapper">
+        <div class="grid-wrapper" id="gridWrapper3">
             <table id="table3">
                 <thead>
                     <tr>
@@ -266,5 +273,35 @@
 <!-- Load all JavaScript files -->
 <script src="table-lookup.js"></script>
 <script src="renderer-3tables.js"></script>
+
+<!-- Zoom Control Script - Must be AFTER the table JS loads -->
+<script>
+(function() {
+    const zoomSlider = document.getElementById('zoomSlider');
+    const zoomValue = document.getElementById('zoomValue');
+    
+    if (!zoomSlider || !zoomValue) {
+        console.error('Zoom controls not found');
+        return;
+    }
+    
+    zoomSlider.addEventListener('input', function() {
+        const zoom = this.value / 100;
+        zoomValue.textContent = this.value + '%';
+        
+        // Apply zoom to all grid wrappers
+        const wrappers = ['gridWrapper1', 'gridWrapper2', 'gridWrapper3'];
+        wrappers.forEach(id => {
+            const wrapper = document.getElementById(id);
+            if (wrapper) {
+                wrapper.style.transform = `scale(${zoom})`;
+                wrapper.style.transformOrigin = 'top left';
+            }
+        });
+    });
+    
+    console.log('Zoom control initialized');
+})();
+</script>
 </body>
 </html>

@@ -1,50 +1,84 @@
 /* Base styles */
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; padding: 5px; }
-.container { max-width: 100%; width: 100%; margin: 0 auto; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-h1 { color: #2c3e50; margin-bottom: 15px; text-align: center; font-size: 18px; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; padding: 3px; }
+.container { max-width: 100%; width: 100%; margin: 0 auto; background: white; padding: 8px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+h1 { color: #2c3e50; margin-bottom: 12px; text-align: center; font-size: 16px; }
+
+/* Zoom controls */
+.zoom-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    padding: 6px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+.zoom-controls label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #495057;
+}
+
+.zoom-controls input[type="range"] {
+    width: 180px;
+}
+
+.zoom-value {
+    font-size: 11px;
+    color: #007bff;
+    font-weight: 700;
+    min-width: 35px;
+}
 
 /* Table sections */
-.table-section { margin-bottom: 8px; }
-.table-title { color: #34495e; font-size: 12px; margin-bottom: 3px; padding: 4px 8px; background: #ecf0f1; border-left: 4px solid #3498db; }
+.table-section { margin-bottom: 6px; }
+.table-title { color: #34495e; font-size: 11px; margin-bottom: 2px; padding: 3px 6px; background: #ecf0f1; border-left: 3px solid #3498db; }
 .grid-wrapper { 
     overflow-x: auto; 
-    max-height: 350px; 
+    max-height: 320px; 
     overflow-y: auto; 
     border: 1px solid #ddd; 
     width: 100%;
 }
 
-/* Tables */
+/* Tables - MAXIMUM COMPACT */
 table { 
     border-collapse: separate; 
     border-spacing: 0;
     width: 100%; 
-    font-size: 8px;
+    font-size: 7px;
 }
 
-/* Table headers */
+/* Table headers - MAXIMUM COMPACT */
 th { 
     background: #34495e; 
     color: white; 
-    padding: 2px 2px; 
+    padding: 1px 0px; 
     text-align: center; 
     border: 1px solid #2c3e50;
     position: sticky; 
     top: 0; 
     z-index: 10; 
-    font-size: 7px;
+    font-size: 6px;
     white-space: nowrap;
 }
 
-/* Table cells - DEFAULT (for numbers) */
+/* Table cells - DEFAULT (numbers) - MAXIMUM COMPACT */
 td { 
-    padding: 1px 1px; 
+    padding: 0px 1px; 
     text-align: center; 
     border: 1px solid #e8e8e8; 
-    font-size: 8px;
+    font-size: 7px;
     white-space: nowrap;
-    width: 20px; /* Narrower for numbers */
+    width: 16px; /* Super compact for numbers */
+}
+
+/* 13-DIGIT OPPOSITE CELLS - Light gray background */
+.opp13-cell {
+    background: #e9ecef !important;
 }
 
 /* BLACK BORDER - ONLY on pair separators */
@@ -54,21 +88,25 @@ td {
 
 /* Anchor cells */
 .anchor-cell {
-    background: #e9ecef !important;
     font-weight: 700;
-    width: 20px;
+    width: 16px;
 }
 
-/* POSITION CODE CELLS - Balanced width */
+/* Anchor cells that are 13-digit opposites */
+.anchor-cell.opp13-cell {
+    background: #d3d3d3 !important;
+}
+
+/* POSITION CODE CELLS - Compact */
 .code-s,
 .code-o,
 .code-xx { 
-    width: 28px !important; /* Balanced - not too big, not too small */
-    min-width: 28px !important;
-    padding: 1px 1px;
+    width: 24px !important; /* Very compact */
+    min-width: 24px !important;
+    padding: 0px 1px;
     font-weight: 700;
     white-space: nowrap;
-    font-size: 7px; /* Slightly smaller to fit */
+    font-size: 6px; /* Smaller font */
 }
 
 /* S codes = LIGHT GREEN */
@@ -90,29 +128,36 @@ td {
     font-weight: 600;
 }
 
+/* 13-digit opposite position codes - slightly darker background */
+.code-s.opp13-cell { 
+    background: #7bc043 !important; 
+}
+
+.code-o.opp13-cell { 
+    background: #8bc5d9 !important; 
+}
+
+.code-xx.opp13-cell { 
+    background: #ffd6a5 !important; 
+}
+
 /* Table3: Position code highlighting */
 .cell-has-position { background: #e7f3ff !important; }
 
-/* Table3 Set Body Cells - Borders for visual grouping */
-.set-cell-1, .set-cell-2, .set-cell-3, .set-cell-4, .set-cell-5, .set-cell-6 { 
-    border-left: 3px solid #007bff !important; 
-}
+/* Table3 Set Body Cells - NO colored borders, use black separators like Table1/2 */
 
-.set-cell-1-last, .set-cell-2-last, .set-cell-3-last, 
-.set-cell-4-last, .set-cell-5-last, .set-cell-6-last { 
-    border-right: 3px solid #007bff !important; 
-}
-
-/* Table3: S and O position codes */
+/* Table3: S and O position codes - FULL CELL background like Table1/2 */
 .pos-s,
 .pos-o,
 .pos-xx { 
-    padding: 1px 2px;
+    padding: 1px 3px;
     border-radius: 2px;
     display: inline-block;
     white-space: nowrap;
     font-weight: 700;
-    font-size: 7px;
+    font-size: 6px;
+    min-width: 32px; /* Ensure readable width */
+    text-align: center;
 }
 
 .pos-s { 
@@ -132,7 +177,7 @@ td {
 }
 
 /* Table3 Projection columns */
-.col-prj { background: #f8f9fa; font-size: 7px; }
+.col-prj { background: #f8f9fa; font-size: 6px; }
 .col-prj-hit { background: #d4edda; font-weight: 700; }
 .col-prj-miss { background: #f8d7da; }
 
@@ -143,7 +188,7 @@ td {
     padding: 1px 2px; 
     margin: 1px; 
     border-radius: 2px; 
-    font-size: 7px; 
+    font-size: 6px; 
     display: inline-block; 
 }
 
@@ -153,7 +198,7 @@ td {
     padding: 1px 2px; 
     margin: 1px; 
     border-radius: 2px; 
-    font-size: 7px; 
+    font-size: 6px; 
     display: inline-block; 
 }
 
@@ -166,19 +211,19 @@ td {
 .next-row td { border-top: 3px solid #ffc107 !important; }
 
 /* Input section */
-.input-section { margin-top: 15px; padding: 12px; background: #f8f9fa; border-radius: 5px; }
-.input-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.input-section { margin-top: 12px; padding: 10px; background: #f8f9fa; border-radius: 5px; }
+.input-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
 .input-field { display: flex; flex-direction: column; }
-.input-field label { font-size: 11px; margin-bottom: 3px; color: #495057; }
+.input-field label { font-size: 10px; margin-bottom: 2px; color: #495057; }
 .input-field input,
-.input-field select { padding: 6px; border: 1px solid #ced4da; border-radius: 4px; font-size: 12px; }
-.input-field input[type="number"] { width: 100px; }
-#info { margin-top: 10px; font-size: 12px; color: #6c757d; }
+.input-field select { padding: 5px; border: 1px solid #ced4da; border-radius: 4px; font-size: 11px; }
+.input-field input[type="number"] { width: 90px; }
+#info { margin-top: 8px; font-size: 11px; color: #6c757d; }
 
 /* Buttons */
-.btn-add { background: #28a745; color: white; padding: 6px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.btn-add { background: #28a745; color: white; padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; }
 .btn-add:hover { background: #218838; }
-.btn-undo { background: #ffc107; color: #000; padding: 6px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-left: 5px; }
+.btn-undo { background: #ffc107; color: #000; padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; margin-left: 5px; }
 .btn-undo:hover { background: #e0a800; }
-.btn-reset { background: #dc3545; color: white; padding: 6px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-left: 5px; }
+.btn-reset { background: #dc3545; color: white; padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; margin-left: 5px; }
 .btn-reset:hover { background: #c82333; }
