@@ -19,6 +19,8 @@ const DIGIT_13_OPPOSITES = {
 };
 
 let spins = [];
+window.spins = spins;      // Expose as window.spins
+window.spinData = spins;   // Also expose as window.spinData for AI
 
 // COMPLETELY REWRITTEN - Check if we reach target NUMBER (not index) within 4 steps
 function calculatePositionCode(reference, actual) {

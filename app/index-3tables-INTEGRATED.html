@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>European Roulette Tracker - 3 Projection Systems</title>
+    <style>
+        /* EXISTING STYLES - Keep all your current styles */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        
+        .zoom-control {
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .zoom-control input {
+            width: 200px;
+        }
+        
+        /* EXISTING TABLE STYLES - Keep all */
+        .table-section {
+            margin: 20px;
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .table-section h2 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #333;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 8px;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+        }
+        
+        table {
+            border-collapse: collapse;
+            font-size: 11px;
+            width: 100%;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 6px 4px;
+            text-align: center;
+            min-width: 25px;
+        }
+        
+        th {
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .dir-c { background: #e3f2fd; }
+        .dir-ac { background: #fff3e0; }
+        
+        .anchor-cell {
+            background: #f0f0f0;
+            font-weight: 700;
+        }
+        
+        .opp13-cell {
+            background: #fff9e6;
+        }
+        
+        .pair-separator {
+            border-left: 3px solid #667eea !important;
+        }
+        
+        .pos-s { color: #2196F3; font-weight: 700; }
+        .pos-o { color: #FF9800; font-weight: 700; }
+        .pos-xx { color: #999; }
+        
+        .code-s { background: #e3f2fd; }
+        .code-o { background: #fff3e0; }
+        .code-xx { background: #f5f5f5; color: #999; }
+        
+        .cell-has-position { background: #e8f5e9; }
+        
+        .col-prj { min-width: 80px; }
+        .col-prj-hit { background: #c8e6c9; }
+        .col-prj-miss { background: #ffcdd2; }
+        
+        .anchor-purple { 
+            color: #9C27B0; 
+            font-weight: 700;
+            padding: 2px 4px;
+            background: #f3e5f5;
+            border-radius: 3px;
+            margin: 0 2px;
+        }
+        
+        .anchor-green { 
+            color: #4CAF50; 
+            font-weight: 700;
+            padding: 2px 4px;
+            background: #e8f5e9;
+            border-radius: 3px;
+            margin: 0 2px;
+        }
+        
+        .next-row {
+            background: #fff9c4;
+            font-weight: 700;
+        }
+        
+        /* CONTROLS */
+        .controls {
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            margin: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .controls label {
+            font-weight: 600;
+            margin-right: 5px;
+        }
+        
+        .controls input,
+        .controls select {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .controls button {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        #addBtn {
+            background: #28a745;
+            color: white;
+        }
+        
+        #addBtn:hover {
+            background: #218838;
+        }
+        
+        #undoBtn {
+            background: #ffc107;
+            color: #000;
+        }
+        
+        #undoBtn:hover {
+            background: #e0a800;
+        }
+        
+        #resetBtn {
+            background: #dc3545;
+            color: white;
+        }
+        
+        #resetBtn:hover {
+            background: #c82333;
+        }
+        
+        #info {
+            margin-left: auto;
+            font-weight: 600;
+            color: #666;
+        }
+    </style>
+    
+    <!-- NEW: Integrated layout CSS -->
+    <link rel="stylesheet" href="integrated-layout.css">
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 European Roulette Tracker - 3 Projection Systems</h1>
+        <div class="zoom-control">
+            <label>Zoom:</label>
+            <input type="range" min="50" max="150" value="100" id="zoomSlider">
+            <span id="zoomValue">100%</span>
+        </div>
+    </div>
+    
+    <!-- NEW: Info Panels Container (Wheel + AI + Money) -->
+    <div class="info-panels-container">
+        <!-- Panels will be dynamically created by JS -->
+    </div>
+    
+    <!-- EXISTING: Table 1 -->
+    <div class="table-section">
+        <h2>TABLE 1 - Basic Projections (10 codes)</h2>
+        <div class="table-wrapper">
+            <table id="table1">
+                <thead>
+                    <tr>
+                        <th>Dir</th>
+                        <th>Ref Lst</th>
+                        <th colspan="2">Anchor: 0</th>
+                        <th>Ref 0</th>
+                        <th>1st</th>
+                        <th>P_0</th>
+                        <th>Ref 0</th>
+                        <th>2nd</th>
+                        <th>P_0</th>
+                        <th>Ref 0</th>
+                        <th>3rd</th>
+                        <th>P_0</th>
+                        <th colspan="2">Anchor: 19</th>
+                        <th>Ref 19</th>
+                        <th>1st</th>
+                        <th>P_19</th>
+                        <th>Ref 19</th>
+                        <th>2nd</th>
+                        <th>P_19</th>
+                        <th>Ref 19</th>
+                        <th>3rd</th>
+                        <th>P_19</th>
+                        <th colspan="2">Anchor: PREV</th>
+                        <th>Ref Prv</th>
+                        <th>1st</th>
+                        <th>P_Prv</th>
+                        <th>Ref Prv</th>
+                        <th>2nd</th>
+                        <th>P_Prv</th>
+                        <th>Ref Prv</th>
+                        <th>3rd</th>
+                        <th>P_Prv</th>
+                        <th>Ref13Opp</th>
+                        <th>1st</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>2nd</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>3rd</th>
+                        <th>P_13O</th>
+                        <th colspan="2">Anchor: PREV+1</th>
+                        <th>Ref P+1</th>
+                        <th>1st</th>
+                        <th>P_P+1</th>
+                        <th>Ref P+1</th>
+                        <th>2nd</th>
+                        <th>P_P+1</th>
+                        <th>Ref P+1</th>
+                        <th>3rd</th>
+                        <th>P_P+1</th>
+                        <th>Ref13Opp</th>
+                        <th>1st</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>2nd</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>3rd</th>
+                        <th>P_13O</th>
+                        <th colspan="2">Anchor: PREV-1</th>
+                        <th>Ref P-1</th>
+                        <th>1st</th>
+                        <th>P_P-1</th>
+                        <th>Ref P-1</th>
+                        <th>2nd</th>
+                        <th>P_P-1</th>
+                        <th>Ref P-1</th>
+                        <th>3rd</th>
+                        <th>P_P-1</th>
+                        <th>Ref13Opp</th>
+                        <th>1st</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>2nd</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>3rd</th>
+                        <th>P_13O</th>
+                        <th colspan="2">Anchor: PREV+2</th>
+                        <th>Ref P+2</th>
+                        <th>1st</th>
+                        <th>P_P+2</th>
+                        <th>Ref P+2</th>
+                        <th>2nd</th>
+                        <th>P_P+2</th>
+                        <th>Ref P+2</th>
+                        <th>3rd</th>
+                        <th>P_P+2</th>
+                        <th>Ref13Opp</th>
+                        <th>1st</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>2nd</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>3rd</th>
+                        <th>P_13O</th>
+                        <th colspan="2">Anchor: PREV-2</th>
+                        <th>Ref P-2</th>
+                        <th>1st</th>
+                        <th>P_P-2</th>
+                        <th>Ref P-2</th>
+                        <th>2nd</th>
+                        <th>P_P-2</th>
+                        <th>Ref P-2</th>
+                        <th>3rd</th>
+                        <th>P_P-2</th>
+                        <th>Ref13Opp</th>
+                        <th>1st</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>2nd</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>3rd</th>
+                        <th>P_13O</th>
+                    </tr>
+                </thead>
+                <tbody id="table1Body"></tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- EXISTING: Table 2 -->
+    <div class="table-section">
+        <h2>TABLE 2 - Extended Projections (18 codes)</h2>
+        <div class="table-wrapper">
+            <table id="table2">
+                <thead>
+                    <tr>
+                        <th>Dir</th>
+                        <th>Ref Lst</th>
+                        <th colspan="2">Anchor: 0</th>
+                        <th>Ref 0</th>
+                        <th>1st</th>
+                        <th>P_0</th>
+                        <th>Ref 0</th>
+                        <th>2nd</th>
+                        <th>P_0</th>
+                        <th>Ref 0</th>
+                        <th>3rd</th>
+                        <th>P_0</th>
+                        <th colspan="2">Anchor: 19</th>
+                        <th>Ref 19</th>
+                        <th>1st</th>
+                        <th>P_19</th>
+                        <th>Ref 19</th>
+                        <th>2nd</th>
+                        <th>P_19</th>
+                        <th>Ref 19</th>
+                        <th>3rd</th>
+                        <th>P_19</th>
+                        <th colspan="2">Anchor: PREV</th>
+                        <th>Ref Prv</th>
+                        <th>1st</th>
+                        <th>P_Prv</th>
+                        <th>Ref Prv</th>
+                        <th>2nd</th>
+                        <th>P_Prv</th>
+                        <th>Ref Prv</th>
+                        <th>3rd</th>
+                        <th>P_Prv</th>
+                        <th>Ref13Opp</th>
+                        <th>1st</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>2nd</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>3rd</th>
+                        <th>P_13O</th>
+                        <th colspan="2">Anchor: PREV+1</th>
+                        <th>Ref P+1</th>
+                        <th>1st</th>
+                        <th>P_P+1</th>
+                        <th>Ref P+1</th>
+                        <th>2nd</th>
+                        <th>P_P+1</th>
+                        <th>Ref P+1</th>
+                        <th>3rd</th>
+                        <th>P_P+1</th>
+                        <th>Ref13Opp</th>
+                        <th>1st</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>2nd</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>3rd</th>
+                        <th>P_13O</th>
+                        <th colspan="2">Anchor: PREV-1</th>
+                        <th>Ref P-1</th>
+                        <th>1st</th>
+                        <th>P_P-1</th>
+                        <th>Ref P-1</th>
+                        <th>2nd</th>
+                        <th>P_P-1</th>
+                        <th>Ref P-1</th>
+                        <th>3rd</th>
+                        <th>P_P-1</th>
+                        <th>Ref13Opp</th>
+                        <th>1st</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>2nd</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>3rd</th>
+                        <th>P_13O</th>
+                        <th colspan="2">Anchor: PREV+2</th>
+                        <th>Ref P+2</th>
+                        <th>1st</th>
+                        <th>P_P+2</th>
+                        <th>Ref P+2</th>
+                        <th>2nd</th>
+                        <th>P_P+2</th>
+                        <th>Ref P+2</th>
+                        <th>3rd</th>
+                        <th>P_P+2</th>
+                        <th>Ref13Opp</th>
+                        <th>1st</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>2nd</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>3rd</th>
+                        <th>P_13O</th>
+                        <th colspan="2">Anchor: PREV-2</th>
+                        <th>Ref P-2</th>
+                        <th>1st</th>
+                        <th>P_P-2</th>
+                        <th>Ref P-2</th>
+                        <th>2nd</th>
+                        <th>P_P-2</th>
+                        <th>Ref P-2</th>
+                        <th>3rd</th>
+                        <th>P_P-2</th>
+                        <th>Ref13Opp</th>
+                        <th>1st</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>2nd</th>
+                        <th>P_13O</th>
+                        <th>Ref13Opp</th>
+                        <th>3rd</th>
+                        <th>P_13O</th>
+                    </tr>
+                </thead>
+                <tbody id="table2Body"></tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- EXISTING: Table 3 -->
+    <div class="table-section">
+        <h2>TABLE 3 - Anchor Projections (Current System)</h2>
+        <div class="table-wrapper">
+            <table id="table3">
+                <thead>
+                    <tr>
+                        <th>Dir</th>
+                        <th>Ref Lst</th>
+                        <th colspan="5">P_PREV</th>
+                        <th colspan="5">P_PREV+1</th>
+                        <th colspan="5">P_PREV-1</th>
+                        <th colspan="5">P_PREV+2</th>
+                        <th colspan="5">P_PREV-2</th>
+                        <th colspan="5">P_PREVPREV</th>
+                    </tr>
+                    <tr>
+                        <th></th>
+                        <th></th>
+                        <th>Ref Num</th>
+                        <th>Pair</th>
+                        <th>Ref 13Opp</th>
+                        <th>Pair13Opp</th>
+                        <th>Pj_Proj</th>
+                        <th>Ref Num</th>
+                        <th>Pair</th>
+                        <th>Ref 13Opp</th>
+                        <th>Pair13Opp</th>
+                        <th>Pj_Proj</th>
+                        <th>Ref Num</th>
+                        <th>Pair</th>
+                        <th>Ref 13Opp</th>
+                        <th>Pair13Opp</th>
+                        <th>Pj_Proj</th>
+                        <th>Ref Num</th>
+                        <th>Pair</th>
+                        <th>Ref 13Opp</th>
+                        <th>Pair13Opp</th>
+                        <th>Pj_Proj</th>
+                        <th>Ref Num</th>
+                        <th>Pair</th>
+                        <th>Ref 13Opp</th>
+                        <th>Pair13Opp</th>
+                        <th>Pj_Proj</th>
+                        <th>Ref Num</th>
+                        <th>Pair</th>
+                        <th>Ref 13Opp</th>
+                        <th>Pair13Opp</th>
+                        <th>Pj_Proj</th>
+                    </tr>
+                </thead>
+                <tbody id="table3Body"></tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- EXISTING: Controls -->
+    <div class="controls">
+        <label for="spinNumber">Number (0-36):</label>
+        <input type="number" id="spinNumber" min="0" max="36" placeholder="e.g. 28">
+        
+        <label for="direction">Direction:</label>
+        <select id="direction">
+            <option value="C">C</option>
+            <option value="AC">AC</option>
+        </select>
+        
+        <button id="addBtn">ADD</button>
+        <button id="undoBtn">UNDO</button>
+        <button id="resetBtn">RESET</button>
+        
+        <span id="info">Spins: 0</span>
+    </div>
+    
+    <!-- SCRIPTS -->
+    <script src="renderer-3tables.js"></script>
+    <script src="table1-lookup.js"></script>
+    <script src="ai-integration.js"></script>
+    
+    <!-- NEW: Panel scripts -->
+    <script src="roulette-wheel.js"></script>
+    <script src="ai-prediction-panel.js"></script>
+    <script src="money-management-panel.js"></script>
+    <script src="auto-update-orchestrator.js"></script>
+    
+    <script>
+        // Zoom functionality
+        const zoomSlider = document.getElementById('zoomSlider');
+        const zoomValue = document.getElementById('zoomValue');
+        
+        zoomSlider.addEventListener('input', (e) => {
+            const zoom = e.target.value;
+            zoomValue.textContent = zoom + '%';
+            document.body.style.zoom = zoom + '%';
+        });
+    </script>
+</body>
+</html>

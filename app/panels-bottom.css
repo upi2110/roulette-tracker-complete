@@ -1,0 +1,345 @@
+/* ===== BOTTOM PANELS CSS =====
+   Add this to your existing styles-3tables.css
+   These styles ONLY affect the bottom panels
+   NO impact on tables
+*/
+
+.info-panels-container-bottom {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 15px;
+    margin: 20px 0;
+    padding: 0 10px 100px 10px; /* Extra bottom padding for fixed input controls */
+}
+
+@media (max-width: 1400px) {
+    .info-panels-container-bottom {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Panel base styles */
+.wheel-panel,
+.ai-panel,
+.money-panel {
+    background: white;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.panel-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 10px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-header h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.panel-content {
+    padding: 15px;
+}
+
+/* ===== WHEEL PANEL ===== */
+.wheel-panel .panel-header {
+    background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%);
+}
+
+.wheel-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+.wheel-container svg {
+    max-width: 280px;
+    max-height: 280px;
+}
+
+.wheel-legend {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    font-size: 11px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    border: 1px solid #999;
+}
+
+.legend-color.anchor {
+    background: rgba(255, 215, 0, 0.5);
+}
+
+.legend-color.neighbor {
+    background: rgba(255, 229, 180, 0.5);
+}
+
+/* ===== AI PANEL ===== */
+.ai-panel .panel-header {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+}
+
+.btn-refresh {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-refresh:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.prediction-status {
+    margin-bottom: 12px;
+}
+
+.signal-indicator {
+    text-align: center;
+    padding: 10px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+
+.signal-bet {
+    background: #28a745;
+    color: white;
+    animation: pulse 1.5s infinite;
+}
+
+.signal-wait {
+    background: #6c757d;
+    color: white;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.confidence-display label,
+.prediction-numbers label,
+.prediction-reasoning label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+}
+
+.confidence-bar {
+    position: relative;
+    height: 24px;
+    background: #e9ecef;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.confidence-fill {
+    position: absolute;
+    height: 100%;
+    background: #007bff;
+    transition: width 0.4s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.confidence-text {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-weight: 700;
+    font-size: 11px;
+    color: #000;
+    z-index: 1;
+}
+
+.numbers-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+    min-height: 36px;
+}
+
+.number-chip {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #f8f9fa;
+    border: 2px solid #dee2e6;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.number-chip.anchor-number {
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+    border-color: #FF8C00;
+    color: #000;
+    font-size: 13px;
+    box-shadow: 0 2px 8px rgba(255, 215, 0, 0.5);
+}
+
+.waiting-msg {
+    color: #999;
+    font-style: italic;
+    font-size: 12px;
+}
+
+.reasoning-content {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 12px;
+    min-height: 60px;
+}
+
+.reasoning-item {
+    margin: 5px 0;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.prediction-bet-info {
+    background: #e7f3ff;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.bet-info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    font-size: 11px;
+}
+
+.bet-info-row.profit strong {
+    color: #28a745;
+}
+
+/* ===== MONEY PANEL ===== */
+.money-panel .panel-header {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+}
+
+.btn-start-session {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: white;
+    padding: 5px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.btn-start-session:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.money-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.money-stat {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.money-stat label {
+    display: block;
+    font-size: 9px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+
+.stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #333;
+}
+
+.stat-value.profit {
+    color: #28a745;
+}
+
+.stat-value.loss {
+    color: #dc3545;
+}
+
+.stat-value.warning {
+    color: #ffc107;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 18px;
+    background: #e9ecef;
+    border-radius: 9px;
+    overflow: hidden;
+    margin-top: 5px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #007bff;
+    transition: width 0.4s;
+}
+
+/* Auto-update indicator */
+.auto-update-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #28a745;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    z-index: 2000;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.auto-update-indicator.show {
+    opacity: 1;
+}

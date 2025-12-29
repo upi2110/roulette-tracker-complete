@@ -14,9 +14,9 @@ function createWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             preload: path.join(__dirname, 'preload.js'),
-            // DISABLE ALL CACHING
             cache: false,
-            devTools: true
+            devTools: true,
+            webSecurity: false  // ← ADD THIS LINE
         },
         backgroundColor: '#f5f5f5',
         title: 'European Roulette Tracker Pro',
