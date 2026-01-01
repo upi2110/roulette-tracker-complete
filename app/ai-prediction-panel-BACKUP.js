@@ -1,12 +1,11 @@
 /**
- * AI Prediction Panel - FIXED VERSION
+ * AI Prediction Panel
  * Always-visible AI predictions with clear reasoning
  */
 
 class AIPredictionPanel {
     constructor() {
         this.currentPrediction = null;
-        this.isExpanded = true; // START EXPANDED
         this.createPanel();
         this.render();
     }
@@ -19,14 +18,14 @@ class AIPredictionPanel {
         }
         
         const panel = document.createElement('div');
-        panel.className = 'ai-panel expanded';
+        panel.className = 'ai-panel';
         panel.id = 'aiPanel';
         panel.innerHTML = `
             <div class="panel-header">
-                <h3>🤖 AI Prediction (Auto-Updated)</h3>
-                <button class="btn-toggle" id="toggleAIPanel">−</button>
+                <h3>🤖 AI Prediction</h3>
+                <button class="btn-refresh" id="refreshPredictionBtn" title="Get New Prediction">🔄</button>
             </div>
-            <div class="panel-content" id="aiPanelContent" style="display: block;">
+            <div class="panel-content">
                 <div class="prediction-status">
                     <div class="signal-indicator" id="signalIndicator">
                         <span class="signal-text" id="signalText">WAITING</span>
@@ -41,14 +40,14 @@ class AIPredictionPanel {
                 </div>
                 
                 <div class="prediction-numbers">
-                    <label>Predicted Numbers (For NEXT Spin)</label>
+                    <label>Predicted Numbers</label>
                     <div class="numbers-grid" id="predictedNumbers">
                         <span class="waiting-msg">Add 3+ spins to see predictions</span>
                     </div>
                 </div>
                 
                 <div class="prediction-reasoning">
-                    <label>AI Reasoning (Based on Your Methodology)</label>
+                    <label>AI Reasoning</label>
                     <div class="reasoning-content" id="reasoningContent">
                         <p class="reasoning-item">Waiting for spin data...</p>
                     </div>
@@ -73,61 +72,44 @@ class AIPredictionPanel {
         
         container.appendChild(panel);
         
-        // Add toggle listener
-        document.getElementById('toggleAIPanel')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.togglePanel();
-        });
-        
-        // AUTOMATIC UPDATE: Monitor spins and auto-update
-        this.setupAutoUpdate();
+        // Add refresh button listener
+        document.getElementById('refreshPredictionBtn')?.addEventListener('click', () => this.refreshPrediction());
     }
     
-    togglePanel() {
-        this.isExpanded = !this.isExpanded;
-        const panel = document.getElementById('aiPanel');
-        const content = document.getElementById('aiPanelContent');
-        const toggleBtn = document.getElementById('toggleAIPanel');
-        
-        if (this.isExpanded) {
-            panel?.classList.add('expanded');
-            if (content) content.style.display = 'block';
-            if (toggleBtn) toggleBtn.textContent = '−';
-        } else {
-            panel?.classList.remove('expanded');
-            if (content) content.style.display = 'none';
-            if (toggleBtn) toggleBtn.textContent = '+';
-        }
-    }
-    
-    setupAutoUpdate() {
-        // DISABLED: Let auto-update-orchestrator handle timing
-        // This prevents race condition with money panel
-        console.log('⚠️ AI Panel auto-update delegated to orchestrator');
-    }
-    
-    async getPredictionAuto() {
+    async refreshPrediction() {
         const spinHistory = window.spins || window.spinData;
         
-        if (!spinHistory || spinHistory.length < 3) return;
-        if (typeof aiIntegration === 'undefined') return;
+        if (!spinHistory || spinHistory.length < 3) {
+            alert('Need at least 3 spins for prediction');
+            return;
+        }
+        
+        if (typeof aiIntegration === 'undefined') {
+            alert('AI not connected');
+            return;
+        }
+        
+        const btn = document.getElementById('refreshPredictionBtn');
+        if (btn) {
+            btn.textContent = '⏳';
+            btn.disabled = true;
+        }
         
         try {
             const prediction = await aiIntegration.getPrediction(spinHistory);
-            console.log('✅ Auto-prediction received:', prediction);
             this.updatePrediction(prediction);
             
             // Update money panel with new bet size
             if (window.moneyPanel && prediction) {
                 window.moneyPanel.updateFromPrediction(prediction);
             }
-            
-            // Update wheel highlights
-            if (window.rouletteWheel && prediction) {
-                window.rouletteWheel.highlightPredictions(prediction);
-            }
         } catch (error) {
-            console.error('❌ Auto-prediction error:', error);
+            console.error('Error getting prediction:', error);
+        } finally {
+            if (btn) {
+                btn.textContent = '🔄';
+                btn.disabled = false;
+            }
         }
     }
     
@@ -148,46 +130,22 @@ class AIPredictionPanel {
         const signalEl = document.getElementById('signalIndicator');
         const signalTextEl = document.getElementById('signalText');
         if (signalEl && signalTextEl) {
-            const confidence = pred.confidence || 0;
-            if (confidence >= 0.75) {
-                signalTextEl.textContent = 'BET NOW';
-                signalEl.className = 'signal-indicator signal-bet';
+            signalTextEl.textContent = pred.signal;
+            signalEl.className = 'signal-indicator';
+            if (pred.signal === 'BET NOW') {
+                signalEl.classList.add('signal-bet');
             } else {
-                signalTextEl.textContent = 'WAIT';
-                signalEl.className = 'signal-indicator signal-wait';
+                signalEl.classList.add('signal-wait');
             }
         }
         
-        // Confidence - Handle both 0-1 and 0-100 formats with validation
+        // Confidence
         const confidenceFillEl = document.getElementById('confidenceFill');
         const confidenceTextEl = document.getElementById('confidenceText');
         if (confidenceFillEl && confidenceTextEl) {
-            let conf = pred.confidence || 0;
-            
-            // Validate and convert confidence
-            if (conf > 100) {
-                // Something wrong - probably multiplied multiple times
-                console.warn(`⚠️ Invalid confidence: ${conf}, capping at 100`);
-                conf = 100;
-            } else if (conf > 1 && conf <= 100) {
-                // Already in percentage format
-                conf = Math.round(conf);
-            } else if (conf >= 0 && conf <= 1) {
-                // In 0-1 format, convert to percentage
-                conf = Math.round(conf * 100);
-            } else {
-                // Invalid
-                console.error(`❌ Invalid confidence value: ${conf}`);
-                conf = 0;
-            }
-            
-            // Ensure it's within 0-100 range
-            conf = Math.min(100, Math.max(0, conf));
-            
+            const conf = pred.confidence || 0;
             confidenceFillEl.style.width = `${conf}%`;
             confidenceTextEl.textContent = `${conf}%`;
-            
-            console.log(`📊 Confidence: ${pred.confidence} → ${conf}%`);
             
             // Color based on confidence
             if (conf >= 85) {
@@ -214,84 +172,34 @@ class AIPredictionPanel {
                 });
             }
             
-            // Render numbers with anchors CLEARLY highlighted
+            // Render numbers with anchors highlighted
             pred.numbers.forEach(num => {
                 const span = document.createElement('span');
+                span.textContent = num;
                 span.className = 'number-chip';
                 
                 if (anchorNumbers.has(num)) {
                     span.classList.add('anchor-number');
-                    span.innerHTML = `⭐ ${num}`;
-                    span.title = 'Anchor Number (Direct Projection)';
+                    span.title = 'Anchor';
                 } else {
-                    span.classList.add('neighbor-number');
-                    span.textContent = num;
-                    span.title = 'Neighbor (±1 from Anchor)';
+                    span.title = 'Neighbor';
                 }
                 
                 numbersEl.appendChild(span);
             });
         }
         
-        // Reasoning - IMPROVED with projection context
+        // Reasoning
         const reasoningEl = document.getElementById('reasoningContent');
         if (reasoningEl && pred.reasoning) {
-            reasoningEl.innerHTML = '';
-            
-            // Add reasoning items with better formatting
-            pred.reasoning.forEach(r => {
-                const p = document.createElement('p');
-                p.className = 'reasoning-item';
-                p.innerHTML = `• ${r}`;
-                reasoningEl.appendChild(p);
-            });
-            
-            // Add hot projections info if available
-            // Add hot projections info if available
-            if (pred.hot_projections && pred.hot_projections.length > 0) {
-                const hotDiv = document.createElement('div');
-                hotDiv.className = 'hot-projections-info';
-                hotDiv.style.marginTop = '10px';
-                hotDiv.style.padding = '8px';
-                hotDiv.style.background = '#fff3cd';
-                hotDiv.style.borderRadius = '4px';
-                hotDiv.style.fontSize = '11px';
-                
-                const title = document.createElement('div');
-                title.style.fontWeight = '700';
-                title.style.marginBottom = '4px';
-                title.textContent = '🔥 Hot Projections:';
-                hotDiv.appendChild(title);
-                
-                pred.hot_projections.forEach(proj => {
-                    const projP = document.createElement('p');
-                    projP.style.margin = '2px 0';
-                    projP.style.paddingLeft = '8px';
-                    
-                    // Handle both string and object formats
-                    if (typeof proj === 'string') {
-                        projP.textContent = proj;
-                    } else if (typeof proj === 'object' && proj.type) {
-                        // Format the object into readable text
-                        const hits = proj.consecutive_hits || 0;
-                        const codes = proj.position_codes || [];
-                        const type = proj.type.replace(/_/g, ' ').replace(/plus/g, '+').replace(/minus/g, '-');
-                        projP.textContent = `${type.toUpperCase()}: ${hits} hits, codes: ${codes.join(', ')}`;
-                    } else {
-                        projP.textContent = JSON.stringify(proj);
-                    }
-                    
-                    hotDiv.appendChild(projP);
-                });
-                
-                reasoningEl.appendChild(hotDiv);
-            }
+            reasoningEl.innerHTML = pred.reasoning
+                .map(r => `<p class="reasoning-item">• ${r}</p>`)
+                .join('');
         }
         
         // Bet Info
         const betPerNumber = Math.round(pred.bet_per_number || 0);
-        const numbersCount = pred.numbers?.length || 12;
-        const totalBet = betPerNumber * numbersCount;
+        const totalBet = betPerNumber * (pred.numbers?.length || 12);
         const potentialWin = betPerNumber > 0 ? (betPerNumber * 35) - totalBet : 0;
         
         const betSizeEl = document.getElementById('betSizeInfo');
@@ -307,7 +215,6 @@ class AIPredictionPanel {
         const potentialWinEl = document.getElementById('potentialWinInfo');
         if (potentialWinEl) {
             potentialWinEl.textContent = betPerNumber > 0 ? `+$${potentialWin}` : '--';
-            potentialWinEl.style.color = potentialWin > 0 ? '#28a745' : '#6c757d';
         }
     }
     
@@ -324,7 +231,6 @@ class AIPredictionPanel {
         if (confidenceFillEl && confidenceTextEl) {
             confidenceFillEl.style.width = '0%';
             confidenceTextEl.textContent = '0%';
-            confidenceFillEl.style.background = '#6c757d';
         }
         
         const numbersEl = document.getElementById('predictedNumbers');
@@ -336,16 +242,6 @@ class AIPredictionPanel {
         if (reasoningEl) {
             reasoningEl.innerHTML = '<p class="reasoning-item">Waiting for spin data...</p>';
         }
-        
-        // Clear bet info
-        const betSizeEl = document.getElementById('betSizeInfo');
-        if (betSizeEl) betSizeEl.textContent = '--';
-        
-        const totalBetEl = document.getElementById('totalBetInfo');
-        if (totalBetEl) totalBetEl.textContent = '--';
-        
-        const potentialWinEl = document.getElementById('potentialWinInfo');
-        if (potentialWinEl) potentialWinEl.textContent = '--';
     }
 }
 
@@ -355,6 +251,5 @@ window.aiPanel = null;
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         window.aiPanel = new AIPredictionPanel();
-        console.log('✅ AI Prediction Panel initialized (EXPANDED)');
     }, 100);
 });

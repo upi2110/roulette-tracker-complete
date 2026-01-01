@@ -13,9 +13,10 @@ class AutoUpdateOrchestrator {
     
     setupListeners() {
         // Monitor for new spins by watching the spins array
+        // Use 1500ms to give money panel time to check first
         setInterval(() => {
             this.checkForNewSpins();
-        }, 500); // Check every 500ms
+        }, 1500); // Slower to let money panel check first
     }
     
     async checkForNewSpins() {
@@ -29,6 +30,22 @@ class AutoUpdateOrchestrator {
         // New spin detected
         if (currentCount > this.lastSpinCount && currentCount >= 3) {
             console.log(`🔄 New spin detected! Count: ${currentCount}`);
+            
+            // CRITICAL: If session not started yet, start it FIRST
+            if (window.moneyPanel && !window.moneyPanel.sessionData.isSessionActive && currentCount === 3) {
+                console.log('🚀 Starting session FIRST...');
+                try {
+                    const result = await aiIntegration.startSession(4000, 100);
+                    if (result && result.success) {
+                        window.moneyPanel.sessionData.isSessionActive = true;
+                        window.moneyPanel.lastSpinCount = currentCount;
+                        console.log('✅ Session started by orchestrator');
+                    }
+                } catch (error) {
+                    console.error('❌ Session start failed:', error);
+                }
+            }
+            
             this.lastSpinCount = currentCount;
             await this.updateAllPanels();
         } else if (currentCount < this.lastSpinCount) {
@@ -46,8 +63,19 @@ class AutoUpdateOrchestrator {
         try {
             const spins = window.spins || window.spinData;
             
-            // Get new prediction from AI
+            // CRITICAL: Check money panel FIRST (before updating prediction)
+            // This ensures we check against the PREVIOUS prediction
+            if (window.moneyPanel && window.moneyPanel.sessionData.isSessionActive) {
+                // Money panel will check its pending bet against the new spin
+                // This happens automatically via its own listener
+                console.log('💰 Money panel will check pending bet...');
+            }
+            
+            // THEN get new prediction for NEXT spin
             if (typeof aiIntegration !== 'undefined' && spins && spins.length >= 3) {
+                // Add small delay to ensure money panel processes first
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
                 const prediction = await aiIntegration.getPrediction(spins);
                 
                 if (prediction) {

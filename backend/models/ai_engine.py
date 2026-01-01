@@ -242,7 +242,7 @@ class RouletteAI:
                 else:
                     break
             
-            if consecutive >= 2:
+            if consecutive >= 1:  # Changed from 2 to 1 for early predictions
                 hot_projections.append({
                     'type': proj_type,
                     'consecutive_hits': consecutive,
@@ -300,16 +300,27 @@ class RouletteAI:
     
     def expand_anchors_to_neighbors(self, anchors, count=4):
         """
-        Select top anchors and add neighbors
-        Returns: [(anchor, [left_neighbor, right_neighbor]), ...]
+        Select anchors and add neighbors to get 12 unique numbers
         """
-        # Select top N anchors
-        selected_anchors = anchors[:count]
+        if not anchors or len(anchors) == 0:
+            print("⚠️ No anchors provided!")
+            return []
         
         result = []
-        for anchor in selected_anchors:
+        all_numbers = set()
+        anchor_idx = 0
+        
+        # Keep adding until we have at least 10-12 numbers
+        while len(all_numbers) < 12 and anchor_idx < len(anchors):
+            anchor = anchors[anchor_idx]
             anchorNum = anchor if anchor != 0 else 26
-            idx = WHEEL_NO_ZERO.index(anchorNum)
+            
+            try:
+                idx = WHEEL_NO_ZERO.index(anchorNum)
+            except ValueError:
+                print(f"⚠️ Invalid anchor: {anchor}")
+                anchor_idx += 1
+                continue
             
             left_idx = (idx - 1) % 37
             right_idx = (idx + 1) % 37
@@ -324,6 +335,14 @@ class RouletteAI:
                 'anchor': anchor,
                 'neighbors': [left, right]
             })
+            
+            all_numbers.add(anchor)
+            all_numbers.add(left)
+            all_numbers.add(right)
+            
+            anchor_idx += 1
+        
+        print(f"📊 Expanded {len(result)} anchors to {len(all_numbers)} unique numbers")
         
         return result
     
@@ -378,14 +397,27 @@ class RouletteAI:
 
 
 class MoneyManager:
+    """
+    Money Management System with Progressive Betting
+    
+    Rules:
+    1. Min bet: $2 per number
+    2. Increase $1 per number after loss
+    3. Decrease $1 per number after win
+    4. Target: $100 profit per session
+    5. No stop loss
+    6. After 3+ consecutive losses: Only bet if AI confidence >= 90%
+    """
     
     def __init__(self, initial_bankroll=4000, session_target=100, base_bet=2):
         self.bankroll = initial_bankroll
         self.initial_bankroll = initial_bankroll
         self.session_target = session_target
         self.base_bet = base_bet
+        self.min_bet = 2  # Minimum $2 per number
         self.numbers_to_bet = 12
         
+        self.current_bet_per_number = self.base_bet
         self.consecutive_losses = 0
         self.session_profit = 0
         self.total_spins = 0
@@ -395,51 +427,25 @@ class MoneyManager:
     def calculate_bet_size(self, ai_confidence):
         """
         Calculate bet size per number based on:
+        - Current bet level (adjusted after each win/loss)
         - AI confidence
-        - Consecutive losses (progressive recovery)
-        - Bankroll safety
+        - Consecutive losses (extra caution after 3+ losses)
         """
-        # Confidence threshold
+        # RULE 5: After 3+ consecutive losses, only bet if AI is VERY confident
+        if self.consecutive_losses >= 3:
+            if ai_confidence < 0.90:  # Require 90%+ confidence
+                print(f"⚠️ Skipping bet: {self.consecutive_losses} losses, confidence {ai_confidence*100:.0f}% < 90%")
+                return 0  # WAIT for better opportunity
+        
+        # Normal confidence threshold
         if ai_confidence < 0.75:
             return 0  # WAIT - confidence too low
         
-        # Loss multiplier (progressive betting)
-        if self.consecutive_losses == 0:
-            loss_mult = 1.0
-        elif self.consecutive_losses == 1:
-            loss_mult = 1.2
-        elif self.consecutive_losses == 2:
-            loss_mult = 1.5
-        elif self.consecutive_losses == 3:
-            loss_mult = 2.0
-        elif self.consecutive_losses == 4:
-            loss_mult = 2.5
-        else:  # 5+ losses
-            loss_mult = 3.0
-        
-        # Confidence multiplier
-        if ai_confidence >= 0.90:
-            conf_mult = 1.3
-        elif ai_confidence >= 0.85:
-            conf_mult = 1.2
-        elif ai_confidence >= 0.80:
-            conf_mult = 1.1
-        else:  # 0.75-0.80
-            conf_mult = 1.0
-        
-        # Calculate bet per number
-        bet_per_number = self.base_bet * loss_mult * conf_mult
-        total_bet = bet_per_number * self.numbers_to_bet
-        
-        # Safety check: never bet more than 10% of bankroll
-        max_safe_bet = self.bankroll * 0.10
-        if total_bet > max_safe_bet:
-            bet_per_number = max_safe_bet / self.numbers_to_bet
-        
-        return round(bet_per_number, 2)
+        # Return current bet level
+        return self.current_bet_per_number
     
     def process_result(self, bet_per_number, hit):
-        """Process spin result and update bankroll"""
+        """Process spin result and update bankroll and bet level"""
         total_bet = bet_per_number * self.numbers_to_bet
         
         if hit:
@@ -451,12 +457,23 @@ class MoneyManager:
             self.session_profit += net_profit
             self.consecutive_losses = 0
             self.total_wins += 1
+            
+            # RULE 2: Decrease $1 after win
+            self.current_bet_per_number = max(self.min_bet, self.current_bet_per_number - 1)
+            
+            print(f"✅ WIN: Profit ${net_profit:.0f}, Bet decreased to ${self.current_bet_per_number}/number")
+            
         else:
             # Loss: lose entire bet
             self.bankroll -= total_bet
             self.session_profit -= total_bet
             self.consecutive_losses += 1
             self.total_losses += 1
+            
+            # RULE 2: Increase $1 after loss
+            self.current_bet_per_number += 1
+            
+            print(f"❌ LOSS: Lost ${total_bet:.0f}, Bet increased to ${self.current_bet_per_number}/number, Consecutive losses: {self.consecutive_losses}")
         
         self.total_spins += 1
         

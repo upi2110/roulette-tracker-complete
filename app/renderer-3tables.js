@@ -247,7 +247,54 @@ function resetAll() {
     if (confirm('Reset all?')) {
         spins = [];
         document.getElementById('direction').value = 'C';
+        
+        // Reset Money Management Panel
+        if (window.moneyPanel) {
+            window.moneyPanel.sessionData = {
+                startingBankroll: 4000,
+                currentBankroll: 4000,
+                sessionProfit: 0,
+                sessionTarget: 100,
+                totalBets: 0,
+                totalWins: 0,
+                totalLosses: 0,
+                consecutiveLosses: 0,
+                lastBetAmount: 0,
+                lastBetNumbers: 12,
+                isSessionActive: false
+            };
+            window.moneyPanel.betHistory = [];
+            window.moneyPanel.pendingBet = null;
+            window.moneyPanel.lastSpinCount = 0;
+            window.moneyPanel.render();
+            console.log('✅ Money panel reset');
+        }
+        
+        // Reset AI Prediction Panel
+        if (window.aiPanel) {
+            window.aiPanel.currentPrediction = null;
+            window.aiPanel.lastSpinCount = 0;
+            window.aiPanel.render();
+            console.log('✅ AI panel reset');
+        }
+        
+        // Clear Wheel highlights
+        if (window.rouletteWheel) {
+            window.rouletteWheel.clearHighlights();
+            console.log('✅ Wheel reset');
+        }
+        
+        // Reset backend session
+        if (typeof aiIntegration !== 'undefined') {
+            aiIntegration.resetSession().then(() => {
+                console.log('✅ Backend session reset');
+            }).catch(err => {
+                console.warn('⚠️ Backend reset failed:', err);
+            });
+        }
+        
         render();
+        console.log('🔄 Full reset complete');
     }
 }
 

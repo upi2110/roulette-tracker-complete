@@ -1,0 +1,335 @@
+/* Base styles */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; padding: 3px; }
+.container { max-width: 100%; width: 100%; margin: 0 auto; background: white; padding: 8px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+h1 { color: #2c3e50; margin-bottom: 12px; text-align: center; font-size: 16px; }
+
+/* Zoom controls */
+.zoom-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    padding: 6px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+.zoom-controls label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #495057;
+}
+
+.zoom-controls input[type="range"] {
+    width: 180px;
+}
+
+.zoom-value {
+    font-size: 11px;
+    color: #007bff;
+    font-weight: 700;
+    min-width: 35px;
+}
+
+/* Table sections */
+.table-section { margin-bottom: 6px; }
+.table-title { color: #34495e; font-size: 11px; margin-bottom: 2px; padding: 3px 6px; background: #ecf0f1; border-left: 3px solid #3498db; }
+.grid-wrapper { 
+    overflow-x: auto; 
+    max-height: 320px; 
+    overflow-y: auto; 
+    border: 1px solid #ddd; 
+    width: 100%;
+}
+
+/* Tables - MAXIMUM COMPACT */
+table { 
+    border-collapse: separate; 
+    border-spacing: 0;
+    width: 100%; 
+    font-size: 7px;
+}
+
+/* Table headers - MAXIMUM COMPACT */
+th { 
+    background: #34495e; 
+    color: white; 
+    padding: 1px 0px; 
+    text-align: center; 
+    border: 1px solid #2c3e50;
+    position: sticky; 
+    top: 0; 
+    z-index: 10; 
+    font-size: 6px;
+    white-space: nowrap;
+}
+
+/* Table cells - DEFAULT (numbers) - MAXIMUM COMPACT */
+td { 
+    padding: 0px 1px; 
+    text-align: center; 
+    border: 1px solid #e8e8e8; 
+    font-size: 7px;
+    white-space: nowrap;
+    width: 16px; /* Super compact for numbers */
+}
+
+/* 13-DIGIT OPPOSITE CELLS - Light gray background */
+.opp13-cell {
+    background: #e9ecef !important;
+}
+
+/* BLACK BORDER - ONLY on pair separators */
+.pair-separator {
+    border-left: 4px solid #000 !important;
+}
+
+/* Anchor cells */
+.anchor-cell {
+    font-weight: 700;
+    width: 16px;
+}
+
+/* Anchor cells that are 13-digit opposites */
+.anchor-cell.opp13-cell {
+    background: #d3d3d3 !important;
+}
+
+/* POSITION CODE CELLS - Compact */
+.code-s,
+.code-o,
+.code-xx { 
+    width: 24px !important; /* Very compact */
+    min-width: 24px !important;
+    padding: 0px 1px;
+    font-weight: 700;
+    white-space: nowrap;
+    font-size: 6px; /* Smaller font */
+}
+
+/* S codes = LIGHT GREEN */
+.code-s { 
+    background: #92d050 !important; 
+    color: #1f4e0f; 
+}
+
+/* O codes = SOFT LIGHT BLUE */
+.code-o { 
+    background: #add8e6 !important; 
+    color: #003d5c; 
+}
+
+/* XX codes = VERY LIGHT ORANGE/PEACH */
+.code-xx { 
+    background: #ffe5cc !important; 
+    color: #8b4513;
+    font-weight: 600;
+}
+
+/* 13-digit opposite position codes - slightly darker background */
+.code-s.opp13-cell { 
+    background: #7bc043 !important; 
+}
+
+.code-o.opp13-cell { 
+    background: #8bc5d9 !important; 
+}
+
+.code-xx.opp13-cell { 
+    background: #ffd6a5 !important; 
+}
+
+/* Table3: Position code highlighting */
+.cell-has-position { background: #e7f3ff !important; }
+
+/* Table3 Set Body Cells - NO colored borders, use black separators like Table1/2 */
+
+/* Table3: S and O position codes - FULL CELL background like Table1/2 */
+.pos-s,
+.pos-o,
+.pos-xx { 
+    padding: 1px 3px;
+    border-radius: 2px;
+    display: inline-block;
+    white-space: nowrap;
+    font-weight: 700;
+    font-size: 6px;
+    min-width: 32px; /* Ensure readable width */
+    text-align: center;
+}
+
+.pos-s { 
+    background: #92d050 !important; 
+    color: #1f4e0f !important; 
+}
+
+.pos-o { 
+    background: #add8e6 !important; 
+    color: #003d5c !important; 
+}
+
+.pos-xx { 
+    background: #ffe5cc !important; 
+    color: #8b4513 !important;
+    font-weight: 600;
+}
+
+/* Table3 Projection columns */
+.col-prj { background: #f8f9fa; font-size: 6px; }
+.col-prj-hit { background: #d4edda; font-weight: 700; }
+.col-prj-miss { background: #f8d7da; }
+
+/* Anchors in projections */
+.anchor-purple { 
+    background: #e6ccff; 
+    color: #6f42c1; 
+    padding: 1px 2px; 
+    margin: 1px; 
+    border-radius: 2px; 
+    font-size: 6px; 
+    display: inline-block; 
+}
+
+.anchor-green { 
+    background: #c3e6cb; 
+    color: #28a745; 
+    padding: 1px 2px; 
+    margin: 1px; 
+    border-radius: 2px; 
+    font-size: 6px; 
+    display: inline-block; 
+}
+
+/* Direction cells */
+.dir-c { background: #e3f2fd; color: #1565c0; font-weight: 700; }
+.dir-ac { background: #fff3e0; color: #e65100; font-weight: 700; }
+
+/* NEXT row */
+.next-row { background: #fffbcc !important; font-weight: 700; }
+.next-row td { border-top: 3px solid #ffc107 !important; }
+
+/* Input section */
+.input-section { margin-top: 12px; padding: 10px; background: #f8f9fa; border-radius: 5px; }
+.input-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.input-field { display: flex; flex-direction: column; }
+.input-field label { font-size: 10px; margin-bottom: 2px; color: #495057; }
+.input-field input,
+.input-field select { padding: 5px; border: 1px solid #ced4da; border-radius: 4px; font-size: 11px; }
+.input-field input[type="number"] { width: 90px; }
+#info { margin-top: 8px; font-size: 11px; color: #6c757d; }
+
+/* Buttons */
+.btn-add { background: #28a745; color: white; padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; }
+.btn-add:hover { background: #218838; }
+.btn-undo { background: #ffc107; color: #000; padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; margin-left: 5px; }
+.btn-undo:hover { background: #e0a800; }
+.btn-reset { background: #dc3545; color: white; padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; margin-left: 5px; }
+.btn-reset:hover { background: #c82333; }
+
+/* ============================================
+   RESPONSIVE INPUT CONTROLS FIX
+   ADD THIS TO THE END OF styles-3tables.css
+   ============================================ */
+
+.input-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 15px 20px;
+    background: #ffffff;
+    border-top: 2px solid #dee2e6;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+}
+
+.input-section label {
+    font-weight: 600;
+    font-size: 14px;
+    color: #495057;
+    margin: 0;
+}
+
+.input-section input[type="number"] {
+    width: 100px;
+    padding: 8px 12px;
+    font-size: 16px;
+    font-weight: 600;
+    border: 2px solid #ced4da;
+    border-radius: 6px;
+}
+
+.input-section select {
+    width: 80px;
+    padding: 8px 12px;
+    font-size: 16px;
+    font-weight: 600;
+    border: 2px solid #ced4da;
+    border-radius: 6px;
+}
+
+.input-section input:focus,
+.input-section select:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.input-section .btn-add,
+.input-section .btn-undo,
+.input-section .btn-reset {
+    padding: 10px 24px;
+    font-size: 15px;
+    font-weight: 700;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.input-section .btn-add {
+    background: #28a745;
+    color: white;
+}
+
+.input-section .btn-add:hover {
+    background: #218838;
+    transform: translateY(-1px);
+}
+
+.input-section .btn-undo {
+    background: #ffc107;
+    color: #212529;
+}
+
+.input-section .btn-undo:hover {
+    background: #e0a800;
+    transform: translateY(-1px);
+}
+
+.input-section .btn-reset {
+    background: #dc3545;
+    color: white;
+}
+
+.input-section .btn-reset:hover {
+    background: #c82333;
+    transform: translateY(-1px);
+}
+
+.input-section #info {
+    font-size: 15px;
+    font-weight: 600;
+    color: #495057;
+    margin-left: auto;
+}
+
+/* Add padding to container so tables don't hide behind fixed controls */
+.container {
+    padding-bottom: 80px;
+}
