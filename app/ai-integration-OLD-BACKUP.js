@@ -1,6 +1,6 @@
 /**
- * AI Integration - Pattern-Based
- * Sends table data to AI for analysis
+ * AI Integration for Renderer Process
+ * Uses window.aiAPI exposed by preload.js
  */
 
 class AIIntegration {
@@ -9,12 +9,16 @@ class AIIntegration {
         this.api = window.aiAPI;
         
         if (!this.api) {
-            console.error('❌ AI API not found!');
+            console.error('❌ AI API not found! Make sure preload.js is loaded.');
         }
     }
 
+    /**
+     * Test connection to AI server
+     */
     async testConnection() {
         if (!this.api) {
+            console.error('AI API not available');
             return false;
         }
         
@@ -28,6 +32,9 @@ class AIIntegration {
         }
     }
 
+    /**
+     * Get AI prediction for next spin
+     */
     async getPrediction(spinHistory) {
         if (!this.api) {
             console.error('AI API not available');
@@ -35,23 +42,7 @@ class AIIntegration {
         }
         
         try {
-            // CRITICAL: Check if we have enough spins first
-            const spins = window.spins || window.spinData;
-            if (!spins || spins.length < 3) {
-                console.log('⏳ Waiting for 3+ spins before prediction');
-                return null;
-            }
-            
-            // Get table data from renderer
-            const tableData = window.getAIData && window.getAIData();
-            
-            if (!tableData) {
-                console.warn('⚠️ No table data available');
-                return null;
-            }
-            
-            // Send table data to AI
-            const prediction = await this.api.getPredictionWithTableData(tableData);
+            const prediction = await this.api.getPrediction(spinHistory);
             console.log('🤖 AI Prediction:', prediction);
             return prediction;
         } catch (error) {
@@ -60,8 +51,12 @@ class AIIntegration {
         }
     }
 
+    /**
+     * Start a new betting session
+     */
     async startSession(bankroll = 4000, target = 100) {
         if (!this.api) {
+            console.error('AI API not available');
             return null;
         }
         
@@ -75,8 +70,12 @@ class AIIntegration {
         }
     }
 
+    /**
+     * Process bet result (win/loss)
+     */
     async processResult(betPerNumber, hit) {
         if (!this.api) {
+            console.error('AI API not available');
             return null;
         }
         
@@ -90,8 +89,12 @@ class AIIntegration {
         }
     }
 
+    /**
+     * Get current session status
+     */
     async getStatus() {
         if (!this.api) {
+            console.error('AI API not available');
             return null;
         }
         
@@ -103,8 +106,29 @@ class AIIntegration {
         }
     }
 
+    /**
+     * Get detailed session report
+     */
+    async getSessionReport() {
+        if (!this.api) {
+            console.error('AI API not available');
+            return null;
+        }
+        
+        try {
+            return await this.api.getSessionReport();
+        } catch (error) {
+            console.error('❌ Get report failed:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Reset session
+     */
     async resetSession() {
         if (!this.api) {
+            console.error('AI API not available');
             return null;
         }
         
@@ -119,8 +143,10 @@ class AIIntegration {
     }
 }
 
+// Create global instance
 const aiIntegration = new AIIntegration();
 
+// Auto-test connection on load
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🔌 Testing AI server connection...');
     
@@ -128,9 +154,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     if (connected) {
         console.log('✅ AI Server Connected!');
-        console.log('🤖 Pattern-Based AI enabled');
+        console.log('🤖 AI features enabled');
     } else {
         console.warn('⚠️ AI Server Not Running');
-        console.warn('Start server: cd backend && python3 api/ai_server.py');
+        console.warn('Start server: cd backend && ./start_ai.sh');
     }
 });

@@ -20,8 +20,8 @@ if [ ! -d "models" ] || [ ! -d "api" ]; then
 fi
 
 # Check if ai_server.py exists
-if [ ! -f "ai_server.py" ]; then
-    echo "❌ Error: ai_server.py not found in current directory!"
+if [ ! -f "api/ai_server.py" ]; then
+    echo "❌ Error: ai_server.py not found in api/ directory!"
     echo "Please make sure ai_server.py is in backend/ directory"
     exit 1
 fi
@@ -47,7 +47,8 @@ echo "==============================================="
 echo ""
 
 # Run the server
-python3 ai_server.py
+# Simpler - just run the correct file:
+python3 api/ai_server.py
 
 # If server stops
 echo ""

@@ -1,5 +1,5 @@
 /**
- * Auto-Update Orchestrator
+ * Auto-Update Orchestrator - FIXED
  * Coordinates AI predictions, wheel updates, and money tracking
  */
 
@@ -31,8 +31,8 @@ class AutoUpdateOrchestrator {
         if (currentCount > this.lastSpinCount && currentCount >= 3) {
             console.log(`🔄 New spin detected! Count: ${currentCount}`);
             
-            // CRITICAL: If session not started yet, start it FIRST
-            if (window.moneyPanel && !window.moneyPanel.sessionData.isSessionActive && currentCount === 3) {
+            // CRITICAL FIX: Start session if not active AND we have 3+ spins
+            if (window.moneyPanel && !window.moneyPanel.sessionData.isSessionActive && currentCount >= 3) {
                 console.log('🚀 Starting session FIRST...');
                 try {
                     const result = await aiIntegration.startSession(4000, 100);
@@ -51,7 +51,7 @@ class AutoUpdateOrchestrator {
         } else if (currentCount < this.lastSpinCount) {
             // Reset detected (RESET button clicked)
             console.log('🔄 Reset detected');
-            this.lastSpinCount = currentCount;
+            this.lastSpinCount = 0;  // CRITICAL: Reset to 0, not currentCount
             this.clearAllPanels();
         }
     }
@@ -152,11 +152,10 @@ class AutoUpdateOrchestrator {
     }
 }
 
-// Create global instance
-let autoUpdater;
-
+// Create global instance - CRITICAL FIX
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
-        autoUpdater = new AutoUpdateOrchestrator();
+        window.orchestrator = new AutoUpdateOrchestrator();
+        console.log('✅ Orchestrator exposed as window.orchestrator');
     }, 500);
 });

@@ -1,22 +1,17 @@
 """
-European Roulette AI Pattern Recognition Engine
-Analyzes Tables 1, 2, and 3 to predict optimal bet numbers
+AI ENGINE - YOUR COMPLETE METHODOLOGY
+- 4 anchors (NO 13-opposites)
+- 8 neighbors (2 per anchor)
+- Green/Black pattern analysis
+- Multi-table scoring with learning
 """
 
 import json
-import numpy as np
-from collections import defaultdict
+import os
 from datetime import datetime
 
-# European Roulette Wheel Configuration
-WHEEL_NO_ZERO = [26,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26]
-
-REGULAR_OPPOSITES = {
-    0:10, 1:21, 2:20, 3:23, 4:33, 5:32, 6:22, 7:36, 8:35, 9:34,
-    10:26, 11:28, 12:30, 13:29, 14:25, 15:24, 16:19, 17:31, 18:27,
-    19:16, 20:2, 21:1, 22:6, 23:3, 24:15, 25:14, 26:10, 27:18,
-    28:11, 29:13, 30:12, 31:17, 32:5, 33:4, 34:9, 35:8, 36:7
-}
+# Wheel constants - European Roulette order (clockwise)
+WHEEL_ORDER = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26]
 
 DIGIT_13_OPPOSITES = {
     0:34, 1:28, 2:30, 3:17, 4:36, 5:22, 6:5, 7:4, 8:14, 9:26,
@@ -25,396 +20,370 @@ DIGIT_13_OPPOSITES = {
     28:21, 29:19, 30:20, 31:3, 32:6, 33:7, 34:10, 35:25, 36:33
 }
 
+# Green (positive) and Black (negative) numbers
+GREEN_NUMBERS = {0, 3, 26, 32, 27, 13, 36, 1, 20, 14, 15, 19, 4, 11, 30, 8, 31, 9, 22}
+BLACK_NUMBERS = {23, 10, 5, 18, 29, 7, 21, 2, 25, 24, 16, 33, 28, 12, 35, 17, 34, 6}
+
+
+def get_wheel_neighbors(number, distance=1):
+    """Get neighbors on the wheel at specified distance"""
+    try:
+        idx = WHEEL_ORDER.index(number)
+    except ValueError:
+        return []
+    
+    neighbors = []
+    for d in range(1, distance + 1):
+        # Left neighbor (counterclockwise)
+        left_idx = (idx - d) % len(WHEEL_ORDER)
+        neighbors.append(WHEEL_ORDER[left_idx])
+        
+        # Right neighbor (clockwise)
+        right_idx = (idx + d) % len(WHEEL_ORDER)
+        neighbors.append(WHEEL_ORDER[right_idx])
+    
+    return neighbors
+
+
+def get_color_trend(recent_spins):
+    """
+    Analyze last 2-3 spins for Green/Black trend
+    Returns: 'green', 'black', or 'neutral'
+    """
+    if len(recent_spins) < 2:
+        return 'neutral'
+    
+    # Look at last 3 spins
+    check_spins = recent_spins[-3:] if len(recent_spins) >= 3 else recent_spins[-2:]
+    
+    green_count = sum(1 for s in check_spins if s in GREEN_NUMBERS)
+    black_count = sum(1 for s in check_spins if s in BLACK_NUMBERS)
+    
+    # Trend continues: if majority is black, favor black
+    if black_count > green_count:
+        return 'black'
+    elif green_count > black_count:
+        return 'green'
+    else:
+        return 'neutral'
+
+
 class RouletteAI:
+    """
+    Pattern-based AI with YOUR methodology:
+    1. Analyze all 3 tables for patterns
+    2. Score anchors with multi-table + color trend bonus
+    3. Select best 4 anchors
+    4. Add ±1 neighbors (NO 13-opposites)
+    5. Total: 12 numbers (or 13 if 0/26)
+    """
     
     def __init__(self):
-        self.pattern_weights = self._initialize_weights()
-        self.learning_data = defaultdict(lambda: {'hits': 0, 'misses': 0})
-        
-    def _initialize_weights(self):
-        """Initialize pattern recognition weights"""
-        return {
-            'table3_consecutive_hits': 0.15,  # +15% per consecutive hit in same projection
-            'table3_position_cluster': 0.10,  # +10% for position code clustering
-            'table12_column_pattern': 0.08,   # +8% for column alternation pattern
-            'multi_table_consensus': 0.12,    # +12% when tables agree
-            'wheel_sector_bias': 0.05,        # +5% for wheel sector clustering
-        }
-    
-    def calculate_position_code(self, reference, actual):
-        """Calculate position code between reference and actual"""
-        refNum = reference if reference != 0 else 26
-        actNum = actual if actual != 0 else 26
-        
-        if refNum == actNum:
-            return 'S+0'
-        
-        refIdx = WHEEL_NO_ZERO.index(refNum)
-        
-        # Check LEFT and RIGHT
-        for direction, step in [(-1, 'L'), (1, 'R')]:
-            distance = 0
-            idx = refIdx
-            skipped = False
-            
-            for i in range(10):
-                idx = (idx + direction) % 37
-                num = WHEEL_NO_ZERO[idx]
-                
-                if num == 26 and not skipped:
-                    skipped = True
-                    if actNum == 26:
-                        distance += 1
-                        return f'S{step}+{distance}'
-                    continue
-                
-                distance += 1
-                
-                if num == actNum:
-                    if distance <= 4:
-                        return f'S{step}+{distance}'
-                    break
-                    
-                if distance >= 4:
-                    break
-        
-        # Check OPPOSITE side
-        opposite = REGULAR_OPPOSITES[reference]
-        oppNum = opposite if opposite != 0 else 26
-        
-        if actNum == oppNum:
-            return 'O+0'
-        
-        oppIdx = WHEEL_NO_ZERO.index(oppNum)
-        
-        for direction, step in [(-1, 'L'), (1, 'R')]:
-            distance = 0
-            idx = oppIdx
-            skipped = False
-            
-            for i in range(10):
-                idx = (idx + direction) % 37
-                num = WHEEL_NO_ZERO[idx]
-                
-                if num == 26 and not skipped:
-                    skipped = True
-                    if actNum == 26:
-                        distance += 1
-                        return f'O{step}+{distance}'
-                    continue
-                
-                distance += 1
-                
-                if num == actNum:
-                    if distance <= 4:
-                        return f'O{step}+{distance}'
-                    break
-                    
-                if distance >= 4:
-                    break
-        
-        return 'XX'
-    
-    def get_number_at_position(self, refNum, posCode):
-        """Get number at given position code from reference"""
-        if posCode == 'S+0':
-            return refNum
-        if posCode == 'XX':
-            return None
-        if posCode == 'O+0':
-            return REGULAR_OPPOSITES[refNum]
-            
-        # Parse position code
-        import re
-        match = re.match(r'^(S|O)(L|R)\+(\d+)$', posCode)
-        if not match:
-            return None
-            
-        side, direction, dist = match.groups()
-        distance = int(dist)
-        
-        ref = refNum if refNum != 0 else 26
-        
-        if side == 'S':
-            startIdx = WHEEL_NO_ZERO.index(ref)
-        else:
-            opp = REGULAR_OPPOSITES[refNum]
-            oppNum = opp if opp != 0 else 26
-            startIdx = WHEEL_NO_ZERO.index(oppNum)
-        
-        moveDir = 1 if direction == 'R' else -1
-        idx = startIdx
-        steps = 0
-        skipped = False
-        
-        while steps < distance:
-            idx = (idx + moveDir) % 37
-            num = WHEEL_NO_ZERO[idx]
-            
-            if num == 26 and not skipped:
-                skipped = True
-                continue
-            
-            steps += 1
-        
-        result = WHEEL_NO_ZERO[idx]
-        return result if result != 26 else 0
-    
-    def calculate_references(self, prev, prevPrev):
-        """Calculate all 6 reference numbers"""
-        refs = {'prev': prev, 'prev_prev': prevPrev}
-        
-        if prev == 36:
-            refs['prev_plus_1'] = 35
-            refs['prev_plus_2'] = 34
-            refs['prev_minus_1'] = 35
-            refs['prev_minus_2'] = 34
-        elif prev == 0:
-            refs['prev_minus_1'] = 10
-            refs['prev_minus_2'] = 9
-            refs['prev_plus_1'] = 1
-            refs['prev_plus_2'] = 2
-        else:
-            refs['prev_plus_1'] = min(prev + 1, 36)
-            refs['prev_plus_2'] = min(prev + 2, 36)
-            refs['prev_minus_1'] = max(prev - 1, 0)
-            refs['prev_minus_2'] = max(prev - 2, 0)
-        
-        return refs
-    
-    def analyze_table3_patterns(self, spin_history):
-        """
-        Analyze Table 3 anchor projection patterns
-        Returns: Hot projections, anchor numbers, confidence boost
-        """
-        if len(spin_history) < 3:
-            return {'anchors': [], 'confidence_boost': 0, 'reasoning': []}
-        
-        # Track which projections hit in recent spins
-        projection_hits = {
-            'prev': [], 'prev_plus_1': [], 'prev_minus_1': [],
-            'prev_plus_2': [], 'prev_minus_2': [], 'prev_prev': []
+        self.scoring = {
+            'table3_hit': 10,
+            'table2_hit': 8,
+            'table1_hit': 5,
+            'multi_table_bonus': 10,
+            'recent_bonus': 3,
+            'color_trend_bonus': 5
         }
         
-        position_codes_by_proj = {key: [] for key in projection_hits.keys()}
-        
-        # Analyze last 8 spins (or available)
-        analysis_window = min(8, len(spin_history) - 2)
-        
-        for i in range(len(spin_history) - analysis_window, len(spin_history)):
-            if i < 2:
-                continue
-                
-            current = spin_history[i]
-            prev = spin_history[i-1]
-            prevPrev = spin_history[i-2]
-            
-            refs = self.calculate_references(prev['actual'], prevPrev['actual'])
-            
-            # Check which projection hit
-            for proj_type, ref_num in refs.items():
-                ref_13opp = DIGIT_13_OPPOSITES[ref_num]
-                
-                # Calculate position codes
-                code_ref = self.calculate_position_code(ref_num, current['actual'])
-                code_13opp = self.calculate_position_code(ref_13opp, current['actual'])
-                
-                if code_ref != 'XX':
-                    projection_hits[proj_type].append(True)
-                    position_codes_by_proj[proj_type].append(code_ref)
-                elif code_13opp != 'XX':
-                    projection_hits[proj_type].append(True)
-                    position_codes_by_proj[proj_type].append(code_13opp)
-                else:
-                    projection_hits[proj_type].append(False)
-        
-        # Find hot projections (consecutive hits)
-        hot_projections = []
-        for proj_type, hits in projection_hits.items():
-            if len(hits) == 0:
-                continue
-            
-            # Count consecutive hits from end
-            consecutive = 0
-            for hit in reversed(hits):
-                if hit:
-                    consecutive += 1
-                else:
-                    break
-            
-            if consecutive >= 1:  # Changed from 2 to 1 for early predictions
-                hot_projections.append({
-                    'type': proj_type,
-                    'consecutive_hits': consecutive,
-                    'position_codes': position_codes_by_proj[proj_type][-consecutive:]
-                })
-        
-        # Sort by consecutive hits
-        hot_projections.sort(key=lambda x: x['consecutive_hits'], reverse=True)
-        
-        # Generate anchors from hottest projection
-        anchors = []
-        reasoning = []
-        confidence_boost = 0
-        
-        if hot_projections:
-            hottest = hot_projections[0]
-            proj_type = hottest['type']
-            consecutive = hottest['consecutive_hits']
-            
-            # Get next references
-            last_spin = spin_history[-1]
-            second_last = spin_history[-2]
-            next_refs = self.calculate_references(last_spin['actual'], second_last['actual'])
-            
-            # Apply detected position code pattern to next reference
-            ref_num = next_refs[proj_type]
-            ref_13opp = DIGIT_13_OPPOSITES[ref_num]
-            
-            # Extract position code pattern
-            pos_codes = hottest['position_codes']
-            
-            # Generate anchors using similar position codes
-            unique_codes = set(pos_codes)
-            for code in unique_codes:
-                anchor1 = self.get_number_at_position(ref_num, code)
-                anchor2 = self.get_number_at_position(ref_13opp, code)
-                
-                if anchor1 is not None and anchor1 not in anchors:
-                    anchors.append(anchor1)
-                if anchor2 is not None and anchor2 not in anchors:
-                    anchors.append(anchor2)
-            
-            # Calculate confidence boost
-            confidence_boost = min(consecutive * self.pattern_weights['table3_consecutive_hits'], 0.25)
-            
-            reasoning.append(f"{proj_type.upper()} projection: {consecutive} consecutive hits 🔥")
-            reasoning.append(f"Position codes: {', '.join(pos_codes)}")
-        
-        return {
-            'anchors': anchors[:8],  # Limit to 8 anchors
-            'confidence_boost': confidence_boost,
-            'reasoning': reasoning,
-            'hot_projections': hot_projections
-        }
+        # Learning system
+        self.history_file = 'ai_learning_history.json'
+        self.prediction_history = []
+        self.load_history()
     
-    def expand_anchors_to_neighbors(self, anchors, count=4):
-        """
-        Select anchors and add neighbors to get 12 unique numbers
-        """
-        if not anchors or len(anchors) == 0:
-            print("⚠️ No anchors provided!")
-            return []
-        
-        result = []
-        all_numbers = set()
-        anchor_idx = 0
-        
-        # Keep adding until we have at least 10-12 numbers
-        while len(all_numbers) < 12 and anchor_idx < len(anchors):
-            anchor = anchors[anchor_idx]
-            anchorNum = anchor if anchor != 0 else 26
-            
+    def load_history(self):
+        """Load prediction history for learning"""
+        if os.path.exists(self.history_file):
             try:
-                idx = WHEEL_NO_ZERO.index(anchorNum)
-            except ValueError:
-                print(f"⚠️ Invalid anchor: {anchor}")
-                anchor_idx += 1
+                with open(self.history_file, 'r') as f:
+                    self.prediction_history = json.load(f)
+            except:
+                self.prediction_history = []
+    
+    def save_history(self):
+        """Save prediction history"""
+        try:
+            with open(self.history_file, 'w') as f:
+                json.dump(self.prediction_history[-100:], f)  # Keep last 100
+        except:
+            pass
+    
+    def find_consecutive_patterns(self, hits_data, min_consecutive=2):
+        """Find refs/projections with 2+ consecutive hits"""
+        patterns = {}
+        
+        for ref_name, hit_list in hits_data.items():
+            if len(hit_list) < min_consecutive:
                 continue
             
-            left_idx = (idx - 1) % 37
-            right_idx = (idx + 1) % 37
+            # Check for consecutive hits
+            consecutive_count = 0
+            last_spin_idx = -999
             
-            left = WHEEL_NO_ZERO[left_idx]
-            right = WHEEL_NO_ZERO[right_idx]
-            
-            left = left if left != 26 else 0
-            right = right if right != 26 else 0
-            
-            result.append({
-                'anchor': anchor,
-                'neighbors': [left, right]
-            })
-            
-            all_numbers.add(anchor)
-            all_numbers.add(left)
-            all_numbers.add(right)
-            
-            anchor_idx += 1
+            for hit in hit_list:
+                if hit['spinIdx'] == last_spin_idx + 1:
+                    consecutive_count += 1
+                else:
+                    consecutive_count = 1
+                
+                last_spin_idx = hit['spinIdx']
+                
+                # Found pattern
+                if consecutive_count >= min_consecutive:
+                    if ref_name not in patterns:
+                        patterns[ref_name] = {
+                            'consecutive': consecutive_count,
+                            'latest_spin': last_spin_idx,
+                            'hit_numbers': []
+                        }
+                    else:
+                        patterns[ref_name]['consecutive'] = max(
+                            patterns[ref_name]['consecutive'],
+                            consecutive_count
+                        )
+                        patterns[ref_name]['latest_spin'] = max(
+                            patterns[ref_name]['latest_spin'],
+                            last_spin_idx
+                        )
         
-        print(f"📊 Expanded {len(result)} anchors to {len(all_numbers)} unique numbers")
-        
-        return result
+        return patterns
     
-    def predict_numbers(self, spin_history):
+    def extract_anchor_candidates(self, table_data, current_spin_idx, color_trend):
         """
-        Main prediction function
-        Returns: (bet_numbers, confidence, reasoning)
+        Extract potential anchor numbers from hot patterns
+        Score with: Table hits + Multi-table + Recent + Color trend
         """
-        if len(spin_history) < 3:
-            return [], 0.0, ["Insufficient data - need at least 3 spins"]
+        candidates = {}
         
-        # STEP 1: Analyze Table 3
-        table3_analysis = self.analyze_table3_patterns(spin_history)
+        # Table 1 patterns
+        table1_patterns = self.find_consecutive_patterns(table_data.get('table1Hits', {}))
+        for ref_name, pattern_info in table1_patterns.items():
+            score = pattern_info['consecutive'] * self.scoring['table1_hit']
+            
+            # Recent bonus
+            recency = current_spin_idx - pattern_info['latest_spin']
+            if recency <= 2:
+                score += self.scoring['recent_bonus']
+            
+            for hit in table_data['table1Hits'][ref_name]:
+                for num in hit.get('hitNumbers', []):
+                    if num not in candidates:
+                        candidates[num] = {'score': 0, 'tables': set()}
+                    candidates[num]['score'] += score
+                    candidates[num]['tables'].add('table1')
         
-        if not table3_analysis['anchors']:
-            return [], 0.60, ["No strong patterns detected - waiting for clearer signals"]
+        # Table 2 patterns
+        table2_patterns = self.find_consecutive_patterns(table_data.get('table2Hits', {}))
+        for ref_name, pattern_info in table2_patterns.items():
+            score = pattern_info['consecutive'] * self.scoring['table2_hit']
+            
+            recency = current_spin_idx - pattern_info['latest_spin']
+            if recency <= 2:
+                score += self.scoring['recent_bonus']
+            
+            for hit in table_data['table2Hits'][ref_name]:
+                for num in hit.get('hitNumbers', []):
+                    if num not in candidates:
+                        candidates[num] = {'score': 0, 'tables': set()}
+                    candidates[num]['score'] += score
+                    candidates[num]['tables'].add('table2')
         
-        # STEP 2: Expand anchors to bet numbers
-        anchor_groups = self.expand_anchors_to_neighbors(
-            table3_analysis['anchors'],
-            count=4
+        # Table 3 patterns (MOST IMPORTANT)
+        table3_patterns = self.find_consecutive_patterns(table_data.get('table3Hits', {}))
+        for proj_type, pattern_info in table3_patterns.items():
+            score = pattern_info['consecutive'] * self.scoring['table3_hit']
+            
+            recency = current_spin_idx - pattern_info['latest_spin']
+            if recency <= 2:
+                score += self.scoring['recent_bonus']
+            
+            for hit in table_data['table3Hits'][proj_type]:
+                num = hit.get('projection')
+                if num is not None:
+                    if num not in candidates:
+                        candidates[num] = {'score': 0, 'tables': set()}
+                    candidates[num]['score'] += score
+                    candidates[num]['tables'].add('table3')
+        
+        # Apply bonuses
+        for num, info in candidates.items():
+            # Multi-table bonus
+            if len(info['tables']) >= 2:
+                info['score'] += self.scoring['multi_table_bonus']
+            
+            # Color trend bonus
+            if color_trend == 'green' and num in GREEN_NUMBERS:
+                info['score'] += self.scoring['color_trend_bonus']
+            elif color_trend == 'black' and num in BLACK_NUMBERS:
+                info['score'] += self.scoring['color_trend_bonus']
+        
+        return candidates
+    
+    def select_best_anchors(self, candidates, count=4):
+        """Select top 4 anchor numbers by score"""
+        sorted_candidates = sorted(
+            candidates.items(),
+            key=lambda x: x[1]['score'],
+            reverse=True
         )
         
-        # Collect all bet numbers
-        bet_numbers = []
-        for group in anchor_groups:
-            bet_numbers.append(group['anchor'])
-            bet_numbers.extend(group['neighbors'])
+        anchors = [num for num, _ in sorted_candidates[:count]]
+        scores = [info['score'] for num, info in sorted_candidates[:count]]
         
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_numbers = []
-        for num in bet_numbers:
-            if num not in seen:
-                seen.add(num)
-                unique_numbers.append(num)
+        return anchors, scores
+    
+    def expand_to_12_numbers(self, anchors):
+        """
+        YOUR METHODOLOGY:
+        - 4 anchors
+        - 8 neighbors (±1 for each anchor)
+        - NO 13-opposites
+        - If 0 or 26 is selected, add both (same position)
+        """
+        all_numbers = set()
+        anchor_groups = []  # NEW: Track anchor groups for wheel highlighting
         
-        # STEP 3: Calculate confidence
-        base_confidence = 0.65  # 65% baseline
-        confidence = base_confidence + table3_analysis['confidence_boost']
+        for anchor in anchors:
+            # Get ±1 neighbors on wheel
+            neighbors = get_wheel_neighbors(anchor, distance=1)
+            
+            # Add anchor and its neighbors
+            all_numbers.add(anchor)
+            all_numbers.update(neighbors[:2])  # Only 2 neighbors per anchor
+            
+            # Build anchor group for wheel highlighting
+            anchor_groups.append({
+                'anchor': anchor,
+                'neighbors': neighbors[:2]
+            })
+            
+            # CRITICAL: 0 and 26 are same position
+            if anchor == 0 or anchor == 26:
+                all_numbers.add(0)
+                all_numbers.add(26)
+            
+            for nb in neighbors[:2]:
+                if nb == 0 or nb == 26:
+                    all_numbers.add(0)
+                    all_numbers.add(26)
         
-        # Additional boost for multi-table consensus (future enhancement)
-        # For now, capped at 0.90
-        confidence = min(confidence, 0.90)
+        final_numbers = sorted(list(all_numbers))
         
-        # STEP 4: Build reasoning
-        reasoning = table3_analysis['reasoning']
-        reasoning.append(f"Selected {len(anchor_groups)} anchor groups")
-        reasoning.append(f"Total bet numbers: {len(unique_numbers[:12])}")
+        print(f"📊 Selected {len(anchors)} anchors → {len(final_numbers)} unique numbers")
+        print(f"   Anchors: {anchors}")
+        print(f"   Final numbers: {final_numbers}")
         
-        return unique_numbers[:12], confidence, reasoning
+        return final_numbers, anchor_groups
+    
+    def calculate_confidence(self, candidates, selected_anchors, anchor_scores):
+        """
+        Calculate HONEST confidence based on actual pattern strength
+        """
+        if not selected_anchors:
+            return 0.60
+        
+        # Average score of selected anchors
+        avg_score = sum(anchor_scores) / len(anchor_scores) if anchor_scores else 0
+        
+        # Base confidence from score
+        if avg_score >= 30:
+            base_confidence = 0.85
+        elif avg_score >= 20:
+            base_confidence = 0.80
+        elif avg_score >= 15:
+            base_confidence = 0.75
+        else:
+            base_confidence = 0.70
+        
+        # Adjust based on learning history
+        if len(self.prediction_history) >= 10:
+            recent_predictions = self.prediction_history[-20:]
+            recent_wins = sum(1 for p in recent_predictions if p.get('hit', False))
+            recent_accuracy = recent_wins / len(recent_predictions)
+            
+            # Calibrate: if we're overconfident, reduce
+            if recent_accuracy < 0.5 and base_confidence > 0.75:
+                base_confidence -= 0.10
+                print(f"   📉 Confidence adjusted down (recent accuracy: {recent_accuracy*100:.0f}%)")
+        
+        return min(0.90, base_confidence)  # Cap at 90%
+    
+    def record_prediction(self, anchors, confidence, hit=None):
+        """Record prediction for learning"""
+        record = {
+            'timestamp': datetime.now().isoformat(),
+            'anchors': anchors,
+            'confidence': confidence,
+            'hit': hit
+        }
+        self.prediction_history.append(record)
+        
+        # Save periodically
+        if len(self.prediction_history) % 10 == 0:
+            self.save_history()
+    
+    def predict_numbers(self, table_data, recent_spins=None):
+        """
+        Main prediction function using YOUR complete methodology
+        """
+        if not table_data:
+            return [], 0.60, ["Waiting for table data"], []
+        
+        current_spin_idx = table_data.get('currentSpinCount', 0)
+        
+        if current_spin_idx < 3:
+            return [], 0.60, ["Need at least 3 spins"], []
+        
+        # Analyze color trend
+        color_trend = get_color_trend(recent_spins) if recent_spins else 'neutral'
+        print(f"🎨 Color trend: {color_trend.upper()}")
+        
+        # Find anchor candidates with scoring
+        candidates = self.extract_anchor_candidates(table_data, current_spin_idx, color_trend)
+        
+        if not candidates:
+            return [], 0.65, ["No strong patterns detected"], []
+        
+        # Select best 4 anchors
+        selected_anchors, anchor_scores = self.select_best_anchors(candidates, count=4)
+        
+        if len(selected_anchors) < 2:
+            return [], 0.65, ["Insufficient pattern confirmation"], []
+        
+        # Expand to 12 numbers (4 anchors + 8 neighbors)
+        final_numbers, anchor_groups = self.expand_to_12_numbers(selected_anchors)
+        
+        # Calculate HONEST confidence
+        confidence = self.calculate_confidence(candidates, selected_anchors, anchor_scores)
+        
+        # Build reasoning
+        reasoning = []
+        reasoning.append(f"Pattern analysis: {len(candidates)} anchor candidates")
+        reasoning.append(f"Color trend: {color_trend} (favoring {color_trend} numbers)")
+        reasoning.append(f"Selected {len(selected_anchors)} anchors with multi-table confirmation")
+        
+        # Show top anchors with their table confirmations
+        for i, anchor in enumerate(selected_anchors[:3]):
+            tables = candidates[anchor]['tables']
+            reasoning.append(f"Anchor {anchor}: {len(tables)} tables, score {anchor_scores[i]:.0f}")
+        
+        # Record for learning (hit will be updated later)
+        self.record_prediction(selected_anchors, confidence, hit=None)
+        
+        return final_numbers, confidence, reasoning, anchor_groups
 
 
 class MoneyManager:
-    """
-    Money Management System with Progressive Betting
-    
-    Rules:
-    1. Min bet: $2 per number
-    2. Increase $1 per number after loss
-    3. Decrease $1 per number after win
-    4. Target: $100 profit per session
-    5. No stop loss
-    6. After 3+ consecutive losses: Only bet if AI confidence >= 90%
-    """
+    """Money Management - Your Rules"""
     
     def __init__(self, initial_bankroll=4000, session_target=100, base_bet=2):
         self.bankroll = initial_bankroll
         self.initial_bankroll = initial_bankroll
         self.session_target = session_target
         self.base_bet = base_bet
-        self.min_bet = 2  # Minimum $2 per number
+        self.min_bet = 2
         self.numbers_to_bet = 12
         
         self.current_bet_per_number = self.base_bet
@@ -423,33 +392,22 @@ class MoneyManager:
         self.total_spins = 0
         self.total_wins = 0
         self.total_losses = 0
-        
+    
     def calculate_bet_size(self, ai_confidence):
-        """
-        Calculate bet size per number based on:
-        - Current bet level (adjusted after each win/loss)
-        - AI confidence
-        - Consecutive losses (extra caution after 3+ losses)
-        """
-        # RULE 5: After 3+ consecutive losses, only bet if AI is VERY confident
+        """Calculate bet based on rules"""
+        # After 3+ losses, require higher confidence but not 90%
         if self.consecutive_losses >= 3:
-            if ai_confidence < 0.90:  # Require 90%+ confidence
-                print(f"⚠️ Skipping bet: {self.consecutive_losses} losses, confidence {ai_confidence*100:.0f}% < 90%")
-                return 0  # WAIT for better opportunity
+            if ai_confidence < 0.75:  # CHANGED from 0.90 to 0.75
+                print(f"⚠️ CAUTION: {self.consecutive_losses} losses, need 75%+ confidence (have {ai_confidence*100:.0f}%)")
+                return 0
         
-        # Normal confidence threshold
-        if ai_confidence < 0.75:
-            return 0  # WAIT - confidence too low
-        
-        # Return current bet level
         return self.current_bet_per_number
     
     def process_result(self, bet_per_number, hit):
-        """Process spin result and update bankroll and bet level"""
+        """Process result and adjust bet"""
         total_bet = bet_per_number * self.numbers_to_bet
         
         if hit:
-            # Win: 35:1 payout on winning number, lose other 11
             win_amount = bet_per_number * 35
             net_profit = win_amount - total_bet
             
@@ -458,77 +416,55 @@ class MoneyManager:
             self.consecutive_losses = 0
             self.total_wins += 1
             
-            # RULE 2: Decrease $1 after win
+            # Rule: -$1 after win
             self.current_bet_per_number = max(self.min_bet, self.current_bet_per_number - 1)
             
-            print(f"✅ WIN: Profit ${net_profit:.0f}, Bet decreased to ${self.current_bet_per_number}/number")
-            
+            print(f"✅ WIN: +${net_profit:.0f}, Next bet: ${self.current_bet_per_number}/number")
         else:
-            # Loss: lose entire bet
             self.bankroll -= total_bet
             self.session_profit -= total_bet
             self.consecutive_losses += 1
             self.total_losses += 1
             
-            # RULE 2: Increase $1 after loss
+            # Rule: +$1 after loss
             self.current_bet_per_number += 1
             
-            print(f"❌ LOSS: Lost ${total_bet:.0f}, Bet increased to ${self.current_bet_per_number}/number, Consecutive losses: {self.consecutive_losses}")
+            print(f"❌ LOSS: -${total_bet:.0f}, Next bet: ${self.current_bet_per_number}/number, Losses: {self.consecutive_losses}")
         
         self.total_spins += 1
         
         return {
             'bankroll': self.bankroll,
             'session_profit': self.session_profit,
+            'next_bet': self.current_bet_per_number,
             'consecutive_losses': self.consecutive_losses,
-            'total_spins': self.total_spins,
-            'hit': hit
+            'total_spins': self.total_spins
         }
     
     def get_status(self):
-        """Get current money management status"""
-        win_rate = (self.total_wins / self.total_spins * 100) if self.total_spins > 0 else 0
-        
+        """Get current status"""
         return {
-            'bankroll': round(self.bankroll, 2),
-            'session_profit': round(self.session_profit, 2),
-            'session_target': self.session_target,
+            'bankroll': self.bankroll,
+            'session_profit': self.session_profit,
+            'target': self.session_target,
+            'total_bets': self.total_spins,
+            'wins': self.total_wins,
+            'losses': self.total_losses,
             'consecutive_losses': self.consecutive_losses,
-            'total_spins': self.total_spins,
-            'total_wins': self.total_wins,
-            'total_losses': self.total_losses,
-            'win_rate': round(win_rate, 1),
-            'session_complete': self.session_profit >= self.session_target
+            'current_bet': self.current_bet_per_number
         }
+    
+    def reset(self):
+        """Reset session"""
+        self.bankroll = self.initial_bankroll
+        self.session_profit = 0
+        self.current_bet_per_number = self.base_bet
+        self.consecutive_losses = 0
+        self.total_spins = 0
+        self.total_wins = 0
+        self.total_losses = 0
 
 
-if __name__ == '__main__':
-    # Test the AI with sample data
-    print("🤖 Roulette AI Engine - Test Mode\n")
-    
-    # Sample spin sequence
-    test_spins = [
-        {'actual': 26, 'direction': 'C'},
-        {'actual': 15, 'direction': 'AC'},
-        {'actual': 19, 'direction': 'C'},
-        {'actual': 0, 'direction': 'AC'},
-        {'actual': 33, 'direction': 'C'},
-        {'actual': 7, 'direction': 'AC'},
-        {'actual': 4, 'direction': 'C'},
-        {'actual': 32, 'direction': 'AC'},
-    ]
-    
+if __name__ == "__main__":
     ai = RouletteAI()
-    money_mgr = MoneyManager()
-    
-    numbers, confidence, reasoning = ai.predict_numbers(test_spins)
-    
-    print(f"Confidence: {confidence*100:.1f}%")
-    print(f"\nPredicted Numbers ({len(numbers)}):")
-    print(numbers)
-    print(f"\nReasoning:")
-    for reason in reasoning:
-        print(f"  • {reason}")
-    
-    bet_size = money_mgr.calculate_bet_size(confidence)
-    print(f"\nBet Size: ${bet_size}/number × 12 = ${bet_size * 12}")
+    print("✅ AI Engine loaded with YOUR methodology")

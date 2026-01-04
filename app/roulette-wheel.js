@@ -36,8 +36,8 @@ class RouletteWheel {
                 <h3>🎡 European Wheel - Predictions</h3>
             </div>
             <div class="panel-content">
-                <div class="wheel-container" id="wheelContainer" style="position: relative; width: 320px; height: 380px; margin: 0 auto;">
-                    <canvas id="wheelCanvas" width="320" height="380" style="display: block;"></canvas>
+                <div class="wheel-container" id="wheelContainer" style="position: relative; width: 400px; height: 420px; margin: 0 auto;">
+                    <canvas id="wheelCanvas" width="400" height="420" style="display: block;"></canvas>
                 </div>
                 <div class="wheel-legend">
                     <div class="legend-item">
@@ -64,13 +64,13 @@ class RouletteWheel {
     
     drawWheel() {
         const ctx = this.ctx;
-        const centerX = 160;
-        const centerY = 170; // Moved down slightly to have space for top markers
-        const outerRadius = 140;
-        const innerRadius = 80;
-        const numberRadius = 110;
+        const centerX = 200;  // Increased from 160
+        const centerY = 210;  // Increased from 170
+        const outerRadius = 150;  // Increased from 140
+        const innerRadius = 90;   // Increased from 80
+        const numberRadius = 120; // Increased from 110
         
-        ctx.clearRect(0, 0, 320, 380); // Updated height
+        ctx.clearRect(0, 0, 400, 420); // Updated canvas size
         
         // Draw wheel background
         ctx.beginPath();
@@ -163,9 +163,9 @@ class RouletteWheel {
     
     drawPredictionMarkers() {
         const ctx = this.ctx;
-        const centerX = 160;
-        const centerY = 170; // Match drawWheel centerY
-        const markerRadius = 158; // FURTHER OUTSIDE the wheel (was 150)
+        const centerX = 200;  // Match drawWheel
+        const centerY = 210;  // Match drawWheel
+        const markerRadius = 175; // OUTSIDE the wheel (outerRadius 150 + margin)
         const angleStep = (2 * Math.PI) / 37;
         
         // Draw anchor markers - GOLD STARS (bigger)
@@ -195,7 +195,7 @@ class RouletteWheel {
             ctx.fillText('★', markerX, markerY);
             
             // Draw line from wheel to marker
-            const lineStartRadius = 142;
+            const lineStartRadius = 152;  // Just outside outerRadius (150)
             const lineStartX = centerX + Math.cos(angle) * lineStartRadius;
             const lineStartY = centerY + Math.sin(angle) * lineStartRadius;
             
@@ -228,7 +228,7 @@ class RouletteWheel {
             ctx.stroke();
             
             // Draw line from wheel to marker
-            const lineStartRadius = 142;
+            const lineStartRadius = 152;  // Just outside outerRadius (150)
             const lineStartX = centerX + Math.cos(angle) * lineStartRadius;
             const lineStartY = centerY + Math.sin(angle) * lineStartRadius;
             

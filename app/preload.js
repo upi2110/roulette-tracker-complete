@@ -24,12 +24,12 @@ contextBridge.exposeInMainWorld('aiAPI', {
     /**
      * Get AI prediction
      */
-    async getPrediction(spinHistory) {
+    async getPredictionWithTableData(tableData) {
         try {
             const response = await fetch('http://localhost:8000/predict', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ spin_history: spinHistory })
+                body: JSON.stringify(tableData)
             });
             return await response.json();
         } catch (error) {
@@ -105,7 +105,7 @@ contextBridge.exposeInMainWorld('aiAPI', {
      */
     async resetSession() {
         try {
-            const response = await fetch('http://localhost:8000/reset_session', {
+            const response = await fetch('http://localhost:8000/reset', {
                 method: 'POST'
             });
             return await response.json();
