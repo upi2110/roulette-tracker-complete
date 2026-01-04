@@ -19,6 +19,8 @@ const DIGIT_13_OPPOSITES = {
 };
 
 let spins = [];
+window.spins = spins;      // Expose as window.spins
+window.spinData = spins;   // Also expose as window.spinData for AI
 
 // COMPLETELY REWRITTEN - Check if we reach target NUMBER (not index) within 4 steps
 function calculatePositionCode(reference, actual) {
@@ -243,9 +245,62 @@ function undoLast() {
 
 function resetAll() {
     if (confirm('Reset all?')) {
-        spins = [];
+        spins.length = 0;  // ✅ Clears SAME array, keeps reference intact
         document.getElementById('direction').value = 'C';
+        
+        // Reset Money Management Panel
+        if (window.moneyPanel) {
+            window.moneyPanel.sessionData = {
+                startingBankroll: 4000,
+                currentBankroll: 4000,
+                sessionProfit: 0,
+                sessionTarget: 100,
+                totalBets: 0,
+                totalWins: 0,
+                totalLosses: 0,
+                consecutiveLosses: 0,
+                lastBetAmount: 0,
+                lastBetNumbers: 12,
+                isSessionActive: false
+            };
+            window.moneyPanel.betHistory = [];
+            window.moneyPanel.pendingBet = null;
+            window.moneyPanel.lastSpinCount = 0;
+            window.moneyPanel.render();
+            console.log('✅ Money panel reset');
+        }
+        
+        // Reset AI Prediction Panel
+        if (window.aiPanel) {
+            window.aiPanel.currentPrediction = null;
+            window.aiPanel.lastSpinCount = 0;
+            window.aiPanel.render();
+            console.log('✅ AI panel reset');
+        }
+        
+        // Clear Wheel highlights
+        if (window.rouletteWheel) {
+            window.rouletteWheel.clearHighlights();
+            console.log('✅ Wheel reset');
+        }
+        
+        // Reset backend session
+        if (typeof aiIntegration !== 'undefined') {
+            aiIntegration.resetSession().then(() => {
+                console.log('✅ Backend session reset');
+            }).catch(err => {
+                console.warn('⚠️ Backend reset failed:', err);
+            });
+        }
+
+        // Reset orchestrator
+        if (window.orchestrator) {
+            window.orchestrator.lastSpinCount = 0;
+            console.log('✅ Orchestrator reset');
+        }
+        
         render();
+        console.log('🔄 Full reset complete');
     }
 }
 
@@ -784,3 +839,201 @@ document.addEventListener('DOMContentLoaded', () => {
     
     render();
 });
+
+// COMPLETE FIX FOR DATA EXPORT
+// Replace EVERYTHING after "// ============================================" 
+// in renderer-3tables.js with this:
+
+// ============================================
+// AI DATA EXPORT MODULE - FIXED
+// ============================================
+
+window.getAIData = function() {
+    if (spins.length < 3) {
+        return null;
+    }
+    
+    // Get recent spins (last 10 for color trend analysis)
+    const recentSpins = spins.slice(-10).map(s => s.number);
+    
+    const data = {
+        table1Hits: analyzeTable1Hits(),
+        table2Hits: analyzeTable2Hits(),
+        table3Hits: analyzeTable3Hits(),
+        currentSpinCount: spins.length,
+        //recentSpins: recentSpins
+    };
+    
+    return data;
+};
+
+// TABLE 1 & 2: Use lookup table
+function analyzeTable1Hits() {
+    const hits = {
+        'ref0': [], 'ref19': [], 'prev': [], 'prev13opp': [],
+        'prevPlus1': [], 'prevPlus1_13opp': [],
+        'prevMinus1': [], 'prevMinus1_13opp': [],
+        'prevPlus2': [], 'prevPlus2_13opp': [],
+        'prevMinus2': [], 'prevMinus2_13opp': []
+    };
+    
+    for (let i = 1; i < spins.length; i++) {
+        const actual = spins[i].actual;
+        const prev = spins[i-1].actual;
+        
+        checkRefHit(hits, 'ref0', i, actual, 0);
+        checkRefHit(hits, 'ref19', i, actual, 19);
+        checkRefHit(hits, 'prev', i, actual, prev);
+        checkRefHit(hits, 'prev13opp', i, actual, DIGIT_13_OPPOSITES[prev]);
+        
+        const prevPlus1 = Math.min(prev + 1, 36);
+        checkRefHit(hits, 'prevPlus1', i, actual, prevPlus1);
+        checkRefHit(hits, 'prevPlus1_13opp', i, actual, DIGIT_13_OPPOSITES[prevPlus1]);
+        
+        const prevMinus1 = Math.max(prev - 1, 0);
+        checkRefHit(hits, 'prevMinus1', i, actual, prevMinus1);
+        checkRefHit(hits, 'prevMinus1_13opp', i, actual, DIGIT_13_OPPOSITES[prevMinus1]);
+        
+        const prevPlus2 = Math.min(prev + 2, 36);
+        checkRefHit(hits, 'prevPlus2', i, actual, prevPlus2);
+        checkRefHit(hits, 'prevPlus2_13opp', i, actual, DIGIT_13_OPPOSITES[prevPlus2]);
+        
+        const prevMinus2 = Math.max(prev - 2, 0);
+        checkRefHit(hits, 'prevMinus2', i, actual, prevMinus2);
+        checkRefHit(hits, 'prevMinus2_13opp', i, actual, DIGIT_13_OPPOSITES[prevMinus2]);
+    }
+    
+    return hits;
+}
+
+function checkRefHit(hits, refName, spinIdx, actual, refNum) {
+    const posCode = calculatePositionCode(refNum, actual);
+    
+    if (posCode === 'XX') return;
+    
+    // Only process codes that map to lookup columns
+    // S codes (±1, ±2) and O codes (±1, ±2) and exact matches
+    const column = getColumnFromCode(posCode);
+    if (!column) return;
+    
+    const lookupRow = getLookupRow(refNum);
+    if (!lookupRow) return;
+    
+    const projectionNum = lookupRow[column];
+    
+    // Green hit
+    if (projectionNum === actual) {
+        hits[refName].push({
+            spinIdx: spinIdx,
+            actual: actual,
+            hitNumbers: [projectionNum],
+            hitType: 'green',
+            posCode: posCode
+        });
+        return;
+    }
+    
+    // Blue hit (13-opposite)
+    const opp13 = DIGIT_13_OPPOSITES[projectionNum];
+    if (opp13 === actual) {
+        hits[refName].push({
+            spinIdx: spinIdx,
+            actual: actual,
+            hitNumbers: [projectionNum],
+            hitType: 'blue',
+            posCode: posCode
+        });
+    }
+}
+
+// Helper: Map position code to column (only for codes that use lookup table)
+function getColumnFromCode(posCode) {
+    // S+0 = exact match
+    if (posCode === 'S+0') return 'first';
+    
+    // All SL/SR codes (±1, ±2) = FIRST column
+    if (posCode.startsWith('SL') || posCode.startsWith('SR')) {
+        const dist = parseInt(posCode.match(/[+-]\d+/)[0]);
+        if (Math.abs(dist) <= 2) return 'first';
+    }
+    
+    // All OL/OR codes (±1, ±2) = SECOND column  
+    if (posCode.startsWith('OL') || posCode.startsWith('OR')) {
+        const dist = parseInt(posCode.match(/[+-]\d+/)[0]);
+        if (Math.abs(dist) <= 2) return 'second';
+    }
+    
+    // O+0 = exact opposite = THIRD column
+    if (posCode === 'O+0') return 'third';
+    
+    return null; // Codes beyond ±2 don't use lookup table
+}
+
+function analyzeTable2Hits() {
+    // Same as Table 1 - uses same lookup logic
+    return analyzeTable1Hits();
+}
+
+// TABLE 3: Uses generateAnchors, NOT lookup table
+function analyzeTable3Hits() {
+    const hits = {
+        'prev': [], 'prev13opp': [],
+        'prevPlus1': [], 'prevPlus1_13opp': [],
+        'prevMinus1': [], 'prevMinus1_13opp': [],
+        'prevPlus2': [], 'prevPlus2_13opp': [],
+        'prevMinus2': [], 'prevMinus2_13opp': [],
+        'prevPrev': [], 'prevPrev13opp': []
+    };
+    
+    for (let i = 2; i < spins.length; i++) {
+        const actual = spins[i].actual;
+        const prev = spins[i-1].actual;
+        const prevPrev = spins[i-2].actual;
+        
+        const refs = calculateReferences(prev, prevPrev);
+        
+        // Check each projection type
+        checkTable3Hit(hits, 'prev', i, actual, refs.prev, DIGIT_13_OPPOSITES[refs.prev], i-1);
+        checkTable3Hit(hits, 'prevPlus1', i, actual, refs.prev_plus_1, DIGIT_13_OPPOSITES[refs.prev_plus_1], i-1);
+        checkTable3Hit(hits, 'prevMinus1', i, actual, refs.prev_minus_1, DIGIT_13_OPPOSITES[refs.prev_minus_1], i-1);
+        checkTable3Hit(hits, 'prevPlus2', i, actual, refs.prev_plus_2, DIGIT_13_OPPOSITES[refs.prev_plus_2], i-1);
+        checkTable3Hit(hits, 'prevMinus2', i, actual, refs.prev_minus_2, DIGIT_13_OPPOSITES[refs.prev_minus_2], i-1);
+        checkTable3Hit(hits, 'prevPrev', i, actual, refs.prev_prev, DIGIT_13_OPPOSITES[refs.prev_prev], i-1);
+    }
+    
+    return hits;
+}
+
+function checkTable3Hit(hits, projType, spinIdx, actual, anchorRef, anchor13Opp, prevSpinIdx) {
+    // Get the position code from PREVIOUS spin
+    if (prevSpinIdx < 1) return;
+    
+    const prevActual = spins[prevSpinIdx].actual;
+    const prevPosCode = calculatePositionCode(anchorRef, prevActual);
+    const prevPosCode13 = calculatePositionCode(anchor13Opp, prevActual);
+    
+    const usePosCode = prevPosCode !== 'XX' ? prevPosCode : prevPosCode13;
+    
+    if (usePosCode === 'XX') return;
+    
+    // Generate anchors using YOUR methodology
+    const { purple, green } = generateAnchors(anchorRef, anchor13Opp, usePosCode);
+    const betNumbers = expandAnchorsToBetNumbers(purple, green);
+    
+    // Check if actual hit
+    if (betNumbers.includes(actual)) {
+        const hitType = purple.includes(actual) ? 'green' : 'blue';
+        
+        hits[projType].push({
+            spinIdx: spinIdx,
+            actual: actual,
+            anchorRef: anchorRef,
+            projection: anchorRef,
+            hitType: hitType,
+            posCode: usePosCode,
+            betNumbers: betNumbers
+        });
+    }
+}
+
+console.log('✅ AI Data Export Module loaded (FIXED)');

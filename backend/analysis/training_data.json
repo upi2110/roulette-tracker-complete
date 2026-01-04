@@ -1,0 +1,6128 @@
+{
+  "sessions": [
+    {
+      "session_id": "historical_session_1",
+      "casino": "Evolution Immersive Roulette",
+      "total_spins": 511,
+      "spins": [
+        {
+          "spin_number": 1,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:00:00"
+        },
+        {
+          "spin_number": 2,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:01:30"
+        },
+        {
+          "spin_number": 3,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:03:00"
+        },
+        {
+          "spin_number": 4,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:04:30"
+        },
+        {
+          "spin_number": 5,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:06:00"
+        },
+        {
+          "spin_number": 6,
+          "actual": 33,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:07:30"
+        },
+        {
+          "spin_number": 7,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:09:00"
+        },
+        {
+          "spin_number": 8,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:10:30"
+        },
+        {
+          "spin_number": 9,
+          "actual": 10,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:12:00"
+        },
+        {
+          "spin_number": 10,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:13:30"
+        },
+        {
+          "spin_number": 11,
+          "actual": 28,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:15:00"
+        },
+        {
+          "spin_number": 12,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:16:30"
+        },
+        {
+          "spin_number": 13,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:18:00"
+        },
+        {
+          "spin_number": 14,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:19:30"
+        },
+        {
+          "spin_number": 15,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:21:00"
+        },
+        {
+          "spin_number": 16,
+          "actual": 35,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:22:30"
+        },
+        {
+          "spin_number": 17,
+          "actual": 29,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:24:00"
+        },
+        {
+          "spin_number": 18,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:25:30"
+        },
+        {
+          "spin_number": 19,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:27:00"
+        },
+        {
+          "spin_number": 20,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:28:30"
+        },
+        {
+          "spin_number": 21,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:30:00"
+        },
+        {
+          "spin_number": 22,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:31:30"
+        },
+        {
+          "spin_number": 23,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:33:00"
+        },
+        {
+          "spin_number": 24,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:34:30"
+        },
+        {
+          "spin_number": 25,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:36:00"
+        },
+        {
+          "spin_number": 26,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:37:30"
+        },
+        {
+          "spin_number": 27,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:39:00"
+        },
+        {
+          "spin_number": 28,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:40:30"
+        },
+        {
+          "spin_number": 29,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:42:00"
+        },
+        {
+          "spin_number": 30,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:43:30"
+        },
+        {
+          "spin_number": 31,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:45:00"
+        },
+        {
+          "spin_number": 32,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:46:30"
+        },
+        {
+          "spin_number": 33,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:48:00"
+        },
+        {
+          "spin_number": 34,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:49:30"
+        },
+        {
+          "spin_number": 35,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:51:00"
+        },
+        {
+          "spin_number": 36,
+          "actual": 33,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:52:30"
+        },
+        {
+          "spin_number": 37,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:54:00"
+        },
+        {
+          "spin_number": 38,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:55:30"
+        },
+        {
+          "spin_number": 39,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-20T14:57:00"
+        },
+        {
+          "spin_number": 40,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-20T14:58:30"
+        },
+        {
+          "spin_number": 41,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:00:00"
+        },
+        {
+          "spin_number": 42,
+          "actual": 36,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:01:30"
+        },
+        {
+          "spin_number": 43,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:03:00"
+        },
+        {
+          "spin_number": 44,
+          "actual": 36,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:04:30"
+        },
+        {
+          "spin_number": 45,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:06:00"
+        },
+        {
+          "spin_number": 46,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:07:30"
+        },
+        {
+          "spin_number": 47,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:09:00"
+        },
+        {
+          "spin_number": 48,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:10:30"
+        },
+        {
+          "spin_number": 49,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:12:00"
+        },
+        {
+          "spin_number": 50,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:13:30"
+        },
+        {
+          "spin_number": 51,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:15:00"
+        },
+        {
+          "spin_number": 52,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:16:30"
+        },
+        {
+          "spin_number": 53,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:18:00"
+        },
+        {
+          "spin_number": 54,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:19:30"
+        },
+        {
+          "spin_number": 55,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:21:00"
+        },
+        {
+          "spin_number": 56,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:22:30"
+        },
+        {
+          "spin_number": 57,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:24:00"
+        },
+        {
+          "spin_number": 58,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:25:30"
+        },
+        {
+          "spin_number": 59,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:27:00"
+        },
+        {
+          "spin_number": 60,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:28:30"
+        },
+        {
+          "spin_number": 61,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:30:00"
+        },
+        {
+          "spin_number": 62,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:31:30"
+        },
+        {
+          "spin_number": 63,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:33:00"
+        },
+        {
+          "spin_number": 64,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:34:30"
+        },
+        {
+          "spin_number": 65,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:36:00"
+        },
+        {
+          "spin_number": 66,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:37:30"
+        },
+        {
+          "spin_number": 67,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:39:00"
+        },
+        {
+          "spin_number": 68,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:40:30"
+        },
+        {
+          "spin_number": 69,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:42:00"
+        },
+        {
+          "spin_number": 70,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:43:30"
+        },
+        {
+          "spin_number": 71,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:45:00"
+        },
+        {
+          "spin_number": 72,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:46:30"
+        },
+        {
+          "spin_number": 73,
+          "actual": 27,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:48:00"
+        },
+        {
+          "spin_number": 74,
+          "actual": 23,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:49:30"
+        },
+        {
+          "spin_number": 75,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:51:00"
+        },
+        {
+          "spin_number": 76,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:52:30"
+        },
+        {
+          "spin_number": 77,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:54:00"
+        },
+        {
+          "spin_number": 78,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:55:30"
+        },
+        {
+          "spin_number": 79,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-20T15:57:00"
+        },
+        {
+          "spin_number": 80,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-20T15:58:30"
+        },
+        {
+          "spin_number": 81,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:00:00"
+        },
+        {
+          "spin_number": 82,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:01:30"
+        },
+        {
+          "spin_number": 83,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:03:00"
+        },
+        {
+          "spin_number": 84,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:04:30"
+        },
+        {
+          "spin_number": 85,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:06:00"
+        },
+        {
+          "spin_number": 86,
+          "actual": 10,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:07:30"
+        },
+        {
+          "spin_number": 87,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:09:00"
+        },
+        {
+          "spin_number": 88,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:10:30"
+        },
+        {
+          "spin_number": 89,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:12:00"
+        },
+        {
+          "spin_number": 90,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:13:30"
+        },
+        {
+          "spin_number": 91,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:15:00"
+        },
+        {
+          "spin_number": 92,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:16:30"
+        },
+        {
+          "spin_number": 93,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:18:00"
+        },
+        {
+          "spin_number": 94,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:19:30"
+        },
+        {
+          "spin_number": 95,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:21:00"
+        },
+        {
+          "spin_number": 96,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:22:30"
+        },
+        {
+          "spin_number": 97,
+          "actual": 28,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:24:00"
+        },
+        {
+          "spin_number": 98,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:25:30"
+        },
+        {
+          "spin_number": 99,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:27:00"
+        },
+        {
+          "spin_number": 100,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:28:30"
+        },
+        {
+          "spin_number": 101,
+          "actual": 19,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:30:00"
+        },
+        {
+          "spin_number": 102,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:31:30"
+        },
+        {
+          "spin_number": 103,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:33:00"
+        },
+        {
+          "spin_number": 104,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:34:30"
+        },
+        {
+          "spin_number": 105,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:36:00"
+        },
+        {
+          "spin_number": 106,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:37:30"
+        },
+        {
+          "spin_number": 107,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:39:00"
+        },
+        {
+          "spin_number": 108,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:40:30"
+        },
+        {
+          "spin_number": 109,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:42:00"
+        },
+        {
+          "spin_number": 110,
+          "actual": 35,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:43:30"
+        },
+        {
+          "spin_number": 111,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:45:00"
+        },
+        {
+          "spin_number": 112,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:46:30"
+        },
+        {
+          "spin_number": 113,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:48:00"
+        },
+        {
+          "spin_number": 114,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:49:30"
+        },
+        {
+          "spin_number": 115,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:51:00"
+        },
+        {
+          "spin_number": 116,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:52:30"
+        },
+        {
+          "spin_number": 117,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:54:00"
+        },
+        {
+          "spin_number": 118,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:55:30"
+        },
+        {
+          "spin_number": 119,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-20T16:57:00"
+        },
+        {
+          "spin_number": 120,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-20T16:58:30"
+        },
+        {
+          "spin_number": 121,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:00:00"
+        },
+        {
+          "spin_number": 122,
+          "actual": 26,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:01:30"
+        },
+        {
+          "spin_number": 123,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:03:00"
+        },
+        {
+          "spin_number": 124,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:04:30"
+        },
+        {
+          "spin_number": 125,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:06:00"
+        },
+        {
+          "spin_number": 126,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:07:30"
+        },
+        {
+          "spin_number": 127,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:09:00"
+        },
+        {
+          "spin_number": 128,
+          "actual": 11,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:10:30"
+        },
+        {
+          "spin_number": 129,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:12:00"
+        },
+        {
+          "spin_number": 130,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:13:30"
+        },
+        {
+          "spin_number": 131,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:15:00"
+        },
+        {
+          "spin_number": 132,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:16:30"
+        },
+        {
+          "spin_number": 133,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:18:00"
+        },
+        {
+          "spin_number": 134,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:19:30"
+        },
+        {
+          "spin_number": 135,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:21:00"
+        },
+        {
+          "spin_number": 136,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:22:30"
+        },
+        {
+          "spin_number": 137,
+          "actual": 10,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:24:00"
+        },
+        {
+          "spin_number": 138,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:25:30"
+        },
+        {
+          "spin_number": 139,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:27:00"
+        },
+        {
+          "spin_number": 140,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:28:30"
+        },
+        {
+          "spin_number": 141,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:30:00"
+        },
+        {
+          "spin_number": 142,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:31:30"
+        },
+        {
+          "spin_number": 143,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:33:00"
+        },
+        {
+          "spin_number": 144,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:34:30"
+        },
+        {
+          "spin_number": 145,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:36:00"
+        },
+        {
+          "spin_number": 146,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:37:30"
+        },
+        {
+          "spin_number": 147,
+          "actual": 10,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:39:00"
+        },
+        {
+          "spin_number": 148,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:40:30"
+        },
+        {
+          "spin_number": 149,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:42:00"
+        },
+        {
+          "spin_number": 150,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:43:30"
+        },
+        {
+          "spin_number": 151,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:45:00"
+        },
+        {
+          "spin_number": 152,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:46:30"
+        },
+        {
+          "spin_number": 153,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:48:00"
+        },
+        {
+          "spin_number": 154,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:49:30"
+        },
+        {
+          "spin_number": 155,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:51:00"
+        },
+        {
+          "spin_number": 156,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:52:30"
+        },
+        {
+          "spin_number": 157,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:54:00"
+        },
+        {
+          "spin_number": 158,
+          "actual": 26,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:55:30"
+        },
+        {
+          "spin_number": 159,
+          "actual": 27,
+          "direction": "C",
+          "timestamp": "2025-12-20T17:57:00"
+        },
+        {
+          "spin_number": 160,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-20T17:58:30"
+        },
+        {
+          "spin_number": 161,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:00:00"
+        },
+        {
+          "spin_number": 162,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:01:30"
+        },
+        {
+          "spin_number": 163,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:03:00"
+        },
+        {
+          "spin_number": 164,
+          "actual": 33,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:04:30"
+        },
+        {
+          "spin_number": 165,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:06:00"
+        },
+        {
+          "spin_number": 166,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:07:30"
+        },
+        {
+          "spin_number": 167,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:09:00"
+        },
+        {
+          "spin_number": 168,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:10:30"
+        },
+        {
+          "spin_number": 169,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:12:00"
+        },
+        {
+          "spin_number": 170,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:13:30"
+        },
+        {
+          "spin_number": 171,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:15:00"
+        },
+        {
+          "spin_number": 172,
+          "actual": 5,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:16:30"
+        },
+        {
+          "spin_number": 173,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:18:00"
+        },
+        {
+          "spin_number": 174,
+          "actual": 19,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:19:30"
+        },
+        {
+          "spin_number": 175,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:21:00"
+        },
+        {
+          "spin_number": 176,
+          "actual": 35,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:22:30"
+        },
+        {
+          "spin_number": 177,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:24:00"
+        },
+        {
+          "spin_number": 178,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:25:30"
+        },
+        {
+          "spin_number": 179,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:27:00"
+        },
+        {
+          "spin_number": 180,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:28:30"
+        },
+        {
+          "spin_number": 181,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:30:00"
+        },
+        {
+          "spin_number": 182,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:31:30"
+        },
+        {
+          "spin_number": 183,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:33:00"
+        },
+        {
+          "spin_number": 184,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:34:30"
+        },
+        {
+          "spin_number": 185,
+          "actual": 19,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:36:00"
+        },
+        {
+          "spin_number": 186,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:37:30"
+        },
+        {
+          "spin_number": 187,
+          "actual": 30,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:39:00"
+        },
+        {
+          "spin_number": 188,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:40:30"
+        },
+        {
+          "spin_number": 189,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:42:00"
+        },
+        {
+          "spin_number": 190,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:43:30"
+        },
+        {
+          "spin_number": 191,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:45:00"
+        },
+        {
+          "spin_number": 192,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:46:30"
+        },
+        {
+          "spin_number": 193,
+          "actual": 10,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:48:00"
+        },
+        {
+          "spin_number": 194,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:49:30"
+        },
+        {
+          "spin_number": 195,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:51:00"
+        },
+        {
+          "spin_number": 196,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:52:30"
+        },
+        {
+          "spin_number": 197,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:54:00"
+        },
+        {
+          "spin_number": 198,
+          "actual": 11,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:55:30"
+        },
+        {
+          "spin_number": 199,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-20T18:57:00"
+        },
+        {
+          "spin_number": 200,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-20T18:58:30"
+        },
+        {
+          "spin_number": 201,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:00:00"
+        },
+        {
+          "spin_number": 202,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:01:30"
+        },
+        {
+          "spin_number": 203,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:03:00"
+        },
+        {
+          "spin_number": 204,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:04:30"
+        },
+        {
+          "spin_number": 205,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:06:00"
+        },
+        {
+          "spin_number": 206,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:07:30"
+        },
+        {
+          "spin_number": 207,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:09:00"
+        },
+        {
+          "spin_number": 208,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:10:30"
+        },
+        {
+          "spin_number": 209,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:12:00"
+        },
+        {
+          "spin_number": 210,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:13:30"
+        },
+        {
+          "spin_number": 211,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:15:00"
+        },
+        {
+          "spin_number": 212,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:16:30"
+        },
+        {
+          "spin_number": 213,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:18:00"
+        },
+        {
+          "spin_number": 214,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:19:30"
+        },
+        {
+          "spin_number": 215,
+          "actual": 30,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:21:00"
+        },
+        {
+          "spin_number": 216,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:22:30"
+        },
+        {
+          "spin_number": 217,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:24:00"
+        },
+        {
+          "spin_number": 218,
+          "actual": 11,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:25:30"
+        },
+        {
+          "spin_number": 219,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:27:00"
+        },
+        {
+          "spin_number": 220,
+          "actual": 23,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:28:30"
+        },
+        {
+          "spin_number": 221,
+          "actual": 27,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:30:00"
+        },
+        {
+          "spin_number": 222,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:31:30"
+        },
+        {
+          "spin_number": 223,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:33:00"
+        },
+        {
+          "spin_number": 224,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:34:30"
+        },
+        {
+          "spin_number": 225,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:36:00"
+        },
+        {
+          "spin_number": 226,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:37:30"
+        },
+        {
+          "spin_number": 227,
+          "actual": 29,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:39:00"
+        },
+        {
+          "spin_number": 228,
+          "actual": 19,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:40:30"
+        },
+        {
+          "spin_number": 229,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:42:00"
+        },
+        {
+          "spin_number": 230,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:43:30"
+        },
+        {
+          "spin_number": 231,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:45:00"
+        },
+        {
+          "spin_number": 232,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:46:30"
+        },
+        {
+          "spin_number": 233,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:48:00"
+        },
+        {
+          "spin_number": 234,
+          "actual": 35,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:49:30"
+        },
+        {
+          "spin_number": 235,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:51:00"
+        },
+        {
+          "spin_number": 236,
+          "actual": 31,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:52:30"
+        },
+        {
+          "spin_number": 237,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:54:00"
+        },
+        {
+          "spin_number": 238,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:55:30"
+        },
+        {
+          "spin_number": 239,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-20T19:57:00"
+        },
+        {
+          "spin_number": 240,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-20T19:58:30"
+        },
+        {
+          "spin_number": 241,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:00:00"
+        },
+        {
+          "spin_number": 242,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:01:30"
+        },
+        {
+          "spin_number": 243,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:03:00"
+        },
+        {
+          "spin_number": 244,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:04:30"
+        },
+        {
+          "spin_number": 245,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:06:00"
+        },
+        {
+          "spin_number": 246,
+          "actual": 11,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:07:30"
+        },
+        {
+          "spin_number": 247,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:09:00"
+        },
+        {
+          "spin_number": 248,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:10:30"
+        },
+        {
+          "spin_number": 249,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:12:00"
+        },
+        {
+          "spin_number": 250,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:13:30"
+        },
+        {
+          "spin_number": 251,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:15:00"
+        },
+        {
+          "spin_number": 252,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:16:30"
+        },
+        {
+          "spin_number": 253,
+          "actual": 2,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:18:00"
+        },
+        {
+          "spin_number": 254,
+          "actual": 19,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:19:30"
+        },
+        {
+          "spin_number": 255,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:21:00"
+        },
+        {
+          "spin_number": 256,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:22:30"
+        },
+        {
+          "spin_number": 257,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:24:00"
+        },
+        {
+          "spin_number": 258,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:25:30"
+        },
+        {
+          "spin_number": 259,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:27:00"
+        },
+        {
+          "spin_number": 260,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:28:30"
+        },
+        {
+          "spin_number": 261,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:30:00"
+        },
+        {
+          "spin_number": 262,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:31:30"
+        },
+        {
+          "spin_number": 263,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:33:00"
+        },
+        {
+          "spin_number": 264,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:34:30"
+        },
+        {
+          "spin_number": 265,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:36:00"
+        },
+        {
+          "spin_number": 266,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:37:30"
+        },
+        {
+          "spin_number": 267,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:39:00"
+        },
+        {
+          "spin_number": 268,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:40:30"
+        },
+        {
+          "spin_number": 269,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:42:00"
+        },
+        {
+          "spin_number": 270,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:43:30"
+        },
+        {
+          "spin_number": 271,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:45:00"
+        },
+        {
+          "spin_number": 272,
+          "actual": 23,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:46:30"
+        },
+        {
+          "spin_number": 273,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:48:00"
+        },
+        {
+          "spin_number": 274,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:49:30"
+        },
+        {
+          "spin_number": 275,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:51:00"
+        },
+        {
+          "spin_number": 276,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:52:30"
+        },
+        {
+          "spin_number": 277,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:54:00"
+        },
+        {
+          "spin_number": 278,
+          "actual": 26,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:55:30"
+        },
+        {
+          "spin_number": 279,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-20T20:57:00"
+        },
+        {
+          "spin_number": 280,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-20T20:58:30"
+        },
+        {
+          "spin_number": 281,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:00:00"
+        },
+        {
+          "spin_number": 282,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:01:30"
+        },
+        {
+          "spin_number": 283,
+          "actual": 29,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:03:00"
+        },
+        {
+          "spin_number": 284,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:04:30"
+        },
+        {
+          "spin_number": 285,
+          "actual": 29,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:06:00"
+        },
+        {
+          "spin_number": 286,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:07:30"
+        },
+        {
+          "spin_number": 287,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:09:00"
+        },
+        {
+          "spin_number": 288,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:10:30"
+        },
+        {
+          "spin_number": 289,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:12:00"
+        },
+        {
+          "spin_number": 290,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:13:30"
+        },
+        {
+          "spin_number": 291,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:15:00"
+        },
+        {
+          "spin_number": 292,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:16:30"
+        },
+        {
+          "spin_number": 293,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:18:00"
+        },
+        {
+          "spin_number": 294,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:19:30"
+        },
+        {
+          "spin_number": 295,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:21:00"
+        },
+        {
+          "spin_number": 296,
+          "actual": 11,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:22:30"
+        },
+        {
+          "spin_number": 297,
+          "actual": 27,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:24:00"
+        },
+        {
+          "spin_number": 298,
+          "actual": 11,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:25:30"
+        },
+        {
+          "spin_number": 299,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:27:00"
+        },
+        {
+          "spin_number": 300,
+          "actual": 19,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:28:30"
+        },
+        {
+          "spin_number": 301,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:30:00"
+        },
+        {
+          "spin_number": 302,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:31:30"
+        },
+        {
+          "spin_number": 303,
+          "actual": 10,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:33:00"
+        },
+        {
+          "spin_number": 304,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:34:30"
+        },
+        {
+          "spin_number": 305,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:36:00"
+        },
+        {
+          "spin_number": 306,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:37:30"
+        },
+        {
+          "spin_number": 307,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:39:00"
+        },
+        {
+          "spin_number": 308,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:40:30"
+        },
+        {
+          "spin_number": 309,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:42:00"
+        },
+        {
+          "spin_number": 310,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:43:30"
+        },
+        {
+          "spin_number": 311,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:45:00"
+        },
+        {
+          "spin_number": 312,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:46:30"
+        },
+        {
+          "spin_number": 313,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:48:00"
+        },
+        {
+          "spin_number": 314,
+          "actual": 26,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:49:30"
+        },
+        {
+          "spin_number": 315,
+          "actual": 19,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:51:00"
+        },
+        {
+          "spin_number": 316,
+          "actual": 11,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:52:30"
+        },
+        {
+          "spin_number": 317,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:54:00"
+        },
+        {
+          "spin_number": 318,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:55:30"
+        },
+        {
+          "spin_number": 319,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-20T21:57:00"
+        },
+        {
+          "spin_number": 320,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-20T21:58:30"
+        },
+        {
+          "spin_number": 321,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:00:00"
+        },
+        {
+          "spin_number": 322,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:01:30"
+        },
+        {
+          "spin_number": 323,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:03:00"
+        },
+        {
+          "spin_number": 324,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:04:30"
+        },
+        {
+          "spin_number": 325,
+          "actual": 28,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:06:00"
+        },
+        {
+          "spin_number": 326,
+          "actual": 19,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:07:30"
+        },
+        {
+          "spin_number": 327,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:09:00"
+        },
+        {
+          "spin_number": 328,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:10:30"
+        },
+        {
+          "spin_number": 329,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:12:00"
+        },
+        {
+          "spin_number": 330,
+          "actual": 10,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:13:30"
+        },
+        {
+          "spin_number": 331,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:15:00"
+        },
+        {
+          "spin_number": 332,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:16:30"
+        },
+        {
+          "spin_number": 333,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:18:00"
+        },
+        {
+          "spin_number": 334,
+          "actual": 23,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:19:30"
+        },
+        {
+          "spin_number": 335,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:21:00"
+        },
+        {
+          "spin_number": 336,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:22:30"
+        },
+        {
+          "spin_number": 337,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:24:00"
+        },
+        {
+          "spin_number": 338,
+          "actual": 10,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:25:30"
+        },
+        {
+          "spin_number": 339,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:27:00"
+        },
+        {
+          "spin_number": 340,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:28:30"
+        },
+        {
+          "spin_number": 341,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:30:00"
+        },
+        {
+          "spin_number": 342,
+          "actual": 35,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:31:30"
+        },
+        {
+          "spin_number": 343,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:33:00"
+        },
+        {
+          "spin_number": 344,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:34:30"
+        },
+        {
+          "spin_number": 345,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:36:00"
+        },
+        {
+          "spin_number": 346,
+          "actual": 10,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:37:30"
+        },
+        {
+          "spin_number": 347,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:39:00"
+        },
+        {
+          "spin_number": 348,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:40:30"
+        },
+        {
+          "spin_number": 349,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:42:00"
+        },
+        {
+          "spin_number": 350,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:43:30"
+        },
+        {
+          "spin_number": 351,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:45:00"
+        },
+        {
+          "spin_number": 352,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:46:30"
+        },
+        {
+          "spin_number": 353,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:48:00"
+        },
+        {
+          "spin_number": 354,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:49:30"
+        },
+        {
+          "spin_number": 355,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:51:00"
+        },
+        {
+          "spin_number": 356,
+          "actual": 11,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:52:30"
+        },
+        {
+          "spin_number": 357,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:54:00"
+        },
+        {
+          "spin_number": 358,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:55:30"
+        },
+        {
+          "spin_number": 359,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T22:57:00"
+        },
+        {
+          "spin_number": 360,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-20T22:58:30"
+        },
+        {
+          "spin_number": 361,
+          "actual": 2,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:00:00"
+        },
+        {
+          "spin_number": 362,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:01:30"
+        },
+        {
+          "spin_number": 363,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:03:00"
+        },
+        {
+          "spin_number": 364,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:04:30"
+        },
+        {
+          "spin_number": 365,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:06:00"
+        },
+        {
+          "spin_number": 366,
+          "actual": 26,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:07:30"
+        },
+        {
+          "spin_number": 367,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:09:00"
+        },
+        {
+          "spin_number": 368,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:10:30"
+        },
+        {
+          "spin_number": 369,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:12:00"
+        },
+        {
+          "spin_number": 370,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:13:30"
+        },
+        {
+          "spin_number": 371,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:15:00"
+        },
+        {
+          "spin_number": 372,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:16:30"
+        },
+        {
+          "spin_number": 373,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:18:00"
+        },
+        {
+          "spin_number": 374,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:19:30"
+        },
+        {
+          "spin_number": 375,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:21:00"
+        },
+        {
+          "spin_number": 376,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:22:30"
+        },
+        {
+          "spin_number": 377,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:24:00"
+        },
+        {
+          "spin_number": 378,
+          "actual": 19,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:25:30"
+        },
+        {
+          "spin_number": 379,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:27:00"
+        },
+        {
+          "spin_number": 380,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:28:30"
+        },
+        {
+          "spin_number": 381,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:30:00"
+        },
+        {
+          "spin_number": 382,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:31:30"
+        },
+        {
+          "spin_number": 383,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:33:00"
+        },
+        {
+          "spin_number": 384,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:34:30"
+        },
+        {
+          "spin_number": 385,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:36:00"
+        },
+        {
+          "spin_number": 386,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:37:30"
+        },
+        {
+          "spin_number": 387,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:39:00"
+        },
+        {
+          "spin_number": 388,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:40:30"
+        },
+        {
+          "spin_number": 389,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:42:00"
+        },
+        {
+          "spin_number": 390,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:43:30"
+        },
+        {
+          "spin_number": 391,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:45:00"
+        },
+        {
+          "spin_number": 392,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:46:30"
+        },
+        {
+          "spin_number": 393,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:48:00"
+        },
+        {
+          "spin_number": 394,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:49:30"
+        },
+        {
+          "spin_number": 395,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:51:00"
+        },
+        {
+          "spin_number": 396,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:52:30"
+        },
+        {
+          "spin_number": 397,
+          "actual": 27,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:54:00"
+        },
+        {
+          "spin_number": 398,
+          "actual": 36,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:55:30"
+        },
+        {
+          "spin_number": 399,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-20T23:57:00"
+        },
+        {
+          "spin_number": 400,
+          "actual": 10,
+          "direction": "AC",
+          "timestamp": "2025-12-20T23:58:30"
+        },
+        {
+          "spin_number": 401,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:00:00"
+        },
+        {
+          "spin_number": 402,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:01:30"
+        },
+        {
+          "spin_number": 403,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:03:00"
+        },
+        {
+          "spin_number": 404,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:04:30"
+        },
+        {
+          "spin_number": 405,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:06:00"
+        },
+        {
+          "spin_number": 406,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:07:30"
+        },
+        {
+          "spin_number": 407,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:09:00"
+        },
+        {
+          "spin_number": 408,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:10:30"
+        },
+        {
+          "spin_number": 409,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:12:00"
+        },
+        {
+          "spin_number": 410,
+          "actual": 5,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:13:30"
+        },
+        {
+          "spin_number": 411,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:15:00"
+        },
+        {
+          "spin_number": 412,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:16:30"
+        },
+        {
+          "spin_number": 413,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:18:00"
+        },
+        {
+          "spin_number": 414,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:19:30"
+        },
+        {
+          "spin_number": 415,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:21:00"
+        },
+        {
+          "spin_number": 416,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:22:30"
+        },
+        {
+          "spin_number": 417,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:24:00"
+        },
+        {
+          "spin_number": 418,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:25:30"
+        },
+        {
+          "spin_number": 419,
+          "actual": 28,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:27:00"
+        },
+        {
+          "spin_number": 420,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:28:30"
+        },
+        {
+          "spin_number": 421,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:30:00"
+        },
+        {
+          "spin_number": 422,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:31:30"
+        },
+        {
+          "spin_number": 423,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:33:00"
+        },
+        {
+          "spin_number": 424,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:34:30"
+        },
+        {
+          "spin_number": 425,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:36:00"
+        },
+        {
+          "spin_number": 426,
+          "actual": 26,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:37:30"
+        },
+        {
+          "spin_number": 427,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:39:00"
+        },
+        {
+          "spin_number": 428,
+          "actual": 11,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:40:30"
+        },
+        {
+          "spin_number": 429,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:42:00"
+        },
+        {
+          "spin_number": 430,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:43:30"
+        },
+        {
+          "spin_number": 431,
+          "actual": 27,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:45:00"
+        },
+        {
+          "spin_number": 432,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:46:30"
+        },
+        {
+          "spin_number": 433,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:48:00"
+        },
+        {
+          "spin_number": 434,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:49:30"
+        },
+        {
+          "spin_number": 435,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:51:00"
+        },
+        {
+          "spin_number": 436,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:52:30"
+        },
+        {
+          "spin_number": 437,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:54:00"
+        },
+        {
+          "spin_number": 438,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:55:30"
+        },
+        {
+          "spin_number": 439,
+          "actual": 19,
+          "direction": "C",
+          "timestamp": "2025-12-21T00:57:00"
+        },
+        {
+          "spin_number": 440,
+          "actual": 10,
+          "direction": "AC",
+          "timestamp": "2025-12-21T00:58:30"
+        },
+        {
+          "spin_number": 441,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:00:00"
+        },
+        {
+          "spin_number": 442,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:01:30"
+        },
+        {
+          "spin_number": 443,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:03:00"
+        },
+        {
+          "spin_number": 444,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:04:30"
+        },
+        {
+          "spin_number": 445,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:06:00"
+        },
+        {
+          "spin_number": 446,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:07:30"
+        },
+        {
+          "spin_number": 447,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:09:00"
+        },
+        {
+          "spin_number": 448,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:10:30"
+        },
+        {
+          "spin_number": 449,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:12:00"
+        },
+        {
+          "spin_number": 450,
+          "actual": 5,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:13:30"
+        },
+        {
+          "spin_number": 451,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:15:00"
+        },
+        {
+          "spin_number": 452,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:16:30"
+        },
+        {
+          "spin_number": 453,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:18:00"
+        },
+        {
+          "spin_number": 454,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:19:30"
+        },
+        {
+          "spin_number": 455,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:21:00"
+        },
+        {
+          "spin_number": 456,
+          "actual": 5,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:22:30"
+        },
+        {
+          "spin_number": 457,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:24:00"
+        },
+        {
+          "spin_number": 458,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:25:30"
+        },
+        {
+          "spin_number": 459,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:27:00"
+        },
+        {
+          "spin_number": 460,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:28:30"
+        },
+        {
+          "spin_number": 461,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:30:00"
+        },
+        {
+          "spin_number": 462,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:31:30"
+        },
+        {
+          "spin_number": 463,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:33:00"
+        },
+        {
+          "spin_number": 464,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:34:30"
+        },
+        {
+          "spin_number": 465,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:36:00"
+        },
+        {
+          "spin_number": 466,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:37:30"
+        },
+        {
+          "spin_number": 467,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:39:00"
+        },
+        {
+          "spin_number": 468,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:40:30"
+        },
+        {
+          "spin_number": 469,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:42:00"
+        },
+        {
+          "spin_number": 470,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:43:30"
+        },
+        {
+          "spin_number": 471,
+          "actual": 30,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:45:00"
+        },
+        {
+          "spin_number": 472,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:46:30"
+        },
+        {
+          "spin_number": 473,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:48:00"
+        },
+        {
+          "spin_number": 474,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:49:30"
+        },
+        {
+          "spin_number": 475,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:51:00"
+        },
+        {
+          "spin_number": 476,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:52:30"
+        },
+        {
+          "spin_number": 477,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:54:00"
+        },
+        {
+          "spin_number": 478,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:55:30"
+        },
+        {
+          "spin_number": 479,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-21T01:57:00"
+        },
+        {
+          "spin_number": 480,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-21T01:58:30"
+        },
+        {
+          "spin_number": 481,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:00:00"
+        },
+        {
+          "spin_number": 482,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:01:30"
+        },
+        {
+          "spin_number": 483,
+          "actual": 29,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:03:00"
+        },
+        {
+          "spin_number": 484,
+          "actual": 26,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:04:30"
+        },
+        {
+          "spin_number": 485,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:06:00"
+        },
+        {
+          "spin_number": 486,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:07:30"
+        },
+        {
+          "spin_number": 487,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:09:00"
+        },
+        {
+          "spin_number": 488,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:10:30"
+        },
+        {
+          "spin_number": 489,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:12:00"
+        },
+        {
+          "spin_number": 490,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:13:30"
+        },
+        {
+          "spin_number": 491,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:15:00"
+        },
+        {
+          "spin_number": 492,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:16:30"
+        },
+        {
+          "spin_number": 493,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:18:00"
+        },
+        {
+          "spin_number": 494,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:19:30"
+        },
+        {
+          "spin_number": 495,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:21:00"
+        },
+        {
+          "spin_number": 496,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:22:30"
+        },
+        {
+          "spin_number": 497,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:24:00"
+        },
+        {
+          "spin_number": 498,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:25:30"
+        },
+        {
+          "spin_number": 499,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:27:00"
+        },
+        {
+          "spin_number": 500,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:28:30"
+        },
+        {
+          "spin_number": 501,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:30:00"
+        },
+        {
+          "spin_number": 502,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:31:30"
+        },
+        {
+          "spin_number": 503,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:33:00"
+        },
+        {
+          "spin_number": 504,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:34:30"
+        },
+        {
+          "spin_number": 505,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:36:00"
+        },
+        {
+          "spin_number": 506,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:37:30"
+        },
+        {
+          "spin_number": 507,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:39:00"
+        },
+        {
+          "spin_number": 508,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:40:30"
+        },
+        {
+          "spin_number": 509,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:42:00"
+        },
+        {
+          "spin_number": 510,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-21T02:43:30"
+        },
+        {
+          "spin_number": 511,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-21T02:45:00"
+        }
+      ]
+    },
+    {
+      "session_id": "historical_session_2",
+      "casino": "Evolution Immersive Roulette",
+      "total_spins": 507,
+      "spins": [
+        {
+          "spin_number": 1,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-22T16:30:00"
+        },
+        {
+          "spin_number": 2,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-22T16:31:30"
+        },
+        {
+          "spin_number": 3,
+          "actual": 30,
+          "direction": "C",
+          "timestamp": "2025-12-22T16:33:00"
+        },
+        {
+          "spin_number": 4,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-22T16:34:30"
+        },
+        {
+          "spin_number": 5,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-22T16:36:00"
+        },
+        {
+          "spin_number": 6,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-22T16:37:30"
+        },
+        {
+          "spin_number": 7,
+          "actual": 28,
+          "direction": "C",
+          "timestamp": "2025-12-22T16:39:00"
+        },
+        {
+          "spin_number": 8,
+          "actual": 35,
+          "direction": "AC",
+          "timestamp": "2025-12-22T16:40:30"
+        },
+        {
+          "spin_number": 9,
+          "actual": 19,
+          "direction": "C",
+          "timestamp": "2025-12-22T16:42:00"
+        },
+        {
+          "spin_number": 10,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-22T16:43:30"
+        },
+        {
+          "spin_number": 11,
+          "actual": 28,
+          "direction": "C",
+          "timestamp": "2025-12-22T16:45:00"
+        },
+        {
+          "spin_number": 12,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-22T16:46:30"
+        },
+        {
+          "spin_number": 13,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-22T16:48:00"
+        },
+        {
+          "spin_number": 14,
+          "actual": 31,
+          "direction": "AC",
+          "timestamp": "2025-12-22T16:49:30"
+        },
+        {
+          "spin_number": 15,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-22T16:51:00"
+        },
+        {
+          "spin_number": 16,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-22T16:52:30"
+        },
+        {
+          "spin_number": 17,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-22T16:54:00"
+        },
+        {
+          "spin_number": 18,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-22T16:55:30"
+        },
+        {
+          "spin_number": 19,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-22T16:57:00"
+        },
+        {
+          "spin_number": 20,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-22T16:58:30"
+        },
+        {
+          "spin_number": 21,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:00:00"
+        },
+        {
+          "spin_number": 22,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:01:30"
+        },
+        {
+          "spin_number": 23,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:03:00"
+        },
+        {
+          "spin_number": 24,
+          "actual": 31,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:04:30"
+        },
+        {
+          "spin_number": 25,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:06:00"
+        },
+        {
+          "spin_number": 26,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:07:30"
+        },
+        {
+          "spin_number": 27,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:09:00"
+        },
+        {
+          "spin_number": 28,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:10:30"
+        },
+        {
+          "spin_number": 29,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:12:00"
+        },
+        {
+          "spin_number": 30,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:13:30"
+        },
+        {
+          "spin_number": 31,
+          "actual": 28,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:15:00"
+        },
+        {
+          "spin_number": 32,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:16:30"
+        },
+        {
+          "spin_number": 33,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:18:00"
+        },
+        {
+          "spin_number": 34,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:19:30"
+        },
+        {
+          "spin_number": 35,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:21:00"
+        },
+        {
+          "spin_number": 36,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:22:30"
+        },
+        {
+          "spin_number": 37,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:24:00"
+        },
+        {
+          "spin_number": 38,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:25:30"
+        },
+        {
+          "spin_number": 39,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:27:00"
+        },
+        {
+          "spin_number": 40,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:28:30"
+        },
+        {
+          "spin_number": 41,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:30:00"
+        },
+        {
+          "spin_number": 42,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:31:30"
+        },
+        {
+          "spin_number": 43,
+          "actual": 2,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:33:00"
+        },
+        {
+          "spin_number": 44,
+          "actual": 33,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:34:30"
+        },
+        {
+          "spin_number": 45,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:36:00"
+        },
+        {
+          "spin_number": 46,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:37:30"
+        },
+        {
+          "spin_number": 47,
+          "actual": 30,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:39:00"
+        },
+        {
+          "spin_number": 48,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:40:30"
+        },
+        {
+          "spin_number": 49,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:42:00"
+        },
+        {
+          "spin_number": 50,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:43:30"
+        },
+        {
+          "spin_number": 51,
+          "actual": 10,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:45:00"
+        },
+        {
+          "spin_number": 52,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:46:30"
+        },
+        {
+          "spin_number": 53,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:48:00"
+        },
+        {
+          "spin_number": 54,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:49:30"
+        },
+        {
+          "spin_number": 55,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:51:00"
+        },
+        {
+          "spin_number": 56,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:52:30"
+        },
+        {
+          "spin_number": 57,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:54:00"
+        },
+        {
+          "spin_number": 58,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:55:30"
+        },
+        {
+          "spin_number": 59,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-22T17:57:00"
+        },
+        {
+          "spin_number": 60,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-22T17:58:30"
+        },
+        {
+          "spin_number": 61,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:00:00"
+        },
+        {
+          "spin_number": 62,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:01:30"
+        },
+        {
+          "spin_number": 63,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:03:00"
+        },
+        {
+          "spin_number": 64,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:04:30"
+        },
+        {
+          "spin_number": 65,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:06:00"
+        },
+        {
+          "spin_number": 66,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:07:30"
+        },
+        {
+          "spin_number": 67,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:09:00"
+        },
+        {
+          "spin_number": 68,
+          "actual": 26,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:10:30"
+        },
+        {
+          "spin_number": 69,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:12:00"
+        },
+        {
+          "spin_number": 70,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:13:30"
+        },
+        {
+          "spin_number": 71,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:15:00"
+        },
+        {
+          "spin_number": 72,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:16:30"
+        },
+        {
+          "spin_number": 73,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:18:00"
+        },
+        {
+          "spin_number": 74,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:19:30"
+        },
+        {
+          "spin_number": 75,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:21:00"
+        },
+        {
+          "spin_number": 76,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:22:30"
+        },
+        {
+          "spin_number": 77,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:24:00"
+        },
+        {
+          "spin_number": 78,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:25:30"
+        },
+        {
+          "spin_number": 79,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:27:00"
+        },
+        {
+          "spin_number": 80,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:28:30"
+        },
+        {
+          "spin_number": 81,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:30:00"
+        },
+        {
+          "spin_number": 82,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:31:30"
+        },
+        {
+          "spin_number": 83,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:33:00"
+        },
+        {
+          "spin_number": 84,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:34:30"
+        },
+        {
+          "spin_number": 85,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:36:00"
+        },
+        {
+          "spin_number": 86,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:37:30"
+        },
+        {
+          "spin_number": 87,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:39:00"
+        },
+        {
+          "spin_number": 88,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:40:30"
+        },
+        {
+          "spin_number": 89,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:42:00"
+        },
+        {
+          "spin_number": 90,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:43:30"
+        },
+        {
+          "spin_number": 91,
+          "actual": 28,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:45:00"
+        },
+        {
+          "spin_number": 92,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:46:30"
+        },
+        {
+          "spin_number": 93,
+          "actual": 30,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:48:00"
+        },
+        {
+          "spin_number": 94,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:49:30"
+        },
+        {
+          "spin_number": 95,
+          "actual": 10,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:51:00"
+        },
+        {
+          "spin_number": 96,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:52:30"
+        },
+        {
+          "spin_number": 97,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:54:00"
+        },
+        {
+          "spin_number": 98,
+          "actual": 36,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:55:30"
+        },
+        {
+          "spin_number": 99,
+          "actual": 29,
+          "direction": "C",
+          "timestamp": "2025-12-22T18:57:00"
+        },
+        {
+          "spin_number": 100,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-22T18:58:30"
+        },
+        {
+          "spin_number": 101,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:00:00"
+        },
+        {
+          "spin_number": 102,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:01:30"
+        },
+        {
+          "spin_number": 103,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:03:00"
+        },
+        {
+          "spin_number": 104,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:04:30"
+        },
+        {
+          "spin_number": 105,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:06:00"
+        },
+        {
+          "spin_number": 106,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:07:30"
+        },
+        {
+          "spin_number": 107,
+          "actual": 2,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:09:00"
+        },
+        {
+          "spin_number": 108,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:10:30"
+        },
+        {
+          "spin_number": 109,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:12:00"
+        },
+        {
+          "spin_number": 110,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:13:30"
+        },
+        {
+          "spin_number": 111,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:15:00"
+        },
+        {
+          "spin_number": 112,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:16:30"
+        },
+        {
+          "spin_number": 113,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:18:00"
+        },
+        {
+          "spin_number": 114,
+          "actual": 19,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:19:30"
+        },
+        {
+          "spin_number": 115,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:21:00"
+        },
+        {
+          "spin_number": 116,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:22:30"
+        },
+        {
+          "spin_number": 117,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:24:00"
+        },
+        {
+          "spin_number": 118,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:25:30"
+        },
+        {
+          "spin_number": 119,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:27:00"
+        },
+        {
+          "spin_number": 120,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:28:30"
+        },
+        {
+          "spin_number": 121,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:30:00"
+        },
+        {
+          "spin_number": 122,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:31:30"
+        },
+        {
+          "spin_number": 123,
+          "actual": 27,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:33:00"
+        },
+        {
+          "spin_number": 124,
+          "actual": 7,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:34:30"
+        },
+        {
+          "spin_number": 125,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:36:00"
+        },
+        {
+          "spin_number": 126,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:37:30"
+        },
+        {
+          "spin_number": 127,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:39:00"
+        },
+        {
+          "spin_number": 128,
+          "actual": 23,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:40:30"
+        },
+        {
+          "spin_number": 129,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:42:00"
+        },
+        {
+          "spin_number": 130,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:43:30"
+        },
+        {
+          "spin_number": 131,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:45:00"
+        },
+        {
+          "spin_number": 132,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:46:30"
+        },
+        {
+          "spin_number": 133,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:48:00"
+        },
+        {
+          "spin_number": 134,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:49:30"
+        },
+        {
+          "spin_number": 135,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:51:00"
+        },
+        {
+          "spin_number": 136,
+          "actual": 31,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:52:30"
+        },
+        {
+          "spin_number": 137,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:54:00"
+        },
+        {
+          "spin_number": 138,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:55:30"
+        },
+        {
+          "spin_number": 139,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-22T19:57:00"
+        },
+        {
+          "spin_number": 140,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-22T19:58:30"
+        },
+        {
+          "spin_number": 141,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:00:00"
+        },
+        {
+          "spin_number": 142,
+          "actual": 26,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:01:30"
+        },
+        {
+          "spin_number": 143,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:03:00"
+        },
+        {
+          "spin_number": 144,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:04:30"
+        },
+        {
+          "spin_number": 145,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:06:00"
+        },
+        {
+          "spin_number": 146,
+          "actual": 36,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:07:30"
+        },
+        {
+          "spin_number": 147,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:09:00"
+        },
+        {
+          "spin_number": 148,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:10:30"
+        },
+        {
+          "spin_number": 149,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:12:00"
+        },
+        {
+          "spin_number": 150,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:13:30"
+        },
+        {
+          "spin_number": 151,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:15:00"
+        },
+        {
+          "spin_number": 152,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:16:30"
+        },
+        {
+          "spin_number": 153,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:18:00"
+        },
+        {
+          "spin_number": 154,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:19:30"
+        },
+        {
+          "spin_number": 155,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:21:00"
+        },
+        {
+          "spin_number": 156,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:22:30"
+        },
+        {
+          "spin_number": 157,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:24:00"
+        },
+        {
+          "spin_number": 158,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:25:30"
+        },
+        {
+          "spin_number": 159,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:27:00"
+        },
+        {
+          "spin_number": 160,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:28:30"
+        },
+        {
+          "spin_number": 161,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:30:00"
+        },
+        {
+          "spin_number": 162,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:31:30"
+        },
+        {
+          "spin_number": 163,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:33:00"
+        },
+        {
+          "spin_number": 164,
+          "actual": 35,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:34:30"
+        },
+        {
+          "spin_number": 165,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:36:00"
+        },
+        {
+          "spin_number": 166,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:37:30"
+        },
+        {
+          "spin_number": 167,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:39:00"
+        },
+        {
+          "spin_number": 168,
+          "actual": 35,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:40:30"
+        },
+        {
+          "spin_number": 169,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:42:00"
+        },
+        {
+          "spin_number": 170,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:43:30"
+        },
+        {
+          "spin_number": 171,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:45:00"
+        },
+        {
+          "spin_number": 172,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:46:30"
+        },
+        {
+          "spin_number": 173,
+          "actual": 30,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:48:00"
+        },
+        {
+          "spin_number": 174,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:49:30"
+        },
+        {
+          "spin_number": 175,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:51:00"
+        },
+        {
+          "spin_number": 176,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:52:30"
+        },
+        {
+          "spin_number": 177,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:54:00"
+        },
+        {
+          "spin_number": 178,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:55:30"
+        },
+        {
+          "spin_number": 179,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-22T20:57:00"
+        },
+        {
+          "spin_number": 180,
+          "actual": 23,
+          "direction": "AC",
+          "timestamp": "2025-12-22T20:58:30"
+        },
+        {
+          "spin_number": 181,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:00:00"
+        },
+        {
+          "spin_number": 182,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:01:30"
+        },
+        {
+          "spin_number": 183,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:03:00"
+        },
+        {
+          "spin_number": 184,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:04:30"
+        },
+        {
+          "spin_number": 185,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:06:00"
+        },
+        {
+          "spin_number": 186,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:07:30"
+        },
+        {
+          "spin_number": 187,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:09:00"
+        },
+        {
+          "spin_number": 188,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:10:30"
+        },
+        {
+          "spin_number": 189,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:12:00"
+        },
+        {
+          "spin_number": 190,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:13:30"
+        },
+        {
+          "spin_number": 191,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:15:00"
+        },
+        {
+          "spin_number": 192,
+          "actual": 10,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:16:30"
+        },
+        {
+          "spin_number": 193,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:18:00"
+        },
+        {
+          "spin_number": 194,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:19:30"
+        },
+        {
+          "spin_number": 195,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:21:00"
+        },
+        {
+          "spin_number": 196,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:22:30"
+        },
+        {
+          "spin_number": 197,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:24:00"
+        },
+        {
+          "spin_number": 198,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:25:30"
+        },
+        {
+          "spin_number": 199,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:27:00"
+        },
+        {
+          "spin_number": 200,
+          "actual": 23,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:28:30"
+        },
+        {
+          "spin_number": 201,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:30:00"
+        },
+        {
+          "spin_number": 202,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:31:30"
+        },
+        {
+          "spin_number": 203,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:33:00"
+        },
+        {
+          "spin_number": 204,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:34:30"
+        },
+        {
+          "spin_number": 205,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:36:00"
+        },
+        {
+          "spin_number": 206,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:37:30"
+        },
+        {
+          "spin_number": 207,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:39:00"
+        },
+        {
+          "spin_number": 208,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:40:30"
+        },
+        {
+          "spin_number": 209,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:42:00"
+        },
+        {
+          "spin_number": 210,
+          "actual": 10,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:43:30"
+        },
+        {
+          "spin_number": 211,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:45:00"
+        },
+        {
+          "spin_number": 212,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:46:30"
+        },
+        {
+          "spin_number": 213,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:48:00"
+        },
+        {
+          "spin_number": 214,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:49:30"
+        },
+        {
+          "spin_number": 215,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:51:00"
+        },
+        {
+          "spin_number": 216,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:52:30"
+        },
+        {
+          "spin_number": 217,
+          "actual": 27,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:54:00"
+        },
+        {
+          "spin_number": 218,
+          "actual": 33,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:55:30"
+        },
+        {
+          "spin_number": 219,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-22T21:57:00"
+        },
+        {
+          "spin_number": 220,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-22T21:58:30"
+        },
+        {
+          "spin_number": 221,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:00:00"
+        },
+        {
+          "spin_number": 222,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:01:30"
+        },
+        {
+          "spin_number": 223,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:03:00"
+        },
+        {
+          "spin_number": 224,
+          "actual": 23,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:04:30"
+        },
+        {
+          "spin_number": 225,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:06:00"
+        },
+        {
+          "spin_number": 226,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:07:30"
+        },
+        {
+          "spin_number": 227,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:09:00"
+        },
+        {
+          "spin_number": 228,
+          "actual": 5,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:10:30"
+        },
+        {
+          "spin_number": 229,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:12:00"
+        },
+        {
+          "spin_number": 230,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:13:30"
+        },
+        {
+          "spin_number": 231,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:15:00"
+        },
+        {
+          "spin_number": 232,
+          "actual": 10,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:16:30"
+        },
+        {
+          "spin_number": 233,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:18:00"
+        },
+        {
+          "spin_number": 234,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:19:30"
+        },
+        {
+          "spin_number": 235,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:21:00"
+        },
+        {
+          "spin_number": 236,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:22:30"
+        },
+        {
+          "spin_number": 237,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:24:00"
+        },
+        {
+          "spin_number": 238,
+          "actual": 5,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:25:30"
+        },
+        {
+          "spin_number": 239,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:27:00"
+        },
+        {
+          "spin_number": 240,
+          "actual": 11,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:28:30"
+        },
+        {
+          "spin_number": 241,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:30:00"
+        },
+        {
+          "spin_number": 242,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:31:30"
+        },
+        {
+          "spin_number": 243,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:33:00"
+        },
+        {
+          "spin_number": 244,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:34:30"
+        },
+        {
+          "spin_number": 245,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:36:00"
+        },
+        {
+          "spin_number": 246,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:37:30"
+        },
+        {
+          "spin_number": 247,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:39:00"
+        },
+        {
+          "spin_number": 248,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:40:30"
+        },
+        {
+          "spin_number": 249,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:42:00"
+        },
+        {
+          "spin_number": 250,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:43:30"
+        },
+        {
+          "spin_number": 251,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:45:00"
+        },
+        {
+          "spin_number": 252,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:46:30"
+        },
+        {
+          "spin_number": 253,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:48:00"
+        },
+        {
+          "spin_number": 254,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:49:30"
+        },
+        {
+          "spin_number": 255,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:51:00"
+        },
+        {
+          "spin_number": 256,
+          "actual": 31,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:52:30"
+        },
+        {
+          "spin_number": 257,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:54:00"
+        },
+        {
+          "spin_number": 258,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:55:30"
+        },
+        {
+          "spin_number": 259,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-22T22:57:00"
+        },
+        {
+          "spin_number": 260,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-22T22:58:30"
+        },
+        {
+          "spin_number": 261,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:00:00"
+        },
+        {
+          "spin_number": 262,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:01:30"
+        },
+        {
+          "spin_number": 263,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:03:00"
+        },
+        {
+          "spin_number": 264,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:04:30"
+        },
+        {
+          "spin_number": 265,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:06:00"
+        },
+        {
+          "spin_number": 266,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:07:30"
+        },
+        {
+          "spin_number": 267,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:09:00"
+        },
+        {
+          "spin_number": 268,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:10:30"
+        },
+        {
+          "spin_number": 269,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:12:00"
+        },
+        {
+          "spin_number": 270,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:13:30"
+        },
+        {
+          "spin_number": 271,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:15:00"
+        },
+        {
+          "spin_number": 272,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:16:30"
+        },
+        {
+          "spin_number": 273,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:18:00"
+        },
+        {
+          "spin_number": 274,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:19:30"
+        },
+        {
+          "spin_number": 275,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:21:00"
+        },
+        {
+          "spin_number": 276,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:22:30"
+        },
+        {
+          "spin_number": 277,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:24:00"
+        },
+        {
+          "spin_number": 278,
+          "actual": 10,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:25:30"
+        },
+        {
+          "spin_number": 279,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:27:00"
+        },
+        {
+          "spin_number": 280,
+          "actual": 31,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:28:30"
+        },
+        {
+          "spin_number": 281,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:30:00"
+        },
+        {
+          "spin_number": 282,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:31:30"
+        },
+        {
+          "spin_number": 283,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:33:00"
+        },
+        {
+          "spin_number": 284,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:34:30"
+        },
+        {
+          "spin_number": 285,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:36:00"
+        },
+        {
+          "spin_number": 286,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:37:30"
+        },
+        {
+          "spin_number": 287,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:39:00"
+        },
+        {
+          "spin_number": 288,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:40:30"
+        },
+        {
+          "spin_number": 289,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:42:00"
+        },
+        {
+          "spin_number": 290,
+          "actual": 23,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:43:30"
+        },
+        {
+          "spin_number": 291,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:45:00"
+        },
+        {
+          "spin_number": 292,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:46:30"
+        },
+        {
+          "spin_number": 293,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:48:00"
+        },
+        {
+          "spin_number": 294,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:49:30"
+        },
+        {
+          "spin_number": 295,
+          "actual": 29,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:51:00"
+        },
+        {
+          "spin_number": 296,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:52:30"
+        },
+        {
+          "spin_number": 297,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:54:00"
+        },
+        {
+          "spin_number": 298,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:55:30"
+        },
+        {
+          "spin_number": 299,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-22T23:57:00"
+        },
+        {
+          "spin_number": 300,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-22T23:58:30"
+        },
+        {
+          "spin_number": 301,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:00:00"
+        },
+        {
+          "spin_number": 302,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:01:30"
+        },
+        {
+          "spin_number": 303,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:03:00"
+        },
+        {
+          "spin_number": 304,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:04:30"
+        },
+        {
+          "spin_number": 305,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:06:00"
+        },
+        {
+          "spin_number": 306,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:07:30"
+        },
+        {
+          "spin_number": 307,
+          "actual": 4,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:09:00"
+        },
+        {
+          "spin_number": 308,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:10:30"
+        },
+        {
+          "spin_number": 309,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:12:00"
+        },
+        {
+          "spin_number": 310,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:13:30"
+        },
+        {
+          "spin_number": 311,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:15:00"
+        },
+        {
+          "spin_number": 312,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:16:30"
+        },
+        {
+          "spin_number": 313,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:18:00"
+        },
+        {
+          "spin_number": 314,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:19:30"
+        },
+        {
+          "spin_number": 315,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:21:00"
+        },
+        {
+          "spin_number": 316,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:22:30"
+        },
+        {
+          "spin_number": 317,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:24:00"
+        },
+        {
+          "spin_number": 318,
+          "actual": 33,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:25:30"
+        },
+        {
+          "spin_number": 319,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:27:00"
+        },
+        {
+          "spin_number": 320,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:28:30"
+        },
+        {
+          "spin_number": 321,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:30:00"
+        },
+        {
+          "spin_number": 322,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:31:30"
+        },
+        {
+          "spin_number": 323,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:33:00"
+        },
+        {
+          "spin_number": 324,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:34:30"
+        },
+        {
+          "spin_number": 325,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:36:00"
+        },
+        {
+          "spin_number": 326,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:37:30"
+        },
+        {
+          "spin_number": 327,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:39:00"
+        },
+        {
+          "spin_number": 328,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:40:30"
+        },
+        {
+          "spin_number": 329,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:42:00"
+        },
+        {
+          "spin_number": 330,
+          "actual": 28,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:43:30"
+        },
+        {
+          "spin_number": 331,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:45:00"
+        },
+        {
+          "spin_number": 332,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:46:30"
+        },
+        {
+          "spin_number": 333,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:48:00"
+        },
+        {
+          "spin_number": 334,
+          "actual": 31,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:49:30"
+        },
+        {
+          "spin_number": 335,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:51:00"
+        },
+        {
+          "spin_number": 336,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:52:30"
+        },
+        {
+          "spin_number": 337,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:54:00"
+        },
+        {
+          "spin_number": 338,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:55:30"
+        },
+        {
+          "spin_number": 339,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-23T00:57:00"
+        },
+        {
+          "spin_number": 340,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-23T00:58:30"
+        },
+        {
+          "spin_number": 341,
+          "actual": 15,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:00:00"
+        },
+        {
+          "spin_number": 342,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:01:30"
+        },
+        {
+          "spin_number": 343,
+          "actual": 31,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:03:00"
+        },
+        {
+          "spin_number": 344,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:04:30"
+        },
+        {
+          "spin_number": 345,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:06:00"
+        },
+        {
+          "spin_number": 346,
+          "actual": 26,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:07:30"
+        },
+        {
+          "spin_number": 347,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:09:00"
+        },
+        {
+          "spin_number": 348,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:10:30"
+        },
+        {
+          "spin_number": 349,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:12:00"
+        },
+        {
+          "spin_number": 350,
+          "actual": 19,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:13:30"
+        },
+        {
+          "spin_number": 351,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:15:00"
+        },
+        {
+          "spin_number": 352,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:16:30"
+        },
+        {
+          "spin_number": 353,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:18:00"
+        },
+        {
+          "spin_number": 354,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:19:30"
+        },
+        {
+          "spin_number": 355,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:21:00"
+        },
+        {
+          "spin_number": 356,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:22:30"
+        },
+        {
+          "spin_number": 357,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:24:00"
+        },
+        {
+          "spin_number": 358,
+          "actual": 36,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:25:30"
+        },
+        {
+          "spin_number": 359,
+          "actual": 22,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:27:00"
+        },
+        {
+          "spin_number": 360,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:28:30"
+        },
+        {
+          "spin_number": 361,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:30:00"
+        },
+        {
+          "spin_number": 362,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:31:30"
+        },
+        {
+          "spin_number": 363,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:33:00"
+        },
+        {
+          "spin_number": 364,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:34:30"
+        },
+        {
+          "spin_number": 365,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:36:00"
+        },
+        {
+          "spin_number": 366,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:37:30"
+        },
+        {
+          "spin_number": 367,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:39:00"
+        },
+        {
+          "spin_number": 368,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:40:30"
+        },
+        {
+          "spin_number": 369,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:42:00"
+        },
+        {
+          "spin_number": 370,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:43:30"
+        },
+        {
+          "spin_number": 371,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:45:00"
+        },
+        {
+          "spin_number": 372,
+          "actual": 35,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:46:30"
+        },
+        {
+          "spin_number": 373,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:48:00"
+        },
+        {
+          "spin_number": 374,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:49:30"
+        },
+        {
+          "spin_number": 375,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:51:00"
+        },
+        {
+          "spin_number": 376,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:52:30"
+        },
+        {
+          "spin_number": 377,
+          "actual": 18,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:54:00"
+        },
+        {
+          "spin_number": 378,
+          "actual": 5,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:55:30"
+        },
+        {
+          "spin_number": 379,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-23T01:57:00"
+        },
+        {
+          "spin_number": 380,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-23T01:58:30"
+        },
+        {
+          "spin_number": 381,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:00:00"
+        },
+        {
+          "spin_number": 382,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:01:30"
+        },
+        {
+          "spin_number": 383,
+          "actual": 2,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:03:00"
+        },
+        {
+          "spin_number": 384,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:04:30"
+        },
+        {
+          "spin_number": 385,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:06:00"
+        },
+        {
+          "spin_number": 386,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:07:30"
+        },
+        {
+          "spin_number": 387,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:09:00"
+        },
+        {
+          "spin_number": 388,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:10:30"
+        },
+        {
+          "spin_number": 389,
+          "actual": 13,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:12:00"
+        },
+        {
+          "spin_number": 390,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:13:30"
+        },
+        {
+          "spin_number": 391,
+          "actual": 30,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:15:00"
+        },
+        {
+          "spin_number": 392,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:16:30"
+        },
+        {
+          "spin_number": 393,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:18:00"
+        },
+        {
+          "spin_number": 394,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:19:30"
+        },
+        {
+          "spin_number": 395,
+          "actual": 35,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:21:00"
+        },
+        {
+          "spin_number": 396,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:22:30"
+        },
+        {
+          "spin_number": 397,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:24:00"
+        },
+        {
+          "spin_number": 398,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:25:30"
+        },
+        {
+          "spin_number": 399,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:27:00"
+        },
+        {
+          "spin_number": 400,
+          "actual": 31,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:28:30"
+        },
+        {
+          "spin_number": 401,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:30:00"
+        },
+        {
+          "spin_number": 402,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:31:30"
+        },
+        {
+          "spin_number": 403,
+          "actual": 16,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:33:00"
+        },
+        {
+          "spin_number": 404,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:34:30"
+        },
+        {
+          "spin_number": 405,
+          "actual": 33,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:36:00"
+        },
+        {
+          "spin_number": 406,
+          "actual": 33,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:37:30"
+        },
+        {
+          "spin_number": 407,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:39:00"
+        },
+        {
+          "spin_number": 408,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:40:30"
+        },
+        {
+          "spin_number": 409,
+          "actual": 29,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:42:00"
+        },
+        {
+          "spin_number": 410,
+          "actual": 19,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:43:30"
+        },
+        {
+          "spin_number": 411,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:45:00"
+        },
+        {
+          "spin_number": 412,
+          "actual": 3,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:46:30"
+        },
+        {
+          "spin_number": 413,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:48:00"
+        },
+        {
+          "spin_number": 414,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:49:30"
+        },
+        {
+          "spin_number": 415,
+          "actual": 24,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:51:00"
+        },
+        {
+          "spin_number": 416,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:52:30"
+        },
+        {
+          "spin_number": 417,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:54:00"
+        },
+        {
+          "spin_number": 418,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:55:30"
+        },
+        {
+          "spin_number": 419,
+          "actual": 2,
+          "direction": "C",
+          "timestamp": "2025-12-23T02:57:00"
+        },
+        {
+          "spin_number": 420,
+          "actual": 13,
+          "direction": "AC",
+          "timestamp": "2025-12-23T02:58:30"
+        },
+        {
+          "spin_number": 421,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:00:00"
+        },
+        {
+          "spin_number": 422,
+          "actual": 2,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:01:30"
+        },
+        {
+          "spin_number": 423,
+          "actual": 2,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:03:00"
+        },
+        {
+          "spin_number": 424,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:04:30"
+        },
+        {
+          "spin_number": 425,
+          "actual": 2,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:06:00"
+        },
+        {
+          "spin_number": 426,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:07:30"
+        },
+        {
+          "spin_number": 427,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:09:00"
+        },
+        {
+          "spin_number": 428,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:10:30"
+        },
+        {
+          "spin_number": 429,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:12:00"
+        },
+        {
+          "spin_number": 430,
+          "actual": 29,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:13:30"
+        },
+        {
+          "spin_number": 431,
+          "actual": 3,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:15:00"
+        },
+        {
+          "spin_number": 432,
+          "actual": 14,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:16:30"
+        },
+        {
+          "spin_number": 433,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:18:00"
+        },
+        {
+          "spin_number": 434,
+          "actual": 15,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:19:30"
+        },
+        {
+          "spin_number": 435,
+          "actual": 11,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:21:00"
+        },
+        {
+          "spin_number": 436,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:22:30"
+        },
+        {
+          "spin_number": 437,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:24:00"
+        },
+        {
+          "spin_number": 438,
+          "actual": 18,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:25:30"
+        },
+        {
+          "spin_number": 439,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:27:00"
+        },
+        {
+          "spin_number": 440,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:28:30"
+        },
+        {
+          "spin_number": 441,
+          "actual": 10,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:30:00"
+        },
+        {
+          "spin_number": 442,
+          "actual": 9,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:31:30"
+        },
+        {
+          "spin_number": 443,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:33:00"
+        },
+        {
+          "spin_number": 444,
+          "actual": 19,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:34:30"
+        },
+        {
+          "spin_number": 445,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:36:00"
+        },
+        {
+          "spin_number": 446,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:37:30"
+        },
+        {
+          "spin_number": 447,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:39:00"
+        },
+        {
+          "spin_number": 448,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:40:30"
+        },
+        {
+          "spin_number": 449,
+          "actual": 9,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:42:00"
+        },
+        {
+          "spin_number": 450,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:43:30"
+        },
+        {
+          "spin_number": 451,
+          "actual": 10,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:45:00"
+        },
+        {
+          "spin_number": 452,
+          "actual": 0,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:46:30"
+        },
+        {
+          "spin_number": 453,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:48:00"
+        },
+        {
+          "spin_number": 454,
+          "actual": 17,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:49:30"
+        },
+        {
+          "spin_number": 455,
+          "actual": 23,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:51:00"
+        },
+        {
+          "spin_number": 456,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:52:30"
+        },
+        {
+          "spin_number": 457,
+          "actual": 27,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:54:00"
+        },
+        {
+          "spin_number": 458,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:55:30"
+        },
+        {
+          "spin_number": 459,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-23T03:57:00"
+        },
+        {
+          "spin_number": 460,
+          "actual": 20,
+          "direction": "AC",
+          "timestamp": "2025-12-23T03:58:30"
+        },
+        {
+          "spin_number": 461,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:00:00"
+        },
+        {
+          "spin_number": 462,
+          "actual": 27,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:01:30"
+        },
+        {
+          "spin_number": 463,
+          "actual": 34,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:03:00"
+        },
+        {
+          "spin_number": 464,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:04:30"
+        },
+        {
+          "spin_number": 465,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:06:00"
+        },
+        {
+          "spin_number": 466,
+          "actual": 32,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:07:30"
+        },
+        {
+          "spin_number": 467,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:09:00"
+        },
+        {
+          "spin_number": 468,
+          "actual": 8,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:10:30"
+        },
+        {
+          "spin_number": 469,
+          "actual": 1,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:12:00"
+        },
+        {
+          "spin_number": 470,
+          "actual": 24,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:13:30"
+        },
+        {
+          "spin_number": 471,
+          "actual": 25,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:15:00"
+        },
+        {
+          "spin_number": 472,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:16:30"
+        },
+        {
+          "spin_number": 473,
+          "actual": 12,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:18:00"
+        },
+        {
+          "spin_number": 474,
+          "actual": 4,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:19:30"
+        },
+        {
+          "spin_number": 475,
+          "actual": 6,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:21:00"
+        },
+        {
+          "spin_number": 476,
+          "actual": 6,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:22:30"
+        },
+        {
+          "spin_number": 477,
+          "actual": 14,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:24:00"
+        },
+        {
+          "spin_number": 478,
+          "actual": 36,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:25:30"
+        },
+        {
+          "spin_number": 479,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:27:00"
+        },
+        {
+          "spin_number": 480,
+          "actual": 30,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:28:30"
+        },
+        {
+          "spin_number": 481,
+          "actual": 26,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:30:00"
+        },
+        {
+          "spin_number": 482,
+          "actual": 16,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:31:30"
+        },
+        {
+          "spin_number": 483,
+          "actual": 8,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:33:00"
+        },
+        {
+          "spin_number": 484,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:34:30"
+        },
+        {
+          "spin_number": 485,
+          "actual": 2,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:36:00"
+        },
+        {
+          "spin_number": 486,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:37:30"
+        },
+        {
+          "spin_number": 487,
+          "actual": 7,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:39:00"
+        },
+        {
+          "spin_number": 488,
+          "actual": 12,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:40:30"
+        },
+        {
+          "spin_number": 489,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:42:00"
+        },
+        {
+          "spin_number": 490,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:43:30"
+        },
+        {
+          "spin_number": 491,
+          "actual": 36,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:45:00"
+        },
+        {
+          "spin_number": 492,
+          "actual": 36,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:46:30"
+        },
+        {
+          "spin_number": 493,
+          "actual": 5,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:48:00"
+        },
+        {
+          "spin_number": 494,
+          "actual": 34,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:49:30"
+        },
+        {
+          "spin_number": 495,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:51:00"
+        },
+        {
+          "spin_number": 496,
+          "actual": 1,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:52:30"
+        },
+        {
+          "spin_number": 497,
+          "actual": 17,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:54:00"
+        },
+        {
+          "spin_number": 498,
+          "actual": 33,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:55:30"
+        },
+        {
+          "spin_number": 499,
+          "actual": 20,
+          "direction": "C",
+          "timestamp": "2025-12-23T04:57:00"
+        },
+        {
+          "spin_number": 500,
+          "actual": 22,
+          "direction": "AC",
+          "timestamp": "2025-12-23T04:58:30"
+        },
+        {
+          "spin_number": 501,
+          "actual": 32,
+          "direction": "C",
+          "timestamp": "2025-12-23T05:00:00"
+        },
+        {
+          "spin_number": 502,
+          "actual": 25,
+          "direction": "AC",
+          "timestamp": "2025-12-23T05:01:30"
+        },
+        {
+          "spin_number": 503,
+          "actual": 19,
+          "direction": "C",
+          "timestamp": "2025-12-23T05:03:00"
+        },
+        {
+          "spin_number": 504,
+          "actual": 21,
+          "direction": "AC",
+          "timestamp": "2025-12-23T05:04:30"
+        },
+        {
+          "spin_number": 505,
+          "actual": 21,
+          "direction": "C",
+          "timestamp": "2025-12-23T05:06:00"
+        },
+        {
+          "spin_number": 506,
+          "actual": 5,
+          "direction": "AC",
+          "timestamp": "2025-12-23T05:07:30"
+        },
+        {
+          "spin_number": 507,
+          "actual": 0,
+          "direction": "C",
+          "timestamp": "2025-12-23T05:09:00"
+        }
+      ]
+    }
+  ],
+  "total_spins": 1018,
+  "created_at": "2025-12-28T18:18:10.563210"
+}

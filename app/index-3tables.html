@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
     <title>European Roulette Tracker - 3 Tables</title>
     <link rel="stylesheet" href="styles-3tables.css">
+    <link rel="stylesheet" href="panels-bottom.css">
 </head>
 <body>
 <div class="container">
@@ -246,6 +246,11 @@
         </div>
     </div>
 
+    <!-- ===== BOTTOM PANELS - AI/WHEEL/MONEY ===== -->
+    <div class="info-panels-container-bottom">
+        <!-- Panels created by JS: roulette-wheel.js, ai-prediction-panel.js, money-management-panel.js -->
+    </div>
+
     <!-- Input Section - FIXED AT BOTTOM -->
     <div class="input-section">
         <label for="spinNumber">Number (0-36):</label>
@@ -265,9 +270,14 @@
     </div>
 </div>
 
-<!-- Load all JavaScript files -->
+<!-- Load all JavaScript files IN CORRECT ORDER -->
 <script src="table-lookup.js"></script>
 <script src="renderer-3tables.js"></script>
+<script src="ai-integration.js"></script>
+<script src="roulette-wheel.js"></script>
+<script src="ai-prediction-panel.js"></script>
+<script src="money-management-panel.js"></script>
+<script src="auto-update-orchestrator.js"></script>
 
 <!-- Zoom Control Script - Must be AFTER the table JS loads -->
 <script>
