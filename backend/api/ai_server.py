@@ -4,6 +4,7 @@ AI Server - Updated to pass recent spins for color trend analysis
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
 import sys
@@ -38,11 +39,16 @@ class TableData(BaseModel):
     recentSpins: Optional[List[int]] = None
     
     class Config:
-        extra = "allow"  # Allow extra fields without error
+        extra = "allow"
 
 class ResultData(BaseModel):
-    bet_per_number: float  # CHANGED from betPerNumber
+    bet_per_number: float
     hit: bool
+
+class BacktestRequest(BaseModel):
+    numbers: List[int]
+    starting_bankroll: int = 4000
+    session_target: int = 100
 
 @app.get("/")
 async def root():
@@ -86,16 +92,13 @@ async def predict(data: TableData):
             "bet_amount": 0
         }
     
-    # Extract recent spins for color trend analysis (handle missing field)
     recent_spins = getattr(data, 'recentSpins', None) or []
     
-    # Get prediction
     numbers, confidence, reasoning, anchor_groups = roulette_ai.predict_numbers(
         data.dict(),
         recent_spins=recent_spins
     )
     
-    # Calculate bet size
     bet_amount = 0
     signal = "WAIT"
     
@@ -123,7 +126,7 @@ async def predict(data: TableData):
         "numbers": numbers,
         "anchor_groups": anchor_groups,
         "reasoning": reasoning,
-        "bet_per_number": bet_amount  # FIXED: was bet_amount, now bet_per_number
+        "bet_per_number": bet_amount
     }
 
 @app.post("/process_result")
@@ -131,7 +134,6 @@ async def process_result(result: ResultData):
     if not money_manager:
         return {"success": False, "message": "No active session"}
     
-    # Update learning history with result
     if roulette_ai and len(roulette_ai.prediction_history) > 0:
         roulette_ai.prediction_history[-1]['hit'] = result.hit
         roulette_ai.save_history()
@@ -153,7 +155,6 @@ async def get_status():
     
     status = money_manager.get_status()
     
-    # Add AI learning stats
     if roulette_ai and len(roulette_ai.prediction_history) >= 10:
         recent = roulette_ai.prediction_history[-20:]
         wins = sum(1 for p in recent if p.get('hit') == True)
@@ -170,13 +171,78 @@ async def reset_session():
     if money_manager:
         money_manager.reset()
     if roulette_ai:
-        # Keep learning history across sessions
         pass
     return {"success": True, "message": "Session reset"}
 
 @app.post("/reset_session")
 async def reset_session_endpoint():
     return await reset_session()
+
+@app.post("/backtest/run")
+async def run_backtest(request: BacktestRequest):
+    """Run backtest on historical data"""
+    try:
+        from utils.historical_simulator import run_full_backtest, calculate_analytics
+        
+        print(f"📊 Starting backtest with {len(request.numbers)} numbers")
+        
+        # Run the backtest
+        session_results = run_full_backtest(request.numbers)
+        
+        # Calculate analytics
+        analytics = calculate_analytics(session_results)
+        
+        print(f"✅ Backtest complete: {len(session_results)} sessions")
+        print(f"📈 Success rate: {analytics.get('success_rate', 0):.1f}%")
+        
+        return {
+            "success": True,
+            "total_sessions": len(session_results),
+            "sessions": session_results,
+            "analytics": analytics
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+@app.post("/backtest/export")
+async def export_backtest(request: dict):
+    """Export backtest results to Excel"""
+    try:
+        from utils.excel_exporter import BacktestExporter
+        from pathlib import Path
+        from fastapi.responses import FileResponse
+
+        # Save to Desktop with timestamp
+        desktop_path = Path.home() / "Desktop"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"backtest_results_{timestamp}.xlsx"
+        temp_path = str(desktop_path / filename)
+        
+        # Export to Excel
+        exporter = BacktestExporter()
+        exporter.export_results(
+            request['sessions'],
+            request['analytics'],
+            temp_path
+        )
+        
+        print(f"✅ Excel saved to Desktop: {filename}")
+        
+        return FileResponse(
+            temp_path,
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            filename=f'backtest_results_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Export error: {str(e)}")
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

@@ -265,6 +265,7 @@
         <button class="btn-add" id="addBtn">ADD</button>
         <button class="btn-undo" id="undoBtn">UNDO</button>
         <button class="btn-reset" id="resetBtn">RESET</button>
+        <button class="btn-test-model" id="testModelBtn" onclick="openTestModel()" style="margin-left: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 13px;">🧪 Test Model</button>
         
         <span id="info">Spins: 0</span>
     </div>
@@ -307,6 +308,11 @@
     
     console.log('Zoom control initialized');
 })();
+
+// Test Model Navigation
+function openTestModel() {
+    window.location.href = 'test-model.html';
+}
 </script>
 </body>
 </html>

@@ -91,6 +91,7 @@ class RouletteAI:
         # Learning system
         self.history_file = 'ai_learning_history.json'
         self.prediction_history = []
+        self.learned_patterns = {}
         self.load_history()
     
     def load_history(self):
@@ -373,6 +374,47 @@ class RouletteAI:
         self.record_prediction(selected_anchors, confidence, hit=None)
         
         return final_numbers, confidence, reasoning, anchor_groups
+
+    def load_learned_patterns(self, filepath):
+        """Load learned patterns from training"""
+        try:
+            with open(filepath, 'r') as f:
+                learned_data = json.load(f)
+            
+            self.learned_patterns = learned_data.get('pattern_scores', {})
+            self.training_timestamp = learned_data.get('timestamp', 'unknown')
+            self.training_accuracy = learned_data.get('baseline_accuracy', 0)
+            
+            print(f"✅ Loaded learned patterns from {self.training_timestamp}")
+            print(f"   Training accuracy: {self.training_accuracy:.1f}%")
+            print(f"   Patterns learned: {len(self.learned_patterns)}")
+            return True
+        except FileNotFoundError:
+            self.learned_patterns = {}
+            return False
+        except Exception as e:
+            self.learned_patterns = {}
+            return False
+    
+    def apply_pattern_learning(self, anchor, base_score):
+        """Adjust anchor score based on learned patterns"""
+        if not hasattr(self, 'learned_patterns') or not self.learned_patterns:
+            return base_score
+        
+        anchor_str = str(anchor)
+        if anchor_str in self.learned_patterns:
+            pattern_data = self.learned_patterns[anchor_str]
+            success_rate = pattern_data.get('success_rate', 0)
+            
+            if success_rate > 0.4:
+                learning_boost = (success_rate - 0.32) * 20
+                return base_score + learning_boost
+            elif success_rate < 0.25:
+                learning_penalty = (0.32 - success_rate) * 10
+                return base_score - learning_penalty
+        
+        return base_score
+
 
 
 class MoneyManager:
