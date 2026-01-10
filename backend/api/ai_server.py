@@ -113,17 +113,45 @@ async def predict(data: TableData):
             print(f"⚠️ No numbers predicted!")
     
     can_predict = len(numbers) > 0 and bet_amount > 0
-    
+
+    # Determine betting state
+    betting_state = "WAIT"
+    state_reason = ""
+    confidence_threshold = 0.70
+
+    if money_manager:
+        # After 3 losses, require 75% confidence
+        if money_manager.consecutive_losses >= 3:
+            confidence_threshold = 0.75
+            
+    if len(numbers) == 0:
+        betting_state = "BUILDING"
+        state_reason = "Building pattern database (need 3+ spins)"
+    elif confidence < confidence_threshold:
+        betting_state = "WAIT_CONFIDENCE"
+        state_reason = f"Need {confidence_threshold*100:.0f}% confidence (current: {confidence*100:.0f}%)"
+    elif bet_amount > 0:
+        betting_state = "BET_NOW"
+        state_reason = f"Ready to bet: {len(numbers)} numbers at {confidence*100:.0f}% confidence"
+    else:
+        betting_state = "WAIT"
+        state_reason = "Waiting for better patterns"
+
     print(f"📊 Prediction: {len(numbers)} numbers, {confidence*100:.0f}% confidence")
-    
+    print(f"🎯 Betting state: {betting_state} - {state_reason}")
+
     return {
         "can_predict": can_predict,
         "signal": signal,
+        "betting_state": betting_state,  # NEW
+        "state_reason": state_reason,     # NEW
         "confidence": confidence,
+        "confidence_threshold": confidence_threshold,  # NEW
         "numbers": numbers,
         "anchor_groups": anchor_groups,
         "reasoning": reasoning,
-        "bet_per_number": bet_amount  # FIXED: was bet_amount, now bet_per_number
+        "bet_per_number": bet_amount,
+        "consecutive_losses": money_manager.consecutive_losses if money_manager else 0  # NEW
     }
 
 @app.post("/process_result")
