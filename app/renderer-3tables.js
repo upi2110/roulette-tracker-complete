@@ -237,9 +237,57 @@ function addSpin() {
     document.getElementById('spinNumber').focus();
 }
 
-function undoLast() {
+async function undoLast() {
     if (spins.length === 0) return alert('No spins');
+    
+    // Remove spin from local array
     spins.pop();
+    
+    // Try to revert money management (if a bet was placed)
+    try {
+        const response = await fetch('http://localhost:8000/undo', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log('✅ Undo successful - bet reverted:', result);
+            
+            // Update money panel session data
+            if (window.moneyPanel && window.moneyPanel.sessionData) {
+                const status = result.status;
+                window.moneyPanel.sessionData.currentBankroll = status.bankroll;
+                window.moneyPanel.sessionData.sessionProfit = status.session_profit;
+                window.moneyPanel.sessionData.totalBets = status.total_bets;
+                window.moneyPanel.sessionData.totalWins = status.wins;
+                window.moneyPanel.sessionData.totalLosses = status.losses;
+                
+                // Re-render money panel
+                window.moneyPanel.render();
+                
+                console.log('✅ Money panel updated after bet revert');
+            }
+        } else {
+            // Check if error is "no bets to undo" - this is OK
+            if (result.error && result.error.includes('No bets to undo')) {
+                console.log('ℹ️ Spin removed (no bet was placed on this spin)');
+                // Don't show error - this is normal behavior
+            } else {
+                // Other errors should be shown
+                console.error('❌ Backend undo failed:', result.error);
+                alert(`Undo failed: ${result.error}`);
+            }
+        }
+    } catch (error) {
+        console.error('❌ Undo API error:', error);
+        alert(`Undo error: ${error.message}`);
+    }
+    
+    // Re-render tables (always remove spin from display)
     render();
 }
 

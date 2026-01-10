@@ -392,7 +392,6 @@ class MoneyManager:
         self.total_spins = 0
         self.total_wins = 0
         self.total_losses = 0
-        self.bet_history = []  # Store all bets for undo capability
     
     def calculate_bet_size(self, ai_confidence):
         """Calculate bet based on rules"""
@@ -407,16 +406,6 @@ class MoneyManager:
     def process_result(self, bet_per_number, hit):
         """Process result and adjust bet"""
         total_bet = bet_per_number * self.numbers_to_bet
-        # Save state before processing (for undo)
-        state_before = {
-            'bankroll': self.bankroll,
-            'session_profit': self.session_profit,
-            'consecutive_losses': self.consecutive_losses,
-            'current_bet_per_number': self.current_bet_per_number,
-            'total_wins': self.total_wins,
-            'total_losses': self.total_losses,
-            'total_spins': self.total_spins
-        }
         
         if hit:
             win_amount = bet_per_number * 35
@@ -443,22 +432,6 @@ class MoneyManager:
             print(f"❌ LOSS: -${total_bet:.0f}, Next bet: ${self.current_bet_per_number}/number, Losses: {self.consecutive_losses}")
         
         self.total_spins += 1
-        # Record bet in history (for undo)
-        self.bet_history.append({
-            'bet_per_number': bet_per_number,
-            'total_bet': total_bet,
-            'hit': hit,
-            'state_before': state_before,
-            'state_after': {
-                'bankroll': self.bankroll,
-                'session_profit': self.session_profit,
-                'consecutive_losses': self.consecutive_losses,
-                'current_bet_per_number': self.current_bet_per_number,
-                'total_wins': self.total_wins,
-                'total_losses': self.total_losses,
-                'total_spins': self.total_spins
-            }
-        })
         
         return {
             'bankroll': self.bankroll,
@@ -466,35 +439,6 @@ class MoneyManager:
             'next_bet': self.current_bet_per_number,
             'consecutive_losses': self.consecutive_losses,
             'total_spins': self.total_spins
-        }
-    
-    def undo_last_bet(self):
-        """Undo the last bet and restore previous state"""
-        if not self.bet_history:
-            return {
-                'success': False,
-                'error': 'No bets to undo'
-            }
-        
-        # Remove last bet from history
-        last_bet = self.bet_history.pop()
-        
-        # Restore state from before the bet
-        state_before = last_bet['state_before']
-        self.bankroll = state_before['bankroll']
-        self.session_profit = state_before['session_profit']
-        self.consecutive_losses = state_before['consecutive_losses']
-        self.current_bet_per_number = state_before['current_bet_per_number']
-        self.total_wins = state_before['total_wins']
-        self.total_losses = state_before['total_losses']
-        self.total_spins = state_before['total_spins']
-        
-        print(f"↩️ UNDO: Reverted last {'WIN' if last_bet['hit'] else 'LOSS'} bet of ${last_bet['total_bet']:.0f}")
-        
-        return {
-            'success': True,
-            'reverted_bet': last_bet,
-            'status': self.get_status()
         }
     
     def get_status(self):

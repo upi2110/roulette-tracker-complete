@@ -178,37 +178,6 @@ async def reset_session():
 async def reset_session_endpoint():
     return await reset_session()
 
-@app.post("/undo")
-async def undo_last_action():
-    """Undo last bet and revert money management state"""
-    try:
-        if not money_manager:
-            return {"success": False, "error": "No active session"}
-        
-        # Call undo on money manager
-        result = money_manager.undo_last_bet()
-        
-        if not result['success']:
-            return result
-        
-        print(f"✅ Undo successful: Bankroll restored to ${result['status']['bankroll']}")
-        
-        return {
-            "success": True,
-            "message": "Last bet reverted successfully",
-            "reverted_bet": {
-                "amount": result['reverted_bet']['total_bet'],
-                "hit": result['reverted_bet']['hit']
-            },
-            "status": result['status']
-        }
-        
-    except Exception as e:
-        import traceback
-        print(f"❌ Undo error: {str(e)}")
-        traceback.print_exc()
-        return {"success": False, "error": str(e)}
-
 if __name__ == "__main__":
     import uvicorn
     
