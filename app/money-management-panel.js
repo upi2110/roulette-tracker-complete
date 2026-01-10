@@ -65,6 +65,7 @@ class MoneyManagementPanel {
                     <div class="money-stat">
                         <label>Next Bet</label>
                         <div class="stat-value" id="nextBetValue">Waiting...</div>
+                        <div id="chipBreakdownDisplay"></div>
                     </div>
                     <div class="money-stat">
                         <label>Total Bets</label>
@@ -123,6 +124,30 @@ class MoneyManagementPanel {
             if (content) content.style.display = 'none';
             if (toggleBtn) toggleBtn.textContent = '+';
         }
+    }
+
+    calculateChipBreakdown(amount) {
+        // Available casino chips (in descending order)
+        const chips = [100, 25, 5, 2, 1];
+        const breakdown = [];
+        let remaining = Math.round(amount);
+        
+        for (const chip of chips) {
+            if (remaining >= chip) {
+                const count = Math.floor(remaining / chip);
+                breakdown.push({ value: chip, count: count });
+                remaining -= chip * count;
+            }
+        }
+        
+        return breakdown;
+    }
+
+    formatChipBreakdown(breakdown) {
+        if (breakdown.length === 0) return '--';
+        return breakdown
+            .map(chip => `${chip.count}x $${chip.value}`)
+            .join(' + ');
     }
     
     setupSpinListener() {
@@ -331,6 +356,25 @@ class MoneyManagementPanel {
                 nextBetEl.textContent = 'Session not started';
                 nextBetEl.className = 'stat-value';
                 nextBetEl.style.color = '#6c757d';
+            }
+        }
+
+        // Chip Breakdown Display
+        const chipBreakdownEl = document.getElementById('chipBreakdownDisplay');
+        if (chipBreakdownEl) {
+            if (this.sessionData.isSessionActive && this.sessionData.lastBetAmount > 0) {
+                const betPerNumber = this.sessionData.lastBetAmount;
+                const breakdown = this.calculateChipBreakdown(betPerNumber);
+                const breakdownText = this.formatChipBreakdown(breakdown);
+                
+                chipBreakdownEl.innerHTML = `
+                    <div style="font-size: 11px; color: #666; margin-top: 4px; line-height: 1.4;">
+                        <strong>Chips:</strong> ${breakdownText}
+                    </div>
+                `;
+                chipBreakdownEl.style.display = 'block';
+            } else {
+                chipBreakdownEl.style.display = 'none';
             }
         }
         
