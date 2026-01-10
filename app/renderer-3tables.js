@@ -239,9 +239,11 @@ function addSpin() {
 
 async function undoLast() {
     if (spins.length === 0) return alert('No spins');
+    console.log('🔄 UNDO - Current spins:', spins.length, 'bets:', window.moneyPanel?.betHistory?.length || 0);
     
     // Remove spin from local array
     spins.pop();
+    console.log('Removed spin, remaining:', spins.length);
     
     // Try to revert money management (if a bet was placed)
     try {
@@ -256,20 +258,52 @@ async function undoLast() {
         
         if (result.success) {
             console.log('✅ Undo successful - bet reverted:', result);
+            console.log('📊 Backend returned - total_bets:', result.status.total_bets, 'wins:', result.status.wins, 'losses:', result.status.losses);
             
-            // Update money panel session data
+            // Update money panel with COMPLETE state from backend
             if (window.moneyPanel && window.moneyPanel.sessionData) {
                 const status = result.status;
+                
+                // Update all session data fields
                 window.moneyPanel.sessionData.currentBankroll = status.bankroll;
                 window.moneyPanel.sessionData.sessionProfit = status.session_profit;
                 window.moneyPanel.sessionData.totalBets = status.total_bets;
                 window.moneyPanel.sessionData.totalWins = status.wins;
                 window.moneyPanel.sessionData.totalLosses = status.losses;
+                window.moneyPanel.sessionData.consecutiveLosses = status.consecutive_losses || 0; // CRITICAL!
+                console.log('Backend status:', status);
+                console.log('Consecutive losses from backend:', status.consecutive_losses);
+                console.log('Money panel consecutive losses after update:', window.moneyPanel.sessionData.consecutiveLosses);
+                
+                // ONLY remove bet from visual history if a bet was actually reverted
+                console.log('Checking bet removal - reverted_bet?', !!result.reverted_bet, 'betHistory length:', window.moneyPanel.betHistory?.length || 0);
+                if (result.reverted_bet) {
+                    console.log('Reverted bet details:', result.reverted_bet);
+                }
+                
+                if (result.reverted_bet && window.moneyPanel.betHistory && window.moneyPanel.betHistory.length > 0) {
+                    const beforeLength = window.moneyPanel.betHistory.length;
+                    window.moneyPanel.betHistory.shift(); // Remove FIRST item (newest bet)
+                    console.log(`✅ Removed bet from visual history (${beforeLength} → ${window.moneyPanel.betHistory.length})`);
+                } else {
+                    console.log('ℹ️ No bet removed - reverted_bet:', !!result.reverted_bet, 'history length:', window.moneyPanel.betHistory?.length || 0);
+                }
                 
                 // Re-render money panel
                 window.moneyPanel.render();
                 
-                console.log('✅ Money panel updated after bet revert');
+                console.log('✅ Money panel fully synchronized after undo');
+                console.log(`   Consecutive losses: ${status.consecutive_losses}`);
+            }
+            
+            // Force AI panel to refresh with updated state
+            if (window.aiPanel) {
+                // Trigger new prediction to get updated threshold
+                setTimeout(() => {
+                    if (window.aiPanel.getPredictionAuto) {
+                        window.aiPanel.getPredictionAuto();
+                    }
+                }, 100);
             }
         } else {
             // Check if error is "no bets to undo" - this is OK

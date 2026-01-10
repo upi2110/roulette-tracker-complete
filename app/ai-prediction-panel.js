@@ -217,20 +217,6 @@ class AIPredictionPanel {
         
         const pred = this.currentPrediction;
         
-        // Signal
-        const signalEl = document.getElementById('signalIndicator');
-        const signalTextEl = document.getElementById('signalText');
-        if (signalEl && signalTextEl) {
-            const confidence = pred.confidence || 0;
-            if (confidence >= 0.75) {
-                signalTextEl.textContent = 'BET NOW';
-                signalEl.className = 'signal-indicator signal-bet';
-            } else {
-                signalTextEl.textContent = 'WAIT';
-                signalEl.className = 'signal-indicator signal-wait';
-            }
-        }
-        
         // Confidence - Handle both 0-1 and 0-100 formats with validation
         const confidenceFillEl = document.getElementById('confidenceFill');
         const confidenceTextEl = document.getElementById('confidenceText');

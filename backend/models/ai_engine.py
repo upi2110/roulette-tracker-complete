@@ -109,6 +109,12 @@ class RouletteAI:
                 json.dump(self.prediction_history[-100:], f)  # Keep last 100
         except:
             pass
+
+    def clear_learning_history(self):
+        """Clear prediction history and reset learning file"""
+        self.prediction_history = []
+        self.save_history()  # Saves empty array to file
+        print("🔄 AI learning history cleared")
     
     def find_consecutive_patterns(self, hits_data, min_consecutive=2):
         """Find refs/projections with 2+ consecutive hits"""

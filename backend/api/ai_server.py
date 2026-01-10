@@ -198,8 +198,7 @@ async def reset_session():
     if money_manager:
         money_manager.reset()
     if roulette_ai:
-        # Keep learning history across sessions
-        pass
+            roulette_ai.clear_learning_history()  # Clear AI learning on reset
     return {"success": True, "message": "Session reset"}
 
 @app.post("/reset_session")
