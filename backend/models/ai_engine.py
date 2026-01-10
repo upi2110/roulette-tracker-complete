@@ -340,7 +340,12 @@ class RouletteAI:
         current_spin_idx = table_data.get('currentSpinCount', 0)
         
         if current_spin_idx < 3:
-            return [], 0.60, ["Need at least 3 spins"], []
+            spins_needed = 3 - current_spin_idx
+            return [], 0.60, [
+                f"🔄 Building pattern database...",
+                f"📊 Analyzing spin {current_spin_idx} of 3 minimum needed",
+                f"⏳ Please add {spins_needed} more spin(s) to start predictions"
+            ], []
         
         # Analyze color trend
         color_trend = get_color_trend(recent_spins) if recent_spins else 'neutral'

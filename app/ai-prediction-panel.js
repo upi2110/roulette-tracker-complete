@@ -386,14 +386,39 @@ class AIPredictionPanel {
             confidenceFillEl.style.background = '#6c757d';
         }
         
+        // Get current spin count for better messaging
+        const spins = window.spins || window.spinData;
+        const spinCount = spins?.length || 0;
+        
         const numbersEl = document.getElementById('predictedNumbers');
         if (numbersEl) {
-            numbersEl.innerHTML = '<span class="waiting-msg">Add 3+ spins to see predictions</span>';
+            if (spinCount === 0) {
+                numbersEl.innerHTML = '<span class="waiting-msg">🎲 Start entering spins to begin</span>';
+            } else if (spinCount < 3) {
+                const needed = 3 - spinCount;
+                numbersEl.innerHTML = `<span class="waiting-msg">🔄 ${needed} more spin(s) needed (${spinCount}/3)</span>`;
+            } else {
+                numbersEl.innerHTML = '<span class="waiting-msg">⏳ Analyzing patterns...</span>';
+            }
         }
         
         const reasoningEl = document.getElementById('reasoningContent');
         if (reasoningEl) {
-            reasoningEl.innerHTML = '<p class="reasoning-item">Waiting for spin data...</p>';
+            if (spinCount === 0) {
+                reasoningEl.innerHTML = `
+                    <p class="reasoning-item">• Enter at least 3 spins to start predictions</p>
+                    <p class="reasoning-item">• The AI learns patterns from your spin history</p>
+                    <p class="reasoning-item">• More spins = better accuracy</p>
+                `;
+            } else if (spinCount < 3) {
+                reasoningEl.innerHTML = `
+                    <p class="reasoning-item">• Building pattern database...</p>
+                    <p class="reasoning-item">• Currently have ${spinCount} of 3 minimum spins needed</p>
+                    <p class="reasoning-item">• Keep entering spins to enable predictions</p>
+                `;
+            } else {
+                reasoningEl.innerHTML = '<p class="reasoning-item">⏳ Confidence not high enough to predict yet</p>';
+            }
         }
         
         // Clear bet info
