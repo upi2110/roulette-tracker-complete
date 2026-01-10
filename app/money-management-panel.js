@@ -16,7 +16,8 @@ class MoneyManagementPanel {
             consecutiveLosses: 0,
             lastBetAmount: 0,
             lastBetNumbers: 12,
-            isSessionActive: false
+            isSessionActive: false,
+            spinsWithBets: []  // NEW: Track which spins had bets placed
         };
         
         this.betHistory = [];
@@ -211,6 +212,15 @@ class MoneyManagementPanel {
         const totalBet = betPerNumber * numbersCount;
         
         this.sessionData.totalBets++;
+        
+        // NEW: Track which spin this bet was placed on
+        // NEW: Track which spin this bet was placed on
+        const spins = window.spins || window.spinData;
+        if (spins && spins.length > 0) {
+            // Store the LAST spin's position (the one we just bet on)
+            this.sessionData.spinsWithBets.push(spins.length);
+            console.log(`📌 Bet placed on spin #${spins.length}, spinsWithBets now:`, this.sessionData.spinsWithBets);
+        }
         
         let netChange = 0;
         

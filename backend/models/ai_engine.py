@@ -450,10 +450,12 @@ class MoneyManager:
         
         self.total_spins += 1
         # Record bet in history (for undo)
+        # Record bet in history (for undo)
         self.bet_history.append({
             'bet_per_number': bet_per_number,
             'total_bet': total_bet,
             'hit': hit,
+            'spin_number': self.total_spins,  # NEW: Track which spin this bet was on
             'state_before': state_before,
             'state_after': {
                 'bankroll': self.bankroll,
@@ -500,6 +502,48 @@ class MoneyManager:
         return {
             'success': True,
             'reverted_bet': last_bet,
+            'status': self.get_status()
+        }
+    
+    def undo_bet_for_spin(self, spin_number):
+        """Undo bet for a specific spin number"""
+        if not self.bet_history:
+            return {
+                'success': False,
+                'error': 'No bets to undo'
+            }
+        
+        # Find bet for this spin number
+        bet_index = None
+        for i in range(len(self.bet_history) - 1, -1, -1):  # Search backwards (newest first)
+            if self.bet_history[i].get('spin_number') == spin_number:
+                bet_index = i
+                break
+        
+        if bet_index is None:
+            return {
+                'success': False,
+                'error': f'No bet found for spin {spin_number}'
+            }
+        
+        # Remove the bet
+        bet_to_remove = self.bet_history.pop(bet_index)
+        
+        # Restore state from before this bet
+        state_before = bet_to_remove['state_before']
+        self.bankroll = state_before['bankroll']
+        self.session_profit = state_before['session_profit']
+        self.consecutive_losses = state_before['consecutive_losses']
+        self.current_bet_per_number = state_before['current_bet_per_number']
+        self.total_wins = state_before['total_wins']
+        self.total_losses = state_before['total_losses']
+        self.total_spins = state_before['total_spins']
+        
+        print(f"↩️ UNDO: Reverted bet for spin {spin_number} ({'WIN' if bet_to_remove['hit'] else 'LOSS'}, ${bet_to_remove['total_bet']:.0f})")
+        
+        return {
+            'success': True,
+            'reverted_bet': bet_to_remove,
             'status': self.get_status()
         }
     

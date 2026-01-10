@@ -206,14 +206,23 @@ async def reset_session_endpoint():
     return await reset_session()
 
 @app.post("/undo")
-async def undo_last_action():
-    """Undo last bet and revert money management state"""
+async def undo_last_action(request: dict = None):
+    """Undo bet for a specific spin number"""
     try:
         if not money_manager:
             return {"success": False, "error": "No active session"}
         
-        # Call undo on money manager
-        result = money_manager.undo_last_bet()
+        # Get spin number from request (optional)
+        spin_number = None
+        if request and 'spin_number' in request:
+            spin_number = request['spin_number']
+        
+        # If spin number provided, undo that specific bet
+        if spin_number is not None:
+            result = money_manager.undo_bet_for_spin(spin_number)
+        else:
+            # Otherwise, undo last bet (backward compatibility)
+            result = money_manager.undo_last_bet()
         
         if not result['success']:
             return result
@@ -222,10 +231,11 @@ async def undo_last_action():
         
         return {
             "success": True,
-            "message": "Last bet reverted successfully",
+            "message": "Bet reverted successfully",
             "reverted_bet": {
                 "amount": result['reverted_bet']['total_bet'],
-                "hit": result['reverted_bet']['hit']
+                "hit": result['reverted_bet']['hit'],
+                "spin_number": result['reverted_bet'].get('spin_number')
             },
             "status": result['status']
         }
