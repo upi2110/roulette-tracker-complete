@@ -17,8 +17,11 @@ class MoneyManagementPanel {
             lastBetAmount: 0,
             lastBetNumbers: 12,
             isSessionActive: false,
-            spinsWithBets: [],  // NEW: Track which spins had bets placed
-            isBettingEnabled: false  // NEW: User control for betting
+            spinsWithBets: [],
+            isBettingEnabled: false,  // NEW: User control for betting
+            bettingStrategy: 1,  // 1=Aggressive, 2=Conservative, 3=Cautious
+            consecutiveWins: 0,  // Track consecutive wins for strategies 2 & 3
+            currentBetPerNumber: 2  // Track current bet amount (overrides backend)
         };
 
         this.betHistory = [];
@@ -75,6 +78,19 @@ class MoneyManagementPanel {
                     color: #721c24;
                     font-weight: bold;
                 ">⏸️ Betting PAUSED - Click START to begin</div>
+                <button id="toggleStrategyBtn" style="
+                        width: 100%;
+                        padding: 8px;
+                        font-size: 13px;
+                        font-weight: 600;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+                        color: white;
+                        margin-top: 8px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    ">🟢 Strategy 1: Aggressive</button>
             </div>
 
             <div class="panel-content" id="moneyPanelContent" style="display: block;">
@@ -183,11 +199,54 @@ class MoneyManagementPanel {
         }
     }
 
+    toggleStrategy() {
+        // Cycle through strategies: 1 → 2 → 3 → 1
+        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 3) + 1;
+        
+        // Reset counters when switching strategies
+        this.sessionData.consecutiveWins = 0;
+        this.sessionData.currentBetPerNumber = 2; // Reset to minimum
+        
+        const btn = document.getElementById('toggleStrategyBtn');
+        if (!btn) return;
+        
+        if (this.sessionData.bettingStrategy === 1) {
+            // Strategy 1: Aggressive (Green)
+            btn.textContent = '🟢 Strategy 1: Aggressive';
+            btn.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+            console.log('✅ Strategy 1: Aggressive');
+            console.log('   • +$1 after EACH loss');
+            console.log('   • -$1 after EACH win');
+        } else if (this.sessionData.bettingStrategy === 2) {
+            // Strategy 2: Conservative (Blue)
+            btn.textContent = '🔵 Strategy 2: Conservative';
+            btn.style.background = 'linear-gradient(135deg, #007bff 0%, #0056b3 100%)';
+            console.log('✅ Strategy 2: Conservative');
+            console.log('   • +$1 after 2 CONSECUTIVE losses');
+            console.log('   • -$1 after 2 CONSECUTIVE wins');
+        } else {
+            // Strategy 3: Cautious (Purple)
+            btn.textContent = '🟣 Strategy 3: Cautious';
+            btn.style.background = 'linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%)';
+            console.log('✅ Strategy 3: Cautious');
+            console.log('   • +$2 after 3 CONSECUTIVE losses');
+            console.log('   • -$1 after 2 CONSECUTIVE wins');
+        }
+        
+        this.render();
+    }
+
     setupBettingControl() {
-        const btn = document.getElementById('toggleBettingBtn');
-        if (btn && !btn.hasListener) {
-            btn.hasListener = true;
-            btn.addEventListener('click', () => this.toggleBetting());
+        const bettingBtn = document.getElementById('toggleBettingBtn');
+        if (bettingBtn && !bettingBtn.hasListener) {
+            bettingBtn.hasListener = true;
+            bettingBtn.addEventListener('click', () => this.toggleBetting());
+        }
+        
+        const strategyBtn = document.getElementById('toggleStrategyBtn');
+        if (strategyBtn && !strategyBtn.hasListener) {
+            strategyBtn.hasListener = true;
+            strategyBtn.addEventListener('click', () => this.toggleStrategy());
         }
     }
 
@@ -295,13 +354,14 @@ class MoneyManagementPanel {
             this.sessionData.lastBetNumbers = 12;
             this.pendingBet = null;
         } else {
-            // Round to whole dollar
-            const betAmount = Math.round(prediction.bet_per_number);
+            // Use strategy-based bet amount instead of backend calculation
+            const betAmount = this.sessionData.currentBetPerNumber || 2;
             const numbersCount = prediction.numbers ? prediction.numbers.length : 12;
 
             this.sessionData.lastBetAmount = betAmount;
             this.sessionData.lastBetNumbers = numbersCount;
 
+            console.log(`💡 Using strategy bet: $${betAmount}/number (Strategy ${this.sessionData.bettingStrategy})`);
             // CRITICAL: Store the prediction we're betting on
             if (this.sessionData.isSessionActive && betAmount > 0 && this.sessionData.isBettingEnabled) {
                 this.pendingBet = {
@@ -335,24 +395,26 @@ class MoneyManagementPanel {
             // Win: 35:1 on one number, lose the rest
             const winAmount = betPerNumber * 35;
             netChange = winAmount - totalBet;
-
+            
             this.sessionData.currentBankroll += netChange;
             this.sessionData.sessionProfit += netChange;
             this.sessionData.totalWins++;
             this.sessionData.consecutiveLosses = 0;
-
+            this.sessionData.consecutiveWins++;  // NEW: Track consecutive wins
+            
             console.log(`✅ HIT! Number ${actualNumber} - Won $${netChange}`);
-        } else {
-            // Loss
-            netChange = -totalBet;
-
-            this.sessionData.currentBankroll -= totalBet;
-            this.sessionData.sessionProfit -= totalBet;
-            this.sessionData.totalLosses++;
-            this.sessionData.consecutiveLosses++;
-
-            console.log(`❌ MISS! Number ${actualNumber} - Lost $${totalBet}`);
-        }
+            } else {
+                // Loss
+                netChange = -totalBet;
+                
+                this.sessionData.currentBankroll += netChange;
+                this.sessionData.sessionProfit += netChange;
+                this.sessionData.totalLosses++;
+                this.sessionData.consecutiveLosses++;
+                this.sessionData.consecutiveWins = 0;  // NEW: Reset consecutive wins
+                
+                console.log(`❌ MISS! Number ${actualNumber} - Lost $${Math.abs(netChange)}`);
+            }
 
         // CRITICAL: Tell backend about result to calculate next bet
         if (typeof aiIntegration !== 'undefined') {
@@ -363,6 +425,67 @@ class MoneyManagementPanel {
                 console.error('⚠️ Failed to process result on backend:', error);
             }
         }
+
+        // ═══════════════════════════════════════════════════════
+        // STRATEGY-BASED BET ADJUSTMENT
+        // ═══════════════════════════════════════════════════════
+
+        if (this.sessionData.bettingStrategy === 1) {
+            // ═══ STRATEGY 1: AGGRESSIVE ═══
+            // +$1 after EACH loss, -$1 after EACH win
+            if (hit) {
+                this.sessionData.currentBetPerNumber = Math.max(2, this.sessionData.currentBetPerNumber - 1);
+                console.log(`🟢 Strategy 1: WIN → Decreased bet to $${this.sessionData.currentBetPerNumber}`);
+            } else {
+                this.sessionData.currentBetPerNumber += 1;
+                console.log(`🟢 Strategy 1: LOSS → Increased bet to $${this.sessionData.currentBetPerNumber}`);
+            }
+            
+        } else if (this.sessionData.bettingStrategy === 2) {
+            // ═══ STRATEGY 2: CONSERVATIVE ═══
+            // +$1 after 2 CONSECUTIVE losses, -$1 after 2 CONSECUTIVE wins
+            if (hit) {
+                if (this.sessionData.consecutiveWins >= 2) {
+                    this.sessionData.currentBetPerNumber = Math.max(2, this.sessionData.currentBetPerNumber - 1);
+                    this.sessionData.consecutiveWins = 0; // Reset after adjustment
+                    console.log(`🔵 Strategy 2: 2 CONSECUTIVE WINS → Decreased bet to $${this.sessionData.currentBetPerNumber}`);
+                } else {
+                    console.log(`🔵 Strategy 2: ${this.sessionData.consecutiveWins} consecutive win(s) - Need ${2 - this.sessionData.consecutiveWins} more to decrease bet`);
+                }
+            } else {
+                if (this.sessionData.consecutiveLosses >= 2) {
+                    this.sessionData.currentBetPerNumber += 1;
+                    this.sessionData.consecutiveLosses = 0;  // RESET COUNTER AFTER ADJUSTMENT
+                    console.log(`🔵 Strategy 2: 2 CONSECUTIVE LOSSES → Increased bet to $${this.sessionData.currentBetPerNumber}`);
+                } else {
+                    console.log(`🔵 Strategy 2: ${this.sessionData.consecutiveLosses} consecutive loss(es) - Need ${2 - this.sessionData.consecutiveLosses} more to increase bet`);
+                }
+            }
+            
+        } else if (this.sessionData.bettingStrategy === 3) {
+            // ═══ STRATEGY 3: CAUTIOUS ═══
+            // +$2 after 3 CONSECUTIVE losses, -$1 after 2 CONSECUTIVE wins
+            if (hit) {
+                if (this.sessionData.consecutiveWins >= 2) {
+                    this.sessionData.currentBetPerNumber = Math.max(2, this.sessionData.currentBetPerNumber - 1);
+                    this.sessionData.consecutiveWins = 0; // Reset after adjustment
+                    console.log(`🟣 Strategy 3: 2 CONSECUTIVE WINS → Decreased bet to $${this.sessionData.currentBetPerNumber}`);
+                } else {
+                    console.log(`🟣 Strategy 3: ${this.sessionData.consecutiveWins} consecutive win(s) - Need ${2 - this.sessionData.consecutiveWins} more to decrease bet`);
+                }
+            } else {
+                if (this.sessionData.consecutiveLosses >= 3) {
+                    this.sessionData.currentBetPerNumber += 2; // +$2 not +$1
+                    this.sessionData.consecutiveLosses = 0;  // RESET COUNTER AFTER ADJUSTMENT
+                    console.log(`🟣 Strategy 3: 3 CONSECUTIVE LOSSES → Increased bet by $2 to $${this.sessionData.currentBetPerNumber}`);
+                } else {
+                    console.log(`🟣 Strategy 3: ${this.sessionData.consecutiveLosses} consecutive loss(es) - Need ${3 - this.sessionData.consecutiveLosses} more to increase bet`);
+                }
+            }
+        }
+
+        console.log(`💵 Next bet amount: $${this.sessionData.currentBetPerNumber}/number`);
+
 
         // Add to history
         this.betHistory.unshift({
