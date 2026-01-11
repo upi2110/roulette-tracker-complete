@@ -17,29 +17,32 @@ class MoneyManagementPanel {
             lastBetAmount: 0,
             lastBetNumbers: 12,
             isSessionActive: false,
-            spinsWithBets: []  // NEW: Track which spins had bets placed
+            spinsWithBets: [],  // NEW: Track which spins had bets placed
+            isBettingEnabled: false  // NEW: User control for betting
         };
-        
+
         this.betHistory = [];
         this.isExpanded = true; // START EXPANDED
-        
+
         // CRITICAL: Store the prediction we're betting on
         this.pendingBet = null; // { betAmount, numbersCount, predictedNumbers }
-        
+
         this.createPanel();
+        // Setup betting control button listener
+        setTimeout(() => this.setupBettingControl(), 200);
         this.render();
-        
+
         // Listen for new spins to check results
         this.setupSpinListener();
     }
-    
+
     createPanel() {
         const container = document.querySelector('.info-panels-container-bottom');
         if (!container) {
             console.error('Bottom panels container not found');
             return;
         }
-        
+
         const panel = document.createElement('div');
         panel.className = 'money-panel expanded';
         panel.id = 'moneyPanel';
@@ -48,6 +51,32 @@ class MoneyManagementPanel {
                 <h3>💰 Money Management (Auto-Tracking)</h3>
                 <button class="btn-toggle" id="toggleMoneyPanel">−</button>
             </div>
+            <!-- BETTING CONTROL - AT TOP -->
+            <div style="padding: 12px; background-color: #f8f9fa; border-bottom: 2px solid #ddd;">
+                <button id="toggleBettingBtn" style="
+                    width: 100%;
+                    padding: 12px;
+                    font-size: 16px;
+                    font-weight: bold;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    background-color: #28a745;
+                    color: white;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    margin-bottom: 8px;
+                ">▶️ START BETTING</button>
+                <div id="bettingStatus" style="
+                    padding: 6px;
+                    border-radius: 4px;
+                    font-size: 11px;
+                    text-align: center;
+                    background-color: #f8d7da;
+                    color: #721c24;
+                    font-weight: bold;
+                ">⏸️ Betting PAUSED - Click START to begin</div>
+            </div>
+
             <div class="panel-content" id="moneyPanelContent" style="display: block;">
                 <div class="money-grid">
                     <div class="money-stat bankroll-stat">
@@ -96,25 +125,78 @@ class MoneyManagementPanel {
                 </div>
             </div>
         `;
-        
+
         container.appendChild(panel);
-        
+
         // Add toggle listener
         document.getElementById('toggleMoneyPanel')?.addEventListener('click', (e) => {
             e.stopPropagation();
             this.togglePanel();
         });
-        
+
         // AUTO-START session when first prediction is made
         this.autoStartSession();
     }
+
+    toggleBetting() {
+        this.sessionData.isBettingEnabled = !this.sessionData.isBettingEnabled;
+
+        const btn = document.getElementById('toggleBettingBtn');
+        const status = document.getElementById('bettingStatus');
+
+        if (this.sessionData.isBettingEnabled) {
+            // BETTING ENABLED
+            if (btn) {
+                btn.textContent = '⏸️ PAUSE BETTING';
+                btn.style.backgroundColor = '#dc3545';  // Red
+            }
+            if (status) {
+                status.textContent = '✅ Auto-betting ACTIVE';
+                status.style.backgroundColor = '#d4edda';  // Light green
+                status.style.color = '#155724';  // Dark green
+            }
+            console.log('✅ Betting ENABLED - System will place bets automatically');
     
+            // CRITICAL: Get fresh prediction immediately when starting
+            if (window.aiPanel && window.aiPanel.getPredictionAuto) {
+                setTimeout(() => {
+                    window.aiPanel.getPredictionAuto();
+                    console.log('🔄 Triggered fresh prediction after START');
+                }, 100);
+            }
+        } else {
+            // BETTING PAUSED
+            if (btn) {
+                btn.textContent = '▶️ START BETTING';
+                btn.style.backgroundColor = '#28a745';
+            }
+
+            // CRITICAL: Clear pending bet when pausing
+            this.pendingBet = null;
+            console.log('🚫 Cleared pending bet - no bet will be placed');
+            if (status) {
+                status.textContent = '⏸️ Betting PAUSED - Click START to begin';
+                status.style.backgroundColor = '#f8d7da';  // Light red
+                status.style.color = '#721c24';  // Dark red
+            }
+            console.log('⏸️ Betting PAUSED - No bets will be placed');
+        }
+    }
+
+    setupBettingControl() {
+        const btn = document.getElementById('toggleBettingBtn');
+        if (btn && !btn.hasListener) {
+            btn.hasListener = true;
+            btn.addEventListener('click', () => this.toggleBetting());
+        }
+    }
+
     togglePanel() {
         this.isExpanded = !this.isExpanded;
         const panel = document.getElementById('moneyPanel');
         const content = document.getElementById('moneyPanelContent');
         const toggleBtn = document.getElementById('toggleMoneyPanel');
-        
+
         if (this.isExpanded) {
             panel?.classList.add('expanded');
             if (content) content.style.display = 'block';
@@ -131,7 +213,7 @@ class MoneyManagementPanel {
         const chips = [100, 25, 5, 2, 1];
         const breakdown = [];
         let remaining = Math.round(amount);
-        
+
         for (const chip of chips) {
             if (remaining >= chip) {
                 const count = Math.floor(remaining / chip);
@@ -139,7 +221,7 @@ class MoneyManagementPanel {
                 remaining -= chip * count;
             }
         }
-        
+
         return breakdown;
     }
 
@@ -149,7 +231,7 @@ class MoneyManagementPanel {
             .map(chip => `${chip.count}x $${chip.value}`)
             .join(' + ');
     }
-    
+
     setupSpinListener() {
         // Check for new spins every 200ms - FASTER than orchestrator
         this.lastSpinCount = 0;
@@ -157,56 +239,56 @@ class MoneyManagementPanel {
             this.checkForNewSpin();
         }, 200);
     }
-    
+
     checkForNewSpin() {
         if (!this.sessionData.isSessionActive) return;
-        
+
         const spins = window.spins || window.spinData;
         if (!spins || !Array.isArray(spins)) return;
-        
+
         const currentCount = spins.length;
-        
+
         // New spin detected
         if (currentCount > this.lastSpinCount && this.lastSpinCount > 0) {
             const lastSpin = spins[spins.length - 1];
             const actualNumber = lastSpin.actual;
-            
+
             console.log(`\n🎰 NEW SPIN DETECTED: ${actualNumber}`);
             console.log('Previous spin count:', this.lastSpinCount);
             console.log('Current spin count:', currentCount);
-            
+
             // Check if we had a pending bet
             if (this.pendingBet && this.pendingBet.betAmount > 0) {
                 const hit = this.pendingBet.predictedNumbers.includes(actualNumber);
-                
+
                 console.log('Pending bet:', this.pendingBet);
                 console.log('Predicted numbers:', this.pendingBet.predictedNumbers);
                 console.log('Actual number:', actualNumber);
                 console.log('Hit?', hit);
-                
+
                 this.recordBetResult(
                     this.pendingBet.betAmount,
                     this.pendingBet.numbersCount,
                     hit,
                     actualNumber
                 );
-                
+
                 // Clear the pending bet
                 this.pendingBet = null;
             } else {
                 console.log('⚠️ No pending bet to check');
             }
         }
-        
+
         this.lastSpinCount = currentCount;
     }
-    
+
     autoStartSession() {
         // DISABLED: Orchestrator handles session start now
         // This prevents double prediction generation
         console.log('⚠️ Money Panel auto-start delegated to orchestrator');
     }
-    
+
     updateFromPrediction(prediction) {
         if (!prediction || !prediction.bet_per_number) {
             this.sessionData.lastBetAmount = 0;
@@ -216,12 +298,12 @@ class MoneyManagementPanel {
             // Round to whole dollar
             const betAmount = Math.round(prediction.bet_per_number);
             const numbersCount = prediction.numbers ? prediction.numbers.length : 12;
-            
+
             this.sessionData.lastBetAmount = betAmount;
             this.sessionData.lastBetNumbers = numbersCount;
-            
+
             // CRITICAL: Store the prediction we're betting on
-            if (this.sessionData.isSessionActive && betAmount > 0) {
+            if (this.sessionData.isSessionActive && betAmount > 0 && this.sessionData.isBettingEnabled) {
                 this.pendingBet = {
                     betAmount: betAmount,
                     numbersCount: numbersCount,
@@ -232,12 +314,12 @@ class MoneyManagementPanel {
         }
         this.render();
     }
-    
+
     async recordBetResult(betPerNumber, numbersCount, hit, actualNumber) {
         const totalBet = betPerNumber * numbersCount;
-        
+
         this.sessionData.totalBets++;
-        
+
         // NEW: Track which spin this bet was placed on
         // NEW: Track which spin this bet was placed on
         const spins = window.spins || window.spinData;
@@ -246,32 +328,32 @@ class MoneyManagementPanel {
             this.sessionData.spinsWithBets.push(spins.length);
             console.log(`📌 Bet placed on spin #${spins.length}, spinsWithBets now:`, this.sessionData.spinsWithBets);
         }
-        
+
         let netChange = 0;
-        
+
         if (hit) {
             // Win: 35:1 on one number, lose the rest
             const winAmount = betPerNumber * 35;
             netChange = winAmount - totalBet;
-            
+
             this.sessionData.currentBankroll += netChange;
             this.sessionData.sessionProfit += netChange;
             this.sessionData.totalWins++;
             this.sessionData.consecutiveLosses = 0;
-            
+
             console.log(`✅ HIT! Number ${actualNumber} - Won $${netChange}`);
         } else {
             // Loss
             netChange = -totalBet;
-            
+
             this.sessionData.currentBankroll -= totalBet;
             this.sessionData.sessionProfit -= totalBet;
             this.sessionData.totalLosses++;
             this.sessionData.consecutiveLosses++;
-            
+
             console.log(`❌ MISS! Number ${actualNumber} - Lost $${totalBet}`);
         }
-        
+
         // CRITICAL: Tell backend about result to calculate next bet
         if (typeof aiIntegration !== 'undefined') {
             try {
@@ -281,7 +363,7 @@ class MoneyManagementPanel {
                 console.error('⚠️ Failed to process result on backend:', error);
             }
         }
-        
+
         // Add to history
         this.betHistory.unshift({
             spin: this.sessionData.totalBets,
@@ -292,14 +374,14 @@ class MoneyManagementPanel {
             netChange: netChange,
             timestamp: new Date().toLocaleTimeString()
         });
-        
+
         // Keep only last 10 bets
         if (this.betHistory.length > 10) {
             this.betHistory = this.betHistory.slice(0, 10);
         }
-        
+
         this.render();
-        
+
         // Check if target reached
         if (this.sessionData.sessionProfit >= this.sessionData.sessionTarget) {
             setTimeout(() => {
@@ -307,7 +389,7 @@ class MoneyManagementPanel {
             }, 500);
         }
     }
-    
+
     render() {
         // Bankroll
         const bankrollEl = document.getElementById('bankrollValue');
@@ -315,7 +397,7 @@ class MoneyManagementPanel {
             const bankroll = this.sessionData.currentBankroll;
             bankrollEl.textContent = `$${bankroll.toLocaleString()}`;
             bankrollEl.className = 'stat-value large';
-            
+
             const pct = (bankroll / this.sessionData.startingBankroll);
             if (pct < 0.8) {
                 bankrollEl.classList.add('warning');
@@ -323,7 +405,7 @@ class MoneyManagementPanel {
                 bankrollEl.classList.add('caution');
             }
         }
-        
+
         // Profit
         const profitEl = document.getElementById('profitValue');
         if (profitEl) {
@@ -333,13 +415,13 @@ class MoneyManagementPanel {
             if (profit > 0) profitEl.classList.add('profit');
             if (profit < 0) profitEl.classList.add('loss');
         }
-        
+
         // Target
         const targetEl = document.getElementById('targetValue');
         if (targetEl) {
             targetEl.textContent = `$${this.sessionData.sessionTarget}`;
         }
-        
+
         // Next Bet
         const nextBetEl = document.getElementById('nextBetValue');
         if (nextBetEl) {
@@ -366,7 +448,7 @@ class MoneyManagementPanel {
                 const betPerNumber = this.sessionData.lastBetAmount;
                 const breakdown = this.calculateChipBreakdown(betPerNumber);
                 const breakdownText = this.formatChipBreakdown(breakdown);
-                
+
                 chipBreakdownEl.innerHTML = `
                     <div style="font-size: 11px; color: #666; margin-top: 4px; line-height: 1.4;">
                         <strong>Chips:</strong> ${breakdownText}
@@ -377,13 +459,13 @@ class MoneyManagementPanel {
                 chipBreakdownEl.style.display = 'none';
             }
         }
-        
+
         // Total Bets
         const totalBetsEl = document.getElementById('totalBetsValue');
         if (totalBetsEl) {
             totalBetsEl.textContent = this.sessionData.totalBets;
         }
-        
+
         // Win Rate
         const winRateEl = document.getElementById('winRateValue');
         if (winRateEl) {
@@ -391,7 +473,7 @@ class MoneyManagementPanel {
                 const rate = (this.sessionData.totalWins / this.sessionData.totalBets * 100).toFixed(1);
                 winRateEl.textContent = `${rate}%`;
                 winRateEl.title = `${this.sessionData.totalWins}W / ${this.sessionData.totalLosses}L`;
-                
+
                 // Color code
                 if (rate >= 30) {
                     winRateEl.style.color = '#28a745';
@@ -405,7 +487,7 @@ class MoneyManagementPanel {
                 winRateEl.style.color = '#6c757d';
             }
         }
-        
+
         // Consecutive Losses
         const consLossEl = document.getElementById('consecutiveLossesValue');
         if (consLossEl) {
@@ -418,17 +500,17 @@ class MoneyManagementPanel {
                 consLossEl.classList.add('warning');
             }
         }
-        
+
         // Progress
         const progressEl = document.getElementById('progressFill');
         const progressTextEl = document.getElementById('progressText');
         if (progressEl && progressTextEl) {
             const progress = Math.max(0, (this.sessionData.sessionProfit / this.sessionData.sessionTarget) * 100);
             const displayProgress = Math.min(100, progress);
-            
+
             progressEl.style.width = `${displayProgress}%`;
             progressTextEl.textContent = `${displayProgress.toFixed(0)}%`;
-            
+
             if (progress >= 100) {
                 progressEl.style.background = '#28a745';
             } else if (progress >= 50) {
@@ -439,22 +521,22 @@ class MoneyManagementPanel {
                 progressEl.style.background = '#007bff';
             }
         }
-        
+
         // Bet History
         this.renderBetHistory();
     }
-    
+
     renderBetHistory() {
         const historyEl = document.getElementById('betHistoryList');
         if (!historyEl) return;
-        
+
         if (this.betHistory.length === 0) {
             historyEl.innerHTML = '<div style="color: #6c757d; text-align: center; padding: 8px;">No bets yet</div>';
             return;
         }
-        
+
         historyEl.innerHTML = '';
-        
+
         this.betHistory.forEach((bet, idx) => {
             const div = document.createElement('div');
             div.className = 'bet-history-item';
@@ -463,17 +545,17 @@ class MoneyManagementPanel {
             div.style.display = 'flex';
             div.style.justifyContent = 'space-between';
             div.style.alignItems = 'center';
-            
+
             const resultIcon = bet.hit ? '✅' : '❌';
             const resultColor = bet.hit ? '#28a745' : '#dc3545';
-            
+
             div.innerHTML = `
                 <span style="color: #6c757d;">#${bet.spin}</span>
                 <span>${resultIcon} ${bet.actualNumber}</span>
                 <span style="color: ${resultColor}; font-weight: 700;">${bet.netChange >= 0 ? '+' : ''}$${bet.netChange}</span>
                 <span style="color: #adb5bd; font-size: 9px;">${bet.timestamp}</span>
             `;
-            
+
             historyEl.appendChild(div);
         });
     }
