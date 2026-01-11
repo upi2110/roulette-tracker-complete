@@ -82,6 +82,75 @@ class AIPredictionPanel {
         // AUTOMATIC UPDATE: Monitor spins and auto-update
         this.setupAutoUpdate();
     }
+
+    updateBettingStateDisplay(prediction) {
+        const signalEl = document.getElementById('signalIndicator');
+        const signalTextEl = document.getElementById('signalText');
+        
+        if (!signalEl || !signalTextEl) return;
+        
+        const state = prediction.betting_state || 'WAIT';
+        const reason = prediction.state_reason || '';
+        const threshold = (prediction.confidence_threshold || 0.70) * 100;
+        const current = (prediction.confidence || 0) * 100;
+        const consecutiveLosses = prediction.consecutive_losses || 0;
+        
+        // Update signal indicator based on state
+        signalEl.classList.remove('signal-bet', 'signal-wait', 'signal-building');
+        
+        switch(state) {
+            case 'BET_NOW':
+                signalTextEl.textContent = '🟢 BET NOW';
+                signalEl.classList.add('signal-bet');
+                signalEl.style.backgroundColor = '#28a745';
+                signalEl.style.color = 'white';
+                break;
+                
+            case 'WAIT_CONFIDENCE':
+                signalTextEl.textContent = '⏸️ WAIT - Low Confidence';
+                signalEl.classList.add('signal-wait');
+                signalEl.style.backgroundColor = '#ffc107';
+                signalEl.style.color = '#000';
+                break;
+                
+            case 'BUILDING':
+                signalTextEl.textContent = '🔄 Building Patterns';
+                signalEl.classList.add('signal-building');
+                signalEl.style.backgroundColor = '#6c757d';
+                signalEl.style.color = 'white';
+                break;
+                
+            default:
+                signalTextEl.textContent = '⏸️ WAIT';
+                signalEl.classList.add('signal-wait');
+                signalEl.style.backgroundColor = '#6c757d';
+                signalEl.style.color = 'white';
+        }
+        
+        // Add state reason below confidence bar
+        let confidenceDisplay = document.querySelector('.confidence-display');
+        let stateReasonEl = document.getElementById('stateReason');
+        
+        if (!stateReasonEl && confidenceDisplay) {
+            stateReasonEl = document.createElement('div');
+            stateReasonEl.id = 'stateReason';
+            stateReasonEl.style.marginTop = '8px';
+            stateReasonEl.style.fontSize = '13px';
+            stateReasonEl.style.fontWeight = 'bold';
+            stateReasonEl.style.textAlign = 'center';
+            confidenceDisplay.appendChild(stateReasonEl);
+        }
+        
+        if (stateReasonEl) {
+            stateReasonEl.textContent = reason;
+            
+            if (consecutiveLosses >= 3) {
+                stateReasonEl.innerHTML = reason + '<br><span style="color: #dc3545; font-size: 12px;">⚠️ 3+ losses: 75% threshold active</span>';
+            }
+        }
+        
+        console.log(`🎯 Betting State: ${state} - ${reason}`);
+    }
     
     togglePanel() {
         this.isExpanded = !this.isExpanded;
@@ -137,26 +206,16 @@ class AIPredictionPanel {
     }
     
     render() {
+        // Update betting state display FIRST
+        if (this.currentPrediction) {
+            this.updateBettingStateDisplay(this.currentPrediction);
+        }
         if (!this.currentPrediction || !this.currentPrediction.can_predict) {
             this.renderWaiting();
             return;
         }
         
         const pred = this.currentPrediction;
-        
-        // Signal
-        const signalEl = document.getElementById('signalIndicator');
-        const signalTextEl = document.getElementById('signalText');
-        if (signalEl && signalTextEl) {
-            const confidence = pred.confidence || 0;
-            if (confidence >= 0.75) {
-                signalTextEl.textContent = 'BET NOW';
-                signalEl.className = 'signal-indicator signal-bet';
-            } else {
-                signalTextEl.textContent = 'WAIT';
-                signalEl.className = 'signal-indicator signal-wait';
-            }
-        }
         
         // Confidence - Handle both 0-1 and 0-100 formats with validation
         const confidenceFillEl = document.getElementById('confidenceFill');
@@ -327,14 +386,39 @@ class AIPredictionPanel {
             confidenceFillEl.style.background = '#6c757d';
         }
         
+        // Get current spin count for better messaging
+        const spins = window.spins || window.spinData;
+        const spinCount = spins?.length || 0;
+        
         const numbersEl = document.getElementById('predictedNumbers');
         if (numbersEl) {
-            numbersEl.innerHTML = '<span class="waiting-msg">Add 3+ spins to see predictions</span>';
+            if (spinCount === 0) {
+                numbersEl.innerHTML = '<span class="waiting-msg">🎲 Start entering spins to begin</span>';
+            } else if (spinCount < 3) {
+                const needed = 3 - spinCount;
+                numbersEl.innerHTML = `<span class="waiting-msg">🔄 ${needed} more spin(s) needed (${spinCount}/3)</span>`;
+            } else {
+                numbersEl.innerHTML = '<span class="waiting-msg">⏳ Analyzing patterns...</span>';
+            }
         }
         
         const reasoningEl = document.getElementById('reasoningContent');
         if (reasoningEl) {
-            reasoningEl.innerHTML = '<p class="reasoning-item">Waiting for spin data...</p>';
+            if (spinCount === 0) {
+                reasoningEl.innerHTML = `
+                    <p class="reasoning-item">• Enter at least 3 spins to start predictions</p>
+                    <p class="reasoning-item">• The AI learns patterns from your spin history</p>
+                    <p class="reasoning-item">• More spins = better accuracy</p>
+                `;
+            } else if (spinCount < 3) {
+                reasoningEl.innerHTML = `
+                    <p class="reasoning-item">• Building pattern database...</p>
+                    <p class="reasoning-item">• Currently have ${spinCount} of 3 minimum spins needed</p>
+                    <p class="reasoning-item">• Keep entering spins to enable predictions</p>
+                `;
+            } else {
+                reasoningEl.innerHTML = '<p class="reasoning-item">⏳ Confidence not high enough to predict yet</p>';
+            }
         }
         
         // Clear bet info
