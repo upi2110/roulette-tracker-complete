@@ -89,8 +89,7 @@ class AIPredictionPanel {
         
         if (!signalEl || !signalTextEl) return;
         
-        // FIX: Backend sends "signal", not "betting_state"
-        const state = prediction.signal || 'WAIT';
+        const state = prediction.betting_state || 'WAIT';
         const reason = prediction.state_reason || '';
         const threshold = (prediction.confidence_threshold || 0.70) * 100;
         const current = (prediction.confidence || 0) * 100;
@@ -99,23 +98,33 @@ class AIPredictionPanel {
         // Update signal indicator based on state
         signalEl.classList.remove('signal-bet', 'signal-wait', 'signal-building');
         
-        // FIX: Backend sends "BET NOW" (with space), not "BET_NOW" (with underscore)
-        if (state === 'BET NOW') {
-            signalTextEl.textContent = '🟢 BET NOW';
-            signalEl.classList.add('signal-bet');
-            signalEl.style.backgroundColor = '#28a745';
-            signalEl.style.color = 'white';
-        } else if (state === 'WAIT') {
-            signalTextEl.textContent = '⏸️ WAIT';
-            signalEl.classList.add('signal-wait');
-            signalEl.style.backgroundColor = '#6c757d';
-            signalEl.style.color = 'white';
-        } else {
-            // Default/other states
-            signalTextEl.textContent = '⏸️ WAIT';
-            signalEl.classList.add('signal-wait');
-            signalEl.style.backgroundColor = '#6c757d';
-            signalEl.style.color = 'white';
+        switch(state) {
+            case 'BET_NOW':
+                signalTextEl.textContent = '🟢 BET NOW';
+                signalEl.classList.add('signal-bet');
+                signalEl.style.backgroundColor = '#28a745';
+                signalEl.style.color = 'white';
+                break;
+                
+            case 'WAIT_CONFIDENCE':
+                signalTextEl.textContent = '⏸️ WAIT - Low Confidence';
+                signalEl.classList.add('signal-wait');
+                signalEl.style.backgroundColor = '#ffc107';
+                signalEl.style.color = '#000';
+                break;
+                
+            case 'BUILDING':
+                signalTextEl.textContent = '🔄 Building Patterns';
+                signalEl.classList.add('signal-building');
+                signalEl.style.backgroundColor = '#6c757d';
+                signalEl.style.color = 'white';
+                break;
+                
+            default:
+                signalTextEl.textContent = '⏸️ WAIT';
+                signalEl.classList.add('signal-wait');
+                signalEl.style.backgroundColor = '#6c757d';
+                signalEl.style.color = 'white';
         }
         
         // Add state reason below confidence bar

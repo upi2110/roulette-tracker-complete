@@ -952,7 +952,7 @@ window.getAIData = function() {
     }
     
     // Get recent spins (last 10 for color trend analysis)
-    const recentSpins = spins.slice(-10).map(s => s.number);
+    const recentSpins = spins.slice(-10).map(s => s.actual);  // ✅
     
     const data = {
         table1Hits: analyzeTable1Hits(),
@@ -1103,15 +1103,14 @@ function analyzeTable3Hits() {
 }
 
 function checkTable3Hit(hits, projType, spinIdx, actual, anchorRef, anchor13Opp, prevSpinIdx) {
-    // FIXED: Calculate position code for CURRENT spin (where ball actually landed)
-    // NOT the previous spin!
-    // This makes the export data match what's displayed in the table.
+    // Get the position code from PREVIOUS spin
+    if (prevSpinIdx < 1) return;
     
-    // Calculate position code for CURRENT actual number
-    const currentPosCode = calculatePositionCode(anchorRef, actual);
-    const currentPosCode13 = calculatePositionCode(anchor13Opp, actual);
+    const prevActual = spins[prevSpinIdx].actual;
+    const prevPosCode = calculatePositionCode(anchorRef, prevActual);
+    const prevPosCode13 = calculatePositionCode(anchor13Opp, prevActual);
     
-    const usePosCode = currentPosCode !== 'XX' ? currentPosCode : currentPosCode13;
+    const usePosCode = prevPosCode !== 'XX' ? prevPosCode : prevPosCode13;
     
     if (usePosCode === 'XX') return;
     
@@ -1129,7 +1128,7 @@ function checkTable3Hit(hits, projType, spinIdx, actual, anchorRef, anchor13Opp,
             anchorRef: anchorRef,
             projection: anchorRef,
             hitType: hitType,
-            posCode: usePosCode,  // Now CORRECT - matches table display
+            posCode: usePosCode,
             betNumbers: betNumbers
         });
     }
