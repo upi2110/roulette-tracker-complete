@@ -44,6 +44,39 @@ class AIEngineV6:
         # Priority patterns (highest priority)
         self.GOLDEN_PATTERNS = ['S+0', 'S+1', 'S-1', 'O+0', 'O+1', 'O-1']
         self.HIGH_PRIORITY_PATTERNS = ['S+0', 'S+1', 'S-1', 'O+0', 'O+1', 'O-1']
+    
+    def _normalize_number(self, num: int) -> int:
+        """
+        Convert 26 to 0 for internal calculations (same wheel position)
+        0 and 26 are the same position on the wheel
+        """
+        return 0 if num == 26 else num
+    
+    def _normalize_list(self, numbers: List[int]) -> List[int]:
+        """
+        Convert all 26s to 0s in list, remove duplicates
+        Used for comparing sets where 0 and 26 should be treated as same
+        """
+        normalized = [self._normalize_number(n) for n in numbers]
+        return list(set(normalized))  # Remove duplicates
+    
+    def _ensure_0_26_paired(self, numbers: List[int]) -> List[int]:
+        """
+        Ensure if 0 OR 26 is in list, BOTH are present
+        This is the final betting rule: always bet both 0 and 26 together
+        """
+        result = list(numbers)
+        has_0 = 0 in result
+        has_26 = 26 in result
+        
+        if has_0 and not has_26:
+            result.append(26)
+            logging.info(f"   🎰 Added 26 (betting rule: always bet 0 and 26 together)")
+        elif has_26 and not has_0:
+            result.append(0)
+            logging.info(f"   🎰 Added 0 (betting rule: always bet 0 and 26 together)")
+        
+        return sorted(result)
         
     def predict(self, table_data: Dict) -> Dict:
         """
@@ -113,6 +146,9 @@ class AIEngineV6:
                 table_data.get('table1Hits', {}),
                 table_data.get('table2Hits', {})
             )
+            
+            # Apply betting rule: if 0 OR 26 in predictions, always bet BOTH
+            final_numbers = self._ensure_0_26_paired(final_numbers)
             
             # STEP 6: Calculate REAL anchors based on wheel neighbors
             logging.info("\n" + "="*80)
@@ -212,9 +248,14 @@ class AIEngineV6:
             left_neighbor = self.WHEEL_ORDER[left_idx]
             right_neighbor = self.WHEEL_ORDER[right_idx]
             
+            # Normalize for comparison: treat 0 and 26 as same position
+            numbers_normalized = self._normalize_list(numbers)
+            left_normalized = self._normalize_number(left_neighbor)
+            right_normalized = self._normalize_number(right_neighbor)
+            
             # Check if BOTH neighbors are in bet list
-            has_left = left_neighbor in numbers
-            has_right = right_neighbor in numbers
+            has_left = left_normalized in numbers_normalized
+            has_right = right_normalized in numbers_normalized
             
             if has_left and has_right:
                 # BOTH neighbors present = ANCHOR
@@ -239,6 +280,9 @@ class AIEngineV6:
     def _find_confirmed_pairs(self, table3_hits: Dict) -> Dict:
         """
         Find pairs with 2+ consecutive hits with consistent position codes
+        
+        CRITICAL: Only count hits as "consecutive" if they include the MOST RECENT spin!
+        If the most recent spin broke the streak, consecutive count = 0
         """
         
         confirmed_pairs = {}
@@ -251,7 +295,11 @@ class AIEngineV6:
             if len(hits_data) < 2:
                 continue
             
-            # Check for consecutive hits
+            # Check if most recent spin is included in hits
+            # hits_data is ordered with MOST RECENT first (index 0)
+            most_recent_hit = hits_data[0]
+            
+            # Check for consecutive hits starting from most recent
             consecutive_count = 1
             priority_sum = 0
             pattern_codes = []
@@ -261,7 +309,11 @@ class AIEngineV6:
                 pos_code = hit.get('posCode', 'XX')
                 
                 if pos_code == 'XX':
-                    continue
+                    # XX means miss - streak broken
+                    if i == 0:
+                        # Most recent spin was a miss - no consecutive hits
+                        consecutive_count = 0
+                    break
                 
                 pattern_codes.append(pos_code)
                 priority = self._get_priority(pos_code)
@@ -271,9 +323,14 @@ class AIEngineV6:
                     prev_hit = hits_data[i-1]
                     prev_code = prev_hit.get('posCode', 'XX')
                     
+                    if prev_code == 'XX':
+                        # Previous hit was a miss - stop counting
+                        break
+                    
                     if self._is_consistent(prev_code, pos_code):
                         consecutive_count += 1
                     else:
+                        # Pattern not consistent - stop counting
                         break
             
             if consecutive_count >= 2:
@@ -288,6 +345,12 @@ class AIEngineV6:
                 pattern_str = ' → '.join(pattern_codes[:consecutive_count])
                 logging.info(f"✅ {proj_type}: {consecutive_count} consecutive hits, priority={avg_priority}")
                 logging.info(f"   Pattern: {pattern_str}")
+            elif consecutive_count == 1 and hits_data[0].get('posCode', 'XX') != 'XX':
+                # Had 1 hit but need at least 2
+                logging.info(f"⚠️  {proj_type}: Only 1 hit (need 2+)")
+            elif hits_data[0].get('posCode', 'XX') == 'XX':
+                # Most recent was a miss
+                logging.info(f"❌ {proj_type}: Streak broken (most recent spin was a miss)")
         
         logging.info(f"\n📊 Total confirmed pairs: {len(confirmed_pairs)}")
         
@@ -418,11 +481,26 @@ class AIEngineV6:
             chunk = sorted_nums[i:i+10]
             logging.info(f"      {chunk}")
         
-        common = list(set(pair1_proj) & set(pair2_proj))
+        # Normalize: treat 0 and 26 as same number for comparison
+        pair1_normalized = self._normalize_list(pair1_proj)
+        pair2_normalized = self._normalize_list(pair2_proj)
+        
+        # Find intersection on normalized lists
+        common_normalized = list(set(pair1_normalized) & set(pair2_normalized))
+        
+        # Convert back: if 0 is common, include both 0 and 26 if either was in original
+        common = []
+        for num in common_normalized:
+            common.append(num)
+            # If 0 is common and either pair had 26, include 26 too
+            if num == 0:
+                if 26 in pair1_proj or 26 in pair2_proj:
+                    common.append(26)
+        
         common.sort()
         
         if common:
-            logging.info(f"\n✅ COMMON NUMBERS FOUND:")
+            logging.info(f"\n✅ COMMON NUMBERS FOUND (0 and 26 treated as same):")
             logging.info(f"   Total: {len(common)}")
             # Print in rows of 10
             for i in range(0, len(common), 10):
@@ -467,10 +545,12 @@ class AIEngineV6:
     ) -> Tuple[List[int], bool]:
         """
         Filter to 12 numbers using Table 1 & 2 if common > 12
-        Then add 13-digit opposites for pairing
+        
+        NOTE: 13-digit opposites are already included in projections as GREEN anchors,
+        so we don't need to add them here
         
         Returns:
-            (final_numbers_with_opposites, filtering_applied)
+            (final_numbers, filtering_applied)
         """
         
         logging.info(f"\n📊 FILTERING DECISION:")
@@ -478,38 +558,17 @@ class AIEngineV6:
         
         if len(common_numbers) <= 12:
             logging.info(f"   ✅ No filtering needed (≤ 12 numbers)")
+            logging.info(f"   ℹ️  13-digit opposites already included (green anchors in projections)")
             
-            final = common_numbers.copy()
+            final_list = sorted(common_numbers)
         else:
             logging.info(f"   🔍 Filtering needed (> 12 numbers)")
             # Simple filtering: take first 12
             final = common_numbers[:12]
             logging.info(f"   ✅ Filtered to {len(final)} numbers")
-        
-        # Add 13-digit opposites for each number
-        logging.info(f"\n🔄 ADDING 13-DIGIT OPPOSITES:")
-        final_with_opposites = set(final)
-        opposites_added = []
-        
-        for num in final:
-            opposite = self.DIGIT_13_OPPOSITES.get(num)
-            if opposite is not None and opposite not in final_with_opposites:
-                final_with_opposites.add(opposite)
-                opposites_added.append(f"{num}→{opposite}")
-        
-        if opposites_added:
-            logging.info(f"   Added opposites: {', '.join(opposites_added)}")
-        else:
-            logging.info(f"   No new opposites needed (all already in pool)")
-        
-        # Add 0/26 pairing
-        final_list = sorted(list(final_with_opposites))
-        if 0 in final_list and 26 not in final_list:
-            final_list.append(26)
-            logging.info(f"   🔄 Added 26 (0/26 pairing rule)")
-        elif 26 in final_list and 0 not in final_list:
-            final_list.append(0)
-            logging.info(f"   🔄 Added 0 (0/26 pairing rule)")
+            logging.info(f"   ℹ️  13-digit opposites already included (green anchors in projections)")
+            
+            final_list = sorted(final)
         
         logging.info(f"\n📊 FINAL POOL: {len(final_list)} numbers")
         logging.info(f"   Numbers: {final_list}")
