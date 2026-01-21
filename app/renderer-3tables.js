@@ -877,6 +877,9 @@ function renderTable3() {
             nextProjections[refKey] = { purple, green };
         });
         
+        // Store for backend to use
+        window.table3DisplayProjections = nextProjections;
+        
         const nextProjHtml = (key) => {
             if (!nextProjections[key]) return '';
             const p = nextProjections[key];
@@ -1135,4 +1138,134 @@ function checkTable3Hit(hits, projType, spinIdx, actual, anchorRef, anchor13Opp,
     }
 }
 
-console.log('✅ AI Data Export Module loaded (FIXED)');
+console.log('✅ AI Data Export Module loaded (FIXED)');/**
+ * Get NEXT Row Projections - NEW STRATEGY
+ * ========================================
+ * 
+ * This function gets the projections for the NEXT spin from Table 3
+ * These are the numbers in the WHITE BOXES of the NEXT row
+ * 
+ * This is DIFFERENT from historical hits - these are FUTURE projections!
+ */
+
+/**
+ * Get projections for NEXT spin from Table 3
+ * @returns {Object} Projections for each pair type
+ */
+function getNextRowProjections() {
+    // Use projections from renderTable3 - same as displayed in table
+    if (!window.table3DisplayProjections) {
+        console.log('⚠️ Table 3 not rendered yet');
+        return {};
+    }
+    
+    if (spins.length < 2) {
+        console.log('⚠️ Need at least 2 spins for NEXT projections');
+        return {};
+    }
+    
+    console.log(`\n🎯 USING TABLE DISPLAY PROJECTIONS:`);
+    
+    const projections = {};
+    
+    // Map frontend keys to backend keys
+    const keyMap = {
+        'prev': 'prev',
+        'prev_plus_1': 'prevPlus1',
+        'prev_minus_1': 'prevMinus1',
+        'prev_plus_2': 'prevPlus2',
+        'prev_minus_2': 'prevMinus2',
+        'prev_prev': 'prevPrev'
+    };
+    
+    // Use stored projections from table display
+    Object.keys(keyMap).forEach(frontendKey => {
+        const backendKey = keyMap[frontendKey];
+        const displayProj = window.table3DisplayProjections[frontendKey];
+        
+        if (!displayProj || !displayProj.purple) {
+            return;
+        }
+        
+        const purple = displayProj.purple || [];
+        const green = displayProj.green || [];
+        
+        console.log(`   ${backendKey}: purple=${JSON.stringify(purple)}, green=${JSON.stringify(green)}`);
+        
+        // Expand to include wheel neighbors
+        const betNumbers = expandAnchorsToBetNumbers(purple, green);
+        
+        projections[backendKey] = {
+            anchors: purple,         // From table display
+            neighbors: green,        // From table display
+            numbers: betNumbers      // Expanded
+        };
+        
+        console.log(`   ✅ ${backendKey}: purple=${purple.length}, green=${green.length}, total=${betNumbers.length}`);
+    });
+    
+    console.log(`\n📊 Using table display projections for ${Object.keys(projections).length} pairs`);
+    
+    return projections;
+}
+
+/**
+ * Updated getAIData to include NEXT projections
+ * This is what gets sent to the backend
+ */
+window.getAIDataV6 = function() {
+    if (spins.length < 3) {
+        console.log('⚠️ Need at least 3 spins for V6 predictions');
+        return null;
+    }
+    
+    console.log('\n🔄 Preparing data for AI Engine V6...');
+    
+    // Get historical hits (for pattern validation)
+    const table3Hits = analyzeTable3Hits();
+    const table1Hits = analyzeTable1Hits();
+    const table2Hits = analyzeTable2Hits();
+    
+    // Get NEXT row projections (for actual betting) ← NEW!
+    const table3NextProjections = getNextRowProjections();
+    
+    const data = {
+        table3Hits: table3Hits,               // Historical hits
+        table3NextProjections: table3NextProjections,  // NEXT row projections ← NEW!
+        table1Hits: table1Hits,
+        table2Hits: table2Hits,
+        currentSpinCount: spins.length,
+        recentSpins: spins.slice(-10).map(s => s.actual)
+    };
+    
+    console.log('✅ Data prepared for V6:');
+    console.log(`   - Table 3 historical hits: ${Object.keys(table3Hits).length} types`);
+    console.log(`   - Table 3 NEXT projections: ${Object.keys(table3NextProjections).length} types`);
+    console.log(`   - Current spin count: ${data.currentSpinCount}`);
+    
+    return data;
+};
+
+/**
+ * Helper: Log projection details for debugging
+ */
+function logNextProjections() {
+    const projections = getNextRowProjections();
+    
+    console.log('\n📋 NEXT ROW PROJECTIONS DETAILS:');
+    console.log('='.repeat(80));
+    
+    Object.entries(projections).forEach(([projType, data]) => {
+        console.log(`\n${projType.toUpperCase()}:`);
+        console.log(`  Anchor: ${data.anchor}`);
+        console.log(`  Position Code: ${data.posCode}`);
+        console.log(`  Total Numbers: ${data.numbers.length}`);
+        console.log(`  Numbers: ${data.numbers.sort((a,b) => a-b).join(', ')}`);
+        console.log(`  Anchors (⭐): ${data.anchors.join(', ')}`);
+        console.log(`  Neighbors (💗): ${data.neighbors.join(', ')}`);
+    });
+    
+    console.log('\n' + '='.repeat(80));
+}
+
+console.log('✅ NEXT Row Projections Module loaded (V6)');

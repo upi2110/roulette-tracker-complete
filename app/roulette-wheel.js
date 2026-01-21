@@ -1,12 +1,11 @@
 /**
- * European Roulette Wheel Visualization - FIXED
- * Shows predictions OUTSIDE the wheel with clear markers
+ * European Roulette Wheel Visualization - FIXED ORDER & HIGHLIGHTING
+ * Panel order: This creates FIRST (LEFT position)
  */
 
 class RouletteWheel {
     constructor() {
         // REAL European wheel order (37 numbers: 0-36, clockwise from 0)
-        // No duplicate for 26 - that's only used in calculations
         this.wheelOrder = [
             0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 
             5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
@@ -16,7 +15,7 @@ class RouletteWheel {
         this.blackNumbers = [2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35];
         
         this.highlightedAnchors = [];
-        this.highlightedNeighbors = [];
+        this.highlightedLoose = [];
         
         this.createWheel();
     }
@@ -46,31 +45,32 @@ class RouletteWheel {
                     </div>
                     <div class="legend-item">
                         <span class="legend-color neighbor"></span>
-                        <span>Neighbors (±1)</span>
+                        <span>💗 Loose Numbers</span>
                     </div>
                 </div>
             </div>
         `;
         
-        container.insertBefore(panel, container.firstChild);
+        // INSERT AT END (so it's LEFT-most)
+        container.appendChild(panel);
         
         this.canvas = document.getElementById('wheelCanvas');
         this.ctx = this.canvas.getContext('2d');
         
         this.drawWheel();
         
-        console.log('✅ Wheel visualization initialized');
+        console.log('✅ Wheel visualization initialized (LEFT position)');
     }
     
     drawWheel() {
         const ctx = this.ctx;
-        const centerX = 200;  // Increased from 160
-        const centerY = 210;  // Increased from 170
-        const outerRadius = 150;  // Increased from 140
-        const innerRadius = 90;   // Increased from 80
-        const numberRadius = 120; // Increased from 110
+        const centerX = 200;
+        const centerY = 210;
+        const outerRadius = 150;
+        const innerRadius = 90;
+        const numberRadius = 120;
         
-        ctx.clearRect(0, 0, 400, 420); // Updated canvas size
+        ctx.clearRect(0, 0, 400, 420);
         
         // Draw wheel background
         ctx.beginPath();
@@ -98,155 +98,154 @@ class RouletteWheel {
             
             // Color - REAL WHEEL COLORS
             if (num === 0) {
-                ctx.fillStyle = '#27ae60'; // Green for 0 only
+                ctx.fillStyle = '#2ecc71';
             } else if (this.redNumbers.includes(num)) {
-                ctx.fillStyle = '#e74c3c'; // Red
+                ctx.fillStyle = '#e74c3c';
             } else {
-                ctx.fillStyle = '#2c3e50'; // Black (including 26)
+                ctx.fillStyle = '#2c3e50';
             }
             ctx.fill();
             
-            // Border
-            ctx.strokeStyle = '#95a5a6';
-            ctx.lineWidth = 1;
+            // White dividers
+            ctx.strokeStyle = '#ecf0f1';
+            ctx.lineWidth = 2;
             ctx.stroke();
             
-            // Draw number text - show REAL numbers
+            // Number text
             const textAngle = angle + angleStep / 2;
             const textX = centerX + Math.cos(textAngle) * numberRadius;
             const textY = centerY + Math.sin(textAngle) * numberRadius;
             
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 11px Arial';
+            ctx.save();
+            ctx.translate(textX, textY);
+            ctx.rotate(textAngle + Math.PI / 2);
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 14px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(num, textX, textY); // Show actual number
+            ctx.fillText(num.toString(), 0, 0);
+            
+            ctx.restore();
         });
+        
+        // Draw center circle
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 40, 0, 2 * Math.PI);
+        ctx.fillStyle = '#95a5a6';
+        ctx.fill();
+        
+        // Redraw highlights if any
+        if (this.highlightedAnchors.length > 0 || this.highlightedLoose.length > 0) {
+            this.drawHighlights();
+        }
     }
     
-    highlightPredictions(prediction) {
-        if (!prediction || !prediction.numbers || prediction.numbers.length === 0) {
-            this.clearHighlights();
-            return;
-        }
+    updateHighlights(anchors, loose) {
+        /**
+         * Update wheel highlights
+         * @param {Array} anchors - Anchor numbers (gold)
+         * @param {Array} loose - Loose numbers (pink)
+         */
         
-        // Get anchor numbers from anchor_groups
-        const anchorNumbers = new Set();
-        if (prediction.anchor_groups && Array.isArray(prediction.anchor_groups)) {
-            prediction.anchor_groups.forEach(group => {
-                if (group.anchor !== undefined && group.anchor !== null) {
-                    anchorNumbers.add(group.anchor);
-                }
-            });
-        }
+        this.highlightedAnchors = anchors || [];
+        this.highlightedLoose = loose || [];
         
-        // Split predicted numbers into anchors vs neighbors
-        this.highlightedAnchors = [];
-        this.highlightedNeighbors = [];
+        console.log(`🎡 Updating wheel highlights: ${this.highlightedAnchors.length} anchors, ${this.highlightedLoose.length} loose`);
         
-        prediction.numbers.forEach(num => {
-            if (anchorNumbers.has(num)) {
-                this.highlightedAnchors.push(num);
-            } else {
-                this.highlightedNeighbors.push(num);
-            }
-        });
-        
-        console.log('🎯 Highlighting predictions:');
-        console.log('  Anchors:', this.highlightedAnchors);
-        console.log('  Neighbors:', this.highlightedNeighbors);
-        console.log('  Total predicted:', prediction.numbers.length);
-        
+        // Redraw wheel with new highlights
         this.drawWheel();
-        this.drawPredictionMarkers();
+        this.drawHighlights();
     }
     
-    drawPredictionMarkers() {
+    drawHighlights() {
         const ctx = this.ctx;
-        const centerX = 200;  // Match drawWheel
-        const centerY = 210;  // Match drawWheel
-        const markerRadius = 175; // OUTSIDE the wheel (outerRadius 150 + margin)
+        const centerX = 200;
+        const centerY = 210;
+        const highlightRadius = 165;
         const angleStep = (2 * Math.PI) / 37;
         
-        // Draw anchor markers - GOLD STARS (bigger)
+        // Draw anchor highlights (GOLD)
         this.highlightedAnchors.forEach(num => {
-            // No conversion needed - predictions use real wheel numbers
             const idx = this.wheelOrder.indexOf(num);
             if (idx === -1) return;
             
-            const angle = idx * angleStep - Math.PI / 2 + angleStep / 2;
-            const markerX = centerX + Math.cos(angle) * markerRadius;
-            const markerY = centerY + Math.sin(angle) * markerRadius;
+            const angle = idx * angleStep - Math.PI / 2;
+            const highlightAngle = angle + angleStep / 2;
+            const highlightX = centerX + Math.cos(highlightAngle) * highlightRadius;
+            const highlightY = centerY + Math.sin(highlightAngle) * highlightRadius;
             
-            // Draw GOLD star marker (BIGGER)
+            // Gold glow
             ctx.beginPath();
-            ctx.arc(markerX, markerY, 13, 0, 2 * Math.PI); // Increased from 10 to 13
-            ctx.fillStyle = '#FFD700';
+            ctx.arc(highlightX, highlightY, 18, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.4)';
             ctx.fill();
-            ctx.strokeStyle = '#FF8C00';
+            
+            ctx.beginPath();
+            ctx.arc(highlightX, highlightY, 12, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.7)';
+            ctx.fill();
+            
+            // Gold border
+            ctx.beginPath();
+            ctx.arc(highlightX, highlightY, 14, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#FFD700';
             ctx.lineWidth = 3;
             ctx.stroke();
             
-            // Draw star symbol
-            ctx.fillStyle = '#8B4513';
-            ctx.font = 'bold 16px Arial'; // Bigger font
+            // Star icon
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 16px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('★', markerX, markerY);
-            
-            // Draw line from wheel to marker
-            const lineStartRadius = 152;  // Just outside outerRadius (150)
-            const lineStartX = centerX + Math.cos(angle) * lineStartRadius;
-            const lineStartY = centerY + Math.sin(angle) * lineStartRadius;
-            
-            ctx.beginPath();
-            ctx.moveTo(lineStartX, lineStartY);
-            ctx.lineTo(markerX, markerY);
-            ctx.strokeStyle = '#FFD700';
-            ctx.lineWidth = 2.5; // Thicker line
-            ctx.setLineDash([]);
-            ctx.stroke();
+            ctx.fillText('⭐', highlightX, highlightY);
         });
         
-        // Draw neighbor markers - BLUE CIRCLES (bigger)
-        this.highlightedNeighbors.forEach(num => {
-            // No conversion needed - predictions use real wheel numbers
+        // Draw loose highlights (PINK)
+        this.highlightedLoose.forEach(num => {
             const idx = this.wheelOrder.indexOf(num);
             if (idx === -1) return;
             
-            const angle = idx * angleStep - Math.PI / 2 + angleStep / 2;
-            const markerX = centerX + Math.cos(angle) * markerRadius;
-            const markerY = centerY + Math.sin(angle) * markerRadius;
+            const angle = idx * angleStep - Math.PI / 2;
+            const highlightAngle = angle + angleStep / 2;
+            const highlightX = centerX + Math.cos(highlightAngle) * highlightRadius;
+            const highlightY = centerY + Math.sin(highlightAngle) * highlightRadius;
             
-            // Draw BLUE circle marker (BIGGER)
+            // Pink glow
             ctx.beginPath();
-            ctx.arc(markerX, markerY, 11, 0, 2 * Math.PI); // Increased from 8 to 11
-            ctx.fillStyle = '#64B5F6';
+            ctx.arc(highlightX, highlightY, 16, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(236, 72, 153, 0.4)';
             ctx.fill();
-            ctx.strokeStyle = '#1976D2';
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-            
-            // Draw line from wheel to marker
-            const lineStartRadius = 152;  // Just outside outerRadius (150)
-            const lineStartX = centerX + Math.cos(angle) * lineStartRadius;
-            const lineStartY = centerY + Math.sin(angle) * lineStartRadius;
             
             ctx.beginPath();
-            ctx.moveTo(lineStartX, lineStartY);
-            ctx.lineTo(markerX, markerY);
-            ctx.strokeStyle = '#64B5F6';
+            ctx.arc(highlightX, highlightY, 10, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(236, 72, 153, 0.7)';
+            ctx.fill();
+            
+            // Pink border
+            ctx.beginPath();
+            ctx.arc(highlightX, highlightY, 12, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#ec4899';
             ctx.lineWidth = 2;
-            ctx.setLineDash([3, 3]);
             ctx.stroke();
-            ctx.setLineDash([]);
+            
+            // Heart icon
+            ctx.fillStyle = '#ec4899';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('💗', highlightX, highlightY);
         });
     }
     
     clearHighlights() {
+        /**
+         * Clear all highlights
+         */
         this.highlightedAnchors = [];
-        this.highlightedNeighbors = [];
+        this.highlightedLoose = [];
         this.drawWheel();
+        console.log('🎡 Wheel highlights cleared');
     }
 }
 
@@ -256,6 +255,8 @@ window.rouletteWheel = null;
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         window.rouletteWheel = new RouletteWheel();
-        console.log('✅ Roulette Wheel ready');
+        console.log('✅ Roulette Wheel ready (LEFT position)');
     }, 100);
 });
+
+console.log('✅ Roulette Wheel script loaded');
