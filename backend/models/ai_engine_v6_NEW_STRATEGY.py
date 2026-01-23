@@ -77,6 +77,59 @@ class AIEngineV6:
             logging.info(f"   🎰 Added 0 (betting rule: always bet 0 and 26 together)")
         
         return sorted(result)
+    
+    def _apply_zero_region_rule(self, numbers: List[int], anchors: List[int]) -> List[int]:
+        """
+        Special rule for 0/26 wheel wrap region
+        
+        Since 0 and 26 are the same wheel position, special neighbor rules apply:
+        - For anchor 3: Add 35, 3, 26, 0
+        - For anchor 26 or 0: Add 3, 26, 0, 32
+        - For anchor 32: Add 26, 0, 32, 15
+        """
+        anchors_set = set(anchors)
+        numbers_set = set(numbers)
+        added = []
+        
+        # Check which special numbers are anchors
+        if 3 in anchors_set:
+            # Add: 35, 3, 26, 0
+            for num in [35, 3, 26, 0]:
+                if num not in numbers_set:
+                    numbers.append(num)
+                    numbers_set.add(num)
+                    added.append(num)
+                    
+        if 26 in anchors_set or 0 in anchors_set:
+            # Add: 3, 26, 0, 32
+            for num in [3, 26, 0, 32]:
+                if num not in numbers_set:
+                    numbers.append(num)
+                    numbers_set.add(num)
+                    added.append(num)
+                    
+        if 32 in anchors_set:
+            # Add: 26, 0, 32, 15
+            for num in [26, 0, 32, 15]:
+                if num not in numbers_set:
+                    numbers.append(num)
+                    numbers_set.add(num)
+                    added.append(num)
+        
+        if added:
+            logging.info(f"\n🔄 ZERO REGION RULE APPLIED:")
+            logging.info(f"   Added numbers: {sorted(added)}")
+            logging.info(f"   (0/26 wrap region special neighbors)")
+        
+        return sorted(numbers)
+    
+    def _pair_has_golden(self, pair_data: Dict) -> bool:
+        """Check if a pair has golden patterns in its hits"""
+        hits = pair_data.get('hits', [])
+        for hit in hits:
+            if hit.get('posCode', 'XX') in self.GOLDEN_PATTERNS:
+                return True
+        return False
         
     def predict(self, table_data: Dict) -> Dict:
         """
@@ -122,16 +175,60 @@ class AIEngineV6:
             if not next_projections:
                 return self._return_wait("No NEXT row projections available")
             
-            # STEP 4: Find common numbers
-            logging.info("\n" + "="*80)
-            logging.info("STEP 4: FIND COMMON NUMBERS")
-            logging.info("="*80)
+            # Check if either pair has ideal number count (10-14 numbers)
+            pair1_numbers = next_projections.get(top_2_pairs[0], {}).get('numbers', [])
+            pair2_numbers = next_projections.get(top_2_pairs[1], {}).get('numbers', []) if len(top_2_pairs) > 1 else []
             
-            common_numbers, selected_pairs = self._get_common_numbers(
-                top_2_pairs, 
-                next_projections, 
-                confirmed_pairs
-            )
+            pair1_ideal = 10 <= len(pair1_numbers) <= 14
+            pair2_ideal = 10 <= len(pair2_numbers) <= 14
+            
+            # Track if we used ideal count rule
+            used_ideal_count_rule = False
+            
+            if pair1_ideal or pair2_ideal:
+                # SPECIAL CASE: One pair has ideal count (10-14 numbers)
+                # Use it directly without comparison
+                used_ideal_count_rule = True
+                
+                logging.info("\n" + "="*80)
+                logging.info("🎯 SPECIAL CASE: PAIR HAS IDEAL NUMBER COUNT (10-14)")
+                logging.info("="*80)
+                logging.info("   Skipping common pool calculation")
+                logging.info("   Using the ideal pair directly")
+                
+                logging.info(f"\n   Pair 1 ({top_2_pairs[0]}): {len(pair1_numbers)} numbers{' ✅ IDEAL' if pair1_ideal else ''}")
+                logging.info(f"   Pair 2 ({top_2_pairs[1]}): {len(pair2_numbers)} numbers{' ✅ IDEAL' if pair2_ideal else ''}")
+                
+                # Use the ideal pair, prefer the one closest to 12
+                if pair1_ideal and pair2_ideal:
+                    # Both ideal - use one closest to 12
+                    if abs(len(pair1_numbers) - 12) <= abs(len(pair2_numbers) - 12):
+                        common_numbers = pair1_numbers
+                        selected_pairs = [top_2_pairs[0]]
+                        logging.info(f"\n   ✅ Selected {top_2_pairs[0]} ({len(common_numbers)} numbers, closest to 12)")
+                    else:
+                        common_numbers = pair2_numbers
+                        selected_pairs = [top_2_pairs[1]]
+                        logging.info(f"\n   ✅ Selected {top_2_pairs[1]} ({len(common_numbers)} numbers, closest to 12)")
+                elif pair1_ideal:
+                    common_numbers = pair1_numbers
+                    selected_pairs = [top_2_pairs[0]]
+                    logging.info(f"\n   ✅ Selected {top_2_pairs[0]} ({len(common_numbers)} numbers)")
+                else:
+                    common_numbers = pair2_numbers
+                    selected_pairs = [top_2_pairs[1]]
+                    logging.info(f"\n   ✅ Selected {top_2_pairs[1]} ({len(common_numbers)} numbers)")
+            else:
+                # NORMAL CASE: Find common numbers
+                logging.info("\n" + "="*80)
+                logging.info("STEP 4: FIND COMMON NUMBERS")
+                logging.info("="*80)
+                
+                common_numbers, selected_pairs = self._get_common_numbers(
+                    top_2_pairs, 
+                    next_projections, 
+                    confirmed_pairs
+                )
             
             if not common_numbers:
                 return self._return_wait("No common numbers found between top pairs")
@@ -149,6 +246,16 @@ class AIEngineV6:
             
             # Apply betting rule: if 0 OR 26 in predictions, always bet BOTH
             final_numbers = self._ensure_0_26_paired(final_numbers)
+            
+            # Apply zero region rule: expand neighbors for wrap point anchors
+            # Get all purple and green anchors from selected projections
+            all_anchors = []
+            for pair_name in selected_pairs:
+                pair_proj = next_projections.get(pair_name, {})
+                all_anchors.extend(pair_proj.get('anchors', []))  # Purple anchors
+                all_anchors.extend(pair_proj.get('neighbors', []))  # Green anchors
+            
+            final_numbers = self._apply_zero_region_rule(final_numbers, all_anchors)
             
             # STEP 6: Calculate REAL anchors based on wheel neighbors
             logging.info("\n" + "="*80)
@@ -178,6 +285,12 @@ class AIEngineV6:
             signal = self._make_decision(confidence, confirmed_pairs, selected_pairs)
             
             # STEP 9: Prepare response
+            # Determine strategy text based on whether ideal count rule was used
+            if used_ideal_count_rule:
+                strategy_text = '🌟 GOLDEN RULE - Ideal Count (10-14 numbers) 🌟'
+            else:
+                strategy_text = 'V6 - Common Numbers from Top 2 Pairs'
+            
             response = {
                 'signal': signal,
                 'numbers': final_numbers,
@@ -187,7 +300,8 @@ class AIEngineV6:
                 'confidence': round(confidence, 2),
                 'can_predict': True,
                 'reasoning': {
-                    'strategy': 'V6 - Common Numbers from Top 2 Pairs',
+                    'strategy': strategy_text,
+                    'used_ideal_count_rule': used_ideal_count_rule,
                     'selected_pairs': selected_pairs,
                     'pair1_hits': confirmed_pairs[selected_pairs[0]]['count'],
                     'pair2_hits': confirmed_pairs[selected_pairs[1]]['count'] if len(selected_pairs) > 1 else 0,
@@ -295,9 +409,8 @@ class AIEngineV6:
             if len(hits_data) < 2:
                 continue
             
-            # Check if most recent spin is included in hits
-            # hits_data is ordered with MOST RECENT first (index 0)
-            most_recent_hit = hits_data[0]
+            # Get the most recent spin number (LAST element in array, as it's ordered oldest to newest)
+            most_recent_spin = hits_data[-1].get('actual', -1)
             
             # Check for consecutive hits starting from most recent
             consecutive_count = 1
@@ -332,6 +445,20 @@ class AIEngineV6:
                     else:
                         # Pattern not consistent - stop counting
                         break
+            
+            # CRITICAL CHECK: Verify if most recent spin is included in the consecutive count
+            if consecutive_count > 0:
+                # Get the last spin included in the consecutive sequence
+                last_hit_index = consecutive_count - 1
+                last_hit_in_sequence = hits_data[last_hit_index]
+                last_spin_in_sequence = last_hit_in_sequence.get('actual', -1)
+                
+                # If the last hit in sequence is NOT the most recent spin, streak was broken
+                if last_spin_in_sequence != most_recent_spin:
+                    logging.info(f"❌ {proj_type}: Streak broken by most recent spin")
+                    logging.info(f"   Last hit in sequence: Spin {last_spin_in_sequence}, Most recent: Spin {most_recent_spin}")
+                    logging.info(f"   Pattern from history: {' → '.join(pattern_codes[:consecutive_count])}")
+                    consecutive_count = 0
             
             if consecutive_count >= 2:
                 avg_priority = priority_sum // consecutive_count if consecutive_count > 0 else 0
