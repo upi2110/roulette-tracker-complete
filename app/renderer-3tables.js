@@ -266,18 +266,66 @@ async function undoLast() {
                 mp.sessionData.totalWins = Math.max(0, mp.sessionData.totalWins - 1);
             } else {
                 mp.sessionData.totalLosses = Math.max(0, mp.sessionData.totalLosses - 1);
-                mp.sessionData.consecutiveLosses = Math.max(0, mp.sessionData.consecutiveLosses - 1);
             }
-
-            // Reset bet per number back to $2 base (strategy adjustments undone)
-            mp.sessionData.currentBetPerNumber = 2;
 
             // Remove from histories
             mp.betHistory.shift();
             const idx = spinsWithBets.indexOf(removedSpinIndex);
             if (idx > -1) spinsWithBets.splice(idx, 1);
 
-            console.log(`✅ Money reverted: bankroll=$${mp.sessionData.currentBankroll}, bet reset to $2`);
+            // ═══ REPLAY remaining bet history to reconstruct strategy state ═══
+            // This correctly handles ALL strategies (1, 2, 3) by replaying
+            // the win/loss sequence to recalculate consecutive counts & bet amount
+            const strategy = mp.sessionData.bettingStrategy;
+            let replayConsLosses = 0;
+            let replayConsWins = 0;
+            let replayBet = 2; // Always start from base
+
+            // betHistory is newest-first, so replay in reverse (oldest first)
+            for (let i = mp.betHistory.length - 1; i >= 0; i--) {
+                const bet = mp.betHistory[i];
+                if (bet.hit) {
+                    replayConsLosses = 0;
+                    replayConsWins++;
+                    // Apply strategy win adjustment
+                    if (strategy === 1) {
+                        replayBet = Math.max(2, replayBet - 1);
+                    } else if (strategy === 2) {
+                        if (replayConsWins >= 2) {
+                            replayBet = Math.max(2, replayBet - 1);
+                            replayConsWins = 0;
+                        }
+                    } else if (strategy === 3) {
+                        if (replayConsWins >= 2) {
+                            replayBet = Math.max(2, replayBet - 1);
+                            replayConsWins = 0;
+                        }
+                    }
+                } else {
+                    replayConsWins = 0;
+                    replayConsLosses++;
+                    // Apply strategy loss adjustment
+                    if (strategy === 1) {
+                        replayBet += 1;
+                    } else if (strategy === 2) {
+                        if (replayConsLosses >= 2) {
+                            replayBet += 1;
+                            replayConsLosses = 0;
+                        }
+                    } else if (strategy === 3) {
+                        if (replayConsLosses >= 3) {
+                            replayBet += 2;
+                            replayConsLosses = 0;
+                        }
+                    }
+                }
+            }
+
+            mp.sessionData.consecutiveLosses = replayConsLosses;
+            mp.sessionData.consecutiveWins = replayConsWins;
+            mp.sessionData.currentBetPerNumber = replayBet;
+
+            console.log(`✅ Money reverted: bankroll=$${mp.sessionData.currentBankroll}, strategy=${strategy}, bet=$${replayBet}, consL=${replayConsLosses}, consW=${replayConsWins}`);
         }
 
         // Clear pending bet (prediction is about to change)
@@ -364,6 +412,8 @@ function resetAll() {
         
         // Reset Money Management Panel
         if (window.moneyPanel) {
+            // Preserve current strategy selection across reset
+            const currentStrategy = window.moneyPanel.sessionData.bettingStrategy || 1;
             window.moneyPanel.sessionData = {
                 startingBankroll: 4000,
                 currentBankroll: 4000,
@@ -373,15 +423,34 @@ function resetAll() {
                 totalWins: 0,
                 totalLosses: 0,
                 consecutiveLosses: 0,
+                consecutiveWins: 0,
                 lastBetAmount: 0,
                 lastBetNumbers: 12,
-                isSessionActive: false
+                isSessionActive: false,
+                isBettingEnabled: false,
+                bettingStrategy: currentStrategy,
+                currentBetPerNumber: 2,
+                spinsWithBets: []
             };
             window.moneyPanel.betHistory = [];
             window.moneyPanel.pendingBet = null;
             window.moneyPanel.lastSpinCount = 0;
+
+            // Reset betting button to PAUSED state
+            const bettingBtn = document.getElementById('toggleBettingBtn');
+            if (bettingBtn) {
+                bettingBtn.textContent = '▶️ START BETTING';
+                bettingBtn.style.backgroundColor = '#28a745';
+            }
+            const bettingStatus = document.getElementById('bettingStatus');
+            if (bettingStatus) {
+                bettingStatus.textContent = '⏸️ Betting PAUSED - Click START to begin';
+                bettingStatus.style.backgroundColor = '#f8d7da';
+                bettingStatus.style.color = '#721c24';
+            }
+
             window.moneyPanel.render();
-            console.log('✅ Money panel reset');
+            console.log(`✅ Money panel reset (strategy ${currentStrategy} preserved)`);
         }
         
         // Reset AI Prediction Panel (clear selections, predictions, display)

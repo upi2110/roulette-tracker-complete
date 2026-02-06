@@ -715,24 +715,29 @@ class MoneyManagementPanel {
         
         // Store prediction details
         const betAmount = this.calculateBetAmount(prediction.numbers.length);
-        
-        this.pendingBet = {
-            betAmount: betAmount,
-            numbersCount: prediction.numbers.length,
-            predictedNumbers: prediction.numbers,
-            signal: prediction.signal,
-            confidence: prediction.confidence
-        };
-        
-        // Update session data for display
+
+        // Only store pending bet if betting is ENABLED
+        if (this.sessionData.isBettingEnabled) {
+            this.pendingBet = {
+                betAmount: betAmount,
+                numbersCount: prediction.numbers.length,
+                predictedNumbers: prediction.numbers,
+                signal: prediction.signal,
+                confidence: prediction.confidence
+            };
+            console.log('💰 Pending bet stored:', {
+                betPerNumber: betAmount,
+                totalNumbers: prediction.numbers.length,
+                totalBet: betAmount * prediction.numbers.length
+            });
+        } else {
+            this.pendingBet = null;
+            console.log('⏸️ Betting paused - prediction received but no bet placed');
+        }
+
+        // Update session data for display (always show what WOULD be bet)
         this.sessionData.lastBetAmount = betAmount;
         this.sessionData.lastBetNumbers = prediction.numbers.length;
-        
-        console.log('💰 Pending bet stored:', {
-            betPerNumber: betAmount,
-            totalNumbers: prediction.numbers.length,
-            totalBet: betAmount * prediction.numbers.length
-        });
         
         // Update display
         this.render();
