@@ -50,7 +50,7 @@ class TableData(BaseModel):
     table2Hits: Dict
     currentSpinCount: int
     recentSpins: List[int]
-    selectedPairs: Optional[List[str]] = None
+    selectedPairs: Optional[List[str]] = None  # MANUAL MODE
 
 
 class BetResult(BaseModel):
@@ -92,6 +92,8 @@ async def get_prediction(data: TableData):
         print(f"Recent spins: {data.recentSpins}")
         print(f"Table 3 historical hits: {len(data.table3Hits)} types")
         print(f"Table 3 NEXT projections: {len(data.table3NextProjections)} types")
+        if data.selectedPairs:
+            print(f"🎯 MANUAL MODE: Selected pairs: {data.selectedPairs}")
         
         # Convert Pydantic model to dict
         table_data = {
@@ -100,7 +102,8 @@ async def get_prediction(data: TableData):
             'table1Hits': data.table1Hits,
             'table2Hits': data.table2Hits,
             'currentSpinCount': data.currentSpinCount,
-            'recentSpins': data.recentSpins
+            'recentSpins': data.recentSpins,
+            'selectedPairs': data.selectedPairs  # MANUAL MODE
         }
         
         # Get prediction from engine

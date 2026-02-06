@@ -2,12 +2,7 @@
  * AI Prediction Panel - WITH MANUAL PAIR SELECTION
  * User can select 1+ pairs from Table 3 and get common numbers
  * 
- * CHANGES FROM ORIGINAL:
- * 1. loadAvailablePairs() - loads from table3NextProjections instead of table3Hits
- * 2. Added getWheelNeighbors() - calculates ±1 neighbors on wheel
- * 3. Added expandWithNeighbors() - expands numbers with neighbors
- * 4. Added normalize026() - treats 0 and 26 as same number
- * 5. getPredictions() - calculates common numbers locally instead of calling backend
+ * FIXED: Use pairData.numbers directly (already has anchors + neighbors)
  */
 
 class AIPredictionPanel {
@@ -16,12 +11,6 @@ class AIPredictionPanel {
         this.isExpanded = true;
         this.availablePairs = [];
         this.selectedPairs = new Set();
-        
-        // European wheel order for neighbor calculations
-        this.WHEEL_ORDER = [
-            0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
-            5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
-        ];
         
         this.createPanel();
         this.setupToggle();
@@ -136,7 +125,7 @@ class AIPredictionPanel {
                     <ul style="margin: 10px 0 0 0; padding-left: 22px;">
                         <li>Select 1 or more pairs from Table 3</li>
                         <li>System finds common numbers between selected pairs</li>
-                        <li>Adds ±1 wheel neighbors for each number</li>
+                        <li>Numbers already include ±1 wheel neighbors</li>
                         <li>Shows final common numbers to bet</li>
                     </ul>
                 </div>
@@ -180,7 +169,7 @@ class AIPredictionPanel {
     }
 
     /**
-     * CHANGED: Load from table3NextProjections instead of table3Hits
+     * Load available pairs from Table 3 NEXT projections
      */
     loadAvailablePairs() {
         console.log('🔄 Loading available pairs from Table 3 NEXT projections...');
@@ -191,7 +180,13 @@ class AIPredictionPanel {
         }
         
         const tableData = window.getAIDataV6();
-        const nextProjections = tableData.table3NextProjections || {};
+        
+        if (!tableData || !tableData.table3NextProjections) {
+            console.warn('⚠️ No table3NextProjections available yet');
+            return;
+        }
+        
+        const nextProjections = tableData.table3NextProjections;
         
         console.log('📊 Table 3 NEXT projections:', nextProjections);
         
@@ -342,55 +337,7 @@ class AIPredictionPanel {
     }
 
     /**
-     * NEW: Get wheel neighbors (±1 positions)
-     */
-    getWheelNeighbors(number) {
-        const index = this.WHEEL_ORDER.indexOf(number);
-        if (index === -1) return [number];
-        
-        const leftIndex = (index - 1 + this.WHEEL_ORDER.length) % this.WHEEL_ORDER.length;
-        const rightIndex = (index + 1) % this.WHEEL_ORDER.length;
-        
-        return [
-            this.WHEEL_ORDER[leftIndex],
-            number,
-            this.WHEEL_ORDER[rightIndex]
-        ];
-    }
-
-    /**
-     * NEW: Expand numbers to include ±1 neighbors
-     */
-    expandWithNeighbors(numbers) {
-        const expanded = new Set();
-        
-        numbers.forEach(num => {
-            const neighbors = this.getWheelNeighbors(num);
-            neighbors.forEach(n => expanded.add(n));
-        });
-        
-        return Array.from(expanded).sort((a, b) => a - b);
-    }
-
-    /**
-     * NEW: Treat 0 and 26 as same number
-     */
-    normalize026(numbers) {
-        const hasZero = numbers.includes(0);
-        const has26 = numbers.includes(26);
-        
-        if (hasZero || has26) {
-            const normalized = new Set(numbers);
-            normalized.add(0);
-            normalized.add(26);
-            return Array.from(normalized).sort((a, b) => a - b);
-        }
-        
-        return numbers;
-    }
-
-    /**
-     * CHANGED: Calculate common numbers locally instead of calling backend
+     * Get predictions - send to backend with selectedPairs
      */
     async getPredictions() {
         if (this.selectedPairs.size === 0) {
@@ -398,7 +345,10 @@ class AIPredictionPanel {
             return;
         }
 
-        console.log('🎲 Getting predictions for selected pairs:', Array.from(this.selectedPairs));
+        console.log('\n========================================');
+        console.log('🎲 MANUAL PREDICTION REQUEST');
+        console.log('========================================');
+        console.log('Selected pairs:', Array.from(this.selectedPairs));
 
         const signalIndicator = document.getElementById('signalIndicator');
         if (signalIndicator) {
@@ -407,67 +357,32 @@ class AIPredictionPanel {
         }
 
         try {
+            // Get table data
             if (typeof window.getAIDataV6 !== 'function') {
                 throw new Error('getAIDataV6 function not available');
             }
 
             const tableData = window.getAIDataV6();
-            const nextProjections = tableData.table3NextProjections || {};
             
-            // Get numbers for each selected pair and expand with neighbors
-            const allNumberSets = [];
-            
-            Array.from(this.selectedPairs).forEach(pairKey => {
-                const pairData = nextProjections[pairKey];
-                if (pairData && pairData.numbers) {
-                    const baseNumbers = pairData.numbers;
-                    const withNeighbors = this.expandWithNeighbors(baseNumbers);
-                    
-                    console.log(`📊 ${pairKey}:`);
-                    console.log(`   Base: ${baseNumbers.length} numbers`, baseNumbers);
-                    console.log(`   With neighbors: ${withNeighbors.length} numbers`, withNeighbors);
-                    
-                    allNumberSets.push(withNeighbors);
-                }
-            });
-            
-            if (allNumberSets.length === 0) {
-                throw new Error('No valid pairs selected');
-            }
-            
-            // Find common numbers
-            let commonNumbers = allNumberSets[0];
-            for (let i = 1; i < allNumberSets.length; i++) {
-                commonNumbers = commonNumbers.filter(num => allNumberSets[i].includes(num));
-            }
-            
-            console.log(`✅ Common numbers (${commonNumbers.length}):`, commonNumbers);
-            
-            // Apply 0/26 rule
-            commonNumbers = this.normalize026(commonNumbers);
-            console.log(`✅ After 0/26 rule (${commonNumbers.length}):`, commonNumbers);
-            
-            if (commonNumbers.length === 0) {
-                throw new Error('No common numbers found');
-            }
-            
-            // Create prediction
-            const prediction = {
-                signal: 'BET NOW',
-                numbers: commonNumbers,
-                anchors: commonNumbers,
-                loose: [],
-                confidence: 90,
-                mode: 'MANUAL',
-                reasoning: {
-                    selected_pairs: Array.from(this.selectedPairs)
-                }
+            // Add selectedPairs to request
+            const requestData = {
+                ...tableData,
+                selectedPairs: Array.from(this.selectedPairs)
             };
             
+            console.log('📤 Sending to backend with selectedPairs:', requestData.selectedPairs);
+
+            // Call backend
+            const prediction = await window.aiAPI.getPredictionWithTableData(requestData);
+            
+            console.log('📥 Backend response:', prediction);
+            console.log('========================================\n');
+
+            // Update display
             this.updatePrediction(prediction);
 
         } catch (error) {
-            console.error('❌ Error:', error);
+            console.error('❌ ERROR:', error);
             
             if (signalIndicator) {
                 signalIndicator.textContent = 'ERROR';
@@ -563,6 +478,7 @@ class AIPredictionPanel {
                         <li style="margin-bottom: 4px;">• Common numbers found: <strong>${allNumbers.length}</strong></li>
                         <li style="margin-bottom: 4px;">• Anchors: <strong>${anchors.length}</strong></li>
                         <li style="margin-bottom: 4px;">• Loose: <strong>${loose.length}</strong></li>
+                        <li style="margin-bottom: 4px;">• Mode: <strong>${prediction.mode || 'AUTO'}</strong></li>
                     </ul>
                 </div>
             `;
