@@ -134,6 +134,7 @@ class AIEngineV6:
     def predict(self, table_data: Dict) -> Dict:
         """
         Main prediction function using new strategy
+        Supports both AUTO and MANUAL pair selection
         """
         
         logging.info("="*80)
@@ -144,10 +145,154 @@ class AIEngineV6:
         if not self._has_sufficient_data(table_data):
             return self._return_wait("Insufficient data - need at least 3 spins")
         
+        # Check if we have enough data
+        if not self._has_sufficient_data(table_data):
+            return self._return_wait("Insufficient data - need at least 3 spins")
+        
+        # ============================================================
+        # MANUAL MODE: Check if user selected pairs manually
+        # ============================================================
+        selected_pairs = table_data.get('selectedPairs', None)
+        
+        if selected_pairs and len(selected_pairs) > 0:
+            # User selected pairs manually!
+            logging.info("\n" + "="*80)
+            logging.info("🎯 MANUAL MODE: USER SELECTED PAIRS")
+            logging.info("="*80)
+            logging.info(f"   User selected {len(selected_pairs)} pairs:")
+            for pair in selected_pairs:
+                logging.info(f"      - {pair}")
+            
+            # Need at least 2 pairs
+            if len(selected_pairs) == 1:
+                logging.info("\n   ⚠️ Only 1 pair selected - need at least 2")
+                return self._return_wait("Please select at least 2 pairs")
+            
+            # Use first 2 if more than 2 selected
+            top_2_pairs = selected_pairs[:2]
+            logging.info(f"\n   ✅ Using pairs: {top_2_pairs}")
+            
+            # Get next projections
+            logging.info("\n" + "="*80)
+            logging.info("STEP 3: GET NEXT ROW PROJECTIONS (MANUAL MODE)")
+            logging.info("="*80)
+            
+            next_projections = table_data.get('table3NextProjections', {})
+            
+            if not next_projections:
+                return self._return_wait("No NEXT row projections available")
+            
+            # Check if pairs exist
+            for pair in top_2_pairs:
+                if pair not in next_projections:
+                    logging.warning(f"   ⚠️ Pair '{pair}' not found")
+                    return self._return_wait(f"Pair '{pair}' not available")
+            
+            # Get numbers for each pair
+            pair1_numbers = next_projections.get(top_2_pairs[0], {}).get('numbers', [])
+            pair2_numbers = next_projections.get(top_2_pairs[1], {}).get('numbers', [])
+            
+            logging.info(f"\n   Pair 1 ({top_2_pairs[0]}): {len(pair1_numbers)} numbers")
+            logging.info(f"   Pair 2 ({top_2_pairs[1]}): {len(pair2_numbers)} numbers")
+            
+            # Check if either pair has ideal count (10-14 numbers)
+            pair1_ideal = 10 <= len(pair1_numbers) <= 14
+            pair2_ideal = 10 <= len(pair2_numbers) <= 14
+            
+            used_ideal_count_rule = False
+            
+            if pair1_ideal or pair2_ideal:
+                # One pair has ideal count - use it directly!
+                used_ideal_count_rule = True
+                
+                logging.info("\n" + "="*80)
+                logging.info("🎯 PAIR HAS IDEAL COUNT (10-14)")
+                logging.info("="*80)
+                
+                if pair1_ideal and pair2_ideal:
+                    # Both ideal - pick closest to 12
+                    if abs(len(pair1_numbers) - 12) <= abs(len(pair2_numbers) - 12):
+                        common_numbers = pair1_numbers
+                        final_selected_pairs = [top_2_pairs[0]]
+                    else:
+                        common_numbers = pair2_numbers
+                        final_selected_pairs = [top_2_pairs[1]]
+                elif pair1_ideal:
+                    common_numbers = pair1_numbers
+                    final_selected_pairs = [top_2_pairs[0]]
+                else:
+                    common_numbers = pair2_numbers
+                    final_selected_pairs = [top_2_pairs[1]]
+                
+                logging.info(f"   ✅ Using {final_selected_pairs[0]} ({len(common_numbers)} numbers)")
+            else:
+                # Find common numbers between the two pairs
+                logging.info("\n" + "="*80)
+                logging.info("STEP 4: FIND COMMON NUMBERS (MANUAL MODE)")
+                logging.info("="*80)
+                
+                confirmed_pairs = self._find_confirmed_pairs(table_data['table3Hits'])
+                
+                common_numbers, final_selected_pairs = self._get_common_numbers(
+                    top_2_pairs,
+                    next_projections,
+                    confirmed_pairs
+                )
+            
+            if not common_numbers:
+                return self._return_wait("No common numbers between selected pairs")
+            
+            # Filter to 12 numbers
+            logging.info("\n" + "="*80)
+            logging.info("STEP 5: FILTER TO 12 NUMBERS")
+            logging.info("="*80)
+            
+            final_numbers, filtering_applied = self._filter_to_12(
+                common_numbers,
+                table_data.get('table1Hits', {}),
+                table_data.get('table2Hits', {})
+            )
+            
+            # Apply betting rules
+            final_numbers = self._ensure_0_26_paired(final_numbers)
+            final_numbers = self._apply_zero_region_rule(final_numbers, final_numbers)
+            
+            # Calculate anchors
+            anchors, loose = self._calculate_anchors_and_loose(final_numbers)
+            
+            # Build result
+            result = {
+                'signal': 'BET NOW',
+                'numbers': sorted(final_numbers),
+                'anchors': sorted(anchors),
+                'loose': sorted(loose),
+                'full_pool': sorted(common_numbers),
+                'confidence': 95 if used_ideal_count_rule else 85,
+                'pairs_used': final_selected_pairs,
+                'mode': 'MANUAL',
+                'ideal_count_used': used_ideal_count_rule,
+                'filtering_applied': filtering_applied
+            }
+            
+            logging.info("\n" + "="*80)
+            logging.info("✅ MANUAL MODE PREDICTION COMPLETE")
+            logging.info("="*80)
+            logging.info(f"   Final numbers: {len(result['numbers'])}")
+            logging.info(f"   Anchors: {len(result['anchors'])}")
+            logging.info(f"   Loose: {len(result['loose'])}")
+            logging.info(f"   Confidence: {result['confidence']}%")
+            logging.info("="*80)
+            
+            return result
+        
+        # ============================================================
+        # END OF MANUAL MODE - AUTO MODE CONTINUES BELOW
+        # ============================================================
+        
         try:
             # STEP 1: Find pairs with consecutive hits from Table 3
             logging.info("\n" + "="*80)
-            logging.info("STEP 1: FIND PAIRS WITH CONSECUTIVE HITS")
+            logging.info("STEP 1: FIND PAIRS WITH CONSECUTIVE HITS (AUTO MODE)")
             logging.info("="*80)
             
             confirmed_pairs = self._find_confirmed_pairs(table_data['table3Hits'])

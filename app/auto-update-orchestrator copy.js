@@ -1,7 +1,6 @@
 /**
- * Auto-Update Orchestrator - V6 INTEGRATED
- * Automatically triggers predictions and updates all panels
- * Integrates with existing money-management-panel.js
+ * Auto-Update Orchestrator - FIXED INTEGRATION
+ * Coordinates updates between all panels
  */
 
 class AutoUpdateOrchestrator {
@@ -10,7 +9,7 @@ class AutoUpdateOrchestrator {
         this.isEnabled = true;
         this.sessionStarted = false;
         
-        console.log('🔧 Auto-Update Orchestrator initialized (V6 INTEGRATED)');
+        console.log('🔧 Auto-Update Orchestrator initialized');
     }
 
     setupListeners() {
@@ -40,6 +39,7 @@ class AutoUpdateOrchestrator {
 
     async startSessionFirst() {
         try {
+            // Use V6 integration
             const integration = window.aiIntegrationV6 || window.aiIntegration;
             
             if (!integration) {
@@ -60,18 +60,15 @@ class AutoUpdateOrchestrator {
         console.log('🔄 Updating all panels...');
         
         try {
-            // 1. Get AI prediction
+            // 1. Get AI prediction (this updates AI panel internally)
             await this.updateAIPrediction();
-            console.log('✅ AI Panel updated');
             
-            // 2. Update roulette wheel (done in updateAIPredictionPanel)
-            console.log('✅ Wheel updated (via AI panel)');
+            // Note: Wheel and money panel are updated inside updateAIPrediction
+            // via aiPanel.updatePrediction() which calls:
+            //   - window.rouletteWheel.updateHighlights()
+            //   - window.moneyPanel.setPrediction()
             
-            // 3. Money management updates itself via checkForNewSpin()
-            // Just make sure it's aware
-            if (window.moneyPanel) {
-                console.log('💰 Money panel will check pending bet...');
-            }
+            console.log('✅ All panels updated');
             
         } catch (error) {
             console.error('❌ Error updating panels:', error);
@@ -80,6 +77,7 @@ class AutoUpdateOrchestrator {
 
     async updateAIPrediction() {
         try {
+            // Use V6 integration
             const integration = window.aiIntegrationV6 || window.aiIntegration;
             
             if (!integration) {
@@ -87,7 +85,7 @@ class AutoUpdateOrchestrator {
                 return;
             }
             
-            // Get prediction using V6
+            // Get prediction from backend
             const prediction = await integration.getPrediction(window.spins || []);
             
             if (!prediction) {
@@ -95,17 +93,21 @@ class AutoUpdateOrchestrator {
                 return;
             }
             
-            console.log('🤖 V6 Prediction:', prediction);
+            console.log('🤖 V6 Prediction received:', {
+                signal: prediction.signal,
+                numbers: prediction.numbers?.length || 0,
+                anchors: prediction.anchors?.length || 0,
+                loose: prediction.loose?.length || 0,
+                confidence: prediction.confidence
+            });
             
-            // Update AI prediction panel display
-            if (window.updateAIPredictionPanel) {
-                window.updateAIPredictionPanel(prediction);
-            }
-            
-            // CRITICAL: Update money panel with new prediction
-            if (window.moneyPanel && window.moneyPanel.setPrediction) {
-                window.moneyPanel.setPrediction(prediction);
-                console.log('💰 Money panel received new prediction');
+            // Update AI prediction panel
+            // This will cascade to wheel and money panel
+            if (window.aiPanel && typeof window.aiPanel.updatePrediction === 'function') {
+                window.aiPanel.updatePrediction(prediction);
+                console.log('✅ AI panel update triggered (cascades to wheel & money)');
+            } else {
+                console.warn('⚠️ AI panel not available yet');
             }
             
         } catch (error) {
@@ -135,11 +137,16 @@ const autoUpdateOrchestrator = new AutoUpdateOrchestrator();
 
 // Start listening for changes
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🎬 Setting up auto-update listeners (V6 INTEGRATED)...');
-    autoUpdateOrchestrator.setupListeners();
+    console.log('🎬 Setting up auto-update listeners...');
+    
+    // Wait for all panels to be ready
+    setTimeout(() => {
+        autoUpdateOrchestrator.setupListeners();
+        console.log('✅ Auto-update orchestrator active');
+    }, 300); // Wait for all panels to initialize
 });
 
 // Export for global access
 window.autoUpdateOrchestrator = autoUpdateOrchestrator;
 
-console.log('✅ Auto-Update Orchestrator (V6 INTEGRATED) loaded');
+console.log('✅ Auto-Update Orchestrator script loaded');

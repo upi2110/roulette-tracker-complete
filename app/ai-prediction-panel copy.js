@@ -1,13 +1,6 @@
 /**
  * AI Prediction Panel - WITH MANUAL PAIR SELECTION
  * User can select 1+ pairs from Table 3 and get common numbers
- * 
- * CHANGES FROM ORIGINAL:
- * 1. loadAvailablePairs() - loads from table3NextProjections instead of table3Hits
- * 2. Added getWheelNeighbors() - calculates ±1 neighbors on wheel
- * 3. Added expandWithNeighbors() - expands numbers with neighbors
- * 4. Added normalize026() - treats 0 and 26 as same number
- * 5. getPredictions() - calculates common numbers locally instead of calling backend
  */
 
 class AIPredictionPanel {
@@ -16,12 +9,6 @@ class AIPredictionPanel {
         this.isExpanded = true;
         this.availablePairs = [];
         this.selectedPairs = new Set();
-        
-        // European wheel order for neighbor calculations
-        this.WHEEL_ORDER = [
-            0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
-            5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
-        ];
         
         this.createPanel();
         this.setupToggle();
@@ -166,25 +153,42 @@ class AIPredictionPanel {
 
     setupToggle() {
         const toggleBtn = document.getElementById('toggleAIPanel');
-        const content = document.getElementById('aiPanelContent');
-        const panel = document.getElementById('aiPanel');
-        
-        if (toggleBtn && content && panel) {
-            toggleBtn.addEventListener('click', () => {
-                this.isExpanded = !this.isExpanded;
-                content.style.display = this.isExpanded ? 'block' : 'none';
-                toggleBtn.textContent = this.isExpanded ? '−' : '+';
-                panel.className = this.isExpanded ? 'ai-panel expanded' : 'ai-panel collapsed';
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.togglePanel();
             });
         }
     }
 
+    togglePanel() {
+        const panel = document.getElementById('aiPanel');
+        const content = document.getElementById('aiPanelContent');
+        const toggleBtn = document.getElementById('toggleAIPanel');
+
+        if (!panel || !content) return;
+
+        this.isExpanded = !this.isExpanded;
+
+        if (this.isExpanded) {
+            panel.classList.add('expanded');
+            content.style.display = 'block';
+            if (toggleBtn) toggleBtn.textContent = '−';
+        } else {
+            panel.classList.remove('expanded');
+            content.style.display = 'none';
+            if (toggleBtn) toggleBtn.textContent = '+';
+        }
+    }
+
     /**
-     * CHANGED: Load from table3NextProjections instead of table3Hits
+     * Load available pairs from Table 3
+     * Called when table data updates
      */
     loadAvailablePairs() {
-        console.log('🔄 Loading available pairs from Table 3 NEXT projections...');
+        console.log('🔄 Loading available pairs from NEXT projections...');
         
+        // Get table data
         if (typeof window.getAIDataV6 !== 'function') {
             console.error('❌ getAIDataV6 not available');
             return;
@@ -195,39 +199,27 @@ class AIPredictionPanel {
         
         console.log('📊 Table 3 NEXT projections:', nextProjections);
         
-        // Map internal names to display names
-        const pairDisplayNames = {
-            'prev': 'P',
-            'prevPlus1': 'P+1',
-            'prevMinus1': 'P-1',
-            'prevPlus2': 'P+2',
-            'prevMinus2': 'P-2',
-            'prevPrev': 'P-PREV'
-        };
-        
         // Only include pairs that have numbers in NEXT row
-        this.availablePairs = Object.keys(nextProjections)
-            .filter(pairName => {
-                const pairData = nextProjections[pairName];
-                const hasNumbers = pairData && pairData.numbers && pairData.numbers.length > 0;
-                
-                if (hasNumbers) {
-                    console.log(`   ✅ ${pairName}: ${pairData.numbers.length} numbers`);
-                }
-                
-                return hasNumbers;
-            })
-            .map(pairName => ({
-                key: pairName,
-                display: pairDisplayNames[pairName] || pairName,
-                data: nextProjections[pairName]
-            }));
-        
-        console.log(`✅ Found ${this.availablePairs.length} available pairs`);
-        
+        this.availablePairs = Object.keys(nextProjections).filter(pairName => {
+            const pairData = nextProjections[pairName];
+            const hasNumbers = pairData && pairData.numbers && pairData.numbers.length > 0;
+            
+            if (hasNumbers) {
+                console.log(`   ✅ ${pairName}: ${pairData.numbers.length} numbers`);
+            }
+            
+            return hasNumbers;
+        });
+
+        console.log(`✅ Found ${this.availablePairs.length} available pairs from NEXT projections`);
+
+        // Render the checkboxes
         this.renderPairCheckboxes();
     }
 
+    /**
+     * Render pair selection checkboxes with color coding
+     */
     renderPairCheckboxes() {
         const container = document.getElementById('pairCheckboxes');
         if (!container) return;
@@ -241,14 +233,18 @@ class AIPredictionPanel {
             return;
         }
 
+        // Color palette for pairs
         const colors = [
-            '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', '#06b6d4',
-            '#3b82f6', '#8b5cf6', '#d946ef', '#ec4899', '#f43f5e', '#14b8a6'
+            '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
+            '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
+            '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e'
         ];
 
         container.innerHTML = this.availablePairs.map((pair, index) => {
+            // Extract just the position code (e.g., "P" from "P-13OPP")
+            const displayName = pair.split('-')[0]; // e.g., "P+1" from "P+1-13OPP"
             const color = colors[index % colors.length];
-            const isSelected = this.selectedPairs.has(pair.key);
+            const isSelected = this.selectedPairs.has(pair);
 
             return `
                 <label style="
@@ -264,10 +260,10 @@ class AIPredictionPanel {
                     font-size: 14px;
                     transition: all 0.2s;
                     user-select: none;
-                " class="pair-checkbox-label" data-pair="${pair.key}">
+                " class="pair-checkbox-label" data-pair="${pair}">
                     <input 
                         type="checkbox" 
-                        value="${pair.key}" 
+                        value="${pair}" 
                         ${isSelected ? 'checked' : ''}
                         style="
                             margin-right: 8px;
@@ -277,11 +273,12 @@ class AIPredictionPanel {
                         "
                         class="pair-checkbox"
                     >
-                    <span>${pair.display}</span>
+                    <span>${displayName}</span>
                 </label>
             `;
         }).join('');
 
+        // Add change listeners to all checkboxes
         const checkboxes = container.querySelectorAll('.pair-checkbox');
         checkboxes.forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
@@ -292,23 +289,28 @@ class AIPredictionPanel {
         console.log('✅ Rendered pair checkboxes');
     }
 
-    handlePairSelection(pairKey, isChecked) {
+    /**
+     * Handle pair selection/deselection
+     */
+    handlePairSelection(pairName, isChecked) {
         if (isChecked) {
-            this.selectedPairs.add(pairKey);
-            console.log(`✅ Selected: ${pairKey}`);
+            this.selectedPairs.add(pairName);
+            console.log(`✅ Selected: ${pairName}`);
         } else {
-            this.selectedPairs.delete(pairKey);
-            console.log(`❌ Deselected: ${pairKey}`);
+            this.selectedPairs.delete(pairName);
+            console.log(`❌ Deselected: ${pairName}`);
         }
 
+        // Update selected count
         const countSpan = document.getElementById('selectedCount');
         if (countSpan) {
             countSpan.textContent = this.selectedPairs.size;
         }
 
+        // Enable/disable Get Predictions button
         const btn = document.getElementById('getPredictionsBtn');
         if (btn) {
-            if (this.selectedPairs.size >= 1) {
+            if (this.selectedPairs.size > 0) {
                 btn.disabled = false;
                 btn.style.opacity = '1';
                 btn.style.cursor = 'pointer';
@@ -319,12 +321,17 @@ class AIPredictionPanel {
             }
         }
 
+        // Re-render to update colors
         this.renderPairCheckboxes();
     }
 
+    /**
+     * Clear all selections
+     */
     clearSelections() {
         this.selectedPairs.clear();
         
+        // Update UI
         const countSpan = document.getElementById('selectedCount');
         if (countSpan) {
             countSpan.textContent = '0';
@@ -337,60 +344,14 @@ class AIPredictionPanel {
             btn.style.cursor = 'not-allowed';
         }
 
+        // Re-render checkboxes
         this.renderPairCheckboxes();
+
         console.log('🔄 Cleared all selections');
     }
 
     /**
-     * NEW: Get wheel neighbors (±1 positions)
-     */
-    getWheelNeighbors(number) {
-        const index = this.WHEEL_ORDER.indexOf(number);
-        if (index === -1) return [number];
-        
-        const leftIndex = (index - 1 + this.WHEEL_ORDER.length) % this.WHEEL_ORDER.length;
-        const rightIndex = (index + 1) % this.WHEEL_ORDER.length;
-        
-        return [
-            this.WHEEL_ORDER[leftIndex],
-            number,
-            this.WHEEL_ORDER[rightIndex]
-        ];
-    }
-
-    /**
-     * NEW: Expand numbers to include ±1 neighbors
-     */
-    expandWithNeighbors(numbers) {
-        const expanded = new Set();
-        
-        numbers.forEach(num => {
-            const neighbors = this.getWheelNeighbors(num);
-            neighbors.forEach(n => expanded.add(n));
-        });
-        
-        return Array.from(expanded).sort((a, b) => a - b);
-    }
-
-    /**
-     * NEW: Treat 0 and 26 as same number
-     */
-    normalize026(numbers) {
-        const hasZero = numbers.includes(0);
-        const has26 = numbers.includes(26);
-        
-        if (hasZero || has26) {
-            const normalized = new Set(numbers);
-            normalized.add(0);
-            normalized.add(26);
-            return Array.from(normalized).sort((a, b) => a - b);
-        }
-        
-        return numbers;
-    }
-
-    /**
-     * CHANGED: Calculate common numbers locally instead of calling backend
+     * Get predictions based on selected pairs
      */
     async getPredictions() {
         if (this.selectedPairs.size === 0) {
@@ -400,6 +361,7 @@ class AIPredictionPanel {
 
         console.log('🎲 Getting predictions for selected pairs:', Array.from(this.selectedPairs));
 
+        // Update signal
         const signalIndicator = document.getElementById('signalIndicator');
         if (signalIndicator) {
             signalIndicator.textContent = 'CALCULATING...';
@@ -407,67 +369,31 @@ class AIPredictionPanel {
         }
 
         try {
+            // Get table data from renderer
             if (typeof window.getAIDataV6 !== 'function') {
                 throw new Error('getAIDataV6 function not available');
             }
 
             const tableData = window.getAIDataV6();
-            const nextProjections = tableData.table3NextProjections || {};
             
-            // Get numbers for each selected pair and expand with neighbors
-            const allNumberSets = [];
-            
-            Array.from(this.selectedPairs).forEach(pairKey => {
-                const pairData = nextProjections[pairKey];
-                if (pairData && pairData.numbers) {
-                    const baseNumbers = pairData.numbers;
-                    const withNeighbors = this.expandWithNeighbors(baseNumbers);
-                    
-                    console.log(`📊 ${pairKey}:`);
-                    console.log(`   Base: ${baseNumbers.length} numbers`, baseNumbers);
-                    console.log(`   With neighbors: ${withNeighbors.length} numbers`, withNeighbors);
-                    
-                    allNumberSets.push(withNeighbors);
-                }
-            });
-            
-            if (allNumberSets.length === 0) {
-                throw new Error('No valid pairs selected');
-            }
-            
-            // Find common numbers
-            let commonNumbers = allNumberSets[0];
-            for (let i = 1; i < allNumberSets.length; i++) {
-                commonNumbers = commonNumbers.filter(num => allNumberSets[i].includes(num));
-            }
-            
-            console.log(`✅ Common numbers (${commonNumbers.length}):`, commonNumbers);
-            
-            // Apply 0/26 rule
-            commonNumbers = this.normalize026(commonNumbers);
-            console.log(`✅ After 0/26 rule (${commonNumbers.length}):`, commonNumbers);
-            
-            if (commonNumbers.length === 0) {
-                throw new Error('No common numbers found');
-            }
-            
-            // Create prediction
-            const prediction = {
-                signal: 'BET NOW',
-                numbers: commonNumbers,
-                anchors: commonNumbers,
-                loose: [],
-                confidence: 90,
-                mode: 'MANUAL',
-                reasoning: {
-                    selected_pairs: Array.from(this.selectedPairs)
-                }
+            // Add selected pairs to the request
+            const requestData = {
+                ...tableData,
+                selectedPairs: Array.from(this.selectedPairs)
             };
-            
+
+            console.log('📤 Sending request to backend:', requestData);
+
+            // Call backend
+            const prediction = await window.aiAPI.getPredictionWithTableData(requestData);
+
+            console.log('📥 Received prediction:', prediction);
+
+            // Update display
             this.updatePrediction(prediction);
 
         } catch (error) {
-            console.error('❌ Error:', error);
+            console.error('❌ Error getting predictions:', error);
             
             if (signalIndicator) {
                 signalIndicator.textContent = 'ERROR';
@@ -478,7 +404,7 @@ class AIPredictionPanel {
             if (numbersDiv) {
                 numbersDiv.innerHTML = `
                     <div style="color: #ef4444; padding: 20px; text-align: center;">
-                        ❌ ${error.message}
+                        ❌ Error: ${error.message}
                     </div>
                 `;
             }

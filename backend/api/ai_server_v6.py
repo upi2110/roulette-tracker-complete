@@ -50,6 +50,7 @@ class TableData(BaseModel):
     table2Hits: Dict
     currentSpinCount: int
     recentSpins: List[int]
+    selectedPairs: Optional[List[str]] = None
 
 
 class BetResult(BaseModel):
