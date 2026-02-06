@@ -12,13 +12,14 @@ from typing import Dict, List, Optional
 import uvicorn
 import sys
 import os
+from datetime import datetime
 
 # Add backend directory to path
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(backend_dir)
 
 # Import the new engine
-from models.ai_engine_v6_NEW_STRATEGY import predict, process_result
+from models.ai_engine_v6_NEW_STRATEGY import predict, process_result, reset_engine, undo_last_result
 
 app = FastAPI(title="Roulette Tracker AI Server V6")
 
@@ -85,15 +86,8 @@ async def get_prediction(data: TableData):
     """
     
     try:
-        print("\n" + "="*80)
-        print("📥 RECEIVED PREDICTION REQUEST")
-        print("="*80)
-        print(f"Current spin count: {data.currentSpinCount}")
-        print(f"Recent spins: {data.recentSpins}")
-        print(f"Table 3 historical hits: {len(data.table3Hits)} types")
-        print(f"Table 3 NEXT projections: {len(data.table3NextProjections)} types")
-        if data.selectedPairs:
-            print(f"🎯 MANUAL MODE: Selected pairs: {data.selectedPairs}")
+        # Minimal request log — decision table is in the engine
+        pass
         
         # Convert Pydantic model to dict
         table_data = {
@@ -118,13 +112,7 @@ async def get_prediction(data: TableData):
         else:
             prediction['bet_per_number'] = 0
         
-        print("\n📤 SENDING RESPONSE TO FRONTEND:")
-        print(f"   Signal: {prediction['signal']}")
-        print(f"   Numbers: {len(prediction['numbers'])} numbers")
-        print(f"   Full pool: {len(prediction['full_pool'])} numbers")
-        print(f"   Confidence: {prediction['confidence']}%")
-        print(f"   Bet per number: ${prediction['bet_per_number']}")
-        print("="*80)
+        # Response is already logged via decision table in engine
         
         return prediction
         
@@ -146,10 +134,16 @@ async def start_session(starting_bankroll: int = 4000, session_target: int = 100
     session_state['bets_placed'] = 0
     session_state['wins'] = 0
     session_state['losses'] = 0
-    
-    print("\n✅ SESSION STARTED:")
-    print(f"   Starting bankroll: ${starting_bankroll}")
-    print(f"   Target: ${session_target}")
+
+    # Clear debug log on new session
+    logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+    debug_log = os.path.join(logs_dir, 'debug.log')
+    if os.path.exists(debug_log):
+        with open(debug_log, 'w') as f:
+            f.write(f"=== NEW SESSION {datetime.now().isoformat()} ===\n")
+            f.write(f"Bankroll: ${starting_bankroll}, Target: ${session_target}\n\n")
+
+    print(f"\n✅ SESSION STARTED: bankroll=${starting_bankroll}, target=${session_target}")
     
     return {
         "status": "session_started",
@@ -218,6 +212,42 @@ async def get_status():
     }
 
 
+@app.post("/undo")
+async def undo_last():
+    """
+    Undo the last spin result — revert engine result history and money state
+    """
+    try:
+        reverted = undo_last_result()
+
+        # Also revert money management if a bet was tracked
+        if session_state['bets_placed'] > 0:
+            # Revert the last bet from session
+            if session_state['losses'] > 0 and not reverted.get('was_hit', True):
+                session_state['losses'] -= 1
+            elif session_state['wins'] > 0 and reverted.get('was_hit', False):
+                session_state['wins'] -= 1
+            session_state['bets_placed'] -= 1
+
+        print(f"\n🔄 UNDO: reverted={reverted}")
+
+        return {
+            "success": True,
+            "reverted_bet": reverted,
+            "status": {
+                "bankroll": round(session_state['bankroll'], 2),
+                "session_profit": round(session_state['bankroll'] - session_state['starting_bankroll'], 2),
+                "total_bets": session_state['bets_placed'],
+                "wins": session_state['wins'],
+                "losses": session_state['losses'],
+                "consecutive_losses": 0
+            }
+        }
+    except Exception as e:
+        print(f"❌ UNDO ERROR: {e}")
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/reset")
 async def reset_session():
     """
@@ -227,9 +257,12 @@ async def reset_session():
     session_state['bets_placed'] = 0
     session_state['wins'] = 0
     session_state['losses'] = 0
-    
-    print("\n🔄 SESSION RESET")
-    
+
+    # Reset engine state (result history, predictions, etc.)
+    reset_engine()
+
+    print("\n🔄 SESSION RESET (server + engine)")
+
     return {
         "status": "session_reset",
         "bankroll": session_state['bankroll']

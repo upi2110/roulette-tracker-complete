@@ -239,106 +239,122 @@ function addSpin() {
 
 async function undoLast() {
     if (spins.length === 0) return alert('No spins');
-    console.log('🔄 UNDO - Current spins:', spins.length, 'bets:', window.moneyPanel?.betHistory?.length || 0);
-    
+    console.log('🔄 UNDO - Current spins:', spins.length);
+
+    // Check if the spin being removed had a bet placed on it
+    const removedSpinIndex = spins.length; // 1-based index of spin being removed
+    const mp = window.moneyPanel;
+    const spinsWithBets = mp?.sessionData?.spinsWithBets || [];
+    const hadBet = spinsWithBets.includes(removedSpinIndex);
+
     // Remove spin from local array
-    spins.pop();
-    console.log('Removed spin, remaining:', spins.length);
-    
-    // Try to revert money management (if a bet was placed)
-    try {
-        // Check if the spin we're removing had a bet placed on it
-        const removedSpinCount = spins.length;  // Before pop
-        const spinsWithBets = window.moneyPanel?.sessionData?.spinsWithBets || [];
-        const hadBet = spinsWithBets.includes(removedSpinCount);
-        
-        console.log(`Spin ${removedSpinCount} had bet? ${hadBet}`);
-        console.log(`Spin ${removedSpinCount} had bet? ${hadBet}`);
-        console.log(`spinsWithBets array:`, spinsWithBets);
-        console.log(`Checking if ${removedSpinCount} is in:`, spinsWithBets);
-        
-        if (hadBet) {
-            // This spin had a bet - call backend to undo it
-            const response = await fetch('http://localhost:8000/undo', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({})  // Use undo_last_bet
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                console.log('✅ Undo successful - bet reverted:', result);
-                console.log('📊 Backend returned - total_bets:', result.status.total_bets);
-                
-                // Update money panel with COMPLETE state from backend
-                if (window.moneyPanel && window.moneyPanel.sessionData) {
-                    const status = result.status;
-                    
-                    // Update all session data fields
-                    window.moneyPanel.sessionData.currentBankroll = status.bankroll;
-                    window.moneyPanel.sessionData.sessionProfit = status.session_profit;
-                    window.moneyPanel.sessionData.totalBets = status.total_bets;
-                    window.moneyPanel.sessionData.totalWins = status.wins;
-                    window.moneyPanel.sessionData.totalLosses = status.losses;
-                    window.moneyPanel.sessionData.consecutiveLosses = status.consecutive_losses || 0;
-                    
-                    console.log('Backend status:', status);
-                    console.log('Consecutive losses from backend:', status.consecutive_losses);
-                    console.log('Money panel consecutive losses after update:', window.moneyPanel.sessionData.consecutiveLosses);
-                    
-                    // Remove this spin from spinsWithBets
-                    const index = window.moneyPanel.sessionData.spinsWithBets.indexOf(removedSpinCount);
-                    if (index > -1) {
-                        window.moneyPanel.sessionData.spinsWithBets.splice(index, 1);
-                    }
-                    
-                    // Remove bet from visual history
-                    console.log('Checking bet removal - reverted_bet?', !!result.reverted_bet, 'betHistory length:', window.moneyPanel.betHistory?.length || 0);
-                    if (result.reverted_bet) {
-                        console.log('Reverted bet details:', result.reverted_bet);
-                    }
-                    
-                    if (result.reverted_bet && window.moneyPanel.betHistory && window.moneyPanel.betHistory.length > 0) {
-                        const beforeLength = window.moneyPanel.betHistory.length;
-                        window.moneyPanel.betHistory.shift(); // Remove FIRST item (newest bet)
-                        console.log(`✅ Removed bet from visual history (${beforeLength} → ${window.moneyPanel.betHistory.length})`);
-                    } else {
-                        console.log('ℹ️ No bet removed - reverted_bet:', !!result.reverted_bet, 'history length:', window.moneyPanel.betHistory?.length || 0);
-                    }
-                    
-                    // Re-render money panel
-                    window.moneyPanel.render();
-                    
-                    console.log('✅ Money panel fully synchronized after undo');
-                    console.log(`   Consecutive losses: ${status.consecutive_losses}`);
-                }
-                
-                // Force AI panel to refresh with updated state
-                if (window.aiPanel) {
-                    setTimeout(() => {
-                        if (window.aiPanel.getPredictionAuto) {
-                            window.aiPanel.getPredictionAuto();
-                        }
-                    }, 100);
-                }
+    const removedSpin = spins.pop();
+    console.log('Removed spin:', removedSpin, 'remaining:', spins.length, 'hadBet:', hadBet);
+
+    // ── REVERT MONEY MANAGEMENT ──
+    if (mp) {
+        if (hadBet && mp.betHistory && mp.betHistory.length > 0) {
+            const lastBet = mp.betHistory[0]; // newest is first
+            const netChange = lastBet.netChange || 0;
+
+            // Reverse bankroll change
+            mp.sessionData.currentBankroll -= netChange;
+            mp.sessionData.sessionProfit -= netChange;
+            mp.sessionData.totalBets = Math.max(0, mp.sessionData.totalBets - 1);
+
+            if (lastBet.hit) {
+                mp.sessionData.totalWins = Math.max(0, mp.sessionData.totalWins - 1);
             } else {
-                console.error('❌ Backend undo failed:', result.error);
-                alert(`Undo failed: ${result.error}`);
+                mp.sessionData.totalLosses = Math.max(0, mp.sessionData.totalLosses - 1);
+                mp.sessionData.consecutiveLosses = Math.max(0, mp.sessionData.consecutiveLosses - 1);
             }
-        } else {
-            // This spin had NO bet - just remove it, don't call backend
-            console.log('ℹ️ Spin removed (no bet was placed on this spin)');
+
+            // Reset bet per number back to $2 base (strategy adjustments undone)
+            mp.sessionData.currentBetPerNumber = 2;
+
+            // Remove from histories
+            mp.betHistory.shift();
+            const idx = spinsWithBets.indexOf(removedSpinIndex);
+            if (idx > -1) spinsWithBets.splice(idx, 1);
+
+            console.log(`✅ Money reverted: bankroll=$${mp.sessionData.currentBankroll}, bet reset to $2`);
         }
-    } catch (error) {
-        console.error('❌ Undo API error:', error);
-        alert(`Undo error: ${error.message}`);
+
+        // Clear pending bet (prediction is about to change)
+        mp.pendingBet = null;
+        mp.lastSpinCount = spins.length;
+
+        // If no bets remain, deactivate session so it restarts cleanly
+        if (mp.sessionData.totalBets === 0) {
+            mp.sessionData.isSessionActive = false;
+            mp.sessionData.consecutiveLosses = 0;
+            mp.sessionData.consecutiveWins = 0;
+            mp.sessionData.currentBetPerNumber = 2;
+            console.log('✅ Session deactivated (no bets remaining)');
+        }
+
+        mp.render();
     }
-    
-    // Re-render tables (always remove spin from display)
+
+    // ── REVERT BACKEND ENGINE ──
+    try {
+        const response = await fetch('http://localhost:8000/undo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const result = await response.json();
+        console.log('Backend undo:', result);
+    } catch (error) {
+        console.warn('⚠️ Backend undo failed:', error.message);
+    }
+
+    // ── CLEAR VISUALS ──
+    if (window.rouletteWheel) {
+        window.rouletteWheel.clearHighlights();
+    }
+
+    // Re-render tables — re-triggers predictions if 3+ spins
     render();
+
+    // ── CLEAR STALE UI WHEN < 3 SPINS ──
+    if (spins.length < 3) {
+        if (window.aiPanel) {
+            window.aiPanel.currentPrediction = null;
+            window.aiPanel.selectedPairs.clear();
+            window.aiPanel.availablePairs = [];
+            if (window.aiPanel._predictionDebounce) {
+                clearTimeout(window.aiPanel._predictionDebounce);
+            }
+            window.aiPanel.clearSelections();
+            const pairCheckboxes = document.getElementById('pairCheckboxes');
+            if (pairCheckboxes) {
+                pairCheckboxes.innerHTML = '<div style="color: #64748b; font-style: italic; width: 100%; text-align: center; padding: 20px;">📌 Enter spins to see available pairs</div>';
+            }
+        }
+        const signalIndicator = document.getElementById('signalIndicator');
+        if (signalIndicator) {
+            signalIndicator.textContent = 'WAITING FOR SELECTION';
+            signalIndicator.style.backgroundColor = '#6b7280';
+        }
+        const numbersDiv = document.querySelector('.prediction-numbers');
+        if (numbersDiv) {
+            numbersDiv.innerHTML = '<div style="color: #9ca3af; font-style: italic; padding: 20px; text-align: center;">Need at least 3 spins for predictions</div>';
+        }
+        const reasoningDiv = document.querySelector('.prediction-reasoning');
+        if (reasoningDiv) {
+            reasoningDiv.innerHTML = `
+                <strong style="color: #1e293b;">HOW IT WORKS:</strong>
+                <ul style="margin: 10px 0 0 0; padding-left: 22px;">
+                    <li>Select 1 or more pairs from Table 3</li>
+                    <li>System finds common numbers between selected pairs</li>
+                    <li>Numbers already include ±1 wheel neighbors</li>
+                    <li>Shows final common numbers to bet</li>
+                </ul>
+            `;
+        }
+        window.table3DisplayProjections = {};
+    }
 }
 
 function resetAll() {
@@ -368,14 +384,40 @@ function resetAll() {
             console.log('✅ Money panel reset');
         }
         
-        // Reset AI Prediction Panel
+        // Reset AI Prediction Panel (clear selections, predictions, display)
         if (window.aiPanel) {
             window.aiPanel.currentPrediction = null;
             window.aiPanel.lastSpinCount = 0;
-            window.aiPanel.render();
+            window.aiPanel.selectedPairs.clear();
+            window.aiPanel.availablePairs = [];
+            if (window.aiPanel._predictionDebounce) {
+                clearTimeout(window.aiPanel._predictionDebounce);
+            }
+            window.aiPanel.clearSelections();
+            // Reset the pair checkboxes area
+            const pairCheckboxes = document.getElementById('pairCheckboxes');
+            if (pairCheckboxes) {
+                pairCheckboxes.innerHTML = '<div style="color: #64748b; font-style: italic; width: 100%; text-align: center; padding: 20px;">📌 Enter spins to see available pairs</div>';
+            }
+            // Reset reasoning section
+            const reasoningDiv = document.querySelector('.prediction-reasoning');
+            if (reasoningDiv) {
+                reasoningDiv.innerHTML = `
+                    <strong style="color: #1e293b;">HOW IT WORKS:</strong>
+                    <ul style="margin: 10px 0 0 0; padding-left: 22px;">
+                        <li>Select 1 or more pairs from Table 3</li>
+                        <li>System finds common numbers between selected pairs</li>
+                        <li>Numbers already include ±1 wheel neighbors</li>
+                        <li>Shows final common numbers to bet</li>
+                    </ul>
+                `;
+            }
             console.log('✅ AI panel reset');
         }
         
+        // Clear table3 display projections
+        window.table3DisplayProjections = {};
+
         // Clear Wheel highlights
         if (window.rouletteWheel) {
             window.rouletteWheel.clearHighlights();
@@ -407,6 +449,11 @@ function render() {
     renderTable2();
     renderTable3();
     document.getElementById('info').textContent = `Spins: ${spins.length}`;
+
+    // Re-trigger AI predictions after tables update (only if 3+ spins and pairs selected)
+    if (window.aiPanel && window.aiPanel.onSpinAdded && spins.length >= 3) {
+        window.aiPanel.onSpinAdded();
+    }
 }
 
 // TABLE 1 - UNCHANGED

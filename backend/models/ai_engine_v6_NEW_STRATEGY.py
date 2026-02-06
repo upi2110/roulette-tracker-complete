@@ -9,13 +9,41 @@ Loose Definition: Numbers without both neighbors covered
 import logging
 from typing import Dict, List, Set, Tuple, Optional
 from datetime import datetime
+import os
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s.%(msecs)03d] [%(levelname)s] %(message)s',
-    datefmt='%H:%M:%S'
-)
+# ═══════════════════════════════════════════════════════════
+#  LOGGING SETUP
+#  Console: INFO only (clean decision table)
+#  File:    DEBUG (full detail for troubleshooting)
+# ═══════════════════════════════════════════════════════════
+_logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+os.makedirs(_logs_dir, exist_ok=True)
+_debug_log_path = os.path.join(_logs_dir, 'debug.log')
+
+# Clear debug log on import (i.e., on every server start = new session)
+with open(_debug_log_path, 'w') as f:
+    f.write(f"=== DEBUG LOG STARTED {datetime.now().isoformat()} ===\n\n")
+
+# Root logger
+logger = logging.getLogger('ai_engine_v6')
+logger.setLevel(logging.DEBUG)
+logger.propagate = False
+
+# Console handler — INFO only (decision table)
+_console_handler = logging.StreamHandler()
+_console_handler.setLevel(logging.INFO)
+_console_handler.setFormatter(logging.Formatter('[%(asctime)s.%(msecs)03d] [%(levelname)s] %(message)s', datefmt='%H:%M:%S'))
+
+# File handler — DEBUG (full details)
+_file_handler = logging.FileHandler(_debug_log_path, mode='a')
+_file_handler.setLevel(logging.DEBUG)
+_file_handler.setFormatter(logging.Formatter('[%(asctime)s.%(msecs)03d] [%(levelname)s] %(message)s', datefmt='%H:%M:%S'))
+
+logger.addHandler(_console_handler)
+logger.addHandler(_file_handler)
+
+# Replace module-level logging calls with our logger
+logging = logger
 
 class AIEngineV6:
     """
@@ -26,6 +54,12 @@ class AIEngineV6:
         self.consecutive_losses = 0
         self.consecutive_wins = 0
         self.total_session_loss = 0.0
+
+        # Result tracking
+        self._last_predicted_numbers = []   # numbers from last prediction
+        self._last_actual_spin = None       # actual number from last spin
+        self._result_history = []           # list of {'hit': bool, 'actual': int, 'predicted': [...]}
+
         
         # European wheel order
         self.WHEEL_ORDER = [
@@ -71,10 +105,10 @@ class AIEngineV6:
         
         if has_0 and not has_26:
             result.append(26)
-            logging.info(f"   🎰 Added 26 (betting rule: always bet 0 and 26 together)")
+            logging.debug("0/26 rule: added 26")
         elif has_26 and not has_0:
             result.append(0)
-            logging.info(f"   🎰 Added 0 (betting rule: always bet 0 and 26 together)")
+            logging.debug("0/26 rule: added 0")
         
         return sorted(result)
     
@@ -136,129 +170,252 @@ class AIEngineV6:
         Main prediction function using new strategy
         """
         
-        logging.info("="*80)
-        logging.info("🎯 AI ENGINE V6 - NEW STRATEGY")
-        logging.info("="*80)
+        logging.debug("🎯 AI ENGINE V6 - NEW STRATEGY")
         
         # Check if we have enough data
         if not self._has_sufficient_data(table_data):
             return self._return_wait("Insufficient data - need at least 3 spins")
-        
+
+        # ═══════════════════════════════════════════════════════════
+        #  RESULT TABLE — check previous prediction vs actual spin
+        # ═══════════════════════════════════════════════════════════
+        recent_spins_all = table_data.get('recentSpins', [])
+        current_actual = recent_spins_all[-1] if recent_spins_all else None
+
+        if self._last_predicted_numbers and current_actual is not None and current_actual != self._last_actual_spin:
+            # New spin landed — compare with last prediction
+            hit = current_actual in self._last_predicted_numbers
+            self._result_history.append({
+                'hit': hit,
+                'actual': current_actual,
+                'predicted': list(self._last_predicted_numbers)
+            })
+            self._last_actual_spin = current_actual
+
+            # Build summary string: most recent first
+            total = len(self._result_history)
+            hits = sum(1 for r in self._result_history if r['hit'])
+            misses = total - hits
+            hit_pct = (hits / total * 100) if total > 0 else 0
+            miss_pct = (misses / total * 100) if total > 0 else 0
+            # Summary icons: most recent first
+            summary_icons = ''.join('✅' if r['hit'] else '❌' for r in reversed(self._result_history))
+
+            import unicodedata
+            RW = 76
+            def rrow(text):
+                dw = 0
+                for ch in text:
+                    if ord(ch) > 0xFFFF:
+                        dw += 2
+                    elif unicodedata.east_asian_width(ch) in ('W', 'F'):
+                        dw += 2
+                    else:
+                        dw += 1
+                pad = max(0, RW - 2 - dw)
+                return f"║  {text}{' ' * pad}║"
+
+            hit_label = "HIT!" if hit else "MISS"
+            hit_color = "✅" if hit else "❌"
+            pred_str = ', '.join(str(n) for n in sorted(self._last_predicted_numbers))
+            logging.info("")
+            logging.info("╔" + "═"*RW + "╗")
+            logging.info(rrow("RESULT TABLE".center(RW-2)))
+            logging.info("╠" + "═"*RW + "╣")
+            # Handle long predicted number lists
+            pred_label = "Predicted: "
+            max_pred_w = RW - 2 - len(pred_label)
+            if len(pred_str) > max_pred_w:
+                mid = pred_str.rfind(',', 0, max_pred_w)
+                if mid == -1:
+                    mid = max_pred_w
+                logging.info(rrow(f"{pred_label}{pred_str[:mid+1]}"))
+                logging.info(rrow(f"{'':11s}{pred_str[mid+1:].strip()}"))
+            else:
+                logging.info(rrow(f"{pred_label}{pred_str}"))
+            logging.info(rrow(f"Actual:    {current_actual}"))
+            logging.info(rrow(f"Result:    {hit_color} {hit_label}"))
+            logging.info("╠" + "═"*RW + "╣")
+            logging.info(rrow(f"Hit: {hits}/{total} ({hit_pct:.0f}%)   Miss: {misses}/{total} ({miss_pct:.0f}%)"))
+            # Summary icons — may also be long, wrap if needed
+            summary_label = "Summary: "
+            max_sum_w = RW - 2 - len(summary_label)
+            if len(summary_icons) > max_sum_w:
+                logging.info(rrow(f"{summary_label}{summary_icons[:max_sum_w]}"))
+                logging.info(rrow(f"{'':9s}{summary_icons[max_sum_w:]}"))
+            else:
+                logging.info(rrow(f"{summary_label}{summary_icons}"))
+            logging.info("╚" + "═"*RW + "╝")
+            logging.info("")
+        elif current_actual is not None:
+            self._last_actual_spin = current_actual
+
         # ============================================================
         # MANUAL MODE: User selected pairs
         # ============================================================
         selected_pairs = table_data.get('selectedPairs', None)
-        
+
         if selected_pairs and len(selected_pairs) > 0:
-            logging.info("\n" + "="*80)
-            logging.info("🎯 MANUAL MODE: USER SELECTED PAIRS")
-            logging.info("="*80)
-            logging.info(f"   User selected {len(selected_pairs)} pairs:")
-            for pair in selected_pairs:
-                logging.info(f"      - {pair}")
-            
-            # Get NEXT projections
-            logging.info("\n" + "="*80)
-            logging.info("STEP 1: GET PROJECTIONS FOR SELECTED PAIRS (MANUAL MODE)")
-            logging.info("="*80)
-            
             next_projections = table_data.get('table3NextProjections', {})
-            
+            recent_spins = table_data.get('recentSpins', [])
+
+            logging.debug("="*60)
+            logging.debug(f"MANUAL MODE: pairs={selected_pairs}")
+            logging.debug(f"Recent spins: {recent_spins}")
+            logging.debug(f"Available projections: {list(next_projections.keys())}")
+
             if not next_projections:
                 return self._return_wait("No NEXT row projections available")
-            
-            # Log each selected pair's numbers
+
+            # Collect each pair's numbers
             pair_numbers = []
+            pair_numbers_map = {}    # full expanded numbers for intersection
+            pair_anchors_map = {}    # purple + green anchors for decision table display
             for pair in selected_pairs:
                 if pair not in next_projections:
-                    logging.warning(f"   ⚠️ Pair '{pair}' not found")
                     return self._return_wait(f"Pair '{pair}' not available")
-                
-                numbers = next_projections.get(pair, {}).get('numbers', [])
-                anchors = next_projections.get(pair, {}).get('anchors', [])
-                neighbors = next_projections.get(pair, {}).get('neighbors', [])
-                
-                # Apply 0/26 rule to each pair's numbers BEFORE intersection
-                numbers = self._ensure_0_26_paired(numbers)
 
-                logging.info(f"\n📊 {pair}:")
-                logging.info(f"   Purple anchors: {anchors}")
-                logging.info(f"   Green neighbors: {neighbors}")
-                logging.info(f"   All numbers ({len(numbers)}): {sorted(numbers)}")
+                proj = next_projections.get(pair, {})
+                raw_numbers = proj.get('numbers', [])
+                anchors_from_proj = proj.get('anchors', [])
+                neighbors_from_proj = proj.get('neighbors', [])
+
+                logging.debug(f"--- {pair} RAW from frontend ---")
+                logging.debug(f"    anchors (purple): {anchors_from_proj}")
+                logging.debug(f"    neighbors (green): {neighbors_from_proj}")
+                logging.debug(f"    raw numbers ({len(raw_numbers)}): {sorted(raw_numbers)}")
+
+                # Apply 0/26 rule to each pair's numbers BEFORE intersection
+                numbers = self._ensure_0_26_paired(raw_numbers)
+
+                logging.debug(f"    after 0/26 rule ({len(numbers)}): {sorted(numbers)}")
 
                 pair_numbers.append(numbers)
-            
+                pair_numbers_map[pair] = sorted(numbers)
+                pair_anchors_map[pair] = {
+                    'purple': anchors_from_proj,
+                    'green': neighbors_from_proj
+                }
+
             # Find intersection (common numbers)
-            logging.info("\n" + "="*80)
-            logging.info("STEP 2: FIND COMMON NUMBERS (INTERSECTION)")
-            logging.info("="*80)
-            
             if len(pair_numbers) == 1:
                 common_numbers = pair_numbers[0]
-                logging.info(f"   Only 1 pair selected, using all {len(common_numbers)} numbers")
+                logging.debug(f"Single pair, using all {len(common_numbers)} numbers")
             else:
                 common_numbers = set(pair_numbers[0])
-                logging.info(f"   Starting with {len(common_numbers)} numbers from {selected_pairs[0]}")
-                
                 for i in range(1, len(pair_numbers)):
                     before = len(common_numbers)
                     common_numbers = common_numbers.intersection(set(pair_numbers[i]))
-                    after = len(common_numbers)
-                    logging.info(f"   After {selected_pairs[i]}: {before} → {after} numbers")
-                
+                    logging.debug(f"Intersection with {selected_pairs[i]}: {before} → {len(common_numbers)}")
                 common_numbers = list(common_numbers)
-            
-            logging.info(f"\n✅ COMMON NUMBERS FOUND: {len(common_numbers)}")
-            logging.info(f"   Numbers: {sorted(common_numbers)}")
-            
+
+            logging.debug(f"Common numbers ({len(common_numbers)}): {sorted(common_numbers)}")
+
             if len(common_numbers) == 0:
                 return self._return_wait("No common numbers between selected pairs")
-            
+
             # Apply 0/26 rule
-            logging.info("\n" + "="*80)
-            logging.info("STEP 3: APPLY 0/26 RULE")
-            logging.info("="*80)
-            logging.info(f"   Before: {sorted(common_numbers)}")
             common_numbers = self._ensure_0_26_paired(common_numbers)
-            logging.info(f"   After: {sorted(common_numbers)}")
-            logging.info(f"   Total: {len(common_numbers)} numbers")
-            
+            logging.debug(f"After 0/26 rule on common ({len(common_numbers)}): {sorted(common_numbers)}")
+
             # Calculate anchors
-            logging.info("\n" + "="*80)
-            logging.info("STEP 4: CALCULATE ANCHORS")
-            logging.info("="*80)
             anchors, loose = self._calculate_wheel_anchors(common_numbers)
-            logging.info(f"   Anchors: {len(anchors)} - {sorted(anchors)}")
-            logging.info(f"   Loose: {len(loose)} - {sorted(loose)}")
-            
+
             # Build result
+            anchor_groups = getattr(self, '_last_anchor_groups', [])
+            true_loose = getattr(self, '_last_true_loose', loose)
+
             result = {
                 'signal': 'BET NOW',
                 'numbers': sorted(common_numbers),
                 'anchors': sorted(anchors),
-                'loose': sorted(loose),
+                'loose': sorted(true_loose),
+                'anchor_groups': anchor_groups,
                 'full_pool': sorted(common_numbers),
                 'confidence': 90,
                 'pairs_used': selected_pairs,
                 'mode': 'MANUAL',
+                'result_history': list(self._result_history),
                 'reasoning': {
                     'selected_pairs': selected_pairs,
                     'pair_count': len(selected_pairs),
                     'strategy': 'Manual Pair Selection'
                 }
             }
-            
-            logging.info("\n" + "="*80)
-            logging.info("✅ MANUAL MODE PREDICTION COMPLETE")
-            logging.info("="*80)
-            logging.info(f"   Mode: MANUAL")
-            logging.info(f"   Selected pairs: {selected_pairs}")
-            logging.info(f"   Final numbers: {len(result['numbers'])}")
-            logging.info(f"   Anchors: {len(result['anchors'])}")
-            logging.info(f"   Loose: {len(result['loose'])}")
-            logging.info(f"   Confidence: {result['confidence']}%")
-            logging.info("="*80 + "\n")
-            
+
+            # ═══════════════════════════════════════════════════════════
+            #  DECISION TABLE (clean summary log)
+            # ═══════════════════════════════════════════════════════════
+            recent_spins = table_data.get('recentSpins', [])
+            last_number = recent_spins[-1] if recent_spins else '?'
+
+            W = 76  # visible inner width between ║ ... ║
+            import unicodedata
+            def _display_width(s):
+                """Calculate actual terminal display width (emojis/wide chars = 2)"""
+                w = 0
+                for ch in s:
+                    if ord(ch) > 0xFFFF:   # emoji / surrogate
+                        w += 2
+                    elif unicodedata.east_asian_width(ch) in ('W', 'F'):
+                        w += 2
+                    else:
+                        w += 1
+                return w
+
+            def row(text):
+                """Pad text to fixed display width with ║ borders"""
+                dw = _display_width(text)
+                pad = max(0, W - 2 - dw)
+                return f"║  {text}{' ' * pad}║"
+
+            def nums_str(numbers):
+                """Format number list as comma-separated string"""
+                return ', '.join(str(n) for n in numbers)
+
+            logging.info("")
+            logging.info("╔" + "═"*W + "╗")
+            logging.info(row("DECISION TABLE".center(W-2)))
+            logging.info("╠" + "═"*W + "╣")
+            logging.info(row(f"Previous Number:  {last_number}"))
+            logging.info(row(f"Pairs Selected:   {', '.join(selected_pairs)}"))
+            logging.info("╠" + "═"*W + "╣")
+            for pair in selected_pairs:
+                pa = pair_anchors_map.get(pair, {})
+                purple = pa.get('purple', [])
+                green = pa.get('green', [])
+                nums = pair_numbers_map.get(pair, [])
+                logging.info(row(f"{pair:12s}  purple: {nums_str(purple)}"))
+                logging.info(row(f"{'':12s}  green:  {nums_str(green)}"))
+                all_str = nums_str(nums)
+                label = f"{'':12s}  all ({len(nums):2d}): "
+                max_nums_w = W - 2 - len(label)
+                if len(all_str) > max_nums_w:
+                    # split into 2 rows
+                    mid = all_str.rfind(',', 0, max_nums_w)
+                    if mid == -1:
+                        mid = max_nums_w
+                    logging.info(row(f"{label}{all_str[:mid+1]}"))
+                    logging.info(row(f"{'':22s}{all_str[mid+1:].strip()}"))
+                else:
+                    logging.info(row(f"{label}{all_str}"))
+                logging.info("╟" + "─"*W + "╢")
+            logging.info("╠" + "═"*W + "╣")
+            common_str = nums_str(sorted(common_numbers))
+            logging.info(row(f"Common ({len(common_numbers):2d}):  {common_str}"))
+            logging.info("╠" + "═"*W + "╣")
+            for ag in anchor_groups:
+                grp_str = nums_str(ag['group'])
+                logging.info(row(f"Anchor {ag['anchor']:2d}:      [{grp_str}]"))
+            logging.info(row(f"Loose ({len(true_loose):2d}):      {nums_str(sorted(true_loose))}"))
+            logging.info("╠" + "═"*W + "╣")
+            logging.info(row(f"Total bet:        {len(result['numbers'])} numbers"))
+            logging.info("╚" + "═"*W + "╝")
+            logging.info("")
+
+            # Track prediction for result table on next spin
+            self._last_predicted_numbers = list(result['numbers'])
+
             return result
         
         # ============================================================
@@ -412,12 +569,16 @@ class AIEngineV6:
             else:
                 strategy_text = 'V6 - Common Numbers from Top 2 Pairs'
             
+            auto_anchor_groups = getattr(self, '_last_anchor_groups', [])
+            auto_true_loose = getattr(self, '_last_true_loose', loose)
+
             response = {
                 'signal': signal,
                 'numbers': final_numbers,
                 'full_pool': common_numbers,
                 'anchors': anchors,
-                'loose': loose,
+                'loose': sorted(auto_true_loose),
+                'anchor_groups': auto_anchor_groups,
                 'confidence': round(confidence, 2),
                 'can_predict': True,
                 'reasoning': {
@@ -441,7 +602,11 @@ class AIEngineV6:
             
             # Print decision summary
             self._print_decision_summary(response)
-            
+
+            # Track prediction for result table on next spin
+            if response['signal'] == 'BET NOW':
+                self._last_predicted_numbers = list(response['numbers'])
+
             return response
             
         except Exception as e:
@@ -453,64 +618,105 @@ class AIEngineV6:
     def _calculate_wheel_anchors(self, numbers: List[int]) -> Tuple[List[int], List[int]]:
         """
         Calculate anchors based on wheel neighbors
-        
+
         ANCHOR = Number with BOTH left AND right neighbors in the bet list
         LOOSE = Number without both neighbors covered
-        
+
+        Also builds anchor_groups: each anchor with [left, anchor, right]
+        TRUE loose = numbers not in ANY anchor group
+
+        Special case: 0 is always treated as anchor when present (group: [32, 0, 26])
+
         Args:
             numbers: List of numbers to analyze
-            
+
         Returns:
             (anchors, loose_numbers)
         """
-        
+
         anchors = []
         loose = []
-        
+        numbers_normalized = self._normalize_list(numbers)
+
+        # Special case: if 0 or 26 is in the list, force 0 as anchor
+        has_zero_region = 0 in numbers or 26 in numbers
+
         for num in numbers:
+            # Skip 26 — it will be part of 0's anchor group
+            if num == 26:
+                continue
+
             # Find position on wheel
             try:
                 idx = self.WHEEL_ORDER.index(num)
             except ValueError:
-                # Number not on wheel (shouldn't happen)
                 loose.append(num)
                 continue
-            
+
+            # Special case: 0 is always an anchor
+            if num == 0:
+                anchors.append(num)
+                continue
+
             # Get left and right neighbors
             left_idx = (idx - 1) % len(self.WHEEL_ORDER)
             right_idx = (idx + 1) % len(self.WHEEL_ORDER)
-            
+
             left_neighbor = self.WHEEL_ORDER[left_idx]
             right_neighbor = self.WHEEL_ORDER[right_idx]
-            
-            # Normalize for comparison: treat 0 and 26 as same position
-            numbers_normalized = self._normalize_list(numbers)
+
             left_normalized = self._normalize_number(left_neighbor)
             right_normalized = self._normalize_number(right_neighbor)
-            
+
             # Check if BOTH neighbors are in bet list
             has_left = left_normalized in numbers_normalized
             has_right = right_normalized in numbers_normalized
-            
+
             if has_left and has_right:
-                # BOTH neighbors present = ANCHOR
                 anchors.append(num)
             else:
-                # Missing at least one neighbor = LOOSE
                 loose.append(num)
-        
+
         anchors.sort()
-        loose.sort()
-        
-        logging.info(f"\n⭐ ANCHORS IDENTIFIED (BOTH neighbors covered):")
-        logging.info(f"   Anchors: {anchors}")
-        logging.info(f"   Total: {len(anchors)}")
-        
-        logging.info(f"\n💗 LOOSE NUMBERS (missing neighbors):")
-        logging.info(f"   Numbers: {loose}")
-        logging.info(f"   Total: {len(loose)}")
-        
-        return anchors, loose
+
+        # Build anchor groups: [left_neighbor, anchor, right_neighbor]
+        anchor_groups = []
+        covered_numbers = set()
+
+        for anchor in anchors:
+            try:
+                idx = self.WHEEL_ORDER.index(anchor)
+            except ValueError:
+                continue
+
+            left_neighbor = self.WHEEL_ORDER[(idx - 1) % len(self.WHEEL_ORDER)]
+            right_neighbor = self.WHEEL_ORDER[(idx + 1) % len(self.WHEEL_ORDER)]
+
+            if anchor == 0:
+                # Special: 0 as anchor → group is [32, 0, 26]
+                group = [32, 0, 26]
+            else:
+                group = [left_neighbor, anchor, right_neighbor]
+
+            anchor_groups.append({
+                'anchor': anchor,
+                'group': group
+            })
+
+            for n in group:
+                covered_numbers.add(n)
+
+        # TRUE loose = numbers in the bet list that are NOT covered by any anchor group
+        true_loose = [n for n in numbers if n not in covered_numbers]
+        true_loose.sort()
+
+        logging.debug(f"Anchors: {anchors}, Groups: {[ag['group'] for ag in anchor_groups]}, Loose: {true_loose}")
+
+        # Store anchor_groups for the response
+        self._last_anchor_groups = anchor_groups
+        self._last_true_loose = true_loose
+
+        return anchors, true_loose
     
     def _find_confirmed_pairs(self, table3_hits: Dict) -> Dict:
         """
@@ -1042,6 +1248,7 @@ class AIEngineV6:
             'full_pool': [],
             'anchors': [],
             'loose': [],
+            'anchor_groups': [],
             'confidence': 0,
             'can_predict': False,
             'reasoning': {
@@ -1081,6 +1288,46 @@ def predict(table_data: Dict) -> Dict:
 def process_result(hit: bool, bet_amount: float = 0, profit_loss: float = 0):
     """Process bet result"""
     engine.process_result(hit, bet_amount, profit_loss)
+
+
+def undo_last_result():
+    """Undo the last result from history — reverts engine tracking state"""
+    reverted = {}
+    if engine._result_history:
+        last = engine._result_history.pop()
+        reverted = {'was_hit': last['hit'], 'actual': last['actual']}
+        logging.info(f"🔄 UNDO: removed result actual={last['actual']} hit={last['hit']}")
+
+        # Revert consecutive counters
+        if last['hit']:
+            engine.consecutive_wins = max(0, engine.consecutive_wins - 1)
+        else:
+            engine.consecutive_losses = max(0, engine.consecutive_losses - 1)
+
+    # Clear last predicted numbers so the next predict() call
+    # won't generate a false result table entry
+    engine._last_predicted_numbers = []
+
+    # Reset last actual spin to previous result's actual (or None)
+    if engine._result_history:
+        engine._last_actual_spin = engine._result_history[-1]['actual']
+    else:
+        engine._last_actual_spin = None
+
+    return reverted
+
+
+def reset_engine():
+    """Reset engine state for new session"""
+    engine.consecutive_losses = 0
+    engine.consecutive_wins = 0
+    engine.total_session_loss = 0.0
+    engine._last_predicted_numbers = []
+    engine._last_actual_spin = None
+    engine._result_history = []
+    engine._last_anchor_groups = []
+    engine._last_true_loose = []
+    logging.info("🔄 Engine state reset")
 
 
 if __name__ == "__main__":

@@ -704,6 +704,13 @@ class MoneyManagementPanel {
         if (!this.sessionData.isSessionActive) {
             console.log('🚀 Starting session (first prediction received)');
             this.sessionData.isSessionActive = true;
+            // Sync lastSpinCount to current count so the interval doesn't
+            // treat the current spin as a "new" result to check against
+            const currentSpins = window.spins || window.spinData;
+            if (currentSpins) {
+                this.lastSpinCount = currentSpins.length;
+                console.log(`📌 Synced lastSpinCount to ${this.lastSpinCount}`);
+            }
         }
         
         // Store prediction details

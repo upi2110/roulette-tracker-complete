@@ -69,35 +69,7 @@ class AIPredictionPanel {
                         </div>
                     </div>
                     
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button id="getPredictionsBtn" style="
-                            flex: 1;
-                            padding: 12px 24px;
-                            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
-                            color: white;
-                            border: none;
-                            border-radius: 8px;
-                            font-weight: bold;
-                            font-size: 14px;
-                            cursor: pointer;
-                            transition: all 0.2s;
-                        " disabled>
-                            🎲 GET PREDICTIONS
-                        </button>
-                        <button id="clearSelectionsBtn" style="
-                            padding: 12px 20px;
-                            background: #f1f5f9;
-                            color: #64748b;
-                            border: 1px solid #cbd5e1;
-                            border-radius: 8px;
-                            font-weight: bold;
-                            font-size: 14px;
-                            cursor: pointer;
-                            transition: all 0.2s;
-                        ">
-                            🔄 Clear
-                        </button>
-                    </div>
+                    <!-- Buttons removed: predictions auto-trigger on pair selection -->
                 </div>
                 
                 <!-- PREDICTION RESULTS SECTION -->
@@ -141,16 +113,7 @@ class AIPredictionPanel {
     }
 
     setupButtons() {
-        const getPredictionsBtn = document.getElementById('getPredictionsBtn');
-        const clearSelectionsBtn = document.getElementById('clearSelectionsBtn');
-        
-        if (getPredictionsBtn) {
-            getPredictionsBtn.addEventListener('click', () => this.getPredictions());
-        }
-        
-        if (clearSelectionsBtn) {
-            clearSelectionsBtn.addEventListener('click', () => this.clearSelections());
-        }
+        // Buttons removed - predictions auto-trigger on pair selection
     }
 
     setupToggle() {
@@ -301,39 +264,73 @@ class AIPredictionPanel {
             countSpan.textContent = this.selectedPairs.size;
         }
 
-        const btn = document.getElementById('getPredictionsBtn');
-        if (btn) {
-            if (this.selectedPairs.size >= 1) {
-                btn.disabled = false;
-                btn.style.opacity = '1';
-                btn.style.cursor = 'pointer';
-            } else {
-                btn.disabled = true;
-                btn.style.opacity = '0.5';
-                btn.style.cursor = 'not-allowed';
+        this.renderPairCheckboxes();
+
+        // Auto-trigger predictions when at least 1 pair is selected
+        // 800ms debounce — gives user time to click multiple pairs without triggering twice
+        if (this._predictionDebounce) {
+            clearTimeout(this._predictionDebounce);
+        }
+        if (this.selectedPairs.size >= 1) {
+            this._predictionDebounce = setTimeout(() => {
+                this.getPredictions();
+            }, 800);
+        } else {
+            // Clear prediction display when no pairs selected
+            const numbersDiv = document.querySelector('.prediction-numbers');
+            if (numbersDiv) {
+                numbersDiv.innerHTML = '<div style="color: #9ca3af; font-style: italic; padding: 20px; text-align: center;">Select pairs to see predictions</div>';
+            }
+            const signalIndicator = document.getElementById('signalIndicator');
+            if (signalIndicator) {
+                signalIndicator.textContent = 'SELECT PAIRS';
+                signalIndicator.style.backgroundColor = '#64748b';
             }
         }
-
-        this.renderPairCheckboxes();
     }
 
     clearSelections() {
         this.selectedPairs.clear();
-        
+
         const countSpan = document.getElementById('selectedCount');
         if (countSpan) {
             countSpan.textContent = '0';
         }
 
-        const btn = document.getElementById('getPredictionsBtn');
-        if (btn) {
-            btn.disabled = true;
-            btn.style.opacity = '0.5';
-            btn.style.cursor = 'not-allowed';
+        this.renderPairCheckboxes();
+
+        // Clear prediction display
+        const numbersDiv = document.querySelector('.prediction-numbers');
+        if (numbersDiv) {
+            numbersDiv.innerHTML = '<div style="color: #9ca3af; font-style: italic; padding: 20px; text-align: center;">Select pairs to see predictions</div>';
+        }
+        const signalIndicator = document.getElementById('signalIndicator');
+        if (signalIndicator) {
+            signalIndicator.textContent = 'SELECT PAIRS';
+            signalIndicator.style.backgroundColor = '#64748b';
         }
 
-        this.renderPairCheckboxes();
         console.log('🔄 Cleared all selections');
+    }
+
+    /**
+     * Called after a new spin is added and tables re-rendered.
+     * Reloads pair data and re-triggers predictions if pairs are already selected.
+     */
+    onSpinAdded() {
+        // Reload available pairs (projections changed after new spin)
+        this.loadAvailablePairs();
+
+        // Only re-trigger if we have enough spins (3+) and pairs selected
+        if (this.selectedPairs.size >= 1 && window.spins && window.spins.length >= 3) {
+            console.log('🔄 Spin added — re-triggering predictions with existing pairs');
+            // Small delay to let everything settle
+            setTimeout(() => {
+                this.getPredictions();
+            }, 200);
+        } else if (window.spins && window.spins.length < 3) {
+            console.log('⚠️ Not enough spins for predictions (need 3+)');
+        }
     }
 
     /**
@@ -402,24 +399,37 @@ class AIPredictionPanel {
 
     updatePrediction(prediction) {
         this.currentPrediction = prediction;
-        
+
         if (!prediction) {
             console.warn('⚠️ No prediction to display');
             return;
         }
-        
+
         console.log('🔄 Updating AI panel with:', prediction);
-        
+
         const anchors = prediction.anchors || [];
         const loose = prediction.loose || [];
         const allNumbers = prediction.numbers || [];
-        
+        const anchorGroups = prediction.anchor_groups || [];
+
+        // Color palette for anchor groups
+        const groupColors = [
+            { bg: '#fef3c7', border: '#f59e0b', anchorBg: '#f59e0b', neighborBg: '#fbbf24', text: '#000', label: '⭐' },
+            { bg: '#dbeafe', border: '#3b82f6', anchorBg: '#3b82f6', neighborBg: '#60a5fa', text: '#fff', label: '⭐' },
+            { bg: '#dcfce7', border: '#22c55e', anchorBg: '#22c55e', neighborBg: '#4ade80', text: '#fff', label: '⭐' },
+            { bg: '#f3e8ff', border: '#a855f7', anchorBg: '#a855f7', neighborBg: '#c084fc', text: '#fff', label: '⭐' },
+            { bg: '#ffedd5', border: '#f97316', anchorBg: '#f97316', neighborBg: '#fb923c', text: '#fff', label: '⭐' },
+            { bg: '#fce7f3', border: '#ec4899', anchorBg: '#ec4899', neighborBg: '#f472b6', text: '#fff', label: '⭐' },
+            { bg: '#e0f2fe', border: '#0ea5e9', anchorBg: '#0ea5e9', neighborBg: '#38bdf8', text: '#fff', label: '⭐' },
+            { bg: '#ecfdf5', border: '#10b981', anchorBg: '#10b981', neighborBg: '#34d399', text: '#fff', label: '⭐' },
+        ];
+
         console.log('📊 Displaying:', {
             total: allNumbers.length,
-            anchors: anchors.length,
+            anchorGroups: anchorGroups.length,
             loose: loose.length
         });
-        
+
         // 1. UPDATE SIGNAL
         const signalIndicator = document.getElementById('signalIndicator');
         if (signalIndicator) {
@@ -427,67 +437,227 @@ class AIPredictionPanel {
             signalIndicator.style.backgroundColor = '#22c55e';
             signalIndicator.style.color = 'white';
         }
-        
-        // 2. UPDATE NUMBERS
+
+        // 2. UPDATE NUMBERS — color-coded anchor groups + loose
         const numbersDiv = document.querySelector('.prediction-numbers');
         if (numbersDiv && allNumbers.length > 0) {
+            // Build anchor groups HTML
+            let anchorGroupsHTML = '';
+            if (anchorGroups.length > 0) {
+                anchorGroupsHTML = anchorGroups.map((ag, idx) => {
+                    const color = groupColors[idx % groupColors.length];
+                    const group = ag.group || [];
+                    const anchorNum = ag.anchor;
+
+                    const numbersHTML = group.map(n => {
+                        const isAnchor = (n === anchorNum);
+                        return `<span style="
+                            display: inline-block;
+                            padding: 10px 14px;
+                            border-radius: 10px;
+                            background: ${isAnchor ? color.anchorBg : color.neighborBg};
+                            color: ${isAnchor ? color.text : color.text};
+                            border: 3px solid ${color.border};
+                            font-weight: bold;
+                            font-size: 17px;
+                            min-width: 42px;
+                            text-align: center;
+                            box-shadow: 0 3px 6px rgba(0,0,0,0.25);
+                            ${isAnchor ? 'text-decoration: underline; text-underline-offset: 3px;' : 'opacity: 0.85;'}
+                        ">${n}</span>`;
+                    }).join('');
+
+                    return `
+                        <div style="
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 4px;
+                            padding: 8px 10px;
+                            background: ${color.bg};
+                            border: 2px solid ${color.border};
+                            border-radius: 12px;
+                            margin-bottom: 6px;
+                        ">
+                            ${numbersHTML}
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // Build loose numbers HTML
+            let looseHTML = '';
+            if (loose.length > 0) {
+                looseHTML = loose.sort((a, b) => a - b).map(n => `
+                    <span style="
+                        display: inline-block;
+                        padding: 10px 14px;
+                        border-radius: 10px;
+                        background: #ef4444;
+                        color: white;
+                        border: 3px solid #dc2626;
+                        font-weight: bold;
+                        font-size: 17px;
+                        min-width: 42px;
+                        text-align: center;
+                        box-shadow: 0 3px 6px rgba(0,0,0,0.25);
+                    ">${n}</span>
+                `).join('');
+            }
+
+            // Collect all covered numbers for display count
+            const coveredCount = anchorGroups.reduce((sum, ag) => sum + (ag.group ? ag.group.length : 0), 0);
+
             numbersDiv.innerHTML = `
                 <div style="margin-bottom: 12px;">
                     <div style="font-weight: bold; color: #374151; margin-bottom: 12px; font-size: 15px;">
-                        🎯 COMMON NUMBERS FROM SELECTED PAIRS (${allNumbers.length} numbers)
+                        🎯 PREDICTION: ${allNumbers.length} numbers to bet
                     </div>
-                    
-                    <!-- ANCHOR NUMBERS -->
-                    <div style="margin-bottom: 14px; padding: 12px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 10px; border: 2px solid #f59e0b;">
-                        <div style="font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 8px;">
-                            ⭐ ANCHORS (${anchors.length}) - Both neighbors covered
+
+                    <!-- ANCHOR GROUPS -->
+                    ${anchorGroups.length > 0 ? `
+                    <div style="margin-bottom: 14px; padding: 12px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 10px; border: 2px solid #94a3b8;">
+                        <div style="font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 10px;">
+                            ⭐ ANCHORS (${anchors.length}) — neighbors covered [left, <u>anchor</u>, right]
                         </div>
-                        <div style="display: flex; flex-wrap: wrap; gap: 7px;">
-                            ${anchors.length > 0 ? anchors.sort((a, b) => a - b).map(n => `
-                                <span style="display: inline-block; padding: 10px 14px; border-radius: 10px; background: gold; color: black; border: 3px solid #f59e0b; font-weight: bold; font-size: 17px; min-width: 42px; text-align: center; box-shadow: 0 3px 6px rgba(0,0,0,0.3);">${n}</span>
-                            `).join('') : '<span style="color: #92400e; font-style: italic;">None</span>'}
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            ${anchorGroupsHTML}
                         </div>
-                    </div>
-                    
+                    </div>` : ''}
+
                     <!-- LOOSE NUMBERS -->
-                    <div style="margin-bottom: 14px; padding: 12px; background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%); border-radius: 10px; border: 2px solid #ec4899;">
-                        <div style="font-size: 13px; font-weight: 700; color: #831843; margin-bottom: 8px;">
-                            💗 LOOSE NUMBERS (${loose.length}) - Missing neighbors
+                    ${loose.length > 0 ? `
+                    <div style="margin-bottom: 14px; padding: 12px; background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border-radius: 10px; border: 2px solid #ef4444;">
+                        <div style="font-size: 13px; font-weight: 700; color: #991b1b; margin-bottom: 8px;">
+                            🔴 LOOSE (${loose.length}) — not covered by any anchor
                         </div>
                         <div style="display: flex; flex-wrap: wrap; gap: 7px;">
-                            ${loose.length > 0 ? loose.sort((a, b) => a - b).map(n => `
-                                <span style="display: inline-block; padding: 10px 14px; border-radius: 10px; background: #ec4899; color: white; border: 3px solid #db2777; font-weight: bold; font-size: 17px; min-width: 42px; text-align: center; box-shadow: 0 3px 6px rgba(0,0,0,0.3);">${n}</span>
-                            `).join('') : '<span style="color: #831843; font-style: italic;">None</span>'}
+                            ${looseHTML}
                         </div>
-                    </div>
+                    </div>` : `
+                    <div style="padding: 8px 12px; background: #ecfdf5; border-radius: 8px; border: 1px solid #10b981; color: #065f46; font-size: 13px; font-weight: 600;">
+                        ✅ All numbers covered by anchor groups — no loose numbers!
+                    </div>`}
                 </div>
             `;
         } else if (numbersDiv) {
             numbersDiv.innerHTML = '<div style="color: #9ca3af; font-style: italic; padding: 20px; text-align: center;">No common numbers found</div>';
         }
-        
-        // 3. UPDATE REASONING
+
+        // 3. NUMBER CLASSIFICATION — Positive/Negative & Zero/19 table
         const reasoningDiv = document.querySelector('.prediction-reasoning');
-        if (reasoningDiv && prediction.reasoning) {
-            const r = prediction.reasoning;
+        if (reasoningDiv) {
+            // Define wheel halves
+            const ZERO_TABLE = [3, 26, 0, 32, 21, 2, 25, 27, 13, 36, 23, 10, 5, 1, 20, 14, 18, 29, 7];
+            const NINETEEN_TABLE = [15, 19, 4, 17, 34, 6, 11, 30, 8, 24, 16, 33, 31, 9, 22, 28, 12, 35];
+            const POSITIVE = [3, 26, 0, 32, 15, 19, 4, 27, 13, 36, 11, 30, 8, 1, 20, 14, 31, 9, 22];
+            const NEGATIVE = [21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35];
+
+            const zeroTableSet = new Set(ZERO_TABLE);
+            const nineteenTableSet = new Set(NINETEEN_TABLE);
+            const positiveSet = new Set(POSITIVE);
+            const negativeSet = new Set(NEGATIVE);
+
+            // Classify predicted numbers
+            const positiveNums = allNumbers.filter(n => positiveSet.has(n)).sort((a, b) => a - b);
+            const negativeNums = allNumbers.filter(n => negativeSet.has(n)).sort((a, b) => a - b);
+            const zeroTableNums = allNumbers.filter(n => zeroTableSet.has(n)).sort((a, b) => a - b);
+            const nineteenTableNums = allNumbers.filter(n => nineteenTableSet.has(n)).sort((a, b) => a - b);
+
+            const numBadge = (n, color, borderColor) => `<span style="
+                display: inline-block; padding: 4px 8px; border-radius: 6px;
+                background: ${color}; color: white; border: 2px solid ${borderColor};
+                font-weight: bold; font-size: 13px; min-width: 28px; text-align: center;
+                margin: 2px;
+            ">${n}</span>`;
+
+            // Build result history section
+            let resultHistoryHTML = '';
+            const resultHistory = prediction.result_history || [];
+            if (resultHistory.length > 0) {
+                const total = resultHistory.length;
+                const hits = resultHistory.filter(r => r.hit).length;
+                const misses = total - hits;
+                const hitPct = ((hits / total) * 100).toFixed(0);
+                const missPct = ((misses / total) * 100).toFixed(0);
+                const summaryIcons = resultHistory.slice().reverse().map(r => r.hit ? '✅' : '❌').join('');
+                const lastResult = resultHistory[resultHistory.length - 1];
+
+                resultHistoryHTML = `
+                <div style="margin-bottom: 12px; padding: 12px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 10px; border: 2px solid #64748b;">
+                    <div style="font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 8px;">
+                        📊 RESULT TRACKER
+                    </div>
+                    <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
+                        <span style="font-size: 13px; color: #334155;">
+                            Last: <strong>${lastResult.actual}</strong> —
+                            <span style="color: ${lastResult.hit ? '#16a34a' : '#dc2626'}; font-weight: bold;">
+                                ${lastResult.hit ? '✅ HIT!' : '❌ MISS'}
+                            </span>
+                        </span>
+                        <span style="font-size: 13px;">
+                            <span style="color: #16a34a; font-weight: bold;">Hit: ${hits}/${total} (${hitPct}%)</span>
+                            &nbsp;|&nbsp;
+                            <span style="color: #dc2626; font-weight: bold;">Miss: ${misses}/${total} (${missPct}%)</span>
+                        </span>
+                    </div>
+                    <div style="font-size: 16px; letter-spacing: 2px;">${summaryIcons}</div>
+                </div>`;
+            }
+
             reasoningDiv.innerHTML = `
+                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                    <div style="flex: 1; padding: 10px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-radius: 10px; border: 2px solid #22c55e;">
+                        <div style="font-size: 12px; font-weight: 700; color: #065f46; margin-bottom: 4px;">
+                            ➕ Positive (${positiveNums.length})
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 2px;">
+                            ${positiveNums.map(n => numBadge(n, '#16a34a', '#15803d')).join('')}
+                        </div>
+                    </div>
+                    <div style="flex: 1; padding: 10px; background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border-radius: 10px; border: 2px solid #a855f7;">
+                        <div style="font-size: 12px; font-weight: 700; color: #581c87; margin-bottom: 4px;">
+                            ➖ Negative (${negativeNums.length})
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 2px;">
+                            ${negativeNums.map(n => numBadge(n, '#9333ea', '#7e22ce')).join('')}
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                    <div style="flex: 1; padding: 10px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-radius: 10px; border: 2px solid #22c55e;">
+                        <div style="font-size: 12px; font-weight: 700; color: #065f46; margin-bottom: 4px;">
+                            0 Table (${zeroTableNums.length})
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 2px;">
+                            ${zeroTableNums.map(n => numBadge(n, '#16a34a', '#15803d')).join('')}
+                        </div>
+                    </div>
+                    <div style="flex: 1; padding: 10px; background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border-radius: 10px; border: 2px solid #a855f7;">
+                        <div style="font-size: 12px; font-weight: 700; color: #581c87; margin-bottom: 4px;">
+                            19 Table (${nineteenTableNums.length})
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 2px;">
+                            ${nineteenTableNums.map(n => numBadge(n, '#9333ea', '#7e22ce')).join('')}
+                        </div>
+                    </div>
+                </div>
+                ${resultHistoryHTML}
                 <div style="font-size: 12px; line-height: 1.7; color: #475569;">
                     <strong style="color: #1e293b; font-size: 13px;">CALCULATION DETAILS:</strong>
                     <ul style="margin: 10px 0 0 0; padding-left: 22px; list-style: none;">
-                        <li style="margin-bottom: 4px;">• Selected pairs: <strong>${r.selected_pairs ? r.selected_pairs.join(', ') : 'N/A'}</strong></li>
-                        <li style="margin-bottom: 4px;">• Common numbers found: <strong>${allNumbers.length}</strong></li>
-                        <li style="margin-bottom: 4px;">• Anchors: <strong>${anchors.length}</strong></li>
+                        <li style="margin-bottom: 4px;">• Selected pairs: <strong>${prediction.reasoning ? prediction.reasoning.selected_pairs?.join(', ') : 'N/A'}</strong></li>
+                        <li style="margin-bottom: 4px;">• Total bet numbers: <strong>${allNumbers.length}</strong></li>
+                        <li style="margin-bottom: 4px;">• Anchor groups: <strong>${anchorGroups.length}</strong> (covering ${anchorGroups.reduce((s, g) => s + (g.group ? g.group.length : 0), 0)} numbers)</li>
                         <li style="margin-bottom: 4px;">• Loose: <strong>${loose.length}</strong></li>
-                        <li style="margin-bottom: 4px;">• Mode: <strong>${prediction.mode || 'AUTO'}</strong></li>
                     </ul>
                 </div>
             `;
         }
-        
-        // 4. UPDATE WHEEL HIGHLIGHTS
+
+        // 4. UPDATE WHEEL HIGHLIGHTS (pass anchor groups for color coding)
         if (window.rouletteWheel && typeof window.rouletteWheel.updateHighlights === 'function') {
-            window.rouletteWheel.updateHighlights(anchors, loose);
-            console.log('✅ Wheel highlights updated');
+            window.rouletteWheel.updateHighlights(anchors, loose, anchorGroups);
+            console.log('✅ Wheel highlights updated with anchor groups');
         }
         
         // 5. UPDATE MONEY PANEL
