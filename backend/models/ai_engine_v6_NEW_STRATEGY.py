@@ -134,7 +134,6 @@ class AIEngineV6:
     def predict(self, table_data: Dict) -> Dict:
         """
         Main prediction function using new strategy
-        Supports both AUTO and MANUAL pair selection
         """
         
         logging.info("="*80)
@@ -179,11 +178,14 @@ class AIEngineV6:
                 anchors = next_projections.get(pair, {}).get('anchors', [])
                 neighbors = next_projections.get(pair, {}).get('neighbors', [])
                 
+                # Apply 0/26 rule to each pair's numbers BEFORE intersection
+                numbers = self._ensure_0_26_paired(numbers)
+
                 logging.info(f"\n📊 {pair}:")
                 logging.info(f"   Purple anchors: {anchors}")
                 logging.info(f"   Green neighbors: {neighbors}")
                 logging.info(f"   All numbers ({len(numbers)}): {sorted(numbers)}")
-                
+
                 pair_numbers.append(numbers)
             
             # Find intersection (common numbers)
@@ -225,7 +227,7 @@ class AIEngineV6:
             logging.info("\n" + "="*80)
             logging.info("STEP 4: CALCULATE ANCHORS")
             logging.info("="*80)
-            anchors, loose = self._calculate_anchors_and_loose(common_numbers)
+            anchors, loose = self._calculate_wheel_anchors(common_numbers)
             logging.info(f"   Anchors: {len(anchors)} - {sorted(anchors)}")
             logging.info(f"   Loose: {len(loose)} - {sorted(loose)}")
             
