@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="panels-bottom.css">
 </head>
 <body>
+<div id="cellMagnifier"></div>
 <div class="container">
     <h1>🎯 European Roulette Tracker - 3 Projection Systems</h1>
 
@@ -307,6 +308,63 @@
     });
     
     console.log('Zoom control initialized');
+})();
+</script>
+
+<!-- Cell Hover Magnifier -->
+<script>
+(function() {
+    const mag = document.getElementById('cellMagnifier');
+    if (!mag) return;
+
+    const wrappers = document.querySelectorAll('.grid-wrapper');
+
+    wrappers.forEach(wrapper => {
+        wrapper.addEventListener('mouseover', function(e) {
+            const td = e.target.closest('td, th');
+            if (!td) return;
+            const text = td.textContent.trim();
+            if (!text) return;
+
+            // Get computed styles from the cell
+            const cs = window.getComputedStyle(td);
+            mag.textContent = text;
+            mag.style.background = cs.backgroundColor || '#fff';
+            mag.style.color = cs.color || '#000';
+            // Add a subtle border matching the text color
+            mag.style.border = '2px solid ' + (cs.color || '#333');
+            mag.classList.add('visible');
+        });
+
+        wrapper.addEventListener('mousemove', function(e) {
+            if (!mag.classList.contains('visible')) return;
+            // Position above and to the right of cursor
+            let x = e.clientX + 15;
+            let y = e.clientY - 45;
+            // Keep within viewport
+            const rect = mag.getBoundingClientRect();
+            if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - 10;
+            if (y < 5) y = e.clientY + 20;
+            mag.style.left = x + 'px';
+            mag.style.top = y + 'px';
+        });
+
+        wrapper.addEventListener('mouseout', function(e) {
+            const td = e.target.closest('td, th');
+            if (!td) return;
+            // Check if we're moving to another cell inside the same wrapper
+            const related = e.relatedTarget;
+            if (related && (related.closest('td') || related.closest('th'))) return;
+            mag.classList.remove('visible');
+        });
+
+        // Also hide when leaving the wrapper entirely
+        wrapper.addEventListener('mouseleave', function() {
+            mag.classList.remove('visible');
+        });
+    });
+
+    console.log('Cell hover magnifier initialized');
 })();
 </script>
 </body>
