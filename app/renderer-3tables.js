@@ -351,6 +351,83 @@ function getTable2NextProjections() {
 }
 
 /**
+ * Auto-detect which 2 of 3 ref columns (first/second/third) hit most recently for a T1/T2 pair.
+ * Uses the EXACT SAME logic as table rendering:
+ *   1. Compute refNum from the pair key + previous spin
+ *   2. Look up targets from the lookup table: {first: X, second: Y, third: Z}
+ *   3. For each target, compute calculatePositionCode(TARGET, actual) ← same as renderTable1/2
+ *   4. Check if the code is a valid hit code for that table
+ *
+ * @param {string} pairKey - e.g., 'prev', 'prev_13opp', 'ref0', 'prevPlus1_13opp'
+ * @param {string} tableId - 'table1' or 'table2'
+ * @returns {{ primaryRefs: Set<string>, extraRef: string }}
+ */
+function getAutoSelectedRefs(pairKey, tableId) {
+    const is13Opp = pairKey.endsWith('_13opp');
+    const basePairKey = pairKey.replace('_13opp', '');
+
+    // Valid codes — same as used in renderTable1/renderTable2
+    const TABLE1_VALID = ['S+0', 'SL+1', 'SR+1', 'O+0', 'OL+1', 'OR+1'];
+    const TABLE2_VALID = [...TABLE1_VALID, 'SL+2', 'SR+2', 'OL+2', 'OR+2'];
+    const validCodes = tableId === 'table1' ? TABLE1_VALID : TABLE2_VALID;
+
+    const foundRefs = [];
+
+    for (let i = spins.length - 1; i >= 1 && foundRefs.length < 2; i--) {
+        const actual = spins[i].actual;
+        const prev = spins[i - 1].actual;
+
+        // Compute refNum for this pairKey at this historical spin
+        let refNum;
+        switch (basePairKey) {
+            case 'ref0':       refNum = 0; break;
+            case 'ref19':      refNum = 19; break;
+            case 'prev':       refNum = prev; break;
+            case 'prevPlus1':  refNum = Math.min(prev + 1, 36); break;
+            case 'prevMinus1': refNum = Math.max(prev - 1, 0); break;
+            case 'prevPlus2':  refNum = Math.min(prev + 2, 36); break;
+            case 'prevMinus2': refNum = Math.max(prev - 2, 0); break;
+            default: continue;
+        }
+        if (is13Opp) refNum = DIGIT_13_OPPOSITES[refNum];
+
+        // Get lookup table row for this reference number
+        const lookupRow = getLookupRow(refNum);
+        if (!lookupRow) continue;
+
+        // Check each target column — SAME as table rendering:
+        // calculatePositionCode(TARGET, actual) — NOT (refNum, actual)!
+        const targets = { first: lookupRow.first, second: lookupRow.second, third: lookupRow.third };
+
+        for (const [refKey, target] of Object.entries(targets)) {
+            if (foundRefs.includes(refKey)) continue; // Already found this column
+
+            const code = calculatePositionCode(target, actual);
+            if (code === 'XX') continue;
+            if (!validCodes.includes(code)) continue;
+
+            // This column had a valid hit at this spin
+            foundRefs.push(refKey);
+            console.log(`🔍 Spin ${i}: actual=${actual}, ref=${refNum}, target[${refKey}]=${target}, code=${code} → HIT`);
+            if (foundRefs.length >= 2) break;
+        }
+    }
+
+    // Fallback: if fewer than 2 found, fill with remaining columns in order
+    for (const col of ['first', 'second', 'third']) {
+        if (foundRefs.length >= 2) break;
+        if (!foundRefs.includes(col)) foundRefs.push(col);
+    }
+
+    const extraRef = ['first', 'second', 'third'].find(c => !foundRefs.includes(c));
+
+    console.log(`🔍 Auto-select refs for ${pairKey} (${tableId}): primary=[${foundRefs.join(',')}], extra=${extraRef}`);
+
+    return { primaryRefs: new Set(foundRefs), extraRef };
+}
+window.getAutoSelectedRefs = getAutoSelectedRefs;
+
+/**
  * Frontend port of backend _calculate_wheel_anchors()
  * Finds CONTIGUOUS RUNS of consecutive wheel numbers in the bet list,
  * then assigns anchors from the center of each run:

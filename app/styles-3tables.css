@@ -411,19 +411,13 @@ th.t3-pair-selected {
    PANEL STYLES - AI, MONEY, WHEEL
    ============================================ */
 
-.info-panels-container-bottom {
-    display: flex;
-    gap: 15px;
-    margin-top: 20px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-}
+/* info-panels-container-bottom layout is defined in panels-bottom.css (grid) */
 
 .ai-panel,
+.ai-selection-panel,
+.ai-results-panel,
 .money-panel,
 .wheel-panel {
-    flex: 1;
-    min-width: 350px;
     background: white;
     border: 2px solid #dee2e6;
     border-radius: 8px;
@@ -432,12 +426,15 @@ th.t3-pair-selected {
 }
 
 .ai-panel.expanded,
+.ai-selection-panel.expanded,
 .money-panel.expanded,
 .wheel-panel.expanded {
     border-color: #007bff;
 }
 
 .ai-panel .panel-header,
+.ai-selection-panel .panel-header,
+.ai-results-panel .panel-header,
 .money-panel .panel-header,
 .wheel-panel .panel-header {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -450,6 +447,8 @@ th.t3-pair-selected {
 }
 
 .ai-panel .panel-header h3,
+.ai-selection-panel .panel-header h3,
+.ai-results-panel .panel-header h3,
 .money-panel .panel-header h3,
 .wheel-panel .panel-header h3 {
     margin: 0;
@@ -474,6 +473,8 @@ th.t3-pair-selected {
 }
 
 .ai-panel .panel-content,
+.ai-selection-panel .panel-content,
+.ai-results-panel .panel-content,
 .money-panel .panel-content,
 .wheel-panel .panel-content {
     padding: 16px;

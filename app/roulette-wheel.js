@@ -154,18 +154,20 @@ class RouletteWheel {
         }
     }
 
-    updateHighlights(anchors, loose, anchorGroups) {
+    updateHighlights(anchors, loose, anchorGroups, extraNumbers) {
         /**
          * Update wheel highlights with color-coded anchor groups
          * @param {Array} anchors - Anchor numbers (for backward compat)
          * @param {Array} loose - Loose numbers (red)
          * @param {Array} anchorGroups - [{anchor, group: [left, anchor, right]}] with colors
+         * @param {Array} extraNumbers - Extra numbers from 3rd ref (grey dots)
          */
 
         this.anchorGroups = anchorGroups || [];
         this.looseNumbers = loose || [];
+        this.extraNumbers = extraNumbers || [];
 
-        console.log(`🎡 Updating wheel: ${this.anchorGroups.length} anchor groups, ${this.looseNumbers.length} loose`);
+        console.log(`🎡 Updating wheel: ${this.anchorGroups.length} anchor groups, ${this.looseNumbers.length} loose, ${this.extraNumbers.length} extra`);
 
         // Redraw wheel with new highlights
         this.drawWheel();
@@ -273,6 +275,42 @@ class RouletteWheel {
             ctx.lineWidth = 2;
             ctx.stroke();
         });
+
+        // Draw EXTRA numbers (GREY — 3rd ref optional)
+        const extraNums = this.extraNumbers || [];
+        extraNums.forEach(num => {
+            // Skip if already drawn via anchor group or loose
+            if (numberColorMap[num]) return;
+            if (this.looseNumbers.includes(num)) return;
+
+            const idx = this.wheelOrder.indexOf(num);
+            if (idx === -1) return;
+
+            const angle = idx * angleStep - Math.PI / 2;
+            const highlightAngle = angle + angleStep / 2;
+            const highlightX = centerX + Math.cos(highlightAngle) * highlightRadius;
+            const highlightY = centerY + Math.sin(highlightAngle) * highlightRadius;
+
+            // Grey glow
+            ctx.beginPath();
+            ctx.arc(highlightX, highlightY, 14, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(156, 163, 175, 0.35)';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(highlightX, highlightY, 8, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(107, 114, 128, 0.6)';
+            ctx.fill();
+
+            // Grey border (dashed effect via double circle)
+            ctx.beginPath();
+            ctx.arc(highlightX, highlightY, 10, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#6b7280';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 2]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        });
     }
 
     clearHighlights() {
@@ -281,6 +319,7 @@ class RouletteWheel {
          */
         this.anchorGroups = [];
         this.looseNumbers = [];
+        this.extraNumbers = [];
         this.drawWheel();
         console.log('🎡 Wheel highlights cleared');
     }

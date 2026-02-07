@@ -39,16 +39,17 @@ class AIPredictionPanel {
     }
 
     createPanel() {
-        const container = document.querySelector('.info-panels-container-bottom');
-        if (!container) {
+        // === PART A: Selection Panel (in the grid row with wheel + money) ===
+        const topContainer = document.querySelector('.info-panels-container-bottom');
+        if (!topContainer) {
             console.error('❌ Bottom panels container not found');
             return;
         }
 
-        const panel = document.createElement('div');
-        panel.className = 'ai-panel expanded';
-        panel.id = 'aiPanel';
-        panel.innerHTML = `
+        const selectionPanel = document.createElement('div');
+        selectionPanel.className = 'ai-selection-panel expanded';
+        selectionPanel.id = 'aiSelectionPanel';
+        selectionPanel.innerHTML = `
             <div class="panel-header">
                 <h3>🎯 AI Prediction - Multi-Table Selection</h3>
                 <button class="btn-toggle" id="toggleAIPanel">−</button>
@@ -88,7 +89,7 @@ class AIPredictionPanel {
                     </div>
                 </div>
 
-                <!-- PREDICTION RESULTS SECTION -->
+                <!-- SIGNAL INDICATOR (stays in selection panel for quick feedback) -->
                 <div class="prediction-status" style="margin-top: 10px;">
                     <div id="signalIndicator" class="signal-indicator signal-wait" style="
                         padding: 12px 24px;
@@ -98,43 +99,56 @@ class AIPredictionPanel {
                         font-weight: bold;
                         font-size: 16px;
                         text-align: center;
-                        margin-bottom: 12px;
+                        margin-bottom: 0;
                     ">SELECT PAIRS</div>
-                </div>
-
-                <div class="prediction-numbers" style="margin-top: 16px;">
-                    <div style="color: #9ca3af; font-style: italic; padding: 20px; text-align: center;">
-                        Select pairs to see predictions
-                    </div>
-                </div>
-
-                <div class="prediction-reasoning" style="margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 12px; color: #475569;">
-                    <strong style="color: #1e293b;">HOW IT WORKS:</strong>
-                    <ul style="margin: 10px 0 0 0; padding-left: 22px;">
-                        <li>Select pairs from any table</li>
-                        <li>System finds common numbers (intersection)</li>
-                        <li>Numbers include wheel neighbors</li>
-                        <li>Shows anchors and loose numbers to bet</li>
-                    </ul>
                 </div>
             </div>
         `;
 
-        container.appendChild(panel);
-        console.log('✅ AI Prediction panel created with multi-table UI');
+        topContainer.appendChild(selectionPanel);
+
+        // === PART B: Results Panel (full width below, in #predictionResultsContainer) ===
+        const resultsContainer = document.getElementById('predictionResultsContainer');
+        if (resultsContainer) {
+            const resultsPanel = document.createElement('div');
+            resultsPanel.className = 'ai-results-panel';
+            resultsPanel.id = 'aiResultsPanel';
+            resultsPanel.innerHTML = `
+                <div class="panel-content">
+                    <div class="prediction-numbers" style="margin-top: 0;">
+                        <div style="color: #9ca3af; font-style: italic; padding: 20px; text-align: center;">
+                            Select pairs to see predictions
+                        </div>
+                    </div>
+
+                    <div class="prediction-reasoning" style="margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 12px; color: #475569;">
+                        <strong style="color: #1e293b;">HOW IT WORKS:</strong>
+                        <ul style="margin: 10px 0 0 0; padding-left: 22px;">
+                            <li>Select pairs from any table</li>
+                            <li>System finds common numbers (intersection)</li>
+                            <li>Numbers include wheel neighbors</li>
+                            <li>Shows anchors and loose numbers to bet</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+            resultsContainer.appendChild(resultsPanel);
+        }
+
+        console.log('✅ AI Prediction panel created (selection + results split)');
     }
 
     setupToggle() {
         const toggleBtn = document.getElementById('toggleAIPanel');
         const content = document.getElementById('aiPanelContent');
-        const panel = document.getElementById('aiPanel');
+        const panel = document.getElementById('aiSelectionPanel');
 
         if (toggleBtn && content && panel) {
             toggleBtn.addEventListener('click', () => {
                 this.isExpanded = !this.isExpanded;
                 content.style.display = this.isExpanded ? 'block' : 'none';
                 toggleBtn.textContent = this.isExpanded ? '−' : '+';
-                panel.className = this.isExpanded ? 'ai-panel expanded' : 'ai-panel collapsed';
+                panel.className = this.isExpanded ? 'ai-selection-panel expanded' : 'ai-selection-panel collapsed';
             });
         }
     }
@@ -348,12 +362,23 @@ class AIPredictionPanel {
         const highlightSet = tableId === 'table1' ? this.table1SelectedPairs : this.table2SelectedPairs;
 
         if (isChecked) {
-            // Enable all 3 refs by default
-            selections[pairKey] = new Set(['first', 'second', 'third']);
+            // Auto-select the 2 refs that hit most recently
+            if (!this._extraRefs) this._extraRefs = {};
+            if (window.getAutoSelectedRefs && window.spins && window.spins.length >= 2) {
+                const autoRefs = window.getAutoSelectedRefs(pairKey, tableId);
+                selections[pairKey] = new Set(autoRefs.primaryRefs);
+                this._extraRefs[`${tableId}:${pairKey}`] = autoRefs.extraRef;
+                console.log(`✅ Auto-selected refs for ${pairKey}: primary=[${[...autoRefs.primaryRefs].join(',')}], extra=${autoRefs.extraRef}`);
+            } else {
+                // Fallback: select all 3 if not enough history
+                selections[pairKey] = new Set(['first', 'second', 'third']);
+                this._extraRefs[`${tableId}:${pairKey}`] = null;
+            }
             highlightSet.add(pairKey);
         } else {
             delete selections[pairKey];
             highlightSet.delete(pairKey);
+            if (this._extraRefs) delete this._extraRefs[`${tableId}:${pairKey}`];
         }
 
         const pairs = tableId === 'table1' ? this.table1Pairs : this.table2Pairs;
@@ -436,40 +461,17 @@ class AIPredictionPanel {
             }
             const isCurrentlySelected = this.table3Selections.has(pairKey);
             this._handleTable3Selection(pairKey, !isCurrentlySelected);
-        } else if (tableId === 'table1') {
-            const isAvailable = this.table1Pairs.some(p => p.key === pairKey);
+        } else if (tableId === 'table1' || tableId === 'table2') {
+            const pairs = tableId === 'table1' ? this.table1Pairs : this.table2Pairs;
+            const isAvailable = pairs.some(p => p.key === pairKey);
             if (!isAvailable) {
-                console.warn(`⚠️ Pair ${pairKey} not available in Table 1 yet`);
+                console.warn(`⚠️ Pair ${pairKey} not available in ${tableId} yet`);
                 return;
             }
-            if (this.table1SelectedPairs.has(pairKey)) {
-                this.table1SelectedPairs.delete(pairKey);
-                delete this.table1Selections[pairKey];
-            } else {
-                this.table1SelectedPairs.add(pairKey);
-                this.table1Selections[pairKey] = new Set(['first', 'second', 'third']);
-            }
-            this.updateSingleTableHighlights('table1', this.table1SelectedPairs);
-            this._renderTable12Checkboxes('table1', this.table1Pairs, this.table1Selections);
-            this._updateCounts();
-            this._autoTriggerPredictions();
-        } else if (tableId === 'table2') {
-            const isAvailable = this.table2Pairs.some(p => p.key === pairKey);
-            if (!isAvailable) {
-                console.warn(`⚠️ Pair ${pairKey} not available in Table 2 yet`);
-                return;
-            }
-            if (this.table2SelectedPairs.has(pairKey)) {
-                this.table2SelectedPairs.delete(pairKey);
-                delete this.table2Selections[pairKey];
-            } else {
-                this.table2SelectedPairs.add(pairKey);
-                this.table2Selections[pairKey] = new Set(['first', 'second', 'third']);
-            }
-            this.updateSingleTableHighlights('table2', this.table2SelectedPairs);
-            this._renderTable12Checkboxes('table2', this.table2Pairs, this.table2Selections);
-            this._updateCounts();
-            this._autoTriggerPredictions();
+            const highlightSet = tableId === 'table1' ? this.table1SelectedPairs : this.table2SelectedPairs;
+            const isCurrentlySelected = highlightSet.has(pairKey);
+            // Delegate to the shared handler which does auto-ref selection
+            this._handleTable12PairToggle(tableId, pairKey, !isCurrentlySelected);
         }
     }
 
@@ -510,6 +512,7 @@ class AIPredictionPanel {
         this.table2Selections = {};
         this.table1SelectedPairs.clear();
         this.table2SelectedPairs.clear();
+        this._extraRefs = {};
 
         this._updateCounts();
         this.renderAllCheckboxes();
@@ -591,57 +594,89 @@ class AIPredictionPanel {
                 }
             }
 
-            // --- TABLE 1: UNION all selected pairs ---
+            // --- TABLE 1: UNION all selected pairs (primary + extra) ---
+            const tableExtraSets = []; // Extra ref unions per table (for grey numbers)
+
             if (Object.keys(this.table1Selections).length > 0) {
                 const t1Projections = tableData.table1NextProjections || {};
-                const t1Union = new Set();
+                const t1PrimaryUnion = new Set();
+                const t1ExtraUnion = new Set();
                 const t1Sources = [];
 
                 Object.entries(this.table1Selections).forEach(([pairKey, refSet]) => {
                     const pairData = t1Projections[pairKey];
                     if (!pairData) return;
 
+                    // Primary refs (the auto-selected 2)
                     refSet.forEach(refKey => {
                         const refData = pairData[refKey];
                         if (refData && refData.numbers) {
-                            refData.numbers.forEach(n => t1Union.add(n));
+                            refData.numbers.forEach(n => t1PrimaryUnion.add(n));
                         }
                     });
+
+                    // Extra ref (the 3rd one, not in refSet)
+                    const extraRefKey = this._extraRefs?.[`table1:${pairKey}`];
+                    if (extraRefKey && !refSet.has(extraRefKey)) {
+                        const extraData = pairData[extraRefKey];
+                        if (extraData && extraData.numbers) {
+                            extraData.numbers.forEach(n => t1ExtraUnion.add(n));
+                        }
+                    }
+
                     t1Sources.push(`${pairKey}[${Array.from(refSet).join(',')}]`);
                 });
 
-                if (t1Union.size > 0) {
+                if (t1PrimaryUnion.size > 0) {
                     tableSets.push({
                         source: `T1:[${t1Sources.join(',')}]`,
-                        numbers: t1Union
+                        numbers: t1PrimaryUnion
                     });
+                    if (t1ExtraUnion.size > 0) {
+                        tableExtraSets.push({ numbers: t1ExtraUnion, primaryNumbers: t1PrimaryUnion });
+                    }
                 }
             }
 
-            // --- TABLE 2: UNION all selected pairs ---
+            // --- TABLE 2: UNION all selected pairs (primary + extra) ---
             if (Object.keys(this.table2Selections).length > 0) {
                 const t2Projections = tableData.table2NextProjections || {};
-                const t2Union = new Set();
+                const t2PrimaryUnion = new Set();
+                const t2ExtraUnion = new Set();
                 const t2Sources = [];
 
                 Object.entries(this.table2Selections).forEach(([pairKey, refSet]) => {
                     const pairData = t2Projections[pairKey];
                     if (!pairData) return;
 
+                    // Primary refs
                     refSet.forEach(refKey => {
                         const refData = pairData[refKey];
                         if (refData && refData.numbers) {
-                            refData.numbers.forEach(n => t2Union.add(n));
+                            refData.numbers.forEach(n => t2PrimaryUnion.add(n));
                         }
                     });
+
+                    // Extra ref
+                    const extraRefKey = this._extraRefs?.[`table2:${pairKey}`];
+                    if (extraRefKey && !refSet.has(extraRefKey)) {
+                        const extraData = pairData[extraRefKey];
+                        if (extraData && extraData.numbers) {
+                            extraData.numbers.forEach(n => t2ExtraUnion.add(n));
+                        }
+                    }
+
                     t2Sources.push(`${pairKey}[${Array.from(refSet).join(',')}]`);
                 });
 
-                if (t2Union.size > 0) {
+                if (t2PrimaryUnion.size > 0) {
                     tableSets.push({
                         source: `T2:[${t2Sources.join(',')}]`,
-                        numbers: t2Union
+                        numbers: t2PrimaryUnion
                     });
+                    if (t2ExtraUnion.size > 0) {
+                        tableExtraSets.push({ numbers: t2ExtraUnion, primaryNumbers: t2PrimaryUnion });
+                    }
                 }
             }
 
@@ -655,7 +690,7 @@ class AIPredictionPanel {
                 numbers: Array.from(s.numbers).sort((a, b) => a - b)
             })));
 
-            // --- INTERSECTION across tables ---
+            // --- INTERSECTION across tables (PRIMARY) ---
             // If only 1 table selected → use that table's union directly
             // If multiple tables selected → find common numbers
             let intersection;
@@ -667,6 +702,49 @@ class AIPredictionPanel {
                     const next = tableSets[i].numbers;
                     intersection = new Set([...intersection].filter(n => next.has(n)));
                 }
+            }
+
+            // --- EXTRA NUMBERS (grey — from 3rd ref) ---
+            // Build "extended" sets per table: primary + extra union merged
+            // Then intersect those across tables to get "all possible" numbers
+            // extraNumbers = allPossible - primaryIntersection
+            let extraNumbers = [];
+            if (tableExtraSets.length > 0 && tableSets.length >= 1) {
+                // Build extended sets: for each table that has an extra set, merge primary+extra
+                // For tables that DON'T have extra sets (e.g., T3), use their primary set as-is
+                const extendedSets = tableSets.map((ts, idx) => {
+                    // Find matching extra set for this table
+                    const extraEntry = tableExtraSets.find(es => es.primaryNumbers === ts.numbers);
+                    if (extraEntry) {
+                        const merged = new Set(ts.numbers);
+                        extraEntry.numbers.forEach(n => merged.add(n));
+                        return merged;
+                    }
+                    return ts.numbers; // No extra for this table, use primary
+                });
+
+                let extendedIntersection;
+                if (extendedSets.length === 1) {
+                    extendedIntersection = new Set(extendedSets[0]);
+                } else {
+                    extendedIntersection = new Set(extendedSets[0]);
+                    for (let i = 1; i < extendedSets.length; i++) {
+                        const next = extendedSets[i];
+                        extendedIntersection = new Set([...extendedIntersection].filter(n => next.has(n)));
+                    }
+                }
+
+                // Extra = extended intersection minus primary intersection
+                extraNumbers = [...extendedIntersection].filter(n => !intersection.has(n));
+
+                // Apply 0/26 pairing rule to extra numbers
+                const extraHas0 = extraNumbers.includes(0);
+                const extraHas26 = extraNumbers.includes(26);
+                if (extraHas0 && !extraHas26 && !intersection.has(26)) extraNumbers.push(26);
+                if (extraHas26 && !extraHas0 && !intersection.has(0)) extraNumbers.push(0);
+
+                extraNumbers.sort((a, b) => a - b);
+                console.log(`🔘 Extra numbers (3rd ref): ${extraNumbers.length}:`, extraNumbers);
             }
 
             // Also track per-pair sets for logging
@@ -684,13 +762,13 @@ class AIPredictionPanel {
 
             console.log(`🎯 Intersection: ${finalNumbers.length} numbers:`, finalNumbers);
 
-            if (finalNumbers.length === 0) {
+            if (finalNumbers.length === 0 && extraNumbers.length === 0) {
                 // Show no common numbers
                 if (signalIndicator) {
                     signalIndicator.textContent = '⚠️ NO COMMON NUMBERS';
                     signalIndicator.style.backgroundColor = '#f59e0b';
                 }
-                const numbersDiv = document.querySelector('.prediction-numbers');
+                const numbersDiv = document.querySelector('#aiResultsPanel .prediction-numbers');
                 if (numbersDiv) {
                     numbersDiv.innerHTML = '<div style="color: #f59e0b; padding: 20px; text-align: center; font-weight: bold;">No common numbers found between selected pairs. Try different combinations.</div>';
                 }
@@ -707,6 +785,7 @@ class AIPredictionPanel {
                 anchors: anchors,
                 loose: loose,
                 anchor_groups: anchorGroups,
+                extraNumbers: extraNumbers,
                 full_pool: finalNumbers,
                 confidence: 90,
                 mode: 'FRONTEND_MULTI_TABLE',
@@ -731,7 +810,7 @@ class AIPredictionPanel {
                 signalIndicator.style.backgroundColor = '#ef4444';
             }
 
-            const numbersDiv = document.querySelector('.prediction-numbers');
+            const numbersDiv = document.querySelector('#aiResultsPanel .prediction-numbers');
             if (numbersDiv) {
                 numbersDiv.innerHTML = `<div style="color: #ef4444; padding: 20px; text-align: center;">❌ ${error.message}</div>`;
             }
@@ -756,6 +835,7 @@ class AIPredictionPanel {
         const loose = prediction.loose || [];
         const allNumbers = prediction.numbers || [];
         const anchorGroups = prediction.anchor_groups || [];
+        const extraNumbers = prediction.extraNumbers || [];
 
         // Color palette for anchor groups
         const groupColors = [
@@ -778,13 +858,14 @@ class AIPredictionPanel {
         // 1. UPDATE SIGNAL
         const signalIndicator = document.getElementById('signalIndicator');
         if (signalIndicator) {
-            signalIndicator.textContent = `✅ ${allNumbers.length} COMMON NUMBERS FOUND`;
+            const extraText = extraNumbers.length > 0 ? ` + ${extraNumbers.length} EXTRA` : '';
+            signalIndicator.textContent = `✅ ${allNumbers.length} COMMON${extraText}`;
             signalIndicator.style.backgroundColor = '#22c55e';
             signalIndicator.style.color = 'white';
         }
 
         // 2. UPDATE NUMBERS — color-coded anchor groups + loose
-        const numbersDiv = document.querySelector('.prediction-numbers');
+        const numbersDiv = document.querySelector('#aiResultsPanel .prediction-numbers');
         if (numbersDiv && allNumbers.length > 0) {
             let anchorGroupsHTML = '';
             if (anchorGroups.length > 0) {
@@ -891,6 +972,31 @@ class AIPredictionPanel {
                     <div style="padding: 8px 12px; background: #ecfdf5; border-radius: 8px; border: 1px solid #10b981; color: #065f46; font-size: 13px; font-weight: 600;">
                         ✅ All numbers covered by anchor groups — no loose numbers!
                     </div>`}
+
+                    ${extraNumbers.length > 0 ? `
+                    <div style="margin-bottom: 14px; padding: 12px; background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); border-radius: 10px; border: 2px dashed #9ca3af;">
+                        <div style="font-size: 13px; font-weight: 700; color: #4b5563; margin-bottom: 8px;">
+                            🔘 EXTRA (${extraNumbers.length}) — 3rd ref numbers (optional bets)
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 7px;">
+                            ${extraNumbers.map(n => `
+                                <span style="
+                                    display: inline-block;
+                                    padding: 10px 14px;
+                                    border-radius: 10px;
+                                    background: #9ca3af;
+                                    color: white;
+                                    border: 3px solid #6b7280;
+                                    font-weight: bold;
+                                    font-size: 17px;
+                                    min-width: 42px;
+                                    text-align: center;
+                                    box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+                                    opacity: 0.7;
+                                ">${n}</span>
+                            `).join('')}
+                        </div>
+                    </div>` : ''}
                 </div>
             `;
         } else if (numbersDiv) {
@@ -898,7 +1004,7 @@ class AIPredictionPanel {
         }
 
         // 3. NUMBER CLASSIFICATION — Positive/Negative & Zero/19 table
-        const reasoningDiv = document.querySelector('.prediction-reasoning');
+        const reasoningDiv = document.querySelector('#aiResultsPanel .prediction-reasoning');
         if (reasoningDiv) {
             const ZERO_TABLE = [3, 26, 0, 32, 21, 2, 25, 27, 13, 36, 23, 10, 5, 1, 20, 14, 18, 29, 7];
             const NINETEEN_TABLE = [15, 19, 4, 17, 34, 6, 11, 30, 8, 24, 16, 33, 31, 9, 22, 28, 12, 35];
@@ -1000,6 +1106,7 @@ class AIPredictionPanel {
                         <li style="margin-bottom: 4px;">• Total bet numbers: <strong>${allNumbers.length}</strong></li>
                         <li style="margin-bottom: 4px;">• Anchor groups: <strong>${anchorGroups.length}</strong> (covering ${anchorGroups.reduce((s, g) => s + (g.group ? g.group.length : 0), 0)} numbers)</li>
                         <li style="margin-bottom: 4px;">• Loose: <strong>${loose.length}</strong></li>
+                        ${extraNumbers.length > 0 ? `<li style="margin-bottom: 4px;">• Extra (3rd ref): <strong style="color: #6b7280;">${extraNumbers.length}</strong> — ${extraNumbers.join(', ')}</li>` : ''}
                     </ul>
                 </div>
             `;
@@ -1007,8 +1114,8 @@ class AIPredictionPanel {
 
         // 4. UPDATE WHEEL HIGHLIGHTS
         if (window.rouletteWheel && typeof window.rouletteWheel.updateHighlights === 'function') {
-            window.rouletteWheel.updateHighlights(anchors, loose, anchorGroups);
-            console.log('✅ Wheel highlights updated with anchor groups');
+            window.rouletteWheel.updateHighlights(anchors, loose, anchorGroups, extraNumbers);
+            console.log('✅ Wheel highlights updated with anchor groups + extra numbers');
         }
 
         // 5. UPDATE MONEY PANEL
@@ -1031,12 +1138,12 @@ class AIPredictionPanel {
             signalIndicator.style.backgroundColor = '#64748b';
         }
 
-        const numbersDiv = document.querySelector('.prediction-numbers');
+        const numbersDiv = document.querySelector('#aiResultsPanel .prediction-numbers');
         if (numbersDiv) {
             numbersDiv.innerHTML = '<div style="color: #9ca3af; font-style: italic; padding: 20px; text-align: center;">Select pairs to see predictions</div>';
         }
 
-        const reasoningDiv = document.querySelector('.prediction-reasoning');
+        const reasoningDiv = document.querySelector('#aiResultsPanel .prediction-reasoning');
         if (reasoningDiv) {
             reasoningDiv.innerHTML = `
                 <strong style="color: #1e293b;">HOW IT WORKS:</strong>

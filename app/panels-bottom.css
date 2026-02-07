@@ -9,7 +9,7 @@
     grid-template-columns: 1fr 2fr 1fr;
     gap: 15px;
     margin: 20px 0;
-    padding: 0 10px 100px 10px; /* Extra bottom padding for fixed input controls */
+    padding: 0 10px 0 10px;
 }
 
 @media (max-width: 1400px) {
@@ -18,9 +18,33 @@
     }
 }
 
+/* Explicit grid placement to ensure correct order regardless of DOM append timing */
+.wheel-panel { grid-column: 1; }
+.ai-selection-panel { grid-column: 2; }
+.money-panel { grid-column: 3; }
+
+/* Prediction results - full width below the 3-panel row */
+.prediction-results-container {
+    margin: 15px 10px 0 10px;
+    padding-bottom: 100px; /* Space for fixed input controls */
+}
+
+.ai-results-panel {
+    background: white;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.ai-results-panel .panel-content {
+    padding: 16px;
+}
+
 /* Panel base styles */
 .wheel-panel,
 .ai-panel,
+.ai-selection-panel,
 .money-panel {
     background: white;
     border: 2px solid #ddd;
@@ -94,9 +118,14 @@
     background: rgba(255, 229, 180, 0.5);
 }
 
-/* ===== AI PANEL ===== */
-.ai-panel .panel-header {
+/* ===== AI PANELS ===== */
+.ai-panel .panel-header,
+.ai-selection-panel .panel-header {
     background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+}
+
+.ai-results-panel .panel-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .btn-refresh {
