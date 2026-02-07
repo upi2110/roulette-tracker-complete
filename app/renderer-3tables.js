@@ -166,22 +166,321 @@ function generateAnchors(refNum, ref13Opp, prevPosCode) {
     return { purple: purpleAnchors, green: greenAnchors };
 }
 
+// 36-pocket European wheel: 0 and 26 share ONE pocket (index 0)
+// This gives correct neighbors: left of 0/26 pocket is 3, right is 32
+const WHEEL_36 = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3];
+
+/**
+ * Get the 36-pocket wheel index for any number.
+ * 0 and 26 both map to index 0 (same pocket).
+ */
+function getWheel36Index(num) {
+    if (num === 26) return 0;  // 26 shares pocket with 0
+    return WHEEL_36.indexOf(num);
+}
+
+/**
+ * Get numbers at a wheel pocket index.
+ * Index 0 returns BOTH 0 and 26 (they share the pocket).
+ */
+function getNumbersAtPocket(pocketIdx) {
+    const idx = ((pocketIdx % 36) + 36) % 36;
+    if (idx === 0) return [0, 26];  // both numbers in this pocket
+    return [WHEEL_36[idx]];
+}
+
 function expandAnchorsToBetNumbers(purpleAnchors, greenAnchors) {
     const betNumbers = new Set();
-    
+
     [...purpleAnchors, ...greenAnchors].forEach(anchor => {
-        const anchorNum = anchor === 0 ? 26 : anchor;
-        const idx = WHEEL_NO_ZERO.indexOf(anchorNum);
-        
+        const idx = getWheel36Index(anchor);
+        if (idx === -1) return;
+
         for (let offset = -1; offset <= 1; offset++) {
-            const neighborIdx = (idx + offset + 37) % 37;
-            let num = WHEEL_NO_ZERO[neighborIdx];
-            num = num === 26 ? 0 : num;
-            betNumbers.add(num);
+            getNumbersAtPocket(idx + offset).forEach(n => betNumbers.add(n));
         }
     });
-    
+
     return Array.from(betNumbers);
+}
+
+/**
+ * Expand target numbers to include ±N wheel neighbors on BOTH sides:
+ *   - Same side: target ± neighborRange on the wheel
+ *   - Opposite side: REGULAR_OPPOSITE of target ± neighborRange on the wheel
+ * This matches how Tables 1 & 2 validate hits (S+0, SL+1, SR+1, O+0, OL+1, OR+1, etc.)
+ * @param {Array<number>} targets - Target numbers to expand
+ * @param {number} neighborRange - 1 for Table 1, 2 for Table 2
+ * @returns {Array<number>} All numbers including targets and their same + opposite side neighbors
+ */
+function expandTargetsToBetNumbers(targets, neighborRange) {
+    const betNumbers = new Set();
+
+    targets.forEach(target => {
+        // Same side: target and its ±N wheel neighbors
+        // Uses WHEEL_36 (36 pockets, 0/26 = single pocket) for correct neighbor lookup
+        const idx = getWheel36Index(target);
+        if (idx !== -1) {
+            for (let offset = -neighborRange; offset <= neighborRange; offset++) {
+                getNumbersAtPocket(idx + offset).forEach(n => betNumbers.add(n));
+            }
+        }
+
+        // Opposite side: REGULAR_OPPOSITE of target and its ±N wheel neighbors
+        const opposite = REGULAR_OPPOSITES[target];
+        if (opposite !== undefined) {
+            const oppIdx = getWheel36Index(opposite);
+            if (oppIdx !== -1) {
+                for (let offset = -neighborRange; offset <= neighborRange; offset++) {
+                    getNumbersAtPocket(oppIdx + offset).forEach(n => betNumbers.add(n));
+                }
+            }
+        }
+    });
+
+    return Array.from(betNumbers);
+}
+
+/**
+ * Get NEXT row projections for Table 1 (±1 neighbor expansion)
+ * Returns per-pair per-ref targets + expanded numbers
+ * Uses same Math.min/Math.max clamping as renderTable1() NEXT row
+ */
+function getTable1NextProjections() {
+    if (spins.length < 1) return {};
+
+    const lastSpin = spins[spins.length - 1].actual;
+    const projections = {};
+
+    const pairs = {
+        ref0:       0,
+        ref19:      19,
+        prev:       lastSpin,
+        prevPlus1:  Math.min(lastSpin + 1, 36),
+        prevMinus1: Math.max(lastSpin - 1, 0),
+        prevPlus2:  Math.min(lastSpin + 2, 36),
+        prevMinus2: Math.max(lastSpin - 2, 0)
+    };
+
+    Object.entries(pairs).forEach(([pairKey, refNum]) => {
+        const ref13Opp = DIGIT_13_OPPOSITES[refNum];
+
+        const refLookup = getLookupRow(refNum);
+        const oppLookup = getLookupRow(ref13Opp);
+
+        // P entry — from refLookup only
+        if (refLookup) {
+            projections[pairKey] = {};
+            ['first', 'second', 'third'].forEach(refKey => {
+                const numbers = expandTargetsToBetNumbers([refLookup[refKey]], 1);
+                projections[pairKey][refKey] = {
+                    targets: [refLookup[refKey]],
+                    numbers: numbers
+                };
+            });
+        }
+
+        // P-13OPP entry — from oppLookup only
+        if (oppLookup) {
+            projections[pairKey + '_13opp'] = {};
+            ['first', 'second', 'third'].forEach(refKey => {
+                const numbers = expandTargetsToBetNumbers([oppLookup[refKey]], 1);
+                projections[pairKey + '_13opp'][refKey] = {
+                    targets: [oppLookup[refKey]],
+                    numbers: numbers
+                };
+            });
+        }
+    });
+
+    return projections;
+}
+
+/**
+ * Get NEXT row projections for Table 2 (±2 neighbor expansion)
+ * Same structure as Table 1 but with wider neighbor range
+ */
+function getTable2NextProjections() {
+    if (spins.length < 1) return {};
+
+    const lastSpin = spins[spins.length - 1].actual;
+    const projections = {};
+
+    const pairs = {
+        ref0:       0,
+        ref19:      19,
+        prev:       lastSpin,
+        prevPlus1:  Math.min(lastSpin + 1, 36),
+        prevMinus1: Math.max(lastSpin - 1, 0),
+        prevPlus2:  Math.min(lastSpin + 2, 36),
+        prevMinus2: Math.max(lastSpin - 2, 0)
+    };
+
+    Object.entries(pairs).forEach(([pairKey, refNum]) => {
+        const ref13Opp = DIGIT_13_OPPOSITES[refNum];
+
+        const refLookup = getLookupRow(refNum);
+        const oppLookup = getLookupRow(ref13Opp);
+
+        // P entry — from refLookup only
+        if (refLookup) {
+            projections[pairKey] = {};
+            ['first', 'second', 'third'].forEach(refKey => {
+                const numbers = expandTargetsToBetNumbers([refLookup[refKey]], 2);
+                projections[pairKey][refKey] = {
+                    targets: [refLookup[refKey]],
+                    numbers: numbers
+                };
+            });
+        }
+
+        // P-13OPP entry — from oppLookup only
+        if (oppLookup) {
+            projections[pairKey + '_13opp'] = {};
+            ['first', 'second', 'third'].forEach(refKey => {
+                const numbers = expandTargetsToBetNumbers([oppLookup[refKey]], 2);
+                projections[pairKey + '_13opp'][refKey] = {
+                    targets: [oppLookup[refKey]],
+                    numbers: numbers
+                };
+            });
+        }
+    });
+
+    return projections;
+}
+
+/**
+ * Frontend port of backend _calculate_wheel_anchors()
+ * Finds CONTIGUOUS RUNS of consecutive wheel numbers in the bet list,
+ * then assigns anchors from the center of each run:
+ *   - Run of 3 → ±1 anchor (center number, 3-number group)
+ *   - Run of 5 → ±2 anchor (center number, 5-number group)
+ *   - Run of 4 → ±1 anchor at position 1 (3 covered) + 1 loose at end
+ *   - Run of 6 → ±2 anchor at position 2 (5 covered) + 1 loose at end
+ *   - Run of 7+ → ±2 anchor from center, remaining handled as sub-runs
+ *   - Run of 1-2 → all loose
+ * @param {Array<number>} numbers - Bet numbers
+ * @returns {Object} { anchors, loose, anchorGroups }
+ */
+function calculateWheelAnchors(numbers) {
+    if (!numbers || numbers.length === 0) return { anchors: [], loose: [], anchorGroups: [] };
+
+    const numberSet = new Set(numbers);
+
+    // Helper: get the number at a wheel position (wrapping)
+    function getNum(wheelIdx) {
+        const idx = ((wheelIdx % 37) + 37) % 37;
+        return WHEEL_STANDARD[idx];
+    }
+
+    // Step 1: Find all wheel positions that are in the bet list
+    const inSet = new Array(37).fill(false);
+    for (let i = 0; i < 37; i++) {
+        if (numberSet.has(WHEEL_STANDARD[i])) {
+            inSet[i] = true;
+        }
+    }
+
+    // Step 2: Find contiguous runs on the circular wheel
+    // First, find a starting gap (a position NOT in set) so we don't split a wrap-around run
+    let startScan = 0;
+    for (let i = 0; i < 37; i++) {
+        if (!inSet[i]) { startScan = (i + 1) % 37; break; }
+    }
+
+    const runs = [];
+    const visited = new Array(37).fill(false);
+
+    for (let s = 0; s < 37; s++) {
+        const start = (startScan + s) % 37;
+        if (!inSet[start] || visited[start]) continue;
+
+        // Extend this run forward
+        let runIndices = [];
+        let pos = start;
+        while (runIndices.length < 37) {
+            const idx = pos % 37;
+            if (!inSet[idx] || visited[idx]) break;
+            runIndices.push(idx);
+            visited[idx] = true;
+            pos++;
+        }
+
+        if (runIndices.length > 0) {
+            runs.push(runIndices);
+        }
+    }
+
+    // Step 3: For each run, extract anchor groups greedily
+    const anchorGroups = [];
+    const coveredPositions = new Set();
+
+    function extractAnchors(runIndices) {
+        const len = runIndices.length;
+        if (len < 3) return; // Too short for any anchor
+
+        let i = 0;
+        while (i < len) {
+            const remaining = len - i;
+
+            if (remaining >= 5) {
+                // Take a ±2 group (5 numbers) centered at i+2
+                const centerIdx = runIndices[i + 2];
+                const group = [
+                    WHEEL_STANDARD[runIndices[i]],
+                    WHEEL_STANDARD[runIndices[i + 1]],
+                    WHEEL_STANDARD[centerIdx],
+                    WHEEL_STANDARD[runIndices[i + 3]],
+                    WHEEL_STANDARD[runIndices[i + 4]]
+                ];
+                anchorGroups.push({
+                    anchor: WHEEL_STANDARD[centerIdx],
+                    group: group,
+                    type: '±2'
+                });
+                for (let j = i; j < i + 5; j++) coveredPositions.add(runIndices[j]);
+                i += 5;
+            } else if (remaining >= 3) {
+                // Take a ±1 group (3 numbers) centered at i+1
+                const centerIdx = runIndices[i + 1];
+                const group = [
+                    WHEEL_STANDARD[runIndices[i]],
+                    WHEEL_STANDARD[centerIdx],
+                    WHEEL_STANDARD[runIndices[i + 2]]
+                ];
+                anchorGroups.push({
+                    anchor: WHEEL_STANDARD[centerIdx],
+                    group: group,
+                    type: '±1'
+                });
+                for (let j = i; j < i + 3; j++) coveredPositions.add(runIndices[j]);
+                i += 3;
+            } else {
+                // 1-2 remaining → can't form a group, skip
+                i++;
+            }
+        }
+    }
+
+    runs.forEach(runIndices => extractAnchors(runIndices));
+
+    // Step 4: Determine loose numbers (not covered by any group)
+    const loose = [];
+    const anchorNums = [];
+
+    numbers.forEach(num => {
+        const idx = WHEEL_STANDARD.indexOf(num);
+        if (idx === -1 || !coveredPositions.has(idx)) {
+            loose.push(num);
+        }
+    });
+
+    anchorGroups.forEach(ag => anchorNums.push(ag.anchor));
+    loose.sort((a, b) => a - b);
+    anchorNums.sort((a, b) => a - b);
+
+    return { anchors: anchorNums, loose: loose, anchorGroups };
 }
 
 function calculateReferences(prev, prevPrev) {
@@ -368,38 +667,15 @@ async function undoLast() {
     // ── CLEAR STALE UI WHEN < 3 SPINS ──
     if (spins.length < 3) {
         if (window.aiPanel) {
-            window.aiPanel.currentPrediction = null;
-            window.aiPanel.selectedPairs.clear();
-            window.aiPanel.availablePairs = [];
             if (window.aiPanel._predictionDebounce) {
                 clearTimeout(window.aiPanel._predictionDebounce);
             }
-            window.aiPanel.clearSelections();
-            const pairCheckboxes = document.getElementById('pairCheckboxes');
-            if (pairCheckboxes) {
-                pairCheckboxes.innerHTML = '<div style="color: #64748b; font-style: italic; width: 100%; text-align: center; padding: 20px;">📌 Enter spins to see available pairs</div>';
-            }
-        }
-        const signalIndicator = document.getElementById('signalIndicator');
-        if (signalIndicator) {
-            signalIndicator.textContent = 'WAITING FOR SELECTION';
-            signalIndicator.style.backgroundColor = '#6b7280';
-        }
-        const numbersDiv = document.querySelector('.prediction-numbers');
-        if (numbersDiv) {
-            numbersDiv.innerHTML = '<div style="color: #9ca3af; font-style: italic; padding: 20px; text-align: center;">Need at least 3 spins for predictions</div>';
-        }
-        const reasoningDiv = document.querySelector('.prediction-reasoning');
-        if (reasoningDiv) {
-            reasoningDiv.innerHTML = `
-                <strong style="color: #1e293b;">HOW IT WORKS:</strong>
-                <ul style="margin: 10px 0 0 0; padding-left: 22px;">
-                    <li>Select 1 or more pairs from Table 3</li>
-                    <li>System finds common numbers between selected pairs</li>
-                    <li>Numbers already include ±1 wheel neighbors</li>
-                    <li>Shows final common numbers to bet</li>
-                </ul>
-            `;
+            window.aiPanel.clearSelections();  // Clears all 3 tables + displays
+            window.aiPanel.table3Pairs = [];
+            window.aiPanel.table1Pairs = [];
+            window.aiPanel.table2Pairs = [];
+            window.aiPanel.availablePairs = [];
+            window.aiPanel.renderAllCheckboxes();
         }
         window.table3DisplayProjections = {};
     }
@@ -455,32 +731,15 @@ function resetAll() {
         
         // Reset AI Prediction Panel (clear selections, predictions, display)
         if (window.aiPanel) {
-            window.aiPanel.currentPrediction = null;
-            window.aiPanel.lastSpinCount = 0;
-            window.aiPanel.selectedPairs.clear();
-            window.aiPanel.availablePairs = [];
             if (window.aiPanel._predictionDebounce) {
                 clearTimeout(window.aiPanel._predictionDebounce);
             }
-            window.aiPanel.clearSelections();
-            // Reset the pair checkboxes area
-            const pairCheckboxes = document.getElementById('pairCheckboxes');
-            if (pairCheckboxes) {
-                pairCheckboxes.innerHTML = '<div style="color: #64748b; font-style: italic; width: 100%; text-align: center; padding: 20px;">📌 Enter spins to see available pairs</div>';
-            }
-            // Reset reasoning section
-            const reasoningDiv = document.querySelector('.prediction-reasoning');
-            if (reasoningDiv) {
-                reasoningDiv.innerHTML = `
-                    <strong style="color: #1e293b;">HOW IT WORKS:</strong>
-                    <ul style="margin: 10px 0 0 0; padding-left: 22px;">
-                        <li>Select 1 or more pairs from Table 3</li>
-                        <li>System finds common numbers between selected pairs</li>
-                        <li>Numbers already include ±1 wheel neighbors</li>
-                        <li>Shows final common numbers to bet</li>
-                    </ul>
-                `;
-            }
+            window.aiPanel.clearSelections();  // Clears all 3 tables + displays
+            window.aiPanel.table3Pairs = [];
+            window.aiPanel.table1Pairs = [];
+            window.aiPanel.table2Pairs = [];
+            window.aiPanel.availablePairs = [];
+            window.aiPanel.renderAllCheckboxes();
             console.log('✅ AI panel reset');
         }
         
@@ -530,153 +789,159 @@ function render() {
 function renderTable1() {
     const tbody = document.getElementById('table1Body');
     tbody.innerHTML = '';
-    
+
     const startIdx = Math.max(0, spins.length - 8);
     const visibleSpins = spins.slice(startIdx);
-    
+
     visibleSpins.forEach((spin, relIdx) => {
         const idx = startIdx + relIdx;
         const row = document.createElement('tr');
-        
+
         if (idx === 0) {
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
                 <td><strong>${spin.actual}</strong></td>
-                ${Array(98).fill('<td></td>').join('')}
+                ${Array(84).fill('<td></td>').join('')}
             `;
             tbody.appendChild(row);
             return;
         }
-        
+
         const prev = spins[idx - 1].actual;
         const validCodes = ['S+0', 'SL+1', 'SR+1', 'O+0', 'OL+1', 'OR+1'];
-        
+
         const html = [];
         html.push(`<td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>`);
         html.push(`<td><strong>${spin.actual}</strong></td>`);
-        
+
         const isValidCode = (code) => validCodes.includes(code);
-        
+
         const getCodeClass = (code, isValid) => {
             if (!isValid || code === 'XX') return 'code-xx';
             if (code.startsWith('S')) return 'code-s';
             if (code.startsWith('O')) return 'code-o';
             return '';
         };
-        
-        const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false) => {
-            const anchorClass = 'anchor-cell' + 
+
+        const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '') => {
+            const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            const anchorClass = 'anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
                 (is13Opp ? ' opp13-cell' : '');
-            html.push(`<td class="${anchorClass}"><strong>${anchorNum}</strong></td>`);
-            
+            html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
+
             const lookupRow = getLookupRow(refNum);
-            
+
             if (!lookupRow) {
                 const cellClass = is13Opp ? 'opp13-cell' : '';
                 const codeClass = 'code-xx' + (is13Opp ? ' opp13-cell' : '');
-                html.push(`<td class="${cellClass}">-</td><td class="${codeClass}">XX</td>`);
-                html.push(`<td class="${cellClass}">-</td><td class="${codeClass}">XX</td>`);
-                html.push(`<td class="${cellClass}">-</td><td class="${codeClass}">XX</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
                 return;
             }
-            
+
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
-            
+
             targets.forEach((target) => {
                 const code = calculatePositionCode(target, spin.actual);
                 const isValid = isValidCode(code);
                 const displayCode = isValid ? code : 'XX';
                 const codeClassBase = getCodeClass(displayCode, isValid);
-                
+
                 const numClass = is13Opp ? 'opp13-cell' : '';
                 const codeClass = codeClassBase + (is13Opp ? ' opp13-cell' : '');
-                
-                html.push(`<td class="${numClass}">${target}</td>`);
-                html.push(`<td class="${codeClass}">${displayCode}</td>`);
+
+                html.push(`<td class="${numClass}"${dp}>${target}</td>`);
+                html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
             });
         };
-        
-        renderTargetGroup(0, 0, false, false);
-        renderTargetGroup(19, 19, true, false);
-        renderTargetGroup(prev, prev, true, false);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prev], DIGIT_13_OPPOSITES[prev], false, true);
-        
+
+        renderTargetGroup(0, 0, false, false, 'ref0');
+        renderTargetGroup(DIGIT_13_OPPOSITES[0], DIGIT_13_OPPOSITES[0], true, true, 'ref0_13opp');
+        renderTargetGroup(19, 19, true, false, 'ref19');
+        renderTargetGroup(DIGIT_13_OPPOSITES[19], DIGIT_13_OPPOSITES[19], true, true, 'ref19_13opp');
+        renderTargetGroup(prev, prev, true, false, 'prev');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prev], DIGIT_13_OPPOSITES[prev], true, true, 'prev_13opp');
+
         const prevPlus1 = Math.min(prev + 1, 36);
-        renderTargetGroup(prevPlus1, prevPlus1, true, false);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus1], DIGIT_13_OPPOSITES[prevPlus1], false, true);
-        
+        renderTargetGroup(prevPlus1, prevPlus1, true, false, 'prevPlus1');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus1], DIGIT_13_OPPOSITES[prevPlus1], true, true, 'prevPlus1_13opp');
+
         const prevMinus1 = Math.max(prev - 1, 0);
-        renderTargetGroup(prevMinus1, prevMinus1, true, false);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus1], DIGIT_13_OPPOSITES[prevMinus1], false, true);
-        
+        renderTargetGroup(prevMinus1, prevMinus1, true, false, 'prevMinus1');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus1], DIGIT_13_OPPOSITES[prevMinus1], true, true, 'prevMinus1_13opp');
+
         const prevPlus2 = Math.min(prev + 2, 36);
-        renderTargetGroup(prevPlus2, prevPlus2, true, false);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus2], DIGIT_13_OPPOSITES[prevPlus2], false, true);
-        
+        renderTargetGroup(prevPlus2, prevPlus2, true, false, 'prevPlus2');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus2], DIGIT_13_OPPOSITES[prevPlus2], true, true, 'prevPlus2_13opp');
+
         const prevMinus2 = Math.max(prev - 2, 0);
-        renderTargetGroup(prevMinus2, prevMinus2, true, false);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus2], DIGIT_13_OPPOSITES[prevMinus2], false, true);
-        
+        renderTargetGroup(prevMinus2, prevMinus2, true, false, 'prevMinus2');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus2], DIGIT_13_OPPOSITES[prevMinus2], true, true, 'prevMinus2_13opp');
+
         row.innerHTML = html.join('');
         tbody.appendChild(row);
     });
-    
+
     if (spins.length >= 1) {
         const lastSpin = spins[spins.length - 1].actual;
         const lastDirection = spins[spins.length - 1].direction;
         const nextDirection = lastDirection === 'C' ? 'AC' : 'C';
-        
+
         const html = [];
         html.push(`<td class="dir-${nextDirection.toLowerCase()}">${nextDirection}</td>`);
         html.push(`<td><strong>NEXT</strong></td>`);
-        
-        const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false) => {
-            const anchorClass = 'anchor-cell' + 
+
+        const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '') => {
+            const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            const anchorClass = 'anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
                 (is13Opp ? ' opp13-cell' : '');
-            html.push(`<td class="${anchorClass}"><strong>${anchorNum}</strong></td>`);
-            
+            html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
+
             const lookupRow = getLookupRow(refNum);
-            
+
             if (!lookupRow) {
                 const cellClass = is13Opp ? 'opp13-cell' : '';
-                html.push(`<td class="${cellClass}">-</td><td class="${cellClass}">-</td>`);
-                html.push(`<td class="${cellClass}">-</td><td class="${cellClass}">-</td>`);
-                html.push(`<td class="${cellClass}">-</td><td class="${cellClass}">-</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
                 return;
             }
-            
+
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
             const cellClass = is13Opp ? 'opp13-cell' : '';
-            
+
             targets.forEach((target) => {
-                html.push(`<td class="${cellClass}">${target}</td>`);
-                html.push(`<td class="${cellClass}">-</td>`);
+                html.push(`<td class="${cellClass}"${dp}>${target}</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td>`);
             });
         };
-        
-        renderNextGroup(0, 0, false, false);
-        renderNextGroup(19, 19, true, false);
-        renderNextGroup(lastSpin, lastSpin, true, false);
-        renderNextGroup(DIGIT_13_OPPOSITES[lastSpin], DIGIT_13_OPPOSITES[lastSpin], false, true);
-        
+
+        renderNextGroup(0, 0, false, false, 'ref0');
+        renderNextGroup(DIGIT_13_OPPOSITES[0], DIGIT_13_OPPOSITES[0], true, true, 'ref0_13opp');
+        renderNextGroup(19, 19, true, false, 'ref19');
+        renderNextGroup(DIGIT_13_OPPOSITES[19], DIGIT_13_OPPOSITES[19], true, true, 'ref19_13opp');
+        renderNextGroup(lastSpin, lastSpin, true, false, 'prev');
+        renderNextGroup(DIGIT_13_OPPOSITES[lastSpin], DIGIT_13_OPPOSITES[lastSpin], true, true, 'prev_13opp');
+
         const plus1 = Math.min(lastSpin + 1, 36);
-        renderNextGroup(plus1, plus1, true, false);
-        renderNextGroup(DIGIT_13_OPPOSITES[plus1], DIGIT_13_OPPOSITES[plus1], false, true);
-        
+        renderNextGroup(plus1, plus1, true, false, 'prevPlus1');
+        renderNextGroup(DIGIT_13_OPPOSITES[plus1], DIGIT_13_OPPOSITES[plus1], true, true, 'prevPlus1_13opp');
+
         const minus1 = Math.max(lastSpin - 1, 0);
-        renderNextGroup(minus1, minus1, true, false);
-        renderNextGroup(DIGIT_13_OPPOSITES[minus1], DIGIT_13_OPPOSITES[minus1], false, true);
-        
+        renderNextGroup(minus1, minus1, true, false, 'prevMinus1');
+        renderNextGroup(DIGIT_13_OPPOSITES[minus1], DIGIT_13_OPPOSITES[minus1], true, true, 'prevMinus1_13opp');
+
         const plus2 = Math.min(lastSpin + 2, 36);
-        renderNextGroup(plus2, plus2, true, false);
-        renderNextGroup(DIGIT_13_OPPOSITES[plus2], DIGIT_13_OPPOSITES[plus2], false, true);
-        
+        renderNextGroup(plus2, plus2, true, false, 'prevPlus2');
+        renderNextGroup(DIGIT_13_OPPOSITES[plus2], DIGIT_13_OPPOSITES[plus2], true, true, 'prevPlus2_13opp');
+
         const minus2 = Math.max(lastSpin - 2, 0);
-        renderNextGroup(minus2, minus2, true, false);
-        renderNextGroup(DIGIT_13_OPPOSITES[minus2], DIGIT_13_OPPOSITES[minus2], false, true);
-        
+        renderNextGroup(minus2, minus2, true, false, 'prevMinus2');
+        renderNextGroup(DIGIT_13_OPPOSITES[minus2], DIGIT_13_OPPOSITES[minus2], true, true, 'prevMinus2_13opp');
+
         const nextRow = document.createElement('tr');
         nextRow.className = 'next-row';
         nextRow.innerHTML = html.join('');
@@ -689,153 +954,159 @@ function renderTable1() {
 function renderTable2() {
     const tbody = document.getElementById('table2Body');
     tbody.innerHTML = '';
-    
+
     const startIdx = Math.max(0, spins.length - 8);
     const visibleSpins = spins.slice(startIdx);
-    
+
     visibleSpins.forEach((spin, relIdx) => {
         const idx = startIdx + relIdx;
         const row = document.createElement('tr');
-        
+
         if (idx === 0) {
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
                 <td><strong>${spin.actual}</strong></td>
-                ${Array(98).fill('<td></td>').join('')}
+                ${Array(84).fill('<td></td>').join('')}
             `;
             tbody.appendChild(row);
             return;
         }
-        
+
         const prev = spins[idx - 1].actual;
         const validCodes = ['S+0', 'SL+1', 'SR+1', 'SL+2', 'SR+2', 'O+0', 'OL+1', 'OR+1', 'OL+2', 'OR+2'];
-        
+
         const html = [];
         html.push(`<td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>`);
         html.push(`<td><strong>${spin.actual}</strong></td>`);
-        
+
         const isValidCode = (code) => validCodes.includes(code);
-        
+
         const getCodeClass = (code, isValid) => {
             if (!isValid || code === 'XX') return 'code-xx';
             if (code.startsWith('S')) return 'code-s';
             if (code.startsWith('O')) return 'code-o';
             return '';
         };
-        
-        const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false) => {
-            const anchorClass = 'anchor-cell' + 
+
+        const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '') => {
+            const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            const anchorClass = 'anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
                 (is13Opp ? ' opp13-cell' : '');
-            html.push(`<td class="${anchorClass}"><strong>${anchorNum}</strong></td>`);
-            
+            html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
+
             const lookupRow = getLookupRow(refNum);
-            
+
             if (!lookupRow) {
                 const cellClass = is13Opp ? 'opp13-cell' : '';
                 const codeClass = 'code-xx' + (is13Opp ? ' opp13-cell' : '');
-                html.push(`<td class="${cellClass}">-</td><td class="${codeClass}">XX</td>`);
-                html.push(`<td class="${cellClass}">-</td><td class="${codeClass}">XX</td>`);
-                html.push(`<td class="${cellClass}">-</td><td class="${codeClass}">XX</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
                 return;
             }
-            
+
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
-            
+
             targets.forEach((target) => {
                 const code = calculatePositionCode(target, spin.actual);
                 const isValid = isValidCode(code);
                 const displayCode = isValid ? code : 'XX';
                 const codeClassBase = getCodeClass(displayCode, isValid);
-                
+
                 const numClass = is13Opp ? 'opp13-cell' : '';
                 const codeClass = codeClassBase + (is13Opp ? ' opp13-cell' : '');
-                
-                html.push(`<td class="${numClass}">${target}</td>`);
-                html.push(`<td class="${codeClass}">${displayCode}</td>`);
+
+                html.push(`<td class="${numClass}"${dp}>${target}</td>`);
+                html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
             });
         };
-        
-        renderTargetGroup(0, 0, false, false);
-        renderTargetGroup(19, 19, true, false);
-        renderTargetGroup(prev, prev, true, false);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prev], DIGIT_13_OPPOSITES[prev], false, true);
-        
+
+        renderTargetGroup(0, 0, false, false, 'ref0');
+        renderTargetGroup(DIGIT_13_OPPOSITES[0], DIGIT_13_OPPOSITES[0], true, true, 'ref0_13opp');
+        renderTargetGroup(19, 19, true, false, 'ref19');
+        renderTargetGroup(DIGIT_13_OPPOSITES[19], DIGIT_13_OPPOSITES[19], true, true, 'ref19_13opp');
+        renderTargetGroup(prev, prev, true, false, 'prev');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prev], DIGIT_13_OPPOSITES[prev], true, true, 'prev_13opp');
+
         const prevPlus1 = Math.min(prev + 1, 36);
-        renderTargetGroup(prevPlus1, prevPlus1, true, false);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus1], DIGIT_13_OPPOSITES[prevPlus1], false, true);
-        
+        renderTargetGroup(prevPlus1, prevPlus1, true, false, 'prevPlus1');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus1], DIGIT_13_OPPOSITES[prevPlus1], true, true, 'prevPlus1_13opp');
+
         const prevMinus1 = Math.max(prev - 1, 0);
-        renderTargetGroup(prevMinus1, prevMinus1, true, false);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus1], DIGIT_13_OPPOSITES[prevMinus1], false, true);
-        
+        renderTargetGroup(prevMinus1, prevMinus1, true, false, 'prevMinus1');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus1], DIGIT_13_OPPOSITES[prevMinus1], true, true, 'prevMinus1_13opp');
+
         const prevPlus2 = Math.min(prev + 2, 36);
-        renderTargetGroup(prevPlus2, prevPlus2, true, false);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus2], DIGIT_13_OPPOSITES[prevPlus2], false, true);
-        
+        renderTargetGroup(prevPlus2, prevPlus2, true, false, 'prevPlus2');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus2], DIGIT_13_OPPOSITES[prevPlus2], true, true, 'prevPlus2_13opp');
+
         const prevMinus2 = Math.max(prev - 2, 0);
-        renderTargetGroup(prevMinus2, prevMinus2, true, false);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus2], DIGIT_13_OPPOSITES[prevMinus2], false, true);
-        
+        renderTargetGroup(prevMinus2, prevMinus2, true, false, 'prevMinus2');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus2], DIGIT_13_OPPOSITES[prevMinus2], true, true, 'prevMinus2_13opp');
+
         row.innerHTML = html.join('');
         tbody.appendChild(row);
     });
-    
+
     if (spins.length >= 1) {
         const lastSpin = spins[spins.length - 1].actual;
         const lastDirection = spins[spins.length - 1].direction;
         const nextDirection = lastDirection === 'C' ? 'AC' : 'C';
-        
+
         const html = [];
         html.push(`<td class="dir-${nextDirection.toLowerCase()}">${nextDirection}</td>`);
         html.push(`<td><strong>NEXT</strong></td>`);
-        
-        const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false) => {
-            const anchorClass = 'anchor-cell' + 
+
+        const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '') => {
+            const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            const anchorClass = 'anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
                 (is13Opp ? ' opp13-cell' : '');
-            html.push(`<td class="${anchorClass}"><strong>${anchorNum}</strong></td>`);
-            
+            html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
+
             const lookupRow = getLookupRow(refNum);
-            
+
             if (!lookupRow) {
                 const cellClass = is13Opp ? 'opp13-cell' : '';
-                html.push(`<td class="${cellClass}">-</td><td class="${cellClass}">-</td>`);
-                html.push(`<td class="${cellClass}">-</td><td class="${cellClass}">-</td>`);
-                html.push(`<td class="${cellClass}">-</td><td class="${cellClass}">-</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
                 return;
             }
-            
+
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
             const cellClass = is13Opp ? 'opp13-cell' : '';
-            
+
             targets.forEach((target) => {
-                html.push(`<td class="${cellClass}">${target}</td>`);
-                html.push(`<td class="${cellClass}">-</td>`);
+                html.push(`<td class="${cellClass}"${dp}>${target}</td>`);
+                html.push(`<td class="${cellClass}"${dp}>-</td>`);
             });
         };
-        
-        renderNextGroup(0, 0, false, false);
-        renderNextGroup(19, 19, true, false);
-        renderNextGroup(lastSpin, lastSpin, true, false);
-        renderNextGroup(DIGIT_13_OPPOSITES[lastSpin], DIGIT_13_OPPOSITES[lastSpin], false, true);
-        
+
+        renderNextGroup(0, 0, false, false, 'ref0');
+        renderNextGroup(DIGIT_13_OPPOSITES[0], DIGIT_13_OPPOSITES[0], true, true, 'ref0_13opp');
+        renderNextGroup(19, 19, true, false, 'ref19');
+        renderNextGroup(DIGIT_13_OPPOSITES[19], DIGIT_13_OPPOSITES[19], true, true, 'ref19_13opp');
+        renderNextGroup(lastSpin, lastSpin, true, false, 'prev');
+        renderNextGroup(DIGIT_13_OPPOSITES[lastSpin], DIGIT_13_OPPOSITES[lastSpin], true, true, 'prev_13opp');
+
         const plus1 = Math.min(lastSpin + 1, 36);
-        renderNextGroup(plus1, plus1, true, false);
-        renderNextGroup(DIGIT_13_OPPOSITES[plus1], DIGIT_13_OPPOSITES[plus1], false, true);
-        
+        renderNextGroup(plus1, plus1, true, false, 'prevPlus1');
+        renderNextGroup(DIGIT_13_OPPOSITES[plus1], DIGIT_13_OPPOSITES[plus1], true, true, 'prevPlus1_13opp');
+
         const minus1 = Math.max(lastSpin - 1, 0);
-        renderNextGroup(minus1, minus1, true, false);
-        renderNextGroup(DIGIT_13_OPPOSITES[minus1], DIGIT_13_OPPOSITES[minus1], false, true);
-        
+        renderNextGroup(minus1, minus1, true, false, 'prevMinus1');
+        renderNextGroup(DIGIT_13_OPPOSITES[minus1], DIGIT_13_OPPOSITES[minus1], true, true, 'prevMinus1_13opp');
+
         const plus2 = Math.min(lastSpin + 2, 36);
-        renderNextGroup(plus2, plus2, true, false);
-        renderNextGroup(DIGIT_13_OPPOSITES[plus2], DIGIT_13_OPPOSITES[plus2], false, true);
-        
+        renderNextGroup(plus2, plus2, true, false, 'prevPlus2');
+        renderNextGroup(DIGIT_13_OPPOSITES[plus2], DIGIT_13_OPPOSITES[plus2], true, true, 'prevPlus2_13opp');
+
         const minus2 = Math.max(lastSpin - 2, 0);
-        renderNextGroup(minus2, minus2, true, false);
-        renderNextGroup(DIGIT_13_OPPOSITES[minus2], DIGIT_13_OPPOSITES[minus2], false, true);
-        
+        renderNextGroup(minus2, minus2, true, false, 'prevMinus2');
+        renderNextGroup(DIGIT_13_OPPOSITES[minus2], DIGIT_13_OPPOSITES[minus2], true, true, 'prevMinus2_13opp');
+
         const nextRow = document.createElement('tr');
         nextRow.className = 'next-row';
         nextRow.innerHTML = html.join('');
@@ -925,36 +1196,36 @@ function renderTable3() {
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
                 <td><strong>${spin.actual}</strong></td>
-                <td class="${cellClass('prev', 'pair', true)}">${data.prev.ref}</td>
-                <td class="${cellClass('prev', 'pair')}">${formatPos(data.prev.pair)}</td>
-                <td class="${cellClass('prev', 'pair13Opp')}">${data.prev.ref13Opp}</td>
-                <td class="${cellClass('prev', 'pair13Opp')}">${formatPos(data.prev.pair13Opp)}</td>
-                <td class="${projClass('prev')}">${projHtml('prev')}</td>
-                <td class="${cellClass('prev_plus_1', 'pair', true)}">${data.prev_plus_1.ref}</td>
-                <td class="${cellClass('prev_plus_1', 'pair')}">${formatPos(data.prev_plus_1.pair)}</td>
-                <td class="${cellClass('prev_plus_1', 'pair13Opp')}">${data.prev_plus_1.ref13Opp}</td>
-                <td class="${cellClass('prev_plus_1', 'pair13Opp')}">${formatPos(data.prev_plus_1.pair13Opp)}</td>
-                <td class="${projClass('prev_plus_1')}">${projHtml('prev_plus_1')}</td>
-                <td class="${cellClass('prev_minus_1', 'pair', true)}">${data.prev_minus_1.ref}</td>
-                <td class="${cellClass('prev_minus_1', 'pair')}">${formatPos(data.prev_minus_1.pair)}</td>
-                <td class="${cellClass('prev_minus_1', 'pair13Opp')}">${data.prev_minus_1.ref13Opp}</td>
-                <td class="${cellClass('prev_minus_1', 'pair13Opp')}">${formatPos(data.prev_minus_1.pair13Opp)}</td>
-                <td class="${projClass('prev_minus_1')}">${projHtml('prev_minus_1')}</td>
-                <td class="${cellClass('prev_plus_2', 'pair', true)}">${data.prev_plus_2.ref}</td>
-                <td class="${cellClass('prev_plus_2', 'pair')}">${formatPos(data.prev_plus_2.pair)}</td>
-                <td class="${cellClass('prev_plus_2', 'pair13Opp')}">${data.prev_plus_2.ref13Opp}</td>
-                <td class="${cellClass('prev_plus_2', 'pair13Opp')}">${formatPos(data.prev_plus_2.pair13Opp)}</td>
-                <td class="${projClass('prev_plus_2')}">${projHtml('prev_plus_2')}</td>
-                <td class="${cellClass('prev_minus_2', 'pair', true)}">${data.prev_minus_2.ref}</td>
-                <td class="${cellClass('prev_minus_2', 'pair')}">${formatPos(data.prev_minus_2.pair)}</td>
-                <td class="${cellClass('prev_minus_2', 'pair13Opp')}">${data.prev_minus_2.ref13Opp}</td>
-                <td class="${cellClass('prev_minus_2', 'pair13Opp')}">${formatPos(data.prev_minus_2.pair13Opp)}</td>
-                <td class="${projClass('prev_minus_2')}">${projHtml('prev_minus_2')}</td>
-                <td class="${cellClass('prev_prev', 'pair', true)}">${data.prev_prev.ref}</td>
-                <td class="${cellClass('prev_prev', 'pair')}">${formatPos(data.prev_prev.pair)}</td>
-                <td class="${cellClass('prev_prev', 'pair13Opp')}">${data.prev_prev.ref13Opp}</td>
-                <td class="${cellClass('prev_prev', 'pair13Opp')}">${formatPos(data.prev_prev.pair13Opp)}</td>
-                <td class="${projClass('prev_prev')}">${projHtml('prev_prev')}</td>
+                <td class="${cellClass('prev', 'pair', true)}" data-pair="prev">${data.prev.ref}</td>
+                <td class="${cellClass('prev', 'pair')}" data-pair="prev">${formatPos(data.prev.pair)}</td>
+                <td class="${cellClass('prev', 'pair13Opp')}" data-pair="prev">${data.prev.ref13Opp}</td>
+                <td class="${cellClass('prev', 'pair13Opp')}" data-pair="prev">${formatPos(data.prev.pair13Opp)}</td>
+                <td class="${projClass('prev')}" data-pair="prev">${projHtml('prev')}</td>
+                <td class="${cellClass('prev_plus_1', 'pair', true)}" data-pair="prevPlus1">${data.prev_plus_1.ref}</td>
+                <td class="${cellClass('prev_plus_1', 'pair')}" data-pair="prevPlus1">${formatPos(data.prev_plus_1.pair)}</td>
+                <td class="${cellClass('prev_plus_1', 'pair13Opp')}" data-pair="prevPlus1">${data.prev_plus_1.ref13Opp}</td>
+                <td class="${cellClass('prev_plus_1', 'pair13Opp')}" data-pair="prevPlus1">${formatPos(data.prev_plus_1.pair13Opp)}</td>
+                <td class="${projClass('prev_plus_1')}" data-pair="prevPlus1">${projHtml('prev_plus_1')}</td>
+                <td class="${cellClass('prev_minus_1', 'pair', true)}" data-pair="prevMinus1">${data.prev_minus_1.ref}</td>
+                <td class="${cellClass('prev_minus_1', 'pair')}" data-pair="prevMinus1">${formatPos(data.prev_minus_1.pair)}</td>
+                <td class="${cellClass('prev_minus_1', 'pair13Opp')}" data-pair="prevMinus1">${data.prev_minus_1.ref13Opp}</td>
+                <td class="${cellClass('prev_minus_1', 'pair13Opp')}" data-pair="prevMinus1">${formatPos(data.prev_minus_1.pair13Opp)}</td>
+                <td class="${projClass('prev_minus_1')}" data-pair="prevMinus1">${projHtml('prev_minus_1')}</td>
+                <td class="${cellClass('prev_plus_2', 'pair', true)}" data-pair="prevPlus2">${data.prev_plus_2.ref}</td>
+                <td class="${cellClass('prev_plus_2', 'pair')}" data-pair="prevPlus2">${formatPos(data.prev_plus_2.pair)}</td>
+                <td class="${cellClass('prev_plus_2', 'pair13Opp')}" data-pair="prevPlus2">${data.prev_plus_2.ref13Opp}</td>
+                <td class="${cellClass('prev_plus_2', 'pair13Opp')}" data-pair="prevPlus2">${formatPos(data.prev_plus_2.pair13Opp)}</td>
+                <td class="${projClass('prev_plus_2')}" data-pair="prevPlus2">${projHtml('prev_plus_2')}</td>
+                <td class="${cellClass('prev_minus_2', 'pair', true)}" data-pair="prevMinus2">${data.prev_minus_2.ref}</td>
+                <td class="${cellClass('prev_minus_2', 'pair')}" data-pair="prevMinus2">${formatPos(data.prev_minus_2.pair)}</td>
+                <td class="${cellClass('prev_minus_2', 'pair13Opp')}" data-pair="prevMinus2">${data.prev_minus_2.ref13Opp}</td>
+                <td class="${cellClass('prev_minus_2', 'pair13Opp')}" data-pair="prevMinus2">${formatPos(data.prev_minus_2.pair13Opp)}</td>
+                <td class="${projClass('prev_minus_2')}" data-pair="prevMinus2">${projHtml('prev_minus_2')}</td>
+                <td class="${cellClass('prev_prev', 'pair', true)}" data-pair="prevPrev">${data.prev_prev.ref}</td>
+                <td class="${cellClass('prev_prev', 'pair')}" data-pair="prevPrev">${formatPos(data.prev_prev.pair)}</td>
+                <td class="${cellClass('prev_prev', 'pair13Opp')}" data-pair="prevPrev">${data.prev_prev.ref13Opp}</td>
+                <td class="${cellClass('prev_prev', 'pair13Opp')}" data-pair="prevPrev">${formatPos(data.prev_prev.pair13Opp)}</td>
+                <td class="${projClass('prev_prev')}" data-pair="prevPrev">${projHtml('prev_prev')}</td>
             `;
         }
         
@@ -1009,36 +1280,36 @@ function renderTable3() {
         nextRow.innerHTML = `
             <td class="dir-${nextDirection.toLowerCase()}">${nextDirection}</td>
             <td><strong>NEXT</strong></td>
-            <td class="pair-separator">${data.prev.ref}</td>
-            <td>-</td>
-            <td>${data.prev.ref13Opp}</td>
-            <td>-</td>
-            <td class="col-prj">${nextProjHtml('prev')}</td>
-            <td class="pair-separator">${data.prev_plus_1.ref}</td>
-            <td>-</td>
-            <td>${data.prev_plus_1.ref13Opp}</td>
-            <td>-</td>
-            <td class="col-prj">${nextProjHtml('prev_plus_1')}</td>
-            <td class="pair-separator">${data.prev_minus_1.ref}</td>
-            <td>-</td>
-            <td>${data.prev_minus_1.ref13Opp}</td>
-            <td>-</td>
-            <td class="col-prj">${nextProjHtml('prev_minus_1')}</td>
-            <td class="pair-separator">${data.prev_plus_2.ref}</td>
-            <td>-</td>
-            <td>${data.prev_plus_2.ref13Opp}</td>
-            <td>-</td>
-            <td class="col-prj">${nextProjHtml('prev_plus_2')}</td>
-            <td class="pair-separator">${data.prev_minus_2.ref}</td>
-            <td>-</td>
-            <td>${data.prev_minus_2.ref13Opp}</td>
-            <td>-</td>
-            <td class="col-prj">${nextProjHtml('prev_minus_2')}</td>
-            <td class="pair-separator">${data.prev_prev.ref}</td>
-            <td>-</td>
-            <td>${data.prev_prev.ref13Opp}</td>
-            <td>-</td>
-            <td class="col-prj">${nextProjHtml('prev_prev')}</td>
+            <td class="pair-separator" data-pair="prev">${data.prev.ref}</td>
+            <td data-pair="prev">-</td>
+            <td data-pair="prev">${data.prev.ref13Opp}</td>
+            <td data-pair="prev">-</td>
+            <td class="col-prj" data-pair="prev">${nextProjHtml('prev')}</td>
+            <td class="pair-separator" data-pair="prevPlus1">${data.prev_plus_1.ref}</td>
+            <td data-pair="prevPlus1">-</td>
+            <td data-pair="prevPlus1">${data.prev_plus_1.ref13Opp}</td>
+            <td data-pair="prevPlus1">-</td>
+            <td class="col-prj" data-pair="prevPlus1">${nextProjHtml('prev_plus_1')}</td>
+            <td class="pair-separator" data-pair="prevMinus1">${data.prev_minus_1.ref}</td>
+            <td data-pair="prevMinus1">-</td>
+            <td data-pair="prevMinus1">${data.prev_minus_1.ref13Opp}</td>
+            <td data-pair="prevMinus1">-</td>
+            <td class="col-prj" data-pair="prevMinus1">${nextProjHtml('prev_minus_1')}</td>
+            <td class="pair-separator" data-pair="prevPlus2">${data.prev_plus_2.ref}</td>
+            <td data-pair="prevPlus2">-</td>
+            <td data-pair="prevPlus2">${data.prev_plus_2.ref13Opp}</td>
+            <td data-pair="prevPlus2">-</td>
+            <td class="col-prj" data-pair="prevPlus2">${nextProjHtml('prev_plus_2')}</td>
+            <td class="pair-separator" data-pair="prevMinus2">${data.prev_minus_2.ref}</td>
+            <td data-pair="prevMinus2">-</td>
+            <td data-pair="prevMinus2">${data.prev_minus_2.ref13Opp}</td>
+            <td data-pair="prevMinus2">-</td>
+            <td class="col-prj" data-pair="prevMinus2">${nextProjHtml('prev_minus_2')}</td>
+            <td class="pair-separator" data-pair="prevPrev">${data.prev_prev.ref}</td>
+            <td data-pair="prevPrev">-</td>
+            <td data-pair="prevPrev">${data.prev_prev.ref13Opp}</td>
+            <td data-pair="prevPrev">-</td>
+            <td class="col-prj" data-pair="prevPrev">${nextProjHtml('prev_prev')}</td>
         `;
         
         tbody.appendChild(nextRow);
@@ -1342,21 +1613,26 @@ window.getAIDataV6 = function() {
     const table1Hits = analyzeTable1Hits();
     const table2Hits = analyzeTable2Hits();
     
-    // Get NEXT row projections (for actual betting) ← NEW!
+    // Get NEXT row projections (for actual betting)
     const table3NextProjections = getNextRowProjections();
-    
+    const table1NextProjections = getTable1NextProjections();
+    const table2NextProjections = getTable2NextProjections();
+
     const data = {
-        table3Hits: table3Hits,               // Historical hits
-        table3NextProjections: table3NextProjections,  // NEXT row projections ← NEW!
+        table3Hits: table3Hits,
+        table3NextProjections: table3NextProjections,
+        table1NextProjections: table1NextProjections,
+        table2NextProjections: table2NextProjections,
         table1Hits: table1Hits,
         table2Hits: table2Hits,
         currentSpinCount: spins.length,
         recentSpins: spins.slice(-10).map(s => s.actual)
     };
-    
+
     console.log('✅ Data prepared for V6:');
-    console.log(`   - Table 3 historical hits: ${Object.keys(table3Hits).length} types`);
     console.log(`   - Table 3 NEXT projections: ${Object.keys(table3NextProjections).length} types`);
+    console.log(`   - Table 1 NEXT projections: ${Object.keys(table1NextProjections).length} types`);
+    console.log(`   - Table 2 NEXT projections: ${Object.keys(table2NextProjections).length} types`);
     console.log(`   - Current spin count: ${data.currentSpinCount}`);
     
     return data;
@@ -1384,4 +1660,10 @@ function logNextProjections() {
     console.log('\n' + '='.repeat(80));
 }
 
-console.log('✅ NEXT Row Projections Module loaded (V6)');
+// Expose new utility functions globally for AI panel
+window.calculateWheelAnchors = calculateWheelAnchors;
+window.getTable1NextProjections = getTable1NextProjections;
+window.getTable2NextProjections = getTable2NextProjections;
+window.expandTargetsToBetNumbers = expandTargetsToBetNumbers;
+
+console.log('✅ NEXT Row Projections Module loaded (V6 + Multi-Table)');

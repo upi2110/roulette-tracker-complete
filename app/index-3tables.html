@@ -21,88 +21,100 @@
     
     <!-- TABLE 1: 10 Position Codes -->
     <div class="table-section">
-        <h2 class="table-title">TABLE 1 - Basic Projections (10 codes)</h2>
+        <h2 class="table-title">TABLE 1 - Basic Projections (10 codes) — <span style="font-size:10px; color:#0369a1;">Click pair headers to select</span></h2>
         <div class="grid-wrapper" id="gridWrapper1">
-            <table id="table1">
+            <table id="table1" class="pair-clickable">
                 <thead>
                     <tr>
                         <th rowspan="2">Dir</th>
                         <th rowspan="2">Actual</th>
-                        <th class="set-header set-1" colspan="7">0</th>
-                        <th class="set-header set-2" colspan="7">19</th>
-                        <th class="set-header set-3" colspan="14">P</th>
-                        <th class="set-header set-4" colspan="14">P+1</th>
-                        <th class="set-header set-5" colspan="14">P-1</th>
-                        <th class="set-header set-6" colspan="14">P+2</th>
-                        <th class="set-header set-7" colspan="14">P-2</th>
+                        <th class="set-header set-1 t3-pair-header" colspan="7" data-pair="ref0">0</th><th class="set-header set-1 t3-pair-header pair-separator" colspan="7" data-pair="ref0_13opp">0-13OPP</th>
+                        <th class="set-header set-2 t3-pair-header pair-separator" colspan="7" data-pair="ref19">19</th><th class="set-header set-2 t3-pair-header pair-separator" colspan="7" data-pair="ref19_13opp">19-13OPP</th>
+                        <th class="set-header set-3 t3-pair-header pair-separator" colspan="7" data-pair="prev">P</th><th class="set-header set-3 t3-pair-header pair-separator" colspan="7" data-pair="prev_13opp">P-13OPP</th>
+                        <th class="set-header set-4 t3-pair-header pair-separator" colspan="7" data-pair="prevPlus1">P+1</th><th class="set-header set-4 t3-pair-header pair-separator" colspan="7" data-pair="prevPlus1_13opp">P+1-13OPP</th>
+                        <th class="set-header set-5 t3-pair-header pair-separator" colspan="7" data-pair="prevMinus1">P-1</th><th class="set-header set-5 t3-pair-header pair-separator" colspan="7" data-pair="prevMinus1_13opp">P-1-13OPP</th>
+                        <th class="set-header set-6 t3-pair-header pair-separator" colspan="7" data-pair="prevPlus2">P+2</th><th class="set-header set-6 t3-pair-header pair-separator" colspan="7" data-pair="prevPlus2_13opp">P+2-13OPP</th>
+                        <th class="set-header set-7 t3-pair-header pair-separator" colspan="7" data-pair="prevMinus2">P-2</th><th class="set-header set-7 t3-pair-header pair-separator" colspan="7" data-pair="prevMinus2_13opp">P-2-13OPP</th>
                     </tr>
                     <tr>
                         <!-- 0 -->
-                        <th class="set-header set-1">Ref</th>
-                        <th class="set-header set-1">1st</th><th class="set-header set-1">C</th>
-                        <th class="set-header set-1">2nd</th><th class="set-header set-1">C</th>
-                        <th class="set-header set-1">3rd</th><th class="set-header set-1">C</th>
-                        
+                        <th class="set-header set-1" data-pair="ref0">Ref</th>
+                        <th class="set-header set-1" data-pair="ref0">1st</th><th class="set-header set-1" data-pair="ref0">C</th>
+                        <th class="set-header set-1" data-pair="ref0">2nd</th><th class="set-header set-1" data-pair="ref0">C</th>
+                        <th class="set-header set-1" data-pair="ref0">3rd</th><th class="set-header set-1" data-pair="ref0">C</th>
+
+                        <!-- 0-13OPP -->
+                        <th class="set-header set-1 pair-separator" data-pair="ref0_13opp">Ref</th>
+                        <th class="set-header set-1" data-pair="ref0_13opp">1st</th><th class="set-header set-1" data-pair="ref0_13opp">C</th>
+                        <th class="set-header set-1" data-pair="ref0_13opp">2nd</th><th class="set-header set-1" data-pair="ref0_13opp">C</th>
+                        <th class="set-header set-1" data-pair="ref0_13opp">3rd</th><th class="set-header set-1" data-pair="ref0_13opp">C</th>
+
                         <!-- 19 -->
-                        <th class="set-header set-2">Ref</th>
-                        <th class="set-header set-2">1st</th><th class="set-header set-2">C</th>
-                        <th class="set-header set-2">2nd</th><th class="set-header set-2">C</th>
-                        <th class="set-header set-2">3rd</th><th class="set-header set-2">C</th>
-                        
+                        <th class="set-header set-2 pair-separator" data-pair="ref19">Ref</th>
+                        <th class="set-header set-2" data-pair="ref19">1st</th><th class="set-header set-2" data-pair="ref19">C</th>
+                        <th class="set-header set-2" data-pair="ref19">2nd</th><th class="set-header set-2" data-pair="ref19">C</th>
+                        <th class="set-header set-2" data-pair="ref19">3rd</th><th class="set-header set-2" data-pair="ref19">C</th>
+
+                        <!-- 19-13OPP -->
+                        <th class="set-header set-2 pair-separator" data-pair="ref19_13opp">Ref</th>
+                        <th class="set-header set-2" data-pair="ref19_13opp">1st</th><th class="set-header set-2" data-pair="ref19_13opp">C</th>
+                        <th class="set-header set-2" data-pair="ref19_13opp">2nd</th><th class="set-header set-2" data-pair="ref19_13opp">C</th>
+                        <th class="set-header set-2" data-pair="ref19_13opp">3rd</th><th class="set-header set-2" data-pair="ref19_13opp">C</th>
+
                         <!-- P -->
-                        <th class="set-header set-3">Ref</th>
-                        <th class="set-header set-3">1st</th><th class="set-header set-3">C</th>
-                        <th class="set-header set-3">2nd</th><th class="set-header set-3">C</th>
-                        <th class="set-header set-3">3rd</th><th class="set-header set-3">C</th>
+                        <th class="set-header set-3 t3-pair-header pair-separator" data-pair="prev">Ref</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev">1st</th><th class="set-header set-3 t3-pair-header" data-pair="prev">C</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev">2nd</th><th class="set-header set-3 t3-pair-header" data-pair="prev">C</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev">3rd</th><th class="set-header set-3 t3-pair-header" data-pair="prev">C</th>
                         <!-- P-13OPP -->
-                        <th class="set-header set-3">Ref</th>
-                        <th class="set-header set-3">1st</th><th class="set-header set-3">C</th>
-                        <th class="set-header set-3">2nd</th><th class="set-header set-3">C</th>
-                        <th class="set-header set-3">3rd</th><th class="set-header set-3">C</th>
-                        
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">Ref</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">1st</th><th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">C</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">2nd</th><th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">C</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">3rd</th><th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">C</th>
+
                         <!-- P+1 -->
-                        <th class="set-header set-4">Ref</th>
-                        <th class="set-header set-4">1st</th><th class="set-header set-4">C</th>
-                        <th class="set-header set-4">2nd</th><th class="set-header set-4">C</th>
-                        <th class="set-header set-4">3rd</th><th class="set-header set-4">C</th>
+                        <th class="set-header set-4 t3-pair-header pair-separator" data-pair="prevPlus1">Ref</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">1st</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">C</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">2nd</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">C</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">3rd</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">C</th>
                         <!-- P+1-13OPP -->
-                        <th class="set-header set-4">Ref</th>
-                        <th class="set-header set-4">1st</th><th class="set-header set-4">C</th>
-                        <th class="set-header set-4">2nd</th><th class="set-header set-4">C</th>
-                        <th class="set-header set-4">3rd</th><th class="set-header set-4">C</th>
-                        
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">Ref</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">1st</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">C</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">2nd</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">C</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">3rd</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">C</th>
+
                         <!-- P-1 -->
-                        <th class="set-header set-5">Ref</th>
-                        <th class="set-header set-5">1st</th><th class="set-header set-5">C</th>
-                        <th class="set-header set-5">2nd</th><th class="set-header set-5">C</th>
-                        <th class="set-header set-5">3rd</th><th class="set-header set-5">C</th>
+                        <th class="set-header set-5 t3-pair-header pair-separator" data-pair="prevMinus1">Ref</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">1st</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">C</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">2nd</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">C</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">3rd</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">C</th>
                         <!-- P-1-13OPP -->
-                        <th class="set-header set-5">Ref</th>
-                        <th class="set-header set-5">1st</th><th class="set-header set-5">C</th>
-                        <th class="set-header set-5">2nd</th><th class="set-header set-5">C</th>
-                        <th class="set-header set-5">3rd</th><th class="set-header set-5">C</th>
-                        
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">Ref</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">1st</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">C</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">2nd</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">C</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">3rd</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">C</th>
+
                         <!-- P+2 -->
-                        <th class="set-header set-6">Ref</th>
-                        <th class="set-header set-6">1st</th><th class="set-header set-6">C</th>
-                        <th class="set-header set-6">2nd</th><th class="set-header set-6">C</th>
-                        <th class="set-header set-6">3rd</th><th class="set-header set-6">C</th>
+                        <th class="set-header set-6 t3-pair-header pair-separator" data-pair="prevPlus2">Ref</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">1st</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">C</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">2nd</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">C</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">3rd</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">C</th>
                         <!-- P+2-13OPP -->
-                        <th class="set-header set-6">Ref</th>
-                        <th class="set-header set-6">1st</th><th class="set-header set-6">C</th>
-                        <th class="set-header set-6">2nd</th><th class="set-header set-6">C</th>
-                        <th class="set-header set-6">3rd</th><th class="set-header set-6">C</th>
-                        
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">Ref</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">1st</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">C</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">2nd</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">C</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">3rd</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">C</th>
+
                         <!-- P-2 -->
-                        <th class="set-header set-7">Ref</th>
-                        <th class="set-header set-7">1st</th><th class="set-header set-7">C</th>
-                        <th class="set-header set-7">2nd</th><th class="set-header set-7">C</th>
-                        <th class="set-header set-7">3rd</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7 t3-pair-header pair-separator" data-pair="prevMinus2">Ref</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">1st</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">C</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">2nd</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">C</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">3rd</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">C</th>
                         <!-- P-2-13OPP -->
-                        <th class="set-header set-7">Ref</th>
-                        <th class="set-header set-7">1st</th><th class="set-header set-7">C</th>
-                        <th class="set-header set-7">2nd</th><th class="set-header set-7">C</th>
-                        <th class="set-header set-7">3rd</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">Ref</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">1st</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">C</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">2nd</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">C</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">3rd</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">C</th>
                     </tr>
                 </thead>
                 <tbody id="table1Body"></tbody>
@@ -112,88 +124,100 @@
 
     <!-- TABLE 2: 18 Position Codes -->
     <div class="table-section">
-        <h2 class="table-title">TABLE 2 - Extended Projections (18 codes)</h2>
+        <h2 class="table-title">TABLE 2 - Extended Projections (18 codes) — <span style="font-size:10px; color:#0369a1;">Click pair headers to select</span></h2>
         <div class="grid-wrapper" id="gridWrapper2">
-            <table id="table2">
+            <table id="table2" class="pair-clickable">
                 <thead>
                     <tr>
                         <th rowspan="2">Dir</th>
                         <th rowspan="2">Actual</th>
-                        <th class="set-header set-1" colspan="7">0</th>
-                        <th class="set-header set-2" colspan="7">19</th>
-                        <th class="set-header set-3" colspan="14">P</th>
-                        <th class="set-header set-4" colspan="14">P+1</th>
-                        <th class="set-header set-5" colspan="14">P-1</th>
-                        <th class="set-header set-6" colspan="14">P+2</th>
-                        <th class="set-header set-7" colspan="14">P-2</th>
+                        <th class="set-header set-1 t3-pair-header" colspan="7" data-pair="ref0">0</th><th class="set-header set-1 t3-pair-header pair-separator" colspan="7" data-pair="ref0_13opp">0-13OPP</th>
+                        <th class="set-header set-2 t3-pair-header pair-separator" colspan="7" data-pair="ref19">19</th><th class="set-header set-2 t3-pair-header pair-separator" colspan="7" data-pair="ref19_13opp">19-13OPP</th>
+                        <th class="set-header set-3 t3-pair-header pair-separator" colspan="7" data-pair="prev">P</th><th class="set-header set-3 t3-pair-header pair-separator" colspan="7" data-pair="prev_13opp">P-13OPP</th>
+                        <th class="set-header set-4 t3-pair-header pair-separator" colspan="7" data-pair="prevPlus1">P+1</th><th class="set-header set-4 t3-pair-header pair-separator" colspan="7" data-pair="prevPlus1_13opp">P+1-13OPP</th>
+                        <th class="set-header set-5 t3-pair-header pair-separator" colspan="7" data-pair="prevMinus1">P-1</th><th class="set-header set-5 t3-pair-header pair-separator" colspan="7" data-pair="prevMinus1_13opp">P-1-13OPP</th>
+                        <th class="set-header set-6 t3-pair-header pair-separator" colspan="7" data-pair="prevPlus2">P+2</th><th class="set-header set-6 t3-pair-header pair-separator" colspan="7" data-pair="prevPlus2_13opp">P+2-13OPP</th>
+                        <th class="set-header set-7 t3-pair-header pair-separator" colspan="7" data-pair="prevMinus2">P-2</th><th class="set-header set-7 t3-pair-header pair-separator" colspan="7" data-pair="prevMinus2_13opp">P-2-13OPP</th>
                     </tr>
                     <tr>
                         <!-- 0 -->
-                        <th class="set-header set-1">Ref</th>
-                        <th class="set-header set-1">1st</th><th class="set-header set-1">C</th>
-                        <th class="set-header set-1">2nd</th><th class="set-header set-1">C</th>
-                        <th class="set-header set-1">3rd</th><th class="set-header set-1">C</th>
-                        
+                        <th class="set-header set-1" data-pair="ref0">Ref</th>
+                        <th class="set-header set-1" data-pair="ref0">1st</th><th class="set-header set-1" data-pair="ref0">C</th>
+                        <th class="set-header set-1" data-pair="ref0">2nd</th><th class="set-header set-1" data-pair="ref0">C</th>
+                        <th class="set-header set-1" data-pair="ref0">3rd</th><th class="set-header set-1" data-pair="ref0">C</th>
+
+                        <!-- 0-13OPP -->
+                        <th class="set-header set-1 pair-separator" data-pair="ref0_13opp">Ref</th>
+                        <th class="set-header set-1" data-pair="ref0_13opp">1st</th><th class="set-header set-1" data-pair="ref0_13opp">C</th>
+                        <th class="set-header set-1" data-pair="ref0_13opp">2nd</th><th class="set-header set-1" data-pair="ref0_13opp">C</th>
+                        <th class="set-header set-1" data-pair="ref0_13opp">3rd</th><th class="set-header set-1" data-pair="ref0_13opp">C</th>
+
                         <!-- 19 -->
-                        <th class="set-header set-2">Ref</th>
-                        <th class="set-header set-2">1st</th><th class="set-header set-2">C</th>
-                        <th class="set-header set-2">2nd</th><th class="set-header set-2">C</th>
-                        <th class="set-header set-2">3rd</th><th class="set-header set-2">C</th>
-                        
+                        <th class="set-header set-2 pair-separator" data-pair="ref19">Ref</th>
+                        <th class="set-header set-2" data-pair="ref19">1st</th><th class="set-header set-2" data-pair="ref19">C</th>
+                        <th class="set-header set-2" data-pair="ref19">2nd</th><th class="set-header set-2" data-pair="ref19">C</th>
+                        <th class="set-header set-2" data-pair="ref19">3rd</th><th class="set-header set-2" data-pair="ref19">C</th>
+
+                        <!-- 19-13OPP -->
+                        <th class="set-header set-2 pair-separator" data-pair="ref19_13opp">Ref</th>
+                        <th class="set-header set-2" data-pair="ref19_13opp">1st</th><th class="set-header set-2" data-pair="ref19_13opp">C</th>
+                        <th class="set-header set-2" data-pair="ref19_13opp">2nd</th><th class="set-header set-2" data-pair="ref19_13opp">C</th>
+                        <th class="set-header set-2" data-pair="ref19_13opp">3rd</th><th class="set-header set-2" data-pair="ref19_13opp">C</th>
+
                         <!-- P -->
-                        <th class="set-header set-3">Ref</th>
-                        <th class="set-header set-3">1st</th><th class="set-header set-3">C</th>
-                        <th class="set-header set-3">2nd</th><th class="set-header set-3">C</th>
-                        <th class="set-header set-3">3rd</th><th class="set-header set-3">C</th>
+                        <th class="set-header set-3 t3-pair-header pair-separator" data-pair="prev">Ref</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev">1st</th><th class="set-header set-3 t3-pair-header" data-pair="prev">C</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev">2nd</th><th class="set-header set-3 t3-pair-header" data-pair="prev">C</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev">3rd</th><th class="set-header set-3 t3-pair-header" data-pair="prev">C</th>
                         <!-- P-13OPP -->
-                        <th class="set-header set-3">Ref</th>
-                        <th class="set-header set-3">1st</th><th class="set-header set-3">C</th>
-                        <th class="set-header set-3">2nd</th><th class="set-header set-3">C</th>
-                        <th class="set-header set-3">3rd</th><th class="set-header set-3">C</th>
-                        
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">Ref</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">1st</th><th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">C</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">2nd</th><th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">C</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">3rd</th><th class="set-header set-3 t3-pair-header" data-pair="prev_13opp">C</th>
+
                         <!-- P+1 -->
-                        <th class="set-header set-4">Ref</th>
-                        <th class="set-header set-4">1st</th><th class="set-header set-4">C</th>
-                        <th class="set-header set-4">2nd</th><th class="set-header set-4">C</th>
-                        <th class="set-header set-4">3rd</th><th class="set-header set-4">C</th>
+                        <th class="set-header set-4 t3-pair-header pair-separator" data-pair="prevPlus1">Ref</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">1st</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">C</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">2nd</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">C</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">3rd</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1">C</th>
                         <!-- P+1-13OPP -->
-                        <th class="set-header set-4">Ref</th>
-                        <th class="set-header set-4">1st</th><th class="set-header set-4">C</th>
-                        <th class="set-header set-4">2nd</th><th class="set-header set-4">C</th>
-                        <th class="set-header set-4">3rd</th><th class="set-header set-4">C</th>
-                        
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">Ref</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">1st</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">C</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">2nd</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">C</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">3rd</th><th class="set-header set-4 t3-pair-header" data-pair="prevPlus1_13opp">C</th>
+
                         <!-- P-1 -->
-                        <th class="set-header set-5">Ref</th>
-                        <th class="set-header set-5">1st</th><th class="set-header set-5">C</th>
-                        <th class="set-header set-5">2nd</th><th class="set-header set-5">C</th>
-                        <th class="set-header set-5">3rd</th><th class="set-header set-5">C</th>
+                        <th class="set-header set-5 t3-pair-header pair-separator" data-pair="prevMinus1">Ref</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">1st</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">C</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">2nd</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">C</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">3rd</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1">C</th>
                         <!-- P-1-13OPP -->
-                        <th class="set-header set-5">Ref</th>
-                        <th class="set-header set-5">1st</th><th class="set-header set-5">C</th>
-                        <th class="set-header set-5">2nd</th><th class="set-header set-5">C</th>
-                        <th class="set-header set-5">3rd</th><th class="set-header set-5">C</th>
-                        
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">Ref</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">1st</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">C</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">2nd</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">C</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">3rd</th><th class="set-header set-5 t3-pair-header" data-pair="prevMinus1_13opp">C</th>
+
                         <!-- P+2 -->
-                        <th class="set-header set-6">Ref</th>
-                        <th class="set-header set-6">1st</th><th class="set-header set-6">C</th>
-                        <th class="set-header set-6">2nd</th><th class="set-header set-6">C</th>
-                        <th class="set-header set-6">3rd</th><th class="set-header set-6">C</th>
+                        <th class="set-header set-6 t3-pair-header pair-separator" data-pair="prevPlus2">Ref</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">1st</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">C</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">2nd</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">C</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">3rd</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2">C</th>
                         <!-- P+2-13OPP -->
-                        <th class="set-header set-6">Ref</th>
-                        <th class="set-header set-6">1st</th><th class="set-header set-6">C</th>
-                        <th class="set-header set-6">2nd</th><th class="set-header set-6">C</th>
-                        <th class="set-header set-6">3rd</th><th class="set-header set-6">C</th>
-                        
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">Ref</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">1st</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">C</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">2nd</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">C</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">3rd</th><th class="set-header set-6 t3-pair-header" data-pair="prevPlus2_13opp">C</th>
+
                         <!-- P-2 -->
-                        <th class="set-header set-7">Ref</th>
-                        <th class="set-header set-7">1st</th><th class="set-header set-7">C</th>
-                        <th class="set-header set-7">2nd</th><th class="set-header set-7">C</th>
-                        <th class="set-header set-7">3rd</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7 t3-pair-header pair-separator" data-pair="prevMinus2">Ref</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">1st</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">C</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">2nd</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">C</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">3rd</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2">C</th>
                         <!-- P-2-13OPP -->
-                        <th class="set-header set-7">Ref</th>
-                        <th class="set-header set-7">1st</th><th class="set-header set-7">C</th>
-                        <th class="set-header set-7">2nd</th><th class="set-header set-7">C</th>
-                        <th class="set-header set-7">3rd</th><th class="set-header set-7">C</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">Ref</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">1st</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">C</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">2nd</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">C</th>
+                        <th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">3rd</th><th class="set-header set-7 t3-pair-header" data-pair="prevMinus2_13opp">C</th>
                     </tr>
                 </thead>
                 <tbody id="table2Body"></tbody>
@@ -203,43 +227,43 @@
 
     <!-- TABLE 3: Current Anchor System -->
     <div class="table-section">
-        <h2 class="table-title">TABLE 3 - Anchor Projections (Current System)</h2>
+        <h2 class="table-title">TABLE 3 - Anchor Projections (Current System) — <span style="font-size:10px; color:#0369a1;">Click pair headers to select</span></h2>
         <div class="grid-wrapper" id="gridWrapper3">
             <table id="table3">
                 <thead>
                     <tr>
                         <th>Dir</th>
                         <th>Actual</th>
-                        <th class="set-header set-1">P</th>
-                        <th class="set-header set-1">P_PAIR</th>
-                        <th class="set-header set-1">P-13OPP</th>
-                        <th class="set-header set-1">P-13OPP_PAIR</th>
-                        <th class="set-header set-1">P_PROJ</th>
-                        <th class="set-header set-2">P+1</th>
-                        <th class="set-header set-2">P+1_PAIR</th>
-                        <th class="set-header set-2">P+1-13OPP</th>
-                        <th class="set-header set-2">P+1-13OPP_PAIR</th>
-                        <th class="set-header set-2">P+1_PROJ</th>
-                        <th class="set-header set-3">P-1</th>
-                        <th class="set-header set-3">P-1_PAIR</th>
-                        <th class="set-header set-3">P-1-13OPP</th>
-                        <th class="set-header set-3">P-1-13OPP_PAIR</th>
-                        <th class="set-header set-3">P-1_PROJ</th>
-                        <th class="set-header set-4">P+2</th>
-                        <th class="set-header set-4">P+2_PAIR</th>
-                        <th class="set-header set-4">P+2-13OPP</th>
-                        <th class="set-header set-4">P+2-13OPP_PAIR</th>
-                        <th class="set-header set-4">P+2_PROJ</th>
-                        <th class="set-header set-5">P-2</th>
-                        <th class="set-header set-5">P-2_PAIR</th>
-                        <th class="set-header set-5">P-2-13OPP</th>
-                        <th class="set-header set-5">P-2-13OPP_PAIR</th>
-                        <th class="set-header set-5">P-2_PROJ</th>
-                        <th class="set-header set-6">P2</th>
-                        <th class="set-header set-6">P2_PAIR</th>
-                        <th class="set-header set-6">P2-13OPP</th>
-                        <th class="set-header set-6">P2-13OPP_PAIR</th>
-                        <th class="set-header set-6">P2_PROJ</th>
+                        <th class="set-header set-1 t3-pair-header" data-pair="prev">P</th>
+                        <th class="set-header set-1 t3-pair-header" data-pair="prev">P_PAIR</th>
+                        <th class="set-header set-1 t3-pair-header" data-pair="prev">P-13OPP</th>
+                        <th class="set-header set-1 t3-pair-header" data-pair="prev">P-13OPP_PAIR</th>
+                        <th class="set-header set-1 t3-pair-header" data-pair="prev">P_PROJ</th>
+                        <th class="set-header set-2 t3-pair-header" data-pair="prevPlus1">P+1</th>
+                        <th class="set-header set-2 t3-pair-header" data-pair="prevPlus1">P+1_PAIR</th>
+                        <th class="set-header set-2 t3-pair-header" data-pair="prevPlus1">P+1-13OPP</th>
+                        <th class="set-header set-2 t3-pair-header" data-pair="prevPlus1">P+1-13OPP_PAIR</th>
+                        <th class="set-header set-2 t3-pair-header" data-pair="prevPlus1">P+1_PROJ</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prevMinus1">P-1</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prevMinus1">P-1_PAIR</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prevMinus1">P-1-13OPP</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prevMinus1">P-1-13OPP_PAIR</th>
+                        <th class="set-header set-3 t3-pair-header" data-pair="prevMinus1">P-1_PROJ</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus2">P+2</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus2">P+2_PAIR</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus2">P+2-13OPP</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus2">P+2-13OPP_PAIR</th>
+                        <th class="set-header set-4 t3-pair-header" data-pair="prevPlus2">P+2_PROJ</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus2">P-2</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus2">P-2_PAIR</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus2">P-2-13OPP</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus2">P-2-13OPP_PAIR</th>
+                        <th class="set-header set-5 t3-pair-header" data-pair="prevMinus2">P-2_PROJ</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPrev">P2</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPrev">P2_PAIR</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPrev">P2-13OPP</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPrev">P2-13OPP_PAIR</th>
+                        <th class="set-header set-6 t3-pair-header" data-pair="prevPrev">P2_PROJ</th>
                     </tr>
                 </thead>
                 <tbody id="table3Body"></tbody>
@@ -308,6 +332,34 @@
     });
     
     console.log('Zoom control initialized');
+})();
+</script>
+
+<!-- Clickable Pair Selection for ALL Tables -->
+<script>
+(function() {
+    ['table1', 'table2', 'table3'].forEach(tableId => {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+
+        table.addEventListener('click', function(e) {
+            const cell = e.target.closest('td[data-pair], th[data-pair]');
+            if (!cell) return;
+
+            const pairKey = cell.dataset.pair;
+            if (!pairKey) return;
+
+            if (!window.aiPanel) {
+                console.warn('AI panel not ready yet');
+                return;
+            }
+
+            console.log(`📊 ${tableId} click → toggling pair: ${pairKey}`);
+            window.aiPanel.togglePairFromTable(pairKey, tableId);
+        });
+    });
+
+    console.log('✅ Clickable pair selection initialized for all tables');
 })();
 </script>
 

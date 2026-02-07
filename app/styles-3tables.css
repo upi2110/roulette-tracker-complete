@@ -81,9 +81,64 @@ td {
     background: #e9ecef !important;
 }
 
-/* BLACK BORDER - ONLY on pair separators */
+/* BLACK BORDER - ONLY on pair separators (solid column line) */
 .pair-separator {
-    border-left: 4px solid #000 !important;
+    border-left: 3px solid #000 !important;
+}
+
+/* ============================================
+   COLOR-CODED PAIR HEADERS (unified across all tables)
+   Light pastel backgrounds with dark text — easy on the eyes
+   13OPP variants use a slightly deeper shade
+   ============================================ */
+/* 0 / 0-13OPP — Light Red */
+th[data-pair="ref0"] { background: #fecaca !important; color: #991b1b !important; }
+th[data-pair="ref0_13opp"] { background: #fca5a5 !important; color: #7f1d1d !important; }
+/* 19 / 19-13OPP — Light Orange */
+th[data-pair="ref19"] { background: #fed7aa !important; color: #9a3412 !important; }
+th[data-pair="ref19_13opp"] { background: #fdba74 !important; color: #7c2d12 !important; }
+/* P / P-13OPP — Light Amber */
+th[data-pair="prev"] { background: #fde68a !important; color: #92400e !important; }
+th[data-pair="prev_13opp"] { background: #fcd34d !important; color: #78350f !important; }
+/* P+1 / P+1-13OPP — Light Green */
+th[data-pair="prevPlus1"] { background: #bbf7d0 !important; color: #166534 !important; }
+th[data-pair="prevPlus1_13opp"] { background: #86efac !important; color: #14532d !important; }
+/* P-1 / P-1-13OPP — Light Teal */
+th[data-pair="prevMinus1"] { background: #99f6e4 !important; color: #115e59 !important; }
+th[data-pair="prevMinus1_13opp"] { background: #5eead4 !important; color: #134e4a !important; }
+/* P+2 / P+2-13OPP — Light Blue */
+th[data-pair="prevPlus2"] { background: #bfdbfe !important; color: #1e40af !important; }
+th[data-pair="prevPlus2_13opp"] { background: #93c5fd !important; color: #1e3a8a !important; }
+/* P-2 / P-2-13OPP — Light Purple */
+th[data-pair="prevMinus2"] { background: #ddd6fe !important; color: #5b21b6 !important; }
+th[data-pair="prevMinus2_13opp"] { background: #c4b5fd !important; color: #4c1d95 !important; }
+/* P-PREV (Table 3 only) — Light Pink */
+th[data-pair="prevPrev"] { background: #fbcfe8 !important; color: #9d174d !important; }
+
+/* ============================================
+   CLICKABLE PAIR SELECTION (ALL TABLES)
+   ============================================ */
+th.t3-pair-header {
+    cursor: pointer;
+    transition: background 0.15s ease;
+    user-select: none;
+}
+th.t3-pair-header:hover {
+    filter: brightness(0.85);
+}
+td[data-pair] {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+/* Highlight selected pair columns across all tables */
+.t3-pair-selected {
+    outline: 3px solid #0ea5e9 !important;
+    outline-offset: -2px;
+    background-color: rgba(14, 165, 233, 0.15) !important;
+}
+th.t3-pair-selected {
+    background-color: rgba(14, 165, 233, 0.35) !important;
+    color: #0c4a6e !important;
 }
 
 /* Anchor cells */
@@ -751,4 +806,56 @@ td {
 .auto-update-indicator.show {
     opacity: 1;
     transform: translateY(0);
+}
+
+/* ============================================
+   MULTI-TABLE SELECTION SECTIONS (AI Panel)
+   ============================================ */
+.table-selection-section {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.table-selection-header {
+    cursor: pointer;
+    user-select: none;
+    transition: filter 0.15s ease;
+}
+
+.table-selection-header:hover {
+    filter: brightness(0.95);
+}
+
+/* Sub-ref checkboxes for Table 1 & 2 */
+.table1-sub-refs,
+.table2-sub-refs {
+    transition: all 0.2s ease;
+}
+
+.table1-sub-refs label,
+.table2-sub-refs label {
+    transition: background 0.15s ease;
+    border-radius: 3px;
+    padding: 1px 3px;
+}
+
+.table1-sub-refs label:hover,
+.table2-sub-refs label:hover {
+    background: #f1f5f9;
+}
+
+/* Pair checkbox pills - hover effect */
+.t3-pair-cb:checked + span,
+.table1-pair-cb:checked + span,
+.table2-pair-cb:checked + span {
+    font-weight: 900;
+}
+
+/* Override for collapsible section content */
+#table3Checkboxes,
+#table1Checkboxes,
+#table2Checkboxes {
+    transition: all 0.2s ease;
 }

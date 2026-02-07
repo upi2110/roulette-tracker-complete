@@ -54,7 +54,7 @@ class RouletteWheel {
                 <div class="wheel-legend" id="wheelLegend">
                     <div class="legend-item">
                         <span class="legend-color anchor"></span>
-                        <span>⭐ Anchor Groups</span>
+                        <span>±1/±2 Anchor Groups</span>
                     </div>
                     <div class="legend-item">
                         <span class="legend-color neighbor"></span>
@@ -178,18 +178,20 @@ class RouletteWheel {
         const highlightRadius = 165;
         const angleStep = (2 * Math.PI) / 37;
 
-        // Build a map: number -> { color, isAnchor }
+        // Build a map: number -> { color, isAnchor, type }
         const numberColorMap = {};
 
         this.anchorGroups.forEach((ag, groupIdx) => {
             const color = this.groupColors[groupIdx % this.groupColors.length];
             const group = ag.group || [];
             const anchorNum = ag.anchor;
+            const anchorType = ag.type || '±1';
 
             group.forEach(num => {
                 numberColorMap[num] = {
                     color: color,
-                    isAnchor: (num === anchorNum)
+                    isAnchor: (num === anchorNum),
+                    type: anchorType
                 };
             });
         });
@@ -230,13 +232,13 @@ class RouletteWheel {
             ctx.lineWidth = info.isAnchor ? 3 : 2;
             ctx.stroke();
 
-            // Anchor star icon
+            // Anchor ±1/±2 label
             if (info.isAnchor) {
                 ctx.fillStyle = '#fff';
-                ctx.font = 'bold 12px Arial';
+                ctx.font = 'bold 9px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText('⭐', highlightX, highlightY);
+                ctx.fillText(info.type, highlightX, highlightY);
             }
         });
 
