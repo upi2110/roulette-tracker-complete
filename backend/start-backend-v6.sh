@@ -9,23 +9,42 @@ echo "🚀 STARTING AI ENGINE V6 BACKEND"
 echo "════════════════════════════════════════════════════════════════"
 echo ""
 
-# Navigate to project directory
-cd ~/Documents/UpenderImp/roulette-tracker-complete
+# Navigate to backend directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+echo "📂 Working directory: $(pwd)"
+echo ""
 
 # Check if backend files exist
-if [ ! -f "backend/api/ai_server_v6.py" ]; then
-    echo "❌ ERROR: backend/api/ai_server_v6.py not found!"
-    echo "   Please install V6 files first"
+if [ ! -f "api/ai_server_v6.py" ]; then
+    echo "❌ ERROR: api/ai_server_v6.py not found!"
+    echo "   Please run this script from the backend/ directory"
     exit 1
 fi
 
-if [ ! -f "backend/models/ai_engine_v6_NEW_STRATEGY.py" ]; then
-    echo "❌ ERROR: backend/models/ai_engine_v6_NEW_STRATEGY.py not found!"
-    echo "   Please install V6 files first"
+if [ ! -f "models/ai_engine_v6_NEW_STRATEGY.py" ]; then
+    echo "❌ ERROR: models/ai_engine_v6_NEW_STRATEGY.py not found!"
     exit 1
 fi
 
 echo "✅ Backend files found"
+echo ""
+
+# Check Python version
+echo "🐍 Python version:"
+python3 --version
+echo ""
+
+# Check if required packages are installed
+echo "📦 Checking dependencies..."
+python3 -c "import fastapi, uvicorn, pydantic" 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "⚠️  Missing dependencies. Installing..."
+    pip3 install fastapi uvicorn pydantic --break-system-packages 2>/dev/null || pip3 install fastapi uvicorn pydantic
+    echo ""
+fi
+echo "✅ Dependencies OK"
 echo ""
 
 # Start the server
@@ -35,4 +54,7 @@ echo ""
 echo "════════════════════════════════════════════════════════════════"
 echo ""
 
-python3 backend/api/ai_server_v6.py
+python3 api/ai_server_v6.py
+
+echo ""
+echo "Server stopped."

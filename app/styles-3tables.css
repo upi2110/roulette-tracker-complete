@@ -44,37 +44,58 @@ h1 { color: #2c3e50; margin-bottom: 12px; text-align: center; font-size: 16px; }
     width: 100%;
 }
 
-/* Tables - MAXIMUM COMPACT */
-table { 
-    border-collapse: separate; 
+/* Tables - COMPACT but READABLE */
+table {
+    border-collapse: separate;
     border-spacing: 0;
-    width: 100%; 
-    font-size: 7px;
+    font-size: 9px;
 }
 
-/* Table headers - MAXIMUM COMPACT */
-th { 
-    background: #34495e; 
-    color: white; 
-    padding: 1px 0px; 
-    text-align: center; 
+/* Table headers - COMPACT but READABLE */
+th {
+    background: #34495e;
+    color: white;
+    padding: 1px 2px;
+    text-align: center;
     border: 1px solid #2c3e50;
-    position: sticky; 
-    top: 0; 
-    z-index: 10; 
-    font-size: 6px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    font-size: 9px;
     white-space: nowrap;
+    line-height: 1.1;
 }
 
-/* Table cells - DEFAULT (numbers) - MAXIMUM COMPACT */
-td { 
-    padding: 0px 1px; 
-    text-align: center; 
-    border: 1px solid #e8e8e8; 
-    font-size: 7px;
+/* Table cells - DEFAULT (numbers) - COMPACT but READABLE */
+td {
+    padding: 1px 2px;
+    text-align: center;
+    border: 1px solid #e8e8e8;
+    font-size: 9px;
     white-space: nowrap;
-    width: 16px;
+    line-height: 1.1;
 }
+
+/* ============================================
+   PER-TABLE FONT SIZE OVERRIDES
+   Table 1: 12 pairs (86 cols) — compact but readable
+   Table 2: 7 pairs (51 cols) — more room, bigger fonts
+   Table 3: 6 pairs (32 cols) — most room, biggest fonts
+   ============================================ */
+#table1 { width: 100%; }
+#table1 th { font-size: 9px; padding: 1px 1px; }
+#table1 td { font-size: 9px; padding: 1px 1px; }
+#table1 .code-s, #table1 .code-o, #table1 .code-xx { font-size: 8px; }
+
+#table2 { width: 100%; }
+#table2 th { font-size: 10px; }
+#table2 td { font-size: 11px; font-weight: 600; }
+#table2 .code-s, #table2 .code-o, #table2 .code-xx { font-size: 9px; }
+
+#table3 { width: 100%; }
+#table3 th { font-size: 10px; }
+#table3 td { font-size: 11px; font-weight: 600; }
+#table3 .code-s, #table3 .code-o, #table3 .code-xx { font-size: 9px; }
 
 /* 13-DIGIT OPPOSITE CELLS - Light gray background */
 .opp13-cell {
@@ -83,7 +104,7 @@ td {
 
 /* BLACK BORDER - ONLY on pair separators (solid column line) */
 .pair-separator {
-    border-left: 3px solid #000 !important;
+    border-left: 2px solid #000 !important;
 }
 
 /* ============================================
@@ -144,7 +165,6 @@ th.t3-pair-selected {
 /* Anchor cells */
 .anchor-cell {
     font-weight: 700;
-    width: 16px;
 }
 
 /* Anchor cells that are 13-digit opposites */
@@ -152,16 +172,14 @@ th.t3-pair-selected {
     background: #d3d3d3 !important;
 }
 
-/* POSITION CODE CELLS - Compact */
+/* POSITION CODE CELLS - Compact but readable */
 .code-s,
 .code-o,
-.code-xx { 
-    width: 24px !important;
-    min-width: 24px !important;
-    padding: 0px 1px;
+.code-xx {
+    padding: 1px 1px;
     font-weight: 700;
     white-space: nowrap;
-    font-size: 6px;
+    font-size: 9px;
 }
 
 /* S codes = LIGHT GREEN */
@@ -202,14 +220,14 @@ th.t3-pair-selected {
 /* Table3: S and O position codes - FULL CELL background like Table1/2 */
 .pos-s,
 .pos-o,
-.pos-xx { 
-    padding: 1px 3px;
+.pos-xx {
+    padding: 1px 2px;
     border-radius: 2px;
     display: inline-block;
     white-space: nowrap;
     font-weight: 700;
-    font-size: 6px;
-    min-width: 32px;
+    font-size: 9px;
+    min-width: 28px;
     text-align: center;
 }
 
@@ -229,30 +247,32 @@ th.t3-pair-selected {
     font-weight: 600;
 }
 
-/* Table3 Projection columns */
-.col-prj { background: #f8f9fa; font-size: 6px; }
-.col-prj-hit { background: #d4edda; font-weight: 700; }
-.col-prj-miss { background: #f8d7da; }
+/* Table3 Projection columns — bold predictions */
+.col-prj { background: #f8f9fa; font-size: 10px; font-weight: 700; }
+.col-prj-hit { background: #d4edda !important; font-weight: 900; }
+.col-prj-miss { background: #f8d7da !important; font-weight: 700; }
 
 /* Anchors in projections */
-.anchor-purple { 
-    background: #e6ccff; 
-    color: #6f42c1; 
-    padding: 1px 2px; 
-    margin: 1px; 
-    border-radius: 2px; 
-    font-size: 6px; 
-    display: inline-block; 
+.anchor-purple {
+    background: #e6ccff;
+    color: #6f42c1;
+    padding: 1px 3px;
+    margin: 1px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-block;
 }
 
-.anchor-green { 
-    background: #c3e6cb; 
-    color: #28a745; 
-    padding: 1px 2px; 
-    margin: 1px; 
-    border-radius: 2px; 
-    font-size: 6px; 
-    display: inline-block; 
+.anchor-green {
+    background: #c3e6cb;
+    color: #28a745;
+    padding: 1px 3px;
+    margin: 1px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-block;
 }
 
 /* Direction cells */

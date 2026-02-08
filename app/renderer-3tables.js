@@ -878,7 +878,7 @@ function renderTable1() {
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
                 <td><strong>${spin.actual}</strong></td>
-                ${Array(84).fill('<td></td>').join('')}
+                ${Array(70).fill('<td></td>').join('')}
             `;
             tbody.appendChild(row);
             return;
@@ -935,9 +935,7 @@ function renderTable1() {
         };
 
         renderTargetGroup(0, 0, false, false, 'ref0');
-        renderTargetGroup(DIGIT_13_OPPOSITES[0], DIGIT_13_OPPOSITES[0], true, true, 'ref0_13opp');
         renderTargetGroup(19, 19, true, false, 'ref19');
-        renderTargetGroup(DIGIT_13_OPPOSITES[19], DIGIT_13_OPPOSITES[19], true, true, 'ref19_13opp');
         renderTargetGroup(prev, prev, true, false, 'prev');
         renderTargetGroup(DIGIT_13_OPPOSITES[prev], DIGIT_13_OPPOSITES[prev], true, true, 'prev_13opp');
 
@@ -997,9 +995,7 @@ function renderTable1() {
         };
 
         renderNextGroup(0, 0, false, false, 'ref0');
-        renderNextGroup(DIGIT_13_OPPOSITES[0], DIGIT_13_OPPOSITES[0], true, true, 'ref0_13opp');
         renderNextGroup(19, 19, true, false, 'ref19');
-        renderNextGroup(DIGIT_13_OPPOSITES[19], DIGIT_13_OPPOSITES[19], true, true, 'ref19_13opp');
         renderNextGroup(lastSpin, lastSpin, true, false, 'prev');
         renderNextGroup(DIGIT_13_OPPOSITES[lastSpin], DIGIT_13_OPPOSITES[lastSpin], true, true, 'prev_13opp');
 
@@ -1043,7 +1039,7 @@ function renderTable2() {
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
                 <td><strong>${spin.actual}</strong></td>
-                ${Array(84).fill('<td></td>').join('')}
+                ${Array(49).fill('<td></td>').join('')}
             `;
             tbody.appendChild(row);
             return;
@@ -1099,28 +1095,22 @@ function renderTable2() {
             });
         };
 
+        // Table 2: Only base pairs (no 13OPP)
         renderTargetGroup(0, 0, false, false, 'ref0');
-        renderTargetGroup(DIGIT_13_OPPOSITES[0], DIGIT_13_OPPOSITES[0], true, true, 'ref0_13opp');
         renderTargetGroup(19, 19, true, false, 'ref19');
-        renderTargetGroup(DIGIT_13_OPPOSITES[19], DIGIT_13_OPPOSITES[19], true, true, 'ref19_13opp');
         renderTargetGroup(prev, prev, true, false, 'prev');
-        renderTargetGroup(DIGIT_13_OPPOSITES[prev], DIGIT_13_OPPOSITES[prev], true, true, 'prev_13opp');
 
         const prevPlus1 = Math.min(prev + 1, 36);
         renderTargetGroup(prevPlus1, prevPlus1, true, false, 'prevPlus1');
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus1], DIGIT_13_OPPOSITES[prevPlus1], true, true, 'prevPlus1_13opp');
 
         const prevMinus1 = Math.max(prev - 1, 0);
         renderTargetGroup(prevMinus1, prevMinus1, true, false, 'prevMinus1');
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus1], DIGIT_13_OPPOSITES[prevMinus1], true, true, 'prevMinus1_13opp');
 
         const prevPlus2 = Math.min(prev + 2, 36);
         renderTargetGroup(prevPlus2, prevPlus2, true, false, 'prevPlus2');
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus2], DIGIT_13_OPPOSITES[prevPlus2], true, true, 'prevPlus2_13opp');
 
         const prevMinus2 = Math.max(prev - 2, 0);
         renderTargetGroup(prevMinus2, prevMinus2, true, false, 'prevMinus2');
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus2], DIGIT_13_OPPOSITES[prevMinus2], true, true, 'prevMinus2_13opp');
 
         row.innerHTML = html.join('');
         tbody.appendChild(row);
@@ -1161,28 +1151,22 @@ function renderTable2() {
             });
         };
 
+        // Table 2 NEXT row: Only base pairs (no 13OPP)
         renderNextGroup(0, 0, false, false, 'ref0');
-        renderNextGroup(DIGIT_13_OPPOSITES[0], DIGIT_13_OPPOSITES[0], true, true, 'ref0_13opp');
         renderNextGroup(19, 19, true, false, 'ref19');
-        renderNextGroup(DIGIT_13_OPPOSITES[19], DIGIT_13_OPPOSITES[19], true, true, 'ref19_13opp');
         renderNextGroup(lastSpin, lastSpin, true, false, 'prev');
-        renderNextGroup(DIGIT_13_OPPOSITES[lastSpin], DIGIT_13_OPPOSITES[lastSpin], true, true, 'prev_13opp');
 
         const plus1 = Math.min(lastSpin + 1, 36);
         renderNextGroup(plus1, plus1, true, false, 'prevPlus1');
-        renderNextGroup(DIGIT_13_OPPOSITES[plus1], DIGIT_13_OPPOSITES[plus1], true, true, 'prevPlus1_13opp');
 
         const minus1 = Math.max(lastSpin - 1, 0);
         renderNextGroup(minus1, minus1, true, false, 'prevMinus1');
-        renderNextGroup(DIGIT_13_OPPOSITES[minus1], DIGIT_13_OPPOSITES[minus1], true, true, 'prevMinus1_13opp');
 
         const plus2 = Math.min(lastSpin + 2, 36);
         renderNextGroup(plus2, plus2, true, false, 'prevPlus2');
-        renderNextGroup(DIGIT_13_OPPOSITES[plus2], DIGIT_13_OPPOSITES[plus2], true, true, 'prevPlus2_13opp');
 
         const minus2 = Math.max(lastSpin - 2, 0);
         renderNextGroup(minus2, minus2, true, false, 'prevMinus2');
-        renderNextGroup(DIGIT_13_OPPOSITES[minus2], DIGIT_13_OPPOSITES[minus2], true, true, 'prevMinus2_13opp');
 
         const nextRow = document.createElement('tr');
         nextRow.className = 'next-row';

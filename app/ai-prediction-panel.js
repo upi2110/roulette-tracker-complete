@@ -190,19 +190,21 @@ class AIPredictionPanel {
         // Keep backward compat alias
         this.availablePairs = this.table3Pairs;
 
-        // Table 1
+        // Table 1 (hide 0-13OPP and 19-13OPP)
         const t1Next = tableData.table1NextProjections || {};
         this.table1Pairs = Object.keys(t1Next)
             .filter(k => {
+                if (k === 'ref0_13opp' || k === 'ref19_13opp') return false;
                 const d = t1Next[k];
                 return d && (d.first?.numbers?.length > 0 || d.second?.numbers?.length > 0 || d.third?.numbers?.length > 0);
             })
             .map(k => ({ key: k, display: pairDisplayNames[k] || k, data: t1Next[k] }));
 
-        // Table 2
+        // Table 2 (hide 13OPP pairs — too many to work with)
         const t2Next = tableData.table2NextProjections || {};
         this.table2Pairs = Object.keys(t2Next)
             .filter(k => {
+                if (k.endsWith('_13opp')) return false; // Hide 13OPP pairs from Table 2
                 const d = t2Next[k];
                 return d && (d.first?.numbers?.length > 0 || d.second?.numbers?.length > 0 || d.third?.numbers?.length > 0);
             })
