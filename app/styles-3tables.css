@@ -78,19 +78,19 @@ td {
 
 /* ============================================
    PER-TABLE FONT SIZE OVERRIDES
-   Table 1: 12 pairs (86 cols) — compact but readable
-   Table 2: 7 pairs (51 cols) — more room, bigger fonts
-   Table 3: 6 pairs (32 cols) — most room, biggest fonts
+   Table 1: 84 cols (no Dir/Actual) — most compact
+   Table 2: 49 cols (no Dir/Actual) — medium
+   Table 3: 32 cols (with Dir/Actual) — most room
    ============================================ */
 #table1 { width: 100%; }
-#table1 th { font-size: 9px; padding: 1px 1px; }
-#table1 td { font-size: 9px; padding: 1px 1px; }
-#table1 .code-s, #table1 .code-o, #table1 .code-xx { font-size: 8px; }
+#table1 th { font-size: 7px; padding: 1px 1px; }
+#table1 td { font-size: 8px; padding: 1px 1px; }
+#table1 .code-s, #table1 .code-o, #table1 .code-xx { font-size: 7px; }
 
 #table2 { width: 100%; }
-#table2 th { font-size: 10px; }
-#table2 td { font-size: 11px; font-weight: 600; }
-#table2 .code-s, #table2 .code-o, #table2 .code-xx { font-size: 9px; }
+#table2 th { font-size: 9px; padding: 1px 1px; }
+#table2 td { font-size: 9px; font-weight: 600; padding: 1px 1px; }
+#table2 .code-s, #table2 .code-o, #table2 .code-xx { font-size: 8px; }
 
 #table3 { width: 100%; }
 #table3 th { font-size: 10px; }
@@ -102,10 +102,22 @@ td {
     background: #e9ecef !important;
 }
 
-/* BLACK BORDER - ONLY on pair separators (solid column line) */
+/* BLACK BORDER - thick separator between pair groups */
 .pair-separator {
-    border-left: 2px solid #000 !important;
+    border-left: 6px solid #000 !important;
 }
+
+/* WHITE BORDER - separator between co-pairs (P and P-13OPP) within same group */
+.copair-separator {
+    border-left: 3px solid #fff !important;
+}
+
+/* Table 1: thinner separators to save space (84 cols) */
+#table1 .pair-separator { border-left: 4px solid #000 !important; }
+#table1 .copair-separator { border-left: 2px solid #fff !important; }
+/* Table 2: slightly thinner separators (49 cols) */
+#table2 .pair-separator { border-left: 5px solid #000 !important; }
+#table2 .copair-separator { border-left: 3px solid #fff !important; }
 
 /* ============================================
    COLOR-CODED PAIR HEADERS (unified across all tables)

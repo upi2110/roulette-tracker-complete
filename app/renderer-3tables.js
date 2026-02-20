@@ -762,7 +762,22 @@ function resetAll() {
     if (confirm('Reset all?')) {
         spins.length = 0;  // ✅ Clears SAME array, keeps reference intact
         document.getElementById('direction').value = 'C';
-        
+
+        // Clear spin input field
+        const spinInput = document.getElementById('spinNumber');
+        if (spinInput) spinInput.value = '';
+
+        // Explicitly clear all table bodies
+        ['table1Body', 'table2Body', 'table3Body'].forEach(id => {
+            const tbody = document.getElementById(id);
+            if (tbody) tbody.innerHTML = '';
+        });
+
+        // Clear any remaining pair-selected highlights from all tables
+        document.querySelectorAll('.t3-pair-selected').forEach(el => {
+            el.classList.remove('t3-pair-selected');
+        });
+
         // Reset Money Management Panel
         if (window.moneyPanel) {
             // Preserve current strategy selection across reset
@@ -875,11 +890,21 @@ function renderTable1() {
         const row = document.createElement('tr');
 
         if (idx === 0) {
-            row.innerHTML = `
-                <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
-                <td><strong>${spin.actual}</strong></td>
-                ${Array(70).fill('<td></td>').join('')}
-            `;
+            // 12 pairs × 7 cols = 84 data cols. No Dir/Actual columns.
+            // Groups: 0(7) | 19(7) | P(7)+P13(7) | P+1(7)+P+1-13(7) | P-1(7)+P-1-13(7) | P+2(7)+P+2-13(7) | P-2(7)+P-2-13(7)
+            const emptyCells = [];
+            const groupStarts = [7, 14, 28, 42, 56, 70]; // black pair-separator positions
+            const copairStarts = [21, 35, 49, 63, 77]; // white copair-separator positions
+            for (let c = 0; c < 84; c++) {
+                if (groupStarts.includes(c)) {
+                    emptyCells.push('<td class="pair-separator"></td>');
+                } else if (copairStarts.includes(c)) {
+                    emptyCells.push('<td class="copair-separator"></td>');
+                } else {
+                    emptyCells.push('<td></td>');
+                }
+            }
+            row.innerHTML = emptyCells.join('');
             tbody.appendChild(row);
             return;
         }
@@ -888,8 +913,6 @@ function renderTable1() {
         const validCodes = ['S+0', 'SL+1', 'SR+1', 'O+0', 'OL+1', 'OR+1'];
 
         const html = [];
-        html.push(`<td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>`);
-        html.push(`<td><strong>${spin.actual}</strong></td>`);
 
         const isValidCode = (code) => validCodes.includes(code);
 
@@ -900,10 +923,11 @@ function renderTable1() {
             return '';
         };
 
-        const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '') => {
+        const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
             const anchorClass = 'anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
+                (addCopairSep ? ' copair-separator' : '') +
                 (is13Opp ? ' opp13-cell' : '');
             html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
 
@@ -937,23 +961,23 @@ function renderTable1() {
         renderTargetGroup(0, 0, false, false, 'ref0');
         renderTargetGroup(19, 19, true, false, 'ref19');
         renderTargetGroup(prev, prev, true, false, 'prev');
-        renderTargetGroup(DIGIT_13_OPPOSITES[prev], DIGIT_13_OPPOSITES[prev], true, true, 'prev_13opp');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prev], DIGIT_13_OPPOSITES[prev], false, true, 'prev_13opp', true);
 
         const prevPlus1 = Math.min(prev + 1, 36);
         renderTargetGroup(prevPlus1, prevPlus1, true, false, 'prevPlus1');
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus1], DIGIT_13_OPPOSITES[prevPlus1], true, true, 'prevPlus1_13opp');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus1], DIGIT_13_OPPOSITES[prevPlus1], false, true, 'prevPlus1_13opp', true);
 
         const prevMinus1 = Math.max(prev - 1, 0);
         renderTargetGroup(prevMinus1, prevMinus1, true, false, 'prevMinus1');
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus1], DIGIT_13_OPPOSITES[prevMinus1], true, true, 'prevMinus1_13opp');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus1], DIGIT_13_OPPOSITES[prevMinus1], false, true, 'prevMinus1_13opp', true);
 
         const prevPlus2 = Math.min(prev + 2, 36);
         renderTargetGroup(prevPlus2, prevPlus2, true, false, 'prevPlus2');
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus2], DIGIT_13_OPPOSITES[prevPlus2], true, true, 'prevPlus2_13opp');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus2], DIGIT_13_OPPOSITES[prevPlus2], false, true, 'prevPlus2_13opp', true);
 
         const prevMinus2 = Math.max(prev - 2, 0);
         renderTargetGroup(prevMinus2, prevMinus2, true, false, 'prevMinus2');
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus2], DIGIT_13_OPPOSITES[prevMinus2], true, true, 'prevMinus2_13opp');
+        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus2], DIGIT_13_OPPOSITES[prevMinus2], false, true, 'prevMinus2_13opp', true);
 
         row.innerHTML = html.join('');
         tbody.appendChild(row);
@@ -961,17 +985,14 @@ function renderTable1() {
 
     if (spins.length >= 1) {
         const lastSpin = spins[spins.length - 1].actual;
-        const lastDirection = spins[spins.length - 1].direction;
-        const nextDirection = lastDirection === 'C' ? 'AC' : 'C';
 
         const html = [];
-        html.push(`<td class="dir-${nextDirection.toLowerCase()}">${nextDirection}</td>`);
-        html.push(`<td><strong>NEXT</strong></td>`);
 
-        const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '') => {
+        const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
             const anchorClass = 'anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
+                (addCopairSep ? ' copair-separator' : '') +
                 (is13Opp ? ' opp13-cell' : '');
             html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
 
@@ -997,23 +1018,23 @@ function renderTable1() {
         renderNextGroup(0, 0, false, false, 'ref0');
         renderNextGroup(19, 19, true, false, 'ref19');
         renderNextGroup(lastSpin, lastSpin, true, false, 'prev');
-        renderNextGroup(DIGIT_13_OPPOSITES[lastSpin], DIGIT_13_OPPOSITES[lastSpin], true, true, 'prev_13opp');
+        renderNextGroup(DIGIT_13_OPPOSITES[lastSpin], DIGIT_13_OPPOSITES[lastSpin], false, true, 'prev_13opp', true);
 
         const plus1 = Math.min(lastSpin + 1, 36);
         renderNextGroup(plus1, plus1, true, false, 'prevPlus1');
-        renderNextGroup(DIGIT_13_OPPOSITES[plus1], DIGIT_13_OPPOSITES[plus1], true, true, 'prevPlus1_13opp');
+        renderNextGroup(DIGIT_13_OPPOSITES[plus1], DIGIT_13_OPPOSITES[plus1], false, true, 'prevPlus1_13opp', true);
 
         const minus1 = Math.max(lastSpin - 1, 0);
         renderNextGroup(minus1, minus1, true, false, 'prevMinus1');
-        renderNextGroup(DIGIT_13_OPPOSITES[minus1], DIGIT_13_OPPOSITES[minus1], true, true, 'prevMinus1_13opp');
+        renderNextGroup(DIGIT_13_OPPOSITES[minus1], DIGIT_13_OPPOSITES[minus1], false, true, 'prevMinus1_13opp', true);
 
         const plus2 = Math.min(lastSpin + 2, 36);
         renderNextGroup(plus2, plus2, true, false, 'prevPlus2');
-        renderNextGroup(DIGIT_13_OPPOSITES[plus2], DIGIT_13_OPPOSITES[plus2], true, true, 'prevPlus2_13opp');
+        renderNextGroup(DIGIT_13_OPPOSITES[plus2], DIGIT_13_OPPOSITES[plus2], false, true, 'prevPlus2_13opp', true);
 
         const minus2 = Math.max(lastSpin - 2, 0);
         renderNextGroup(minus2, minus2, true, false, 'prevMinus2');
-        renderNextGroup(DIGIT_13_OPPOSITES[minus2], DIGIT_13_OPPOSITES[minus2], true, true, 'prevMinus2_13opp');
+        renderNextGroup(DIGIT_13_OPPOSITES[minus2], DIGIT_13_OPPOSITES[minus2], false, true, 'prevMinus2_13opp', true);
 
         const nextRow = document.createElement('tr');
         nextRow.className = 'next-row';
@@ -1036,11 +1057,16 @@ function renderTable2() {
         const row = document.createElement('tr');
 
         if (idx === 0) {
-            row.innerHTML = `
-                <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
-                <td><strong>${spin.actual}</strong></td>
-                ${Array(49).fill('<td></td>').join('')}
-            `;
+            // 7 pairs × 7 cols = 49 data cols. No Dir/Actual columns.
+            const emptyCells = [];
+            for (let c = 0; c < 49; c++) {
+                if (c % 7 === 0 && c > 0) {
+                    emptyCells.push('<td class="pair-separator"></td>');
+                } else {
+                    emptyCells.push('<td></td>');
+                }
+            }
+            row.innerHTML = emptyCells.join('');
             tbody.appendChild(row);
             return;
         }
@@ -1049,8 +1075,6 @@ function renderTable2() {
         const validCodes = ['S+0', 'SL+1', 'SR+1', 'SL+2', 'SR+2', 'O+0', 'OL+1', 'OR+1', 'OL+2', 'OR+2'];
 
         const html = [];
-        html.push(`<td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>`);
-        html.push(`<td><strong>${spin.actual}</strong></td>`);
 
         const isValidCode = (code) => validCodes.includes(code);
 
@@ -1118,12 +1142,7 @@ function renderTable2() {
 
     if (spins.length >= 1) {
         const lastSpin = spins[spins.length - 1].actual;
-        const lastDirection = spins[spins.length - 1].direction;
-        const nextDirection = lastDirection === 'C' ? 'AC' : 'C';
-
         const html = [];
-        html.push(`<td class="dir-${nextDirection.toLowerCase()}">${nextDirection}</td>`);
-        html.push(`<td><strong>NEXT</strong></td>`);
 
         const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '') => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
@@ -1191,10 +1210,19 @@ function renderTable3() {
         const row = document.createElement('tr');
         
         if (prev === null) {
+            // 6 pairs × 5 cols = 30 data cols. Separator at start of each pair except first.
+            const emptyCells = [];
+            for (let c = 0; c < 30; c++) {
+                if (c % 5 === 0 && c > 0) {
+                    emptyCells.push('<td class="pair-separator"></td>');
+                } else {
+                    emptyCells.push('<td></td>');
+                }
+            }
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
                 <td><strong>${spin.actual}</strong></td>
-                ${Array(30).fill('<td></td>').join('')}
+                ${emptyCells.join('')}
             `;
         } else {
             const refs = calculateReferences(prev, prevPrev || prev);

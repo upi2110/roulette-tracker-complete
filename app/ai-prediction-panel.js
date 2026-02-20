@@ -9,6 +9,16 @@
  * Table 3: uses existing anchor expansion (unchanged)
  */
 
+// European Roulette wheel order — from 26 clockwise
+const WHEEL_ORDER = [26, 0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3];
+const WHEEL_POS = {};
+WHEEL_ORDER.forEach((n, i) => { WHEEL_POS[n] = i; });
+
+// Sort numbers by European wheel position (26 clockwise)
+function sortByWheel(arr) {
+    return [...arr].sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
+}
+
 class AIPredictionPanel {
     constructor() {
         this.currentPrediction = null;
@@ -570,50 +580,45 @@ class AIPredictionPanel {
             const tableData = window.getAIDataV6();
             if (!tableData) throw new Error('No table data available');
 
-            // Collect number sets — UNION within each table, INTERSECTION across tables
-            // tableSets: one merged set per table (union of all selected pairs in that table)
-            const tableSets = [];
+            // Collect per-pair number sets — each selected pair is its own set
+            // Primary: INTERSECTION across ALL pairs (regardless of table)
+            // Extra: from 3rd ref, intersected across all extended sets
+            const pairSets = [];       // Each pair = { source, numbers (Set), table }
+            const pairExtraSets = [];  // Each pair's extra ref numbers = { numbers (Set), pairNumbers (Set) }
 
-            // --- TABLE 3: UNION all selected pairs ---
+            // --- TABLE 3: each pair is a separate set ---
             if (this.table3Selections.size > 0) {
                 const t3Projections = tableData.table3NextProjections || {};
-                const t3Union = new Set();
-                const t3Sources = [];
 
                 this.table3Selections.forEach(pairKey => {
                     const pairData = t3Projections[pairKey];
                     if (pairData && pairData.numbers && pairData.numbers.length > 0) {
-                        pairData.numbers.forEach(n => t3Union.add(n));
-                        t3Sources.push(pairKey);
+                        const pairNums = new Set(pairData.numbers);
+                        pairSets.push({
+                            source: `T3:${pairKey}`,
+                            numbers: pairNums,
+                            table: 'T3'
+                        });
                     }
                 });
-
-                if (t3Union.size > 0) {
-                    tableSets.push({
-                        source: `T3:[${t3Sources.join(',')}]`,
-                        numbers: t3Union
-                    });
-                }
             }
 
-            // --- TABLE 1: UNION all selected pairs (primary + extra) ---
-            const tableExtraSets = []; // Extra ref unions per table (for grey numbers)
-
+            // --- TABLE 1: each pair's primary refs UNION → one set per pair ---
             if (Object.keys(this.table1Selections).length > 0) {
                 const t1Projections = tableData.table1NextProjections || {};
-                const t1PrimaryUnion = new Set();
-                const t1ExtraUnion = new Set();
-                const t1Sources = [];
 
                 Object.entries(this.table1Selections).forEach(([pairKey, refSet]) => {
                     const pairData = t1Projections[pairKey];
                     if (!pairData) return;
 
+                    const pairPrimaryUnion = new Set();
+                    const pairExtraUnion = new Set();
+
                     // Primary refs (the auto-selected 2)
                     refSet.forEach(refKey => {
                         const refData = pairData[refKey];
                         if (refData && refData.numbers) {
-                            refData.numbers.forEach(n => t1PrimaryUnion.add(n));
+                            refData.numbers.forEach(n => pairPrimaryUnion.add(n));
                         }
                     });
 
@@ -622,40 +627,39 @@ class AIPredictionPanel {
                     if (extraRefKey && !refSet.has(extraRefKey)) {
                         const extraData = pairData[extraRefKey];
                         if (extraData && extraData.numbers) {
-                            extraData.numbers.forEach(n => t1ExtraUnion.add(n));
+                            extraData.numbers.forEach(n => pairExtraUnion.add(n));
                         }
                     }
 
-                    t1Sources.push(`${pairKey}[${Array.from(refSet).join(',')}]`);
-                });
-
-                if (t1PrimaryUnion.size > 0) {
-                    tableSets.push({
-                        source: `T1:[${t1Sources.join(',')}]`,
-                        numbers: t1PrimaryUnion
-                    });
-                    if (t1ExtraUnion.size > 0) {
-                        tableExtraSets.push({ numbers: t1ExtraUnion, primaryNumbers: t1PrimaryUnion });
+                    if (pairPrimaryUnion.size > 0) {
+                        pairSets.push({
+                            source: `T1:${pairKey}[${Array.from(refSet).join(',')}]`,
+                            numbers: pairPrimaryUnion,
+                            table: 'T1'
+                        });
+                        if (pairExtraUnion.size > 0) {
+                            pairExtraSets.push({ numbers: pairExtraUnion, pairNumbers: pairPrimaryUnion });
+                        }
                     }
-                }
+                });
             }
 
-            // --- TABLE 2: UNION all selected pairs (primary + extra) ---
+            // --- TABLE 2: each pair's primary refs UNION → one set per pair ---
             if (Object.keys(this.table2Selections).length > 0) {
                 const t2Projections = tableData.table2NextProjections || {};
-                const t2PrimaryUnion = new Set();
-                const t2ExtraUnion = new Set();
-                const t2Sources = [];
 
                 Object.entries(this.table2Selections).forEach(([pairKey, refSet]) => {
                     const pairData = t2Projections[pairKey];
                     if (!pairData) return;
 
+                    const pairPrimaryUnion = new Set();
+                    const pairExtraUnion = new Set();
+
                     // Primary refs
                     refSet.forEach(refKey => {
                         const refData = pairData[refKey];
                         if (refData && refData.numbers) {
-                            refData.numbers.forEach(n => t2PrimaryUnion.add(n));
+                            refData.numbers.forEach(n => pairPrimaryUnion.add(n));
                         }
                     });
 
@@ -664,65 +668,75 @@ class AIPredictionPanel {
                     if (extraRefKey && !refSet.has(extraRefKey)) {
                         const extraData = pairData[extraRefKey];
                         if (extraData && extraData.numbers) {
-                            extraData.numbers.forEach(n => t2ExtraUnion.add(n));
+                            extraData.numbers.forEach(n => pairExtraUnion.add(n));
                         }
                     }
 
-                    t2Sources.push(`${pairKey}[${Array.from(refSet).join(',')}]`);
-                });
-
-                if (t2PrimaryUnion.size > 0) {
-                    tableSets.push({
-                        source: `T2:[${t2Sources.join(',')}]`,
-                        numbers: t2PrimaryUnion
-                    });
-                    if (t2ExtraUnion.size > 0) {
-                        tableExtraSets.push({ numbers: t2ExtraUnion, primaryNumbers: t2PrimaryUnion });
+                    if (pairPrimaryUnion.size > 0) {
+                        pairSets.push({
+                            source: `T2:${pairKey}[${Array.from(refSet).join(',')}]`,
+                            numbers: pairPrimaryUnion,
+                            table: 'T2'
+                        });
+                        if (pairExtraUnion.size > 0) {
+                            pairExtraSets.push({ numbers: pairExtraUnion, pairNumbers: pairPrimaryUnion });
+                        }
                     }
-                }
+                });
             }
 
-            if (tableSets.length === 0) {
+            if (pairSets.length === 0) {
                 throw new Error('No numbers available from selected pairs');
             }
 
-            console.log('📊 Table sets (UNION within each table):', tableSets.map(s => ({
+            // Build legacy tableSets for debug display (UNION within each table)
+            const tableMap = {};
+            pairSets.forEach(ps => {
+                if (!tableMap[ps.table]) {
+                    tableMap[ps.table] = { sources: [], numbers: new Set() };
+                }
+                tableMap[ps.table].sources.push(ps.source);
+                ps.numbers.forEach(n => tableMap[ps.table].numbers.add(n));
+            });
+            const tableSets = Object.entries(tableMap).map(([table, data]) => ({
+                source: `${table}:[${data.sources.map(s => s.split(':')[1]).join(',')}]`,
+                numbers: data.numbers
+            }));
+
+            console.log('📊 Per-pair sets:', pairSets.map(s => ({
                 source: s.source,
                 count: s.numbers.size,
-                numbers: Array.from(s.numbers).sort((a, b) => a - b)
+                numbers: Array.from(s.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
             })));
 
-            // --- INTERSECTION across tables (PRIMARY) ---
-            // If only 1 table selected → use that table's union directly
-            // If multiple tables selected → find common numbers
+            // --- INTERSECTION across ALL pairs (PRIMARY) ---
+            // Every selected pair must contain the number for it to be in the final result
             let intersection;
-            if (tableSets.length === 1) {
-                intersection = new Set(tableSets[0].numbers);
+            if (pairSets.length === 1) {
+                intersection = new Set(pairSets[0].numbers);
             } else {
-                intersection = new Set(tableSets[0].numbers);
-                for (let i = 1; i < tableSets.length; i++) {
-                    const next = tableSets[i].numbers;
+                intersection = new Set(pairSets[0].numbers);
+                for (let i = 1; i < pairSets.length; i++) {
+                    const next = pairSets[i].numbers;
                     intersection = new Set([...intersection].filter(n => next.has(n)));
                 }
             }
 
             // --- EXTRA NUMBERS (grey — from 3rd ref) ---
-            // Build "extended" sets per table: primary + extra union merged
-            // Then intersect those across tables to get "all possible" numbers
-            // extraNumbers = allPossible - primaryIntersection
+            // Build "extended" sets per pair: primary + extra merged
+            // Then intersect those across ALL pairs
+            // extraNumbers = extendedIntersection - primaryIntersection
             let extraNumbers = [];
-            if (tableExtraSets.length > 0 && tableSets.length >= 1) {
-                // Build extended sets: for each table that has an extra set, merge primary+extra
-                // For tables that DON'T have extra sets (e.g., T3), use their primary set as-is
-                const extendedSets = tableSets.map((ts, idx) => {
-                    // Find matching extra set for this table
-                    const extraEntry = tableExtraSets.find(es => es.primaryNumbers === ts.numbers);
+            if (pairExtraSets.length > 0 && pairSets.length >= 1) {
+                const extendedSets = pairSets.map(ps => {
+                    // Find matching extra set for this pair
+                    const extraEntry = pairExtraSets.find(es => es.pairNumbers === ps.numbers);
                     if (extraEntry) {
-                        const merged = new Set(ts.numbers);
+                        const merged = new Set(ps.numbers);
                         extraEntry.numbers.forEach(n => merged.add(n));
                         return merged;
                     }
-                    return ts.numbers; // No extra for this table, use primary
+                    return ps.numbers; // No extra for this pair (e.g., T3 pairs)
                 });
 
                 let extendedIntersection;
@@ -745,12 +759,12 @@ class AIPredictionPanel {
                 if (extraHas0 && !extraHas26 && !intersection.has(26)) extraNumbers.push(26);
                 if (extraHas26 && !extraHas0 && !intersection.has(0)) extraNumbers.push(0);
 
-                extraNumbers.sort((a, b) => a - b);
+                extraNumbers.sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
                 console.log(`🔘 Extra numbers (3rd ref): ${extraNumbers.length}:`, extraNumbers);
             }
 
             // Also track per-pair sets for logging
-            const numberSets = tableSets;
+            const numberSets = pairSets;
 
             let finalNumbers = Array.from(intersection);
 
@@ -760,7 +774,7 @@ class AIPredictionPanel {
             if (has0 && !has26) finalNumbers.push(26);
             if (has26 && !has0) finalNumbers.push(0);
 
-            finalNumbers.sort((a, b) => a - b);
+            finalNumbers.sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
 
             console.log(`🎯 Intersection: ${finalNumbers.length} numbers:`, finalNumbers);
 
@@ -780,6 +794,120 @@ class AIPredictionPanel {
             // Calculate anchors (frontend)
             const { anchors, loose, anchorGroups } = window.calculateWheelAnchors(finalNumbers);
 
+            // Build per-pair detail for debug
+            const pairDetails = [];
+
+            // T3 per-pair
+            if (this.table3Selections.size > 0) {
+                const t3Proj = tableData.table3NextProjections || {};
+                this.table3Selections.forEach(pairKey => {
+                    const pairData = t3Proj[pairKey];
+                    if (pairData && pairData.numbers) {
+                        pairDetails.push({
+                            table: 'T3',
+                            pair: pairKey,
+                            refs: ['all'],
+                            numbers: Array.from(pairData.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
+                        });
+                    }
+                });
+            }
+
+            // T1 per-pair per-ref
+            if (Object.keys(this.table1Selections).length > 0) {
+                const t1Proj = tableData.table1NextProjections || {};
+                Object.entries(this.table1Selections).forEach(([pairKey, refSet]) => {
+                    const pairData = t1Proj[pairKey];
+                    if (!pairData) return;
+                    refSet.forEach(refKey => {
+                        const refData = pairData[refKey];
+                        if (refData && refData.numbers) {
+                            pairDetails.push({
+                                table: 'T1',
+                                pair: pairKey,
+                                refs: [refKey],
+                                numbers: Array.from(refData.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
+                            });
+                        }
+                    });
+                    // Extra ref
+                    const extraRefKey = this._extraRefs?.[`table1:${pairKey}`];
+                    if (extraRefKey && !refSet.has(extraRefKey)) {
+                        const extraData = pairData[extraRefKey];
+                        if (extraData && extraData.numbers) {
+                            pairDetails.push({
+                                table: 'T1',
+                                pair: pairKey,
+                                refs: [extraRefKey + ' (extra)'],
+                                numbers: Array.from(extraData.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
+                            });
+                        }
+                    }
+                });
+            }
+
+            // T2 per-pair per-ref
+            if (Object.keys(this.table2Selections).length > 0) {
+                const t2Proj = tableData.table2NextProjections || {};
+                Object.entries(this.table2Selections).forEach(([pairKey, refSet]) => {
+                    const pairData = t2Proj[pairKey];
+                    if (!pairData) return;
+                    refSet.forEach(refKey => {
+                        const refData = pairData[refKey];
+                        if (refData && refData.numbers) {
+                            pairDetails.push({
+                                table: 'T2',
+                                pair: pairKey,
+                                refs: [refKey],
+                                numbers: Array.from(refData.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
+                            });
+                        }
+                    });
+                    // Extra ref
+                    const extraRefKey = this._extraRefs?.[`table2:${pairKey}`];
+                    if (extraRefKey && !refSet.has(extraRefKey)) {
+                        const extraData = pairData[extraRefKey];
+                        if (extraData && extraData.numbers) {
+                            pairDetails.push({
+                                table: 'T2',
+                                pair: pairKey,
+                                refs: [extraRefKey + ' (extra)'],
+                                numbers: Array.from(extraData.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
+                            });
+                        }
+                    }
+                });
+            }
+
+            // Build debug data for verification panel
+            const debugData = {
+                tableSets: tableSets.map(s => ({
+                    source: s.source,
+                    count: s.numbers.size,
+                    numbers: Array.from(s.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
+                })),
+                pairSets: pairSets.map(s => ({
+                    source: s.source,
+                    count: s.numbers.size,
+                    numbers: Array.from(s.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
+                })),
+                primaryIntersection: Array.from(intersection).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99)),
+                finalNumbers: finalNumbers,
+                extraNumbers: extraNumbers,
+                pairExtraSets: pairExtraSets.map(es => ({
+                    count: es.numbers.size,
+                    numbers: Array.from(es.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
+                })),
+                pairDetails: pairDetails,
+                t3Selections: Array.from(this.table3Selections),
+                t1Selections: Object.fromEntries(
+                    Object.entries(this.table1Selections).map(([k, v]) => [k, Array.from(v)])
+                ),
+                t2Selections: Object.fromEntries(
+                    Object.entries(this.table2Selections).map(([k, v]) => [k, Array.from(v)])
+                )
+            };
+
             // Build prediction object matching existing updatePrediction() format
             const prediction = {
                 signal: 'BET NOW',
@@ -792,6 +920,7 @@ class AIPredictionPanel {
                 confidence: 90,
                 mode: 'FRONTEND_MULTI_TABLE',
                 result_history: [],
+                debugData: debugData,
                 reasoning: {
                     selected_pairs: numberSets.map(s => s.source),
                     pair_count: numberSets.length,
@@ -927,7 +1056,7 @@ class AIPredictionPanel {
 
             let looseHTML = '';
             if (loose.length > 0) {
-                looseHTML = loose.sort((a, b) => a - b).map(n => `
+                looseHTML = loose.sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99)).map(n => `
                     <span style="
                         display: inline-block;
                         padding: 10px 14px;
@@ -1018,10 +1147,10 @@ class AIPredictionPanel {
             const positiveSet = new Set(POSITIVE);
             const negativeSet = new Set(NEGATIVE);
 
-            const positiveNums = allNumbers.filter(n => positiveSet.has(n)).sort((a, b) => a - b);
-            const negativeNums = allNumbers.filter(n => negativeSet.has(n)).sort((a, b) => a - b);
-            const zeroTableNums = allNumbers.filter(n => zeroTableSet.has(n)).sort((a, b) => a - b);
-            const nineteenTableNums = allNumbers.filter(n => nineteenTableSet.has(n)).sort((a, b) => a - b);
+            const positiveNums = allNumbers.filter(n => positiveSet.has(n)).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
+            const negativeNums = allNumbers.filter(n => negativeSet.has(n)).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
+            const zeroTableNums = allNumbers.filter(n => zeroTableSet.has(n)).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
+            const nineteenTableNums = allNumbers.filter(n => nineteenTableSet.has(n)).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
 
             const numBadge = (n, color, borderColor) => `<span style="
                 display: inline-block; padding: 4px 8px; border-radius: 6px;
@@ -1111,6 +1240,7 @@ class AIPredictionPanel {
                         ${extraNumbers.length > 0 ? `<li style="margin-bottom: 4px;">• Extra (3rd ref): <strong style="color: #6b7280;">${extraNumbers.length}</strong> — ${extraNumbers.join(', ')}</li>` : ''}
                     </ul>
                 </div>
+                ${this._buildDebugPanel(prediction)}
             `;
         }
 
@@ -1127,6 +1257,203 @@ class AIPredictionPanel {
         }
 
         console.log('✅ AI panel updated successfully!');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  DEBUG / VERIFICATION PANEL (collapsible)
+    // ═══════════════════════════════════════════════════════
+
+    _buildDebugPanel(prediction) {
+        const debug = prediction.debugData;
+        if (!debug) return '';
+
+        const badgeMini = (n, bg) => `<span style="display:inline-block;padding:1px 5px;border-radius:4px;background:${bg || '#475569'};color:#fff;font-weight:700;font-size:10px;margin:1px;">${n}</span>`;
+
+        // --- Section 1: Selected Pairs ---
+        let selectionsHTML = '';
+
+        if (debug.t3Selections && debug.t3Selections.length > 0) {
+            selectionsHTML += `<div style="margin-bottom:6px;">
+                <strong style="color:#dc2626;">Table 3:</strong> ${debug.t3Selections.map(p => `<code style="background:#fee2e2;padding:1px 4px;border-radius:3px;font-size:10px;">${p}</code>`).join(' ')}
+            </div>`;
+        }
+
+        if (debug.t1Selections && Object.keys(debug.t1Selections).length > 0) {
+            const t1Items = Object.entries(debug.t1Selections).map(([pair, refs]) =>
+                `<code style="background:#dbeafe;padding:1px 4px;border-radius:3px;font-size:10px;">${pair} [${refs.join(',')}]</code>`
+            ).join(' ');
+            selectionsHTML += `<div style="margin-bottom:6px;">
+                <strong style="color:#2563eb;">Table 1:</strong> ${t1Items}
+            </div>`;
+        }
+
+        if (debug.t2Selections && Object.keys(debug.t2Selections).length > 0) {
+            const t2Items = Object.entries(debug.t2Selections).map(([pair, refs]) =>
+                `<code style="background:#dcfce7;padding:1px 4px;border-radius:3px;font-size:10px;">${pair} [${refs.join(',')}]</code>`
+            ).join(' ');
+            selectionsHTML += `<div style="margin-bottom:6px;">
+                <strong style="color:#16a34a;">Table 2:</strong> ${t2Items}
+            </div>`;
+        }
+
+        // --- Section 1b: Per-Pair Individual Numbers ---
+        let pairDetailsHTML = '';
+        if (debug.pairDetails && debug.pairDetails.length > 0) {
+            const tableColors = { T3: '#dc2626', T1: '#2563eb', T2: '#16a34a' };
+            pairDetailsHTML = debug.pairDetails.map(pd => {
+                const color = tableColors[pd.table] || '#475569';
+                const isExtra = pd.refs[0] && pd.refs[0].includes('(extra)');
+                const bg = isExtra ? '#f9fafb' : '#f8fafc';
+                const borderStyle = isExtra ? 'dashed' : 'solid';
+                return `<div style="margin-bottom:4px; padding:4px 8px; background:${bg}; border-left:3px ${borderStyle} ${isExtra ? '#9ca3af' : color}; border-radius:3px;">
+                    <span style="font-weight:700; color:${isExtra ? '#6b7280' : color}; font-size:10px;">
+                        ${pd.table} → ${pd.pair} [${pd.refs.join(',')}] — ${pd.numbers.length} nums
+                    </span><br/>
+                    <span style="line-height:1.8;">${pd.numbers.map(n => badgeMini(n, isExtra ? '#9ca3af' : color)).join('')}</span>
+                </div>`;
+            }).join('');
+        }
+
+        // --- Section 2: Per-Table Union Numbers ---
+        let tableUnionsHTML = '';
+        if (debug.tableSets && debug.tableSets.length > 0) {
+            tableUnionsHTML = debug.tableSets.map(ts => {
+                const color = ts.source.startsWith('T3') ? '#dc2626' : ts.source.startsWith('T1') ? '#2563eb' : '#16a34a';
+                return `<div style="margin-bottom:8px; padding:6px 8px; background:#f8fafc; border-left:3px solid ${color}; border-radius:4px;">
+                    <div style="font-weight:700; color:${color}; font-size:11px; margin-bottom:4px;">${ts.source} — ${ts.count} numbers (UNION within table)</div>
+                    <div style="line-height:1.8;">${ts.numbers.map(n => badgeMini(n, color)).join('')}</div>
+                </div>`;
+            }).join('');
+        }
+
+        // --- Section 3: Intersection Step ---
+        let intersectionHTML = '';
+        if (debug.primaryIntersection) {
+            const count = debug.primaryIntersection.length;
+            intersectionHTML = `<div style="margin-bottom:8px; padding:6px 8px; background:#fffbeb; border-left:3px solid #f59e0b; border-radius:4px;">
+                <div style="font-weight:700; color:#b45309; font-size:11px; margin-bottom:4px;">
+                    Primary Intersection — ${count} numbers (COMMON across ALL selected pairs)
+                </div>
+                <div style="line-height:1.8;">${debug.primaryIntersection.map(n => badgeMini(n, '#b45309')).join('')}</div>
+            </div>`;
+        }
+
+        // --- Section 4: Final Numbers (after 0/26 pairing) ---
+        let finalHTML = '';
+        if (debug.finalNumbers) {
+            const count = debug.finalNumbers.length;
+            finalHTML = `<div style="margin-bottom:8px; padding:6px 8px; background:#ecfdf5; border-left:3px solid #10b981; border-radius:4px;">
+                <div style="font-weight:700; color:#065f46; font-size:11px; margin-bottom:4px;">
+                    Final Numbers — ${count} (after 0/26 pairing)
+                </div>
+                <div style="line-height:1.8;">${debug.finalNumbers.map(n => badgeMini(n, '#10b981')).join('')}</div>
+            </div>`;
+        }
+
+        // --- Section 5: Extra/Grey Numbers ---
+        let extraHTML = '';
+        if (debug.extraNumbers && debug.extraNumbers.length > 0) {
+            // Show per-table extra sets
+            let extraSetsDetail = '';
+            if (debug.pairExtraSets && debug.pairExtraSets.length > 0) {
+                extraSetsDetail = debug.pairExtraSets.map((es, idx) => {
+                    return `<div style="margin-bottom:4px; padding:4px 6px; background:#f1f5f9; border-radius:3px;">
+                        <span style="font-weight:600; color:#6b7280; font-size:10px;">Extra Set ${idx + 1} (3rd ref union): ${es.count} numbers</span><br/>
+                        <span style="line-height:1.8;">${es.numbers.map(n => badgeMini(n, '#9ca3af')).join('')}</span>
+                    </div>`;
+                }).join('');
+            }
+
+            extraHTML = `<div style="margin-bottom:8px; padding:6px 8px; background:#f9fafb; border-left:3px solid #9ca3af; border-radius:4px;">
+                <div style="font-weight:700; color:#4b5563; font-size:11px; margin-bottom:4px;">
+                    Grey/Extra Numbers — ${debug.extraNumbers.length} (extended intersection minus primary)
+                </div>
+                ${extraSetsDetail}
+                <div style="margin-top:4px; padding:4px 6px; background:#e5e7eb; border-radius:3px;">
+                    <span style="font-weight:600; color:#374151; font-size:10px;">Final Extra (after intersection + 0/26):</span><br/>
+                    <span style="line-height:1.8;">${debug.extraNumbers.map(n => badgeMini(n, '#6b7280')).join('')}</span>
+                </div>
+            </div>`;
+        }
+
+        // --- Section 6: Anchor Group Breakdown ---
+        const anchorGroups = prediction.anchor_groups || [];
+        const loose = prediction.loose || [];
+        let anchorBreakdownHTML = '';
+        if (anchorGroups.length > 0 || loose.length > 0) {
+            const groupDetails = anchorGroups.map((ag, idx) => {
+                const group = ag.group || [];
+                const anchorNum = ag.anchor;
+                const type = ag.type || '±1';
+                return `<span style="font-size:10px; color:#334155;">
+                    <strong>${type}</strong> anchor=<strong>${anchorNum}</strong> → [${group.join(', ')}]
+                </span>`;
+            }).join('<br/>');
+
+            anchorBreakdownHTML = `<div style="margin-bottom:8px; padding:6px 8px; background:#faf5ff; border-left:3px solid #a855f7; border-radius:4px;">
+                <div style="font-weight:700; color:#7e22ce; font-size:11px; margin-bottom:4px;">
+                    Anchor Groups (${anchorGroups.length}) + Loose (${loose.length})
+                </div>
+                <div style="margin-bottom:4px;">${groupDetails}</div>
+                ${loose.length > 0 ? `<div style="font-size:10px; color:#991b1b;">Loose: [${loose.sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99)).join(', ')}]</div>` : ''}
+            </div>`;
+        }
+
+        return `
+            <details style="margin-top: 12px; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;">
+                <summary style="
+                    padding: 10px 14px;
+                    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                    cursor: pointer;
+                    font-weight: 700;
+                    font-size: 12px;
+                    color: #334155;
+                    user-select: none;
+                    list-style: none;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                ">
+                    <span style="font-size: 14px;">🔍</span>
+                    VERIFICATION — Click to see full calculation breakdown
+                    <span style="margin-left:auto; font-size:10px; color:#64748b;">▼</span>
+                </summary>
+                <div style="padding: 12px; font-size: 11px; line-height: 1.5; max-height: 500px; overflow-y: auto; background: #fff;">
+                    <div style="margin-bottom:10px; font-weight:700; color:#1e293b; font-size:12px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">
+                        📋 SELECTED PAIRS
+                    </div>
+                    ${selectionsHTML}
+
+                    ${pairDetailsHTML ? `
+                    <div style="margin-bottom:10px; margin-top:14px; font-weight:700; color:#1e293b; font-size:12px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">
+                        📝 PER-PAIR NUMBERS (individual ref contributions)
+                    </div>
+                    ${pairDetailsHTML}` : ''}
+
+                    <div style="margin-bottom:10px; margin-top:14px; font-weight:700; color:#1e293b; font-size:12px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">
+                        📊 PER-TABLE UNIONS (numbers from selected refs)
+                    </div>
+                    ${tableUnionsHTML}
+
+                    <div style="margin-bottom:10px; margin-top:14px; font-weight:700; color:#1e293b; font-size:12px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">
+                        🔀 INTERSECTION (common numbers across tables)
+                    </div>
+                    ${intersectionHTML}
+                    ${finalHTML}
+
+                    ${extraHTML ? `
+                    <div style="margin-bottom:10px; margin-top:14px; font-weight:700; color:#1e293b; font-size:12px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">
+                        🔘 GREY / EXTRA NUMBERS
+                    </div>
+                    ${extraHTML}` : ''}
+
+                    <div style="margin-bottom:10px; margin-top:14px; font-weight:700; color:#1e293b; font-size:12px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">
+                        🎯 ANCHOR ANALYSIS
+                    </div>
+                    ${anchorBreakdownHTML}
+                </div>
+            </details>
+        `;
     }
 
     // ═══════════════════════════════════════════════════════
