@@ -24,8 +24,8 @@ echo ""
 
 # Check if backend is running
 echo "🔍 Checking if backend is running..."
-if curl -s http://localhost:8000/ > /dev/null 2>&1; then
-    echo "✅ Backend is running on http://localhost:8000"
+if curl -s http://localhost:8002/ > /dev/null 2>&1; then
+    echo "✅ Backend is running on http://localhost:8002"
 else
     echo "⚠️  WARNING: Backend not detected!"
     echo "   Please start backend first: ./start-backend-v6.sh"

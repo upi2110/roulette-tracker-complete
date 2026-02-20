@@ -48,7 +48,7 @@ echo "✅ Dependencies OK"
 echo ""
 
 # Start the server
-echo "🎬 Starting V6 server on http://localhost:8000"
+echo "🎬 Starting V6 server on http://localhost:8002"
 echo "   Press Ctrl+C to stop"
 echo ""
 echo "════════════════════════════════════════════════════════════════"

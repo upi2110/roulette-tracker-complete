@@ -174,9 +174,9 @@ class MoneyManagementPanel {
             console.log('✅ Betting ENABLED - System will place bets automatically');
     
             // CRITICAL: Get fresh prediction immediately when starting
-            if (window.aiPanel && window.aiPanel.getPredictionAuto) {
+            if (window.aiPanel && window.aiPanel.getPredictions) {
                 setTimeout(() => {
-                    window.aiPanel.getPredictionAuto();
+                    window.aiPanel.getPredictions();
                     console.log('🔄 Triggered fresh prediction after START');
                 }, 100);
             }

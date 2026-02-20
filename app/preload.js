@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('aiAPI', {
      */
     async testConnection() {
         try {
-            const response = await fetch('http://localhost:8000/');
+            const response = await fetch('http://localhost:8002/');
             if (!response.ok) return false;
             const data = await response.json();
             console.log('✅ AI Server connected:', data);
@@ -34,7 +34,7 @@ contextBridge.exposeInMainWorld('aiAPI', {
             console.log('   Current spin count:', tableData.currentSpinCount);
             console.log('   Table 3 NEXT projections:', Object.keys(tableData.table3NextProjections || {}).length);
             
-            const response = await fetch('http://localhost:8000/predict', {
+            const response = await fetch('http://localhost:8002/predict', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -67,7 +67,7 @@ contextBridge.exposeInMainWorld('aiAPI', {
      */
     async startSession(bankroll = 4000, target = 100) {
         try {
-            const response = await fetch(`http://localhost:8000/start_session?starting_bankroll=${bankroll}&session_target=${target}`, {
+            const response = await fetch(`http://localhost:8002/start_session?starting_bankroll=${bankroll}&session_target=${target}`, {
                 method: 'POST'
             });
             
@@ -88,7 +88,7 @@ contextBridge.exposeInMainWorld('aiAPI', {
      */
     async processResult(betPerNumber, hit) {
         try {
-            const response = await fetch('http://localhost:8000/process_result', {
+            const response = await fetch('http://localhost:8002/process_result', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -116,7 +116,7 @@ contextBridge.exposeInMainWorld('aiAPI', {
      */
     async getStatus() {
         try {
-            const response = await fetch('http://localhost:8000/status');
+            const response = await fetch('http://localhost:8002/status');
             
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
@@ -135,7 +135,7 @@ contextBridge.exposeInMainWorld('aiAPI', {
      */
     async resetSession() {
         try {
-            const response = await fetch('http://localhost:8000/reset', {
+            const response = await fetch('http://localhost:8002/reset', {
                 method: 'POST'
             });
             

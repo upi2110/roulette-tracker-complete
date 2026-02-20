@@ -239,8 +239,8 @@ if __name__ == "__main__":
     print("Strategy: Common Numbers from Top 2 Pairs")
     print("Uses NEXT row projections (white boxes)")
     print("="*80)
-    print("\nStarting server on http://localhost:8000")
-    print("API Documentation: http://localhost:8000/docs")
+    print("\nStarting server on http://localhost:8002")
+    print("API Documentation: http://localhost:8002/docs")
     print("\n" + "="*80)
     
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8002)
