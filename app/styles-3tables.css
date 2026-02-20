@@ -264,6 +264,26 @@ th.t3-pair-selected {
 .col-prj-hit { background: #d4edda !important; font-weight: 900; }
 .col-prj-miss { background: #f8d7da !important; font-weight: 700; }
 
+/* ±1 Distance Flash — highlights cells that caused hits with ±1 distance difference */
+.t3-pm1-flash {
+    animation: t3-pm1-pulse 1.2s ease-in-out infinite;
+    outline: 3px solid #f59e0b !important;
+    outline-offset: -2px;
+    z-index: 1;
+    position: relative;
+}
+
+@keyframes t3-pm1-pulse {
+    0%, 100% {
+        background-color: #fef3c7 !important;
+        box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+    }
+    50% {
+        background-color: #fbbf24 !important;
+        box-shadow: 0 0 14px rgba(245, 158, 11, 0.9);
+    }
+}
+
 /* Anchors in projections */
 .anchor-purple {
     background: #e6ccff;

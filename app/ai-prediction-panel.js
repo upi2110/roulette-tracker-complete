@@ -1244,16 +1244,16 @@ class AIPredictionPanel {
             `;
         }
 
-        // 4. UPDATE WHEEL HIGHLIGHTS
+        // 4. UPDATE WHEEL HIGHLIGHTS (wheel also syncs money panel after applying filters)
         if (window.rouletteWheel && typeof window.rouletteWheel.updateHighlights === 'function') {
-            window.rouletteWheel.updateHighlights(anchors, loose, anchorGroups, extraNumbers);
+            window.rouletteWheel.updateHighlights(anchors, loose, anchorGroups, extraNumbers, prediction);
             console.log('✅ Wheel highlights updated with anchor groups + extra numbers');
-        }
-
-        // 5. UPDATE MONEY PANEL
-        if (window.moneyPanel && typeof window.moneyPanel.setPrediction === 'function') {
-            window.moneyPanel.setPrediction(prediction);
-            console.log('✅ Money panel updated');
+        } else {
+            // Fallback: update money panel directly if wheel not available
+            if (window.moneyPanel && typeof window.moneyPanel.setPrediction === 'function') {
+                window.moneyPanel.setPrediction(prediction);
+                console.log('✅ Money panel updated (direct)');
+            }
         }
 
         console.log('✅ AI panel updated successfully!');
@@ -1454,6 +1454,303 @@ class AIPredictionPanel {
                 </div>
             </details>
         `;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  UPDATE DISPLAY WITH FILTERED PREDICTION (called by wheel filters)
+    // ═══════════════════════════════════════════════════════
+
+    updateFilteredDisplay(filteredPrediction) {
+        if (!filteredPrediction || !this.currentPrediction) return;
+
+        // Build a merged prediction: keep original debug/reasoning data but use filtered numbers
+        const mergedPrediction = {
+            ...this.currentPrediction,
+            numbers: filteredPrediction.numbers,
+            anchors: filteredPrediction.anchors,
+            loose: filteredPrediction.loose,
+            anchor_groups: filteredPrediction.anchor_groups,
+            extraNumbers: filteredPrediction.extraNumbers || []
+        };
+
+        console.log(`🔄 AI Panel: Updating display with ${mergedPrediction.numbers.length} filtered numbers (was ${this.currentPrediction.numbers?.length || 0} unfiltered)`);
+
+        const anchors = mergedPrediction.anchors || [];
+        const loose = mergedPrediction.loose || [];
+        const allNumbers = mergedPrediction.numbers || [];
+        const anchorGroups = mergedPrediction.anchor_groups || [];
+        const extraNumbers = mergedPrediction.extraNumbers || [];
+
+        // Color palette for anchor groups (same as updatePrediction)
+        const groupColors = [
+            { bg: '#fef3c7', border: '#f59e0b', anchorBg: '#f59e0b', neighborBg: '#fbbf24', text: '#000' },
+            { bg: '#dbeafe', border: '#3b82f6', anchorBg: '#3b82f6', neighborBg: '#60a5fa', text: '#fff' },
+            { bg: '#dcfce7', border: '#22c55e', anchorBg: '#22c55e', neighborBg: '#4ade80', text: '#fff' },
+            { bg: '#f3e8ff', border: '#a855f7', anchorBg: '#a855f7', neighborBg: '#c084fc', text: '#fff' },
+            { bg: '#ffedd5', border: '#f97316', anchorBg: '#f97316', neighborBg: '#fb923c', text: '#fff' },
+            { bg: '#fce7f3', border: '#ec4899', anchorBg: '#ec4899', neighborBg: '#f472b6', text: '#fff' },
+            { bg: '#e0f2fe', border: '#0ea5e9', anchorBg: '#0ea5e9', neighborBg: '#38bdf8', text: '#fff' },
+            { bg: '#ecfdf5', border: '#10b981', anchorBg: '#10b981', neighborBg: '#34d399', text: '#fff' },
+        ];
+
+        // 1. UPDATE SIGNAL
+        const signalIndicator = document.getElementById('signalIndicator');
+        if (signalIndicator) {
+            const extraText = extraNumbers.length > 0 ? ` + ${extraNumbers.length} EXTRA` : '';
+            signalIndicator.textContent = `✅ ${allNumbers.length} COMMON${extraText}`;
+            signalIndicator.style.backgroundColor = allNumbers.length > 0 ? '#22c55e' : '#f59e0b';
+            signalIndicator.style.color = 'white';
+        }
+
+        // 2. UPDATE NUMBERS DISPLAY
+        const numbersDiv = document.querySelector('#aiResultsPanel .prediction-numbers');
+        if (numbersDiv && allNumbers.length > 0) {
+            let anchorGroupsHTML = '';
+            if (anchorGroups.length > 0) {
+                anchorGroupsHTML = anchorGroups.map((ag, idx) => {
+                    const color = groupColors[idx % groupColors.length];
+                    const group = ag.group || [];
+                    const anchorNum = ag.anchor;
+                    const anchorType = ag.type || '±1';
+
+                    const numbersHTML = group.map(n => {
+                        const isAnchor = (n === anchorNum);
+                        return `<span style="
+                            display: inline-block;
+                            padding: 10px 14px;
+                            border-radius: 10px;
+                            background: ${isAnchor ? color.anchorBg : color.neighborBg};
+                            color: ${isAnchor ? color.text : color.text};
+                            border: 3px solid ${color.border};
+                            font-weight: bold;
+                            font-size: 17px;
+                            min-width: 42px;
+                            text-align: center;
+                            box-shadow: 0 3px 6px rgba(0,0,0,0.25);
+                            position: relative;
+                            ${isAnchor ? 'text-decoration: underline; text-underline-offset: 3px;' : 'opacity: 0.85;'}
+                        ">${n}${isAnchor ? `<span style="
+                            position: absolute;
+                            top: -8px;
+                            right: -8px;
+                            background: #1e293b;
+                            color: #fff;
+                            font-size: 9px;
+                            font-weight: 700;
+                            padding: 1px 4px;
+                            border-radius: 4px;
+                            border: 1px solid ${color.border};
+                            line-height: 1.2;
+                        ">${anchorType}</span>` : ''}</span>`;
+                    }).join('');
+
+                    return `
+                        <div style="
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 4px;
+                            padding: 8px 10px;
+                            background: ${color.bg};
+                            border: 2px solid ${color.border};
+                            border-radius: 12px;
+                            margin-bottom: 6px;
+                        ">
+                            ${numbersHTML}
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            let looseHTML = '';
+            if (loose.length > 0) {
+                looseHTML = loose.sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99)).map(n => `
+                    <span style="
+                        display: inline-block;
+                        padding: 10px 14px;
+                        border-radius: 10px;
+                        background: #ef4444;
+                        color: white;
+                        border: 3px solid #dc2626;
+                        font-weight: bold;
+                        font-size: 17px;
+                        min-width: 42px;
+                        text-align: center;
+                        box-shadow: 0 3px 6px rgba(0,0,0,0.25);
+                    ">${n}</span>
+                `).join('');
+            }
+
+            numbersDiv.innerHTML = `
+                <div style="margin-bottom: 12px;">
+                    <div style="font-weight: bold; color: #374151; margin-bottom: 12px; font-size: 15px;">
+                        🎯 PREDICTION: ${allNumbers.length} numbers to bet
+                    </div>
+
+                    ${anchorGroups.length > 0 ? `
+                    <div style="margin-bottom: 14px; padding: 12px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 10px; border: 2px solid #94a3b8;">
+                        <div style="font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 10px;">
+                            🎯 ANCHORS (${anchors.length}) — ±1 = 3 covered, ±2 = 5 covered
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            ${anchorGroupsHTML}
+                        </div>
+                    </div>` : ''}
+
+                    ${loose.length > 0 ? `
+                    <div style="margin-bottom: 14px; padding: 12px; background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border-radius: 10px; border: 2px solid #ef4444;">
+                        <div style="font-size: 13px; font-weight: 700; color: #991b1b; margin-bottom: 8px;">
+                            🔴 LOOSE (${loose.length}) — not covered by any anchor
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 7px;">
+                            ${looseHTML}
+                        </div>
+                    </div>` : `
+                    <div style="padding: 8px 12px; background: #ecfdf5; border-radius: 8px; border: 1px solid #10b981; color: #065f46; font-size: 13px; font-weight: 600;">
+                        ✅ All numbers covered by anchor groups — no loose numbers!
+                    </div>`}
+
+                    ${extraNumbers.length > 0 ? `
+                    <div style="margin-bottom: 14px; padding: 12px; background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); border-radius: 10px; border: 2px dashed #9ca3af;">
+                        <div style="font-size: 13px; font-weight: 700; color: #4b5563; margin-bottom: 8px;">
+                            🔘 EXTRA (${extraNumbers.length}) — 3rd ref numbers (optional bets)
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 7px;">
+                            ${extraNumbers.map(n => `
+                                <span style="
+                                    display: inline-block;
+                                    padding: 10px 14px;
+                                    border-radius: 10px;
+                                    background: #9ca3af;
+                                    color: white;
+                                    border: 3px solid #6b7280;
+                                    font-weight: bold;
+                                    font-size: 17px;
+                                    min-width: 42px;
+                                    text-align: center;
+                                    box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+                                    opacity: 0.7;
+                                ">${n}</span>
+                            `).join('')}
+                        </div>
+                    </div>` : ''}
+                </div>
+            `;
+        } else if (numbersDiv) {
+            numbersDiv.innerHTML = '<div style="color: #9ca3af; font-style: italic; padding: 20px; text-align: center;">No common numbers found after filtering</div>';
+        }
+
+        // 3. UPDATE CLASSIFICATION (Positive/Negative & Zero/19 table)
+        const reasoningDiv = document.querySelector('#aiResultsPanel .prediction-reasoning');
+        if (reasoningDiv) {
+            const ZERO_TABLE = [3, 26, 0, 32, 21, 2, 25, 27, 13, 36, 23, 10, 5, 1, 20, 14, 18, 29, 7];
+            const NINETEEN_TABLE = [15, 19, 4, 17, 34, 6, 11, 30, 8, 24, 16, 33, 31, 9, 22, 28, 12, 35];
+            const POSITIVE = [3, 26, 0, 32, 15, 19, 4, 27, 13, 36, 11, 30, 8, 1, 20, 14, 31, 9, 22];
+            const NEGATIVE = [21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35];
+
+            const zeroTableSet = new Set(ZERO_TABLE);
+            const nineteenTableSet = new Set(NINETEEN_TABLE);
+            const positiveSet = new Set(POSITIVE);
+            const negativeSet = new Set(NEGATIVE);
+
+            const positiveNums = allNumbers.filter(n => positiveSet.has(n)).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
+            const negativeNums = allNumbers.filter(n => negativeSet.has(n)).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
+            const zeroTableNums = allNumbers.filter(n => zeroTableSet.has(n)).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
+            const nineteenTableNums = allNumbers.filter(n => nineteenTableSet.has(n)).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
+
+            const numBadge = (n, color, borderColor) => `<span style="
+                display: inline-block; padding: 4px 8px; border-radius: 6px;
+                background: ${color}; color: white; border: 2px solid ${borderColor};
+                font-weight: bold; font-size: 13px; min-width: 28px; text-align: center;
+                margin: 2px;
+            ">${n}</span>`;
+
+            // Keep the result history and debug panel from the original prediction
+            const resultHistory = this.currentPrediction?.result_history || [];
+            let resultHistoryHTML = '';
+            if (resultHistory.length > 0) {
+                const total = resultHistory.length;
+                const hits = resultHistory.filter(r => r.hit).length;
+                const misses = total - hits;
+                const hitPct = ((hits / total) * 100).toFixed(0);
+                const missPct = ((misses / total) * 100).toFixed(0);
+                const summaryIcons = resultHistory.slice().reverse().map(r => r.hit ? '✅' : '❌').join('');
+                const lastResult = resultHistory[resultHistory.length - 1];
+
+                resultHistoryHTML = `
+                <div style="margin-bottom: 12px; padding: 12px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 10px; border: 2px solid #64748b;">
+                    <div style="font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 8px;">
+                        📊 RESULT TRACKER
+                    </div>
+                    <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
+                        <span style="font-size: 13px; color: #334155;">
+                            Last: <strong>${lastResult.actual}</strong> —
+                            <span style="color: ${lastResult.hit ? '#16a34a' : '#dc2626'}; font-weight: bold;">
+                                ${lastResult.hit ? '✅ HIT!' : '❌ MISS'}
+                            </span>
+                        </span>
+                        <span style="font-size: 13px;">
+                            <span style="color: #16a34a; font-weight: bold;">Hit: ${hits}/${total} (${hitPct}%)</span>
+                            &nbsp;|&nbsp;
+                            <span style="color: #dc2626; font-weight: bold;">Miss: ${misses}/${total} (${missPct}%)</span>
+                        </span>
+                    </div>
+                    <div style="font-size: 16px; letter-spacing: 2px;">${summaryIcons}</div>
+                </div>`;
+            }
+
+            reasoningDiv.innerHTML = `
+                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                    <div style="flex: 1; padding: 10px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-radius: 10px; border: 2px solid #22c55e;">
+                        <div style="font-size: 12px; font-weight: 700; color: #065f46; margin-bottom: 4px;">
+                            ➕ Positive (${positiveNums.length})
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 2px;">
+                            ${positiveNums.map(n => numBadge(n, '#16a34a', '#15803d')).join('')}
+                        </div>
+                    </div>
+                    <div style="flex: 1; padding: 10px; background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border-radius: 10px; border: 2px solid #a855f7;">
+                        <div style="font-size: 12px; font-weight: 700; color: #581c87; margin-bottom: 4px;">
+                            ➖ Negative (${negativeNums.length})
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 2px;">
+                            ${negativeNums.map(n => numBadge(n, '#9333ea', '#7e22ce')).join('')}
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                    <div style="flex: 1; padding: 10px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-radius: 10px; border: 2px solid #22c55e;">
+                        <div style="font-size: 12px; font-weight: 700; color: #065f46; margin-bottom: 4px;">
+                            0 Table (${zeroTableNums.length})
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 2px;">
+                            ${zeroTableNums.map(n => numBadge(n, '#16a34a', '#15803d')).join('')}
+                        </div>
+                    </div>
+                    <div style="flex: 1; padding: 10px; background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border-radius: 10px; border: 2px solid #a855f7;">
+                        <div style="font-size: 12px; font-weight: 700; color: #581c87; margin-bottom: 4px;">
+                            19 Table (${nineteenTableNums.length})
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 2px;">
+                            ${nineteenTableNums.map(n => numBadge(n, '#9333ea', '#7e22ce')).join('')}
+                        </div>
+                    </div>
+                </div>
+                ${resultHistoryHTML}
+                <div style="font-size: 12px; line-height: 1.7; color: #475569;">
+                    <strong style="color: #1e293b; font-size: 13px;">CALCULATION DETAILS:</strong>
+                    <ul style="margin: 10px 0 0 0; padding-left: 22px; list-style: none;">
+                        <li style="margin-bottom: 4px;">• Sources: <strong>${this.currentPrediction?.reasoning ? this.currentPrediction.reasoning.selected_pairs?.join(', ') : 'N/A'}</strong></li>
+                        <li style="margin-bottom: 4px;">• Total bet numbers: <strong>${allNumbers.length}</strong> (filtered)</li>
+                        <li style="margin-bottom: 4px;">• Anchor groups: <strong>${anchorGroups.length}</strong> (covering ${anchorGroups.reduce((s, g) => s + (g.group ? g.group.length : 0), 0)} numbers)</li>
+                        <li style="margin-bottom: 4px;">• Loose: <strong>${loose.length}</strong></li>
+                        ${extraNumbers.length > 0 ? `<li style="margin-bottom: 4px;">• Extra (3rd ref): <strong style="color: #6b7280;">${extraNumbers.length}</strong> — ${extraNumbers.join(', ')}</li>` : ''}
+                    </ul>
+                </div>
+                ${this._buildDebugPanel(this.currentPrediction)}
+            `;
+        }
+
+        console.log(`✅ AI Panel display updated with filtered numbers: ${allNumbers.length} primary + ${extraNumbers.length} extra`);
     }
 
     // ═══════════════════════════════════════════════════════

@@ -1194,6 +1194,161 @@ function renderTable2() {
     }
 }
 
+// ── ±1 Distance Flash Helper ──────────────────────────────────
+// Extracts the numeric distance from a position code (e.g., OR+2 → 2, SL+1 → 1, S+0 → 0)
+function _getPosCodeDistance(posCode) {
+    if (!posCode || posCode === 'XX') return null;
+    if (posCode === 'S+0' || posCode === 'O+0') return 0;
+    const m = posCode.match(/[+-](\d+)$/);
+    return m ? parseInt(m[1]) : null;
+}
+
+// Mapping from pair refKey (used in data{}) to the data-pair attribute used in HTML cells
+const _PAIR_REFKEY_TO_DATA_PAIR = {
+    'prev': 'prev',
+    'prev_plus_1': 'prevPlus1',
+    'prev_minus_1': 'prevMinus1',
+    'prev_plus_2': 'prevPlus2',
+    'prev_minus_2': 'prevMinus2',
+    'prev_prev': 'prevPrev'
+};
+
+/**
+ * After all data rows are rendered, check the LAST 2 data rows for each pair.
+ * If BOTH rows have projection HITs and the hit position code distances differ by ±1,
+ * flash the specific position code cell(s) that caused each hit.
+ */
+function _applyPm1Flash(tbody, allSpins, startIdx, visibleCount) {
+    // Need at least 4 spins total (rows need idx > 1 for projections)
+    if (allSpins.length < 4 || visibleCount < 2) return;
+
+    const dataRows = tbody.querySelectorAll('tr:not(.next-row)');
+    if (dataRows.length < 2) return;
+
+    // Get the last 2 data rows
+    const lastRow = dataRows[dataRows.length - 1];
+    const secondLastRow = dataRows[dataRows.length - 2];
+
+    // Get spin indices for the last 2 data rows
+    const lastRelIdx = visibleCount - 1;
+    const secondLastRelIdx = visibleCount - 2;
+    const lastIdx = startIdx + lastRelIdx;
+    const secondLastIdx = startIdx + secondLastRelIdx;
+
+    // Both rows need projections (idx > 1)
+    if (lastIdx <= 1 || secondLastIdx <= 1) return;
+
+    const refKeys = ['prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev'];
+
+    // For each row, compute: refs, data (pair + pair13Opp codes), projections (isHit)
+    function getRowInfo(idx) {
+        const spin = allSpins[idx];
+        const prev = allSpins[idx - 1].actual;
+        const prevPrev = idx > 1 ? allSpins[idx - 2].actual : prev;
+        const refs = calculateReferences(prev, prevPrev);
+
+        const prevSpin = allSpins[idx - 1];
+        const prevPrevSpin = allSpins[idx - 2].actual;
+        const prevRefs = calculateReferences(prevPrevSpin, idx > 2 ? allSpins[idx - 3].actual : prevPrevSpin);
+
+        const info = {};
+        refKeys.forEach(refKey => {
+            const refNum = refs[refKey];
+            const ref13Opp = DIGIT_13_OPPOSITES[refNum];
+            const pairCode = calculatePositionCode(refNum, spin.actual);
+            const pair13Code = calculatePositionCode(ref13Opp, spin.actual);
+
+            // Projection hit check (same logic as in rendering)
+            const prevRefNum = prevRefs[refKey];
+            const prevRef13Opp = DIGIT_13_OPPOSITES[prevRefNum];
+            const prevPair = calculatePositionCode(prevRefNum, prevSpin.actual);
+            const prevPair13 = calculatePositionCode(prevRef13Opp, prevSpin.actual);
+            const usePosCode = prevPair !== 'XX' ? prevPair : prevPair13;
+
+            const { purple, green } = generateAnchors(refs[refKey], ref13Opp, usePosCode);
+            const betNumbers = expandAnchorsToBetNumbers(purple, green);
+            const isHit = betNumbers.includes(spin.actual);
+
+            // Determine which cell caused the hit: pair code or 13opp code
+            // "The one that caused the HIT" — whichever non-XX code is present
+            // If both are non-XX, take pair first (it's the primary)
+            let hitCellType = null;  // 'pair' or 'pair13Opp'
+            let hitDistance = null;
+
+            if (isHit) {
+                const pairDist = _getPosCodeDistance(pairCode);
+                const pair13Dist = _getPosCodeDistance(pair13Code);
+
+                if (pairDist !== null) {
+                    hitCellType = 'pair';
+                    hitDistance = pairDist;
+                } else if (pair13Dist !== null) {
+                    hitCellType = 'pair13Opp';
+                    hitDistance = pair13Dist;
+                }
+            }
+
+            info[refKey] = { isHit, pairCode, pair13Code, hitCellType, hitDistance };
+        });
+        return info;
+    }
+
+    const lastRowInfo = getRowInfo(lastIdx);
+    const secondLastRowInfo = getRowInfo(secondLastIdx);
+
+    // For each pair, check if both rows have hits with ±1 distance difference
+    const pm1Pairs = [];
+    refKeys.forEach(refKey => {
+        const last = lastRowInfo[refKey];
+        const secondLast = secondLastRowInfo[refKey];
+
+        if (!last.isHit || !secondLast.isHit) return;
+        if (last.hitDistance === null || secondLast.hitDistance === null) return;
+
+        const diff = Math.abs(last.hitDistance - secondLast.hitDistance);
+        if (diff === 1) {
+            const dataPair = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
+            pm1Pairs.push({
+                refKey,
+                dataPair,
+                lastHitCell: last.hitCellType,
+                secondLastHitCell: secondLast.hitCellType
+            });
+            console.log(`⚡ ±1 Flash: ${dataPair} — row N-1 dist=${secondLast.hitDistance} (${secondLast.hitCellType}), row N dist=${last.hitDistance} (${last.hitCellType}), diff=${diff}`);
+        }
+    });
+
+    if (pm1Pairs.length === 0) return;
+
+    // Apply flash class to the specific position code cells that caused the hits
+    // Table 3 layout per pair: [ref, posCode, ref13Opp, posCode13Opp, projection]
+    // The position code cells are at offsets 1 (pair) and 3 (pair13Opp) within the pair's 5 columns
+    pm1Pairs.forEach(({ dataPair, lastHitCell, secondLastHitCell }) => {
+        // Flash cells in the last row
+        _flashPairCell(lastRow, dataPair, lastHitCell);
+        // Flash cells in the second-to-last row
+        _flashPairCell(secondLastRow, dataPair, secondLastHitCell);
+    });
+
+    console.log(`⚡ ±1 Flash applied to ${pm1Pairs.length} pair(s)`);
+}
+
+/**
+ * Add flash class to the position code cell within a row for a given pair.
+ * hitCellType: 'pair' (offset 1 within pair) or 'pair13Opp' (offset 3 within pair)
+ */
+function _flashPairCell(row, dataPair, hitCellType) {
+    // Find all cells with data-pair matching
+    const cells = row.querySelectorAll(`td[data-pair="${dataPair}"]`);
+    // Per pair: cells are [ref, posCode, ref13Opp, posCode13Opp, projection] = indices 0,1,2,3,4
+    // hitCellType='pair' → index 1 (the position code cell)
+    // hitCellType='pair13Opp' → index 3 (the 13OPP position code cell)
+    const cellIdx = hitCellType === 'pair' ? 1 : 3;
+    if (cells[cellIdx]) {
+        cells[cellIdx].classList.add('t3-pm1-flash');
+    }
+}
+
 // TABLE 3 - FIXED: Position codes + Visual separators
 function renderTable3() {
     const tbody = document.getElementById('table3Body');
@@ -1320,7 +1475,13 @@ function renderTable3() {
         
         tbody.appendChild(row);
     });
-    
+
+    // ── ±1 Distance Flash Detection ───────────────────────────
+    // After all data rows are rendered, check last 2 rows for pairs where
+    // both projections HIT and the position code distances differ by exactly ±1.
+    // Flash ONLY the specific position code cells that caused each hit.
+    _applyPm1Flash(tbody, spins, startIdx, visibleSpins.length);
+
     if (spins.length >= 2) {
         const lastSpin = spins[spins.length - 1].actual;
         const lastLastSpin = spins[spins.length - 2].actual;
