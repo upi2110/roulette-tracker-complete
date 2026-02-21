@@ -65,20 +65,32 @@ class RouletteWheel {
                 <h3>European Wheel</h3>
             </div>
             <div class="panel-content">
-                <div id="wheelFilters" style="display:flex; flex-wrap:wrap; gap:6px; padding:6px 8px; background:#f1f5f9; border-radius:6px; margin-bottom:4px; align-items:center;">
-                    <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#065f46;">
-                        <input type="checkbox" id="filter0Table" checked style="accent-color:#22c55e;"> 0 Table
-                    </label>
-                    <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#581c87;">
-                        <input type="checkbox" id="filter19Table" style="accent-color:#9333ea;"> 19 Table
-                    </label>
-                    <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#16a34a;">
-                        <input type="checkbox" id="filterPositive" checked style="accent-color:#22c55e;"> Positive
-                    </label>
-                    <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#1e293b;">
-                        <input type="checkbox" id="filterNegative" checked style="accent-color:#334155;"> Negative
-                    </label>
-                    <span id="filteredCount" style="margin-left:auto;font-size:11px;font-weight:700;color:#64748b;"></span>
+                <div id="wheelFilters" style="display:flex; flex-direction:column; gap:4px; padding:6px 8px; background:#f1f5f9; border-radius:6px; margin-bottom:4px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:10px;font-weight:700;color:#475569;min-width:40px;">Table:</span>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#065f46;">
+                            <input type="radio" name="tableFilter" id="filter0Table" value="0" checked style="accent-color:#22c55e;"> 0
+                        </label>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#581c87;">
+                            <input type="radio" name="tableFilter" id="filter19Table" value="19" style="accent-color:#9333ea;"> 19
+                        </label>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#1e40af;">
+                            <input type="radio" name="tableFilter" id="filterBothTables" value="both" style="accent-color:#3b82f6;"> Both
+                        </label>
+                        <span id="filteredCount" style="margin-left:auto;font-size:11px;font-weight:700;color:#64748b;"></span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:10px;font-weight:700;color:#475569;min-width:40px;">Sign:</span>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#16a34a;">
+                            <input type="radio" name="signFilter" id="filterPositive" value="positive" style="accent-color:#22c55e;"> +ve
+                        </label>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#1e293b;">
+                            <input type="radio" name="signFilter" id="filterNegative" value="negative" style="accent-color:#334155;"> -ve
+                        </label>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#1e40af;">
+                            <input type="radio" name="signFilter" id="filterBothSigns" value="both" checked style="accent-color:#3b82f6;"> Both
+                        </label>
+                    </div>
                 </div>
                 <div id="wheelNumberLists" style="font-size:11px; padding:4px 8px; line-height:1.6;"></div>
                 <div class="wheel-container" id="wheelContainer" style="position: relative; width: 400px; height: 420px; margin: 0 auto;">
@@ -97,10 +109,10 @@ class RouletteWheel {
         this.canvas = document.getElementById('wheelCanvas');
         this.ctx = this.canvas.getContext('2d');
 
-        // Attach filter checkbox listeners
-        ['filter0Table', 'filter19Table', 'filterPositive', 'filterNegative'].forEach(id => {
-            const cb = document.getElementById(id);
-            if (cb) cb.addEventListener('change', () => this._onFilterChange());
+        // Attach filter radio button listeners
+        ['filter0Table', 'filter19Table', 'filterBothTables', 'filterPositive', 'filterNegative', 'filterBothSigns'].forEach(id => {
+            const rb = document.getElementById(id);
+            if (rb) rb.addEventListener('change', () => this._onFilterChange());
         });
 
         this.drawWheel();
@@ -110,10 +122,42 @@ class RouletteWheel {
     // ── Filter logic ──────────────────────────────────────
 
     _onFilterChange() {
-        this.filters.zeroTable = document.getElementById('filter0Table')?.checked ?? true;
-        this.filters.nineteenTable = document.getElementById('filter19Table')?.checked ?? true;
-        this.filters.positive = document.getElementById('filterPositive')?.checked ?? true;
-        this.filters.negative = document.getElementById('filterNegative')?.checked ?? true;
+        // Read table radio group by ID (more reliable than CSS :checked selector)
+        const f0 = document.getElementById('filter0Table');
+        const f19 = document.getElementById('filter19Table');
+        const fBothT = document.getElementById('filterBothTables');
+
+        if (fBothT && fBothT.checked) {
+            this.filters.zeroTable = true;
+            this.filters.nineteenTable = true;
+        } else if (f19 && f19.checked) {
+            this.filters.zeroTable = false;
+            this.filters.nineteenTable = true;
+        } else {
+            // Default: 0 table
+            this.filters.zeroTable = true;
+            this.filters.nineteenTable = false;
+        }
+
+        // Read sign radio group by ID
+        const fPos = document.getElementById('filterPositive');
+        const fNeg = document.getElementById('filterNegative');
+        const fBothS = document.getElementById('filterBothSigns');
+
+        if (fBothS && fBothS.checked) {
+            this.filters.positive = true;
+            this.filters.negative = true;
+        } else if (fNeg && fNeg.checked) {
+            this.filters.positive = false;
+            this.filters.negative = true;
+        } else if (fPos && fPos.checked) {
+            this.filters.positive = true;
+            this.filters.negative = false;
+        } else {
+            // Default: both
+            this.filters.positive = true;
+            this.filters.negative = true;
+        }
 
         console.log('🔄 Filters changed:', this.filters);
 

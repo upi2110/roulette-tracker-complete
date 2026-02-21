@@ -51,11 +51,15 @@ function setupDOM() {
             <!-- Wheel -->
             <div id="wheelContainer">
                 <canvas id="wheelCanvas" width="400" height="400"></canvas>
-                <div id="filteredCount"></div>
-                <input type="checkbox" id="filter0Table" checked />
-                <input type="checkbox" id="filter19Table" />
-                <input type="checkbox" id="filterPositive" checked />
-                <input type="checkbox" id="filterNegative" checked />
+                <div id="wheelFilters">
+                    <div id="filteredCount"></div>
+                    <input type="radio" name="tableFilter" id="filter0Table" value="0" checked />
+                    <input type="radio" name="tableFilter" id="filter19Table" value="19" />
+                    <input type="radio" name="tableFilter" id="filterBothTables" value="both" />
+                    <input type="radio" name="signFilter" id="filterPositive" value="positive" />
+                    <input type="radio" name="signFilter" id="filterNegative" value="negative" />
+                    <input type="radio" name="signFilter" id="filterBothSigns" value="both" checked />
+                </div>
             </div>
 
             <!-- Money Panel -->
