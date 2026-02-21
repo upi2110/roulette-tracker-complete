@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1771648978816" clover="3.2.0">
+  <project timestamp="1771648978816" name="All files">
+    <metrics statements="24" coveredstatements="21" conditionals="0" coveredconditionals="0" methods="5" coveredmethods="5" elements="29" coveredelements="26" complexity="0" loc="24" ncloc="24" packages="1" files="1" classes="1"/>
+    <file name="test-setup.js" path="/Users/ubusan-nb-ecr/Documents/UpenderImp/roulette-tracker-complete/tests/test-setup.js">
+      <metrics statements="24" coveredstatements="21" conditionals="0" coveredconditionals="0" methods="5" coveredmethods="5"/>
+      <line num="9" count="16" type="stmt"/>
+      <line num="10" count="16" type="stmt"/>
+      <line num="16" count="663" type="stmt"/>
+      <line num="86" count="78" type="stmt"/>
+      <line num="90" count="78" type="stmt"/>
+      <line num="98" count="78" type="stmt"/>
+      <line num="101" count="78" type="stmt"/>
+      <line num="102" count="78" type="stmt"/>
+      <line num="178" count="78" type="stmt"/>
+      <line num="179" count="78" type="stmt"/>
+      <line num="180" count="78" type="stmt"/>
+      <line num="182" count="0" type="stmt"/>
+      <line num="186" count="78" type="stmt"/>
+      <line num="193" count="159" type="stmt"/>
+      <line num="197" count="159" type="stmt"/>
+      <line num="205" count="159" type="stmt"/>
+      <line num="207" count="159" type="stmt"/>
+      <line num="210" count="159" type="stmt"/>
+      <line num="223" count="159" type="stmt"/>
+      <line num="224" count="159" type="stmt"/>
+      <line num="225" count="159" type="stmt"/>
+      <line num="227" count="0" type="stmt"/>
+      <line num="228" count="0" type="stmt"/>
+      <line num="232" count="16" type="stmt"/>
+    </file>
+  </project>
+</coverage>

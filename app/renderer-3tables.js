@@ -591,6 +591,15 @@ function formatPos(code) {
     return `<span class="${cls}">${code}</span>`;
 }
 
+// Flash variant of formatPos: outputs a span with inline amber styles
+// and NO competing CSS classes (no pos-s/pos-o/pos-xx).
+// Used when ±1 flash is detected — baked directly into the initial HTML
+// so there are zero CSS specificity battles.
+function formatPosFlash(code) {
+    if (!code) return '';
+    return `<span style="background:#fbbf24 !important;color:#000 !important;padding:1px 2px;border-radius:2px;display:inline-block;white-space:nowrap;font-weight:900;font-size:9px;min-width:28px;text-align:center">${code}</span>`;
+}
+
 function addSpin() {
     const num = parseInt(document.getElementById('spinNumber').value);
     let dir = document.getElementById('direction').value;
@@ -1215,12 +1224,194 @@ const _PAIR_REFKEY_TO_DATA_PAIR = {
 };
 
 /**
- * After all data rows are rendered, check the LAST 2 data rows for each pair.
- * If BOTH rows have projection HITs and the hit position code distances differ by ±1,
- * flash the specific position code cell(s) that caused each hit.
+ * Pre-compute which position code cells need ±1 flash highlighting.
+ * Returns a Set of strings: "relIdx:refKey:cellType"
+ *   relIdx = 0-based index within visible rows
+ *   refKey = 'prev', 'prev_plus_1', etc.
+ *   cellType = 'pair' or 'pair13Opp'
+ *
+ * This is a PURE function (no DOM manipulation). Flash styles are baked
+ * directly into the initial row HTML in renderTable3, eliminating ALL
+ * CSS specificity battles. The old post-processing approach via
+ * _applyPm1Flash/_flashPairCell set inline styles after render, but
+ * .pos-s/.pos-o/.pos-xx !important backgrounds on spans could not be
+ * reliably overridden in Electron/Chromium. By generating the HTML with
+ * flash styles from the start (and no competing classes on the span),
+ * the amber highlight is guaranteed to appear.
+ */
+// ── Toggle for file-based flash diagnostics ─────────────────────────────
+// Set to true to write detailed diagnostics to app/flash-debug.log
+// Set to false once flashing is confirmed working
+let FLASH_DEBUG_ENABLED = true;
+
+function _computeFlashTargets(allSpins, startIdx, visibleCount) {
+    const result = new Set();
+    const diagLines = [];  // Collects diagnostic lines for file logging
+
+    if (FLASH_DEBUG_ENABLED) {
+        diagLines.push(`\n${'='.repeat(80)}`);
+        diagLines.push(`⚡ FLASH DIAGNOSTIC — ${new Date().toISOString()}`);
+        diagLines.push(`   Total spins: ${allSpins.length}, startIdx: ${startIdx}, visibleCount: ${visibleCount}`);
+        if (allSpins.length > 0) {
+            const recent = allSpins.slice(-8).map(s => s.actual);
+            diagLines.push(`   Last 8 spins: [${recent.join(', ')}]`);
+        }
+    }
+
+    if (allSpins.length < 4 || visibleCount < 2) {
+        console.log(`⚡ Flash skip: spins=${allSpins.length}, visible=${visibleCount}`);
+        if (FLASH_DEBUG_ENABLED) {
+            diagLines.push(`   SKIP: spins=${allSpins.length} (<4) or visible=${visibleCount} (<2)`);
+            _writeFlashDiagnostics(diagLines);
+        }
+        return result;
+    }
+
+    const refKeys = ['prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev'];
+
+    function getRowInfo(idx) {
+        const spin = allSpins[idx];
+        const prev = allSpins[idx - 1].actual;
+        const rawPrevPrev = idx > 1 ? allSpins[idx - 2].actual : null;
+        const refs = calculateReferences(prev, rawPrevPrev || prev);
+        const info = {};
+        refKeys.forEach(refKey => {
+            const refNum = refs[refKey];
+            const ref13Opp = DIGIT_13_OPPOSITES[refNum];
+            const pairCode = calculatePositionCode(refNum, spin.actual);
+            const pair13Code = calculatePositionCode(ref13Opp, spin.actual);
+            info[refKey] = {
+                pairCode,
+                pair13Code,
+                pairDist: _getPosCodeDistance(pairCode),
+                pair13Dist: _getPosCodeDistance(pair13Code)
+            };
+        });
+        return info;
+    }
+
+    const rowInfos = [];
+    for (let r = 0; r < visibleCount; r++) {
+        const spinIdx = startIdx + r;
+        if (spinIdx <= 1) continue;
+        rowInfos.push({ relIdx: r, spinIdx, info: getRowInfo(spinIdx) });
+    }
+
+    if (rowInfos.length < 2) {
+        console.log(`⚡ Flash skip: only ${rowInfos.length} eligible rows (need ≥2)`);
+        if (FLASH_DEBUG_ENABLED) {
+            diagLines.push(`   SKIP: only ${rowInfos.length} eligible rows (need ≥2)`);
+            _writeFlashDiagnostics(diagLines);
+        }
+        return result;
+    }
+
+    // Only check the LAST TWO eligible rows (most recent spins)
+    const upper = rowInfos[rowInfos.length - 2];
+    const lower = rowInfos[rowInfos.length - 1];
+
+    if (FLASH_DEBUG_ENABLED) {
+        diagLines.push(`   Checking LAST 2 eligible rows: spinIdx ${upper.spinIdx} (relIdx=${upper.relIdx}) ↔ spinIdx ${lower.spinIdx} (relIdx=${lower.relIdx})`);
+        diagLines.push(`   Upper row spin: ${allSpins[upper.spinIdx].actual}, Lower row spin: ${allSpins[lower.spinIdx].actual}`);
+        diagLines.push(`   ${'─'.repeat(70)}`);
+    }
+
+    refKeys.forEach(refKey => {
+        const pairName = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
+        const upperPair = upper.info[refKey];
+        const lowerPair = lower.info[refKey];
+
+        const upperDists = [];
+        const lowerDists = [];
+        if (upperPair.pairDist !== null) upperDists.push({ dist: upperPair.pairDist, cell: 'pair' });
+        if (upperPair.pair13Dist !== null) upperDists.push({ dist: upperPair.pair13Dist, cell: 'pair13Opp' });
+        if (lowerPair.pairDist !== null) lowerDists.push({ dist: lowerPair.pairDist, cell: 'pair' });
+        if (lowerPair.pair13Dist !== null) lowerDists.push({ dist: lowerPair.pair13Dist, cell: 'pair13Opp' });
+
+        if (FLASH_DEBUG_ENABLED) {
+            diagLines.push(`   PAIR [${pairName}]:`);
+            diagLines.push(`     Upper: pairCode=${upperPair.pairCode} (dist=${upperPair.pairDist}), pair13Code=${upperPair.pair13Code} (dist=${upperPair.pair13Dist})`);
+            diagLines.push(`     Lower: pairCode=${lowerPair.pairCode} (dist=${lowerPair.pairDist}), pair13Code=${lowerPair.pair13Code} (dist=${lowerPair.pair13Dist})`);
+        }
+
+        if (upperDists.length === 0 || lowerDists.length === 0) {
+            if (FLASH_DEBUG_ENABLED) {
+                diagLines.push(`     → SKIP: no valid distances (upper=${upperDists.length}, lower=${lowerDists.length})`);
+            }
+            return;
+        }
+
+        let matched = false;
+        for (const ud of upperDists) {
+            for (const ld of lowerDists) {
+                const diff = Math.abs(ud.dist - ld.dist);
+                if (FLASH_DEBUG_ENABLED) {
+                    diagLines.push(`     Comparing: upper.${ud.cell}=${ud.dist} vs lower.${ld.cell}=${ld.dist} → diff=${diff} ${diff <= 1 ? '✅ FLASH!' : '❌ no flash'}`);
+                }
+                if (diff <= 1) {
+                    result.add(`${upper.relIdx}:${refKey}:${ud.cell}`);
+                    result.add(`${lower.relIdx}:${refKey}:${ld.cell}`);
+                    console.log(`⚡ ±1 MATCH: ${pairName} rows ${upper.spinIdx}↔${lower.spinIdx}: ${ud.cell}=${ud.dist} ↔ ${ld.cell}=${ld.dist} (diff=${diff})`);
+                    matched = true;
+                    return;  // first match per pair exits
+                }
+            }
+        }
+        if (!matched && FLASH_DEBUG_ENABLED) {
+            diagLines.push(`     → NO ±1 match for ${pairName}`);
+        }
+    });
+
+    if (result.size > 0) {
+        console.log(`⚡ Flash targets: ${result.size} cells in last 2 rows`);
+        if (FLASH_DEBUG_ENABLED) {
+            diagLines.push(`   ${'─'.repeat(70)}`);
+            diagLines.push(`   ✅ RESULT: ${result.size} flash targets: ${[...result].join(', ')}`);
+        }
+    } else {
+        console.log(`⚡ Flash result: no ±1 pairs in last 2 rows`);
+        if (FLASH_DEBUG_ENABLED) {
+            diagLines.push(`   ${'─'.repeat(70)}`);
+            diagLines.push(`   ❌ RESULT: no ±1 pairs found in last 2 rows`);
+        }
+    }
+
+    if (FLASH_DEBUG_ENABLED) {
+        _writeFlashDiagnostics(diagLines);
+    }
+
+    return result;
+}
+
+/**
+ * Write flash diagnostic data to app/flash-debug.log via IPC bridge.
+ * Falls back to console if IPC is not available (e.g., in tests).
+ */
+function _writeFlashDiagnostics(lines) {
+    const logData = lines.join('\n') + '\n';
+    try {
+        if (typeof window !== 'undefined' && window.aiAPI && typeof window.aiAPI.writeFlashLog === 'function') {
+            window.aiAPI.writeFlashLog(logData).then(path => {
+                if (path) console.log(`⚡ Flash diagnostics written to: ${path}`);
+            }).catch(err => {
+                console.warn('⚡ Flash log write failed:', err.message);
+            });
+        } else {
+            // Fallback: console output (for tests or when IPC unavailable)
+            console.log(logData);
+        }
+    } catch (e) {
+        console.warn('⚡ Flash diagnostics error:', e.message);
+    }
+}
+
+/**
+ * LEGACY: After all data rows are rendered, scan ALL consecutive row pairs.
+ * NOTE: This function is kept for backward compatibility with existing tests.
+ * The live rendering now uses _computeFlashTargets() which bakes flash
+ * styles directly into the initial HTML — no post-processing needed.
  */
 function _applyPm1Flash(tbody, allSpins, startIdx, visibleCount) {
-    // Need at least 4 spins total (rows need idx > 1 for projections)
     if (allSpins.length < 4 || visibleCount < 2) {
         console.log(`⚡ Flash skip: spins=${allSpins.length}, visible=${visibleCount}`);
         return;
@@ -1232,36 +1423,14 @@ function _applyPm1Flash(tbody, allSpins, startIdx, visibleCount) {
         return;
     }
 
-    // Get the last 2 data rows
-    const lastRow = dataRows[dataRows.length - 1];
-    const secondLastRow = dataRows[dataRows.length - 2];
-
-    // Get spin indices for the last 2 data rows
-    const lastRelIdx = visibleCount - 1;
-    const secondLastRelIdx = visibleCount - 2;
-    const lastIdx = startIdx + lastRelIdx;
-    const secondLastIdx = startIdx + secondLastRelIdx;
-
-    // Both rows need projections (idx > 1)
-    if (lastIdx <= 1 || secondLastIdx <= 1) {
-        console.log(`⚡ Flash skip: lastIdx=${lastIdx}, secondLastIdx=${secondLastIdx} (need >1)`);
-        return;
-    }
-
     const refKeys = ['prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev'];
 
-    // For each row, compute: refs, data (pair + pair13Opp codes), projections (isHit)
-    // IMPORTANT: Must match renderTable3's exact computation including prevPrev||prev
+    // Compute position codes + distances for a given spin index
     function getRowInfo(idx) {
         const spin = allSpins[idx];
         const prev = allSpins[idx - 1].actual;
-        // Match renderTable3 line 1364+1384: prevPrev || prev (handles 0 being falsy)
         const rawPrevPrev = idx > 1 ? allSpins[idx - 2].actual : null;
         const refs = calculateReferences(prev, rawPrevPrev || prev);
-
-        const prevSpin = allSpins[idx - 1];
-        const prevPrevSpin = allSpins[idx - 2].actual;
-        const prevRefs = calculateReferences(prevPrevSpin, idx > 2 ? allSpins[idx - 3].actual : prevPrevSpin);
 
         const info = {};
         refKeys.forEach(refKey => {
@@ -1270,123 +1439,112 @@ function _applyPm1Flash(tbody, allSpins, startIdx, visibleCount) {
             const pairCode = calculatePositionCode(refNum, spin.actual);
             const pair13Code = calculatePositionCode(ref13Opp, spin.actual);
 
-            // Projection hit check — MUST match renderTable3 lines 1406-1418 exactly
-            const prevRefNum = prevRefs[refKey];
-            const prevRef13Opp = DIGIT_13_OPPOSITES[prevRefNum];
-            const prevPair = calculatePositionCode(prevRefNum, prevSpin.actual);
-            const prevPair13 = calculatePositionCode(prevRef13Opp, prevSpin.actual);
-            const usePosCode = prevPair !== 'XX' ? prevPair : prevPair13;
-
-            const { purple, green } = generateAnchors(refs[refKey], DIGIT_13_OPPOSITES[refs[refKey]], usePosCode);
-            const betNumbers = expandAnchorsToBetNumbers(purple, green);
-            const isHit = betNumbers.includes(spin.actual);
-
-            // Determine which cell caused the hit
-            // Check BOTH pair and pair13Opp columns — either could be the position that
-            // is within ±1 distance of the other row's hit
-            let hitCellType = null;  // 'pair' or 'pair13Opp'
-            let hitDistance = null;
-
-            if (isHit) {
-                const pairDist = _getPosCodeDistance(pairCode);
-                const pair13Dist = _getPosCodeDistance(pair13Code);
-
-                if (pairDist !== null && pair13Dist !== null) {
-                    // Both non-XX — pick the one with smaller distance (closer match)
-                    if (pairDist <= pair13Dist) {
-                        hitCellType = 'pair';
-                        hitDistance = pairDist;
-                    } else {
-                        hitCellType = 'pair13Opp';
-                        hitDistance = pair13Dist;
-                    }
-                } else if (pairDist !== null) {
-                    hitCellType = 'pair';
-                    hitDistance = pairDist;
-                } else if (pair13Dist !== null) {
-                    hitCellType = 'pair13Opp';
-                    hitDistance = pair13Dist;
-                }
-            }
-
-            info[refKey] = { isHit, pairCode, pair13Code, hitCellType, hitDistance, pairDist: _getPosCodeDistance(pairCode), pair13Dist: _getPosCodeDistance(pair13Code) };
+            info[refKey] = {
+                pairCode,
+                pair13Code,
+                pairDist: _getPosCodeDistance(pairCode),
+                pair13Dist: _getPosCodeDistance(pair13Code)
+            };
         });
         return info;
     }
 
-    const lastRowInfo = getRowInfo(lastIdx);
-    const secondLastRowInfo = getRowInfo(secondLastIdx);
+    // Pre-compute row info for all visible rows that have idx > 1
+    const rowInfos = [];   // array of { idx, info, domRow }
+    for (let r = 0; r < dataRows.length && r < visibleCount; r++) {
+        const spinIdx = startIdx + r;
+        if (spinIdx <= 1) continue;  // Need at least 2 previous spins for references
+        rowInfos.push({
+            idx: spinIdx,
+            info: getRowInfo(spinIdx),
+            domRow: dataRows[r]
+        });
+    }
 
-    console.log(`⚡ Flash check: lastIdx=${lastIdx} (actual=${allSpins[lastIdx].actual}), secondLastIdx=${secondLastIdx} (actual=${allSpins[secondLastIdx].actual})`);
-
-    // For each pair, check if both rows have hits with ±1 distance difference
-    // Check ALL combinations: pair↔pair, pair↔13opp, 13opp↔pair, 13opp↔13opp
-    const pm1Pairs = [];
-    refKeys.forEach(refKey => {
-        const last = lastRowInfo[refKey];
-        const secondLast = secondLastRowInfo[refKey];
-
-        // Both rows must have projection HITs
-        if (!last.isHit || !secondLast.isHit) {
-            return;
-        }
-
-        // Collect all valid distances from both rows
-        const lastDistances = [];
-        const secondLastDistances = [];
-        if (last.pairDist !== null) lastDistances.push({ dist: last.pairDist, cell: 'pair' });
-        if (last.pair13Dist !== null) lastDistances.push({ dist: last.pair13Dist, cell: 'pair13Opp' });
-        if (secondLast.pairDist !== null) secondLastDistances.push({ dist: secondLast.pairDist, cell: 'pair' });
-        if (secondLast.pair13Dist !== null) secondLastDistances.push({ dist: secondLast.pair13Dist, cell: 'pair13Opp' });
-
-        // Check ALL combinations for ±1
-        let found = false;
-        for (const ld of lastDistances) {
-            for (const sld of secondLastDistances) {
-                const diff = Math.abs(ld.dist - sld.dist);
-                if (diff === 1) {
-                    const dataPair = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
-                    pm1Pairs.push({
-                        refKey,
-                        dataPair,
-                        lastHitCell: ld.cell,
-                        secondLastHitCell: sld.cell
-                    });
-                    console.log(`⚡ ±1 MATCH: ${dataPair} — row N-1: ${sld.cell}=${sld.dist} (${secondLast.pairCode}/${secondLast.pair13Code}), row N: ${ld.cell}=${ld.dist} (${last.pairCode}/${last.pair13Code}), diff=${diff}`);
-                    found = true;
-                    break;
-                }
-            }
-            if (found) break;
-        }
-
-        if (!found && last.isHit && secondLast.isHit) {
-            const dataPair = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
-            console.log(`⚡ No ±1: ${dataPair} — row N-1: pair=${secondLast.pairCode} 13opp=${secondLast.pair13Code}, row N: pair=${last.pairCode} 13opp=${last.pair13Code}, dists=[${secondLastDistances.map(d=>d.dist).join(',')}]↔[${lastDistances.map(d=>d.dist).join(',')}]`);
-        }
-    });
-
-    if (pm1Pairs.length === 0) {
-        console.log(`⚡ Flash result: no ±1 pairs found in last 2 rows`);
+    if (rowInfos.length < 2) {
+        console.log(`⚡ Flash skip: only ${rowInfos.length} eligible rows (need ≥2)`);
         return;
     }
 
-    // Apply flash class to the specific position code cells that caused the hits
-    // Table 3 layout per pair: [ref, posCode, ref13Opp, posCode13Opp, projection]
-    // The position code cells are at offsets 1 (pair) and 3 (pair13Opp) within the pair's 5 columns
-    pm1Pairs.forEach(({ dataPair, lastHitCell, secondLastHitCell }) => {
-        // Flash cells in the last row
-        _flashPairCell(lastRow, dataPair, lastHitCell);
-        // Flash cells in the second-to-last row
-        _flashPairCell(secondLastRow, dataPair, secondLastHitCell);
+    let totalFlashed = 0;
+
+    // Only check the LAST TWO eligible rows (most recent spins)
+    const upper = rowInfos[rowInfos.length - 2];
+    const lower = rowInfos[rowInfos.length - 1];
+
+    refKeys.forEach(refKey => {
+        const upperPair = upper.info[refKey];
+        const lowerPair = lower.info[refKey];
+
+        const upperDists = [];
+        const lowerDists = [];
+        if (upperPair.pairDist !== null) upperDists.push({ dist: upperPair.pairDist, cell: 'pair' });
+        if (upperPair.pair13Dist !== null) upperDists.push({ dist: upperPair.pair13Dist, cell: 'pair13Opp' });
+        if (lowerPair.pairDist !== null) lowerDists.push({ dist: lowerPair.pairDist, cell: 'pair' });
+        if (lowerPair.pair13Dist !== null) lowerDists.push({ dist: lowerPair.pair13Dist, cell: 'pair13Opp' });
+
+        if (upperDists.length === 0 || lowerDists.length === 0) return;
+
+        for (const ud of upperDists) {
+            for (const ld of lowerDists) {
+                if (Math.abs(ud.dist - ld.dist) <= 1) {
+                    const dataPair = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
+                    _flashPairCell(upper.domRow, dataPair, ud.cell);
+                    _flashPairCell(lower.domRow, dataPair, ld.cell);
+                    totalFlashed++;
+                    console.log(`⚡ ±1 MATCH: ${dataPair} rows ${upper.idx}↔${lower.idx}: ${ud.cell}=${ud.dist} ↔ ${ld.cell}=${ld.dist}`);
+                    return;
+                }
+            }
+        }
     });
 
-    console.log(`⚡ ±1 Flash applied to ${pm1Pairs.length} pair(s)`);
+    // Clear any existing pulse interval from previous render
+    if (window._pm1PulseInterval) {
+        clearInterval(window._pm1PulseInterval);
+        window._pm1PulseInterval = null;
+    }
+
+    if (totalFlashed > 0) {
+        console.log(`⚡ ±1 Flash applied to ${totalFlashed} pair-row combinations`);
+
+        // Start JS-based pulse animation.
+        // We use setInterval instead of CSS @keyframes because CSS animations
+        // CANNOT override !important background rules (per CSS cascade spec).
+        // Inline styles set via JS are the only reliable way to pulse.
+        let bright = false;
+        window._pm1PulseInterval = setInterval(() => {
+            bright = !bright;
+            const bg = bright ? '#fbbf24' : '#fef3c7';
+            const shadow = bright
+                ? '0 0 16px rgba(245, 158, 11, 1)'
+                : '0 0 8px rgba(245, 158, 11, 0.6)';
+            const cells = document.querySelectorAll('.t3-pm1-flash');
+            if (cells.length === 0) {
+                clearInterval(window._pm1PulseInterval);
+                window._pm1PulseInterval = null;
+                return;
+            }
+            cells.forEach(cell => {
+                cell.style.setProperty('background', bg, 'important');
+                cell.style.setProperty('box-shadow', shadow, 'important');
+                const s = cell.querySelector('span');
+                if (s) s.style.setProperty('background', bg, 'important');
+            });
+        }, 600);
+    } else {
+        console.log(`⚡ Flash result: no ±1 pairs found across ${rowInfos.length} rows`);
+    }
 }
 
 /**
- * Add flash class to the position code cell within a row for a given pair.
+ * Add flash highlight to the position code cell within a row for a given pair.
  * hitCellType: 'pair' (offset 1 within pair) or 'pair13Opp' (offset 3 within pair)
+ *
+ * NUCLEAR APPROACH: Sets inline styles directly via element.style.setProperty()
+ * with !important flag. This overrides ALL CSS rules regardless of specificity,
+ * cascade order, or competing !important declarations in stylesheets.
+ * The pulsing animation is handled by a JS setInterval in _applyPm1Flash.
  */
 function _flashPairCell(row, dataPair, hitCellType) {
     // Find all cells with data-pair matching
@@ -1396,18 +1554,51 @@ function _flashPairCell(row, dataPair, hitCellType) {
     // hitCellType='pair13Opp' → index 3 (the 13OPP position code cell)
     const cellIdx = hitCellType === 'pair' ? 1 : 3;
     if (cells[cellIdx]) {
-        cells[cellIdx].classList.add('t3-pm1-flash');
+        const cell = cells[cellIdx];
+
+        // Add class for querying (used by pulse interval and tests)
+        cell.classList.add('t3-pm1-flash');
+
+        // INLINE STYLES — override everything including .cell-has-position !important
+        cell.style.setProperty('outline', '3px solid #f59e0b', 'important');
+        cell.style.setProperty('outline-offset', '-1px', 'important');
+        cell.style.setProperty('position', 'relative', 'important');
+        cell.style.setProperty('z-index', '10', 'important');
+        cell.style.setProperty('background', '#fef3c7', 'important');
+        cell.style.setProperty('box-shadow', '0 0 8px rgba(245, 158, 11, 0.6)', 'important');
+
+        // INLINE STYLES on SPAN — override .pos-s/.pos-o/.pos-xx !important backgrounds
+        const span = cell.querySelector('span');
+        if (span) {
+            span.style.setProperty('background', '#fef3c7', 'important');
+            span.style.setProperty('color', '#92400e', 'important');
+        }
+
+        console.log(`⚡ DOM: Added t3-pm1-flash to ${dataPair}[${cellIdx}] (${hitCellType}), text="${cell.textContent}"`);
+    } else {
+        console.warn(`⚡ DOM ERROR: cells[${cellIdx}] not found for ${dataPair}, found ${cells.length} cells total`);
     }
 }
 
 // TABLE 3 - FIXED: Position codes + Visual separators
 function renderTable3() {
+    // Clear any existing flash pulse interval before rebuilding DOM
+    if (window._pm1PulseInterval) {
+        clearInterval(window._pm1PulseInterval);
+        window._pm1PulseInterval = null;
+    }
+
     const tbody = document.getElementById('table3Body');
     tbody.innerHTML = '';
     
     const startIdx = Math.max(0, spins.length - 8);
     const visibleSpins = spins.slice(startIdx);
-    
+
+    // Pre-compute ±1 flash targets BEFORE building DOM rows.
+    // Flash styles are baked directly into the initial HTML,
+    // avoiding all CSS specificity battles with .pos-s/.pos-o/.pos-xx.
+    const flashTargets = _computeFlashTargets(spins, startIdx, visibleSpins.length);
+
     visibleSpins.forEach((spin, relIdx) => {
         const idx = startIdx + relIdx;
         const prev = idx > 0 ? spins[idx - 1].actual : null;
@@ -1487,51 +1678,89 @@ function renderTable3() {
                 const greenHtml = p.green.map(a => `<span class="anchor-green">${a}</span>`).join(' ');
                 return `<div>${purpleHtml}</div>${p.green.length > 0 ? '<div>' + greenHtml + '</div>' : ''}`;
             };
-            
+
+            // Position code cell generator — bakes ±1 flash styles into HTML.
+            // When a cell is a flash target, it gets class="t3-pm1-flash" (no
+            // cell-has-position) and a span with inline amber styles (no pos-s/
+            // pos-o/pos-xx classes). This eliminates ALL CSS specificity battles.
+            const posCell = (refKey, field) => {
+                const posCode = data[refKey][field];
+                const dataPairAttr = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
+                const cellType = field === 'pair' ? 'pair' : 'pair13Opp';
+                const flash = flashTargets.has(`${relIdx}:${refKey}:${cellType}`);
+                if (flash) {
+                    return `<td class="t3-pm1-flash" data-pair="${dataPairAttr}" style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(posCode)}</td>`;
+                }
+                const cls = posCode && posCode !== 'XX' ? 'cell-has-position' : '';
+                return `<td class="${cls}" data-pair="${dataPairAttr}">${formatPos(posCode)}</td>`;
+            };
+
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
                 <td><strong>${spin.actual}</strong></td>
                 <td class="${cellClass('prev', 'pair', true)}" data-pair="prev">${data.prev.ref}</td>
-                <td class="${cellClass('prev', 'pair')}" data-pair="prev">${formatPos(data.prev.pair)}</td>
+                ${posCell('prev', 'pair')}
                 <td class="${cellClass('prev', 'pair13Opp')}" data-pair="prev">${data.prev.ref13Opp}</td>
-                <td class="${cellClass('prev', 'pair13Opp')}" data-pair="prev">${formatPos(data.prev.pair13Opp)}</td>
+                ${posCell('prev', 'pair13Opp')}
                 <td class="${projClass('prev')}" data-pair="prev">${projHtml('prev')}</td>
                 <td class="${cellClass('prev_plus_1', 'pair', true)}" data-pair="prevPlus1">${data.prev_plus_1.ref}</td>
-                <td class="${cellClass('prev_plus_1', 'pair')}" data-pair="prevPlus1">${formatPos(data.prev_plus_1.pair)}</td>
+                ${posCell('prev_plus_1', 'pair')}
                 <td class="${cellClass('prev_plus_1', 'pair13Opp')}" data-pair="prevPlus1">${data.prev_plus_1.ref13Opp}</td>
-                <td class="${cellClass('prev_plus_1', 'pair13Opp')}" data-pair="prevPlus1">${formatPos(data.prev_plus_1.pair13Opp)}</td>
+                ${posCell('prev_plus_1', 'pair13Opp')}
                 <td class="${projClass('prev_plus_1')}" data-pair="prevPlus1">${projHtml('prev_plus_1')}</td>
                 <td class="${cellClass('prev_minus_1', 'pair', true)}" data-pair="prevMinus1">${data.prev_minus_1.ref}</td>
-                <td class="${cellClass('prev_minus_1', 'pair')}" data-pair="prevMinus1">${formatPos(data.prev_minus_1.pair)}</td>
+                ${posCell('prev_minus_1', 'pair')}
                 <td class="${cellClass('prev_minus_1', 'pair13Opp')}" data-pair="prevMinus1">${data.prev_minus_1.ref13Opp}</td>
-                <td class="${cellClass('prev_minus_1', 'pair13Opp')}" data-pair="prevMinus1">${formatPos(data.prev_minus_1.pair13Opp)}</td>
+                ${posCell('prev_minus_1', 'pair13Opp')}
                 <td class="${projClass('prev_minus_1')}" data-pair="prevMinus1">${projHtml('prev_minus_1')}</td>
                 <td class="${cellClass('prev_plus_2', 'pair', true)}" data-pair="prevPlus2">${data.prev_plus_2.ref}</td>
-                <td class="${cellClass('prev_plus_2', 'pair')}" data-pair="prevPlus2">${formatPos(data.prev_plus_2.pair)}</td>
+                ${posCell('prev_plus_2', 'pair')}
                 <td class="${cellClass('prev_plus_2', 'pair13Opp')}" data-pair="prevPlus2">${data.prev_plus_2.ref13Opp}</td>
-                <td class="${cellClass('prev_plus_2', 'pair13Opp')}" data-pair="prevPlus2">${formatPos(data.prev_plus_2.pair13Opp)}</td>
+                ${posCell('prev_plus_2', 'pair13Opp')}
                 <td class="${projClass('prev_plus_2')}" data-pair="prevPlus2">${projHtml('prev_plus_2')}</td>
                 <td class="${cellClass('prev_minus_2', 'pair', true)}" data-pair="prevMinus2">${data.prev_minus_2.ref}</td>
-                <td class="${cellClass('prev_minus_2', 'pair')}" data-pair="prevMinus2">${formatPos(data.prev_minus_2.pair)}</td>
+                ${posCell('prev_minus_2', 'pair')}
                 <td class="${cellClass('prev_minus_2', 'pair13Opp')}" data-pair="prevMinus2">${data.prev_minus_2.ref13Opp}</td>
-                <td class="${cellClass('prev_minus_2', 'pair13Opp')}" data-pair="prevMinus2">${formatPos(data.prev_minus_2.pair13Opp)}</td>
+                ${posCell('prev_minus_2', 'pair13Opp')}
                 <td class="${projClass('prev_minus_2')}" data-pair="prevMinus2">${projHtml('prev_minus_2')}</td>
                 <td class="${cellClass('prev_prev', 'pair', true)}" data-pair="prevPrev">${data.prev_prev.ref}</td>
-                <td class="${cellClass('prev_prev', 'pair')}" data-pair="prevPrev">${formatPos(data.prev_prev.pair)}</td>
+                ${posCell('prev_prev', 'pair')}
                 <td class="${cellClass('prev_prev', 'pair13Opp')}" data-pair="prevPrev">${data.prev_prev.ref13Opp}</td>
-                <td class="${cellClass('prev_prev', 'pair13Opp')}" data-pair="prevPrev">${formatPos(data.prev_prev.pair13Opp)}</td>
+                ${posCell('prev_prev', 'pair13Opp')}
                 <td class="${projClass('prev_prev')}" data-pair="prevPrev">${projHtml('prev_prev')}</td>
             `;
         }
-        
+
         tbody.appendChild(row);
     });
 
-    // ── ±1 Distance Flash Detection ───────────────────────────
-    // After all data rows are rendered, check last 2 rows for pairs where
-    // both projections HIT and the position code distances differ by exactly ±1.
-    // Flash ONLY the specific position code cells that caused each hit.
-    _applyPm1Flash(tbody, spins, startIdx, visibleSpins.length);
+    // ── ±1 Distance Flash Pulse Animation ───────────────────────────
+    // Flash styles are already baked into the initial row HTML via posCell().
+    // Here we just start the JS pulse animation to toggle between
+    // light amber (#fef3c7) and bright amber (#fbbf24).
+    if (flashTargets.size > 0) {
+        let bright = false;
+        window._pm1PulseInterval = setInterval(() => {
+            bright = !bright;
+            const bg = bright ? '#fbbf24' : '#fef3c7';
+            const shadow = bright
+                ? '0 0 16px rgba(245, 158, 11, 1)'
+                : '0 0 8px rgba(245, 158, 11, 0.6)';
+            const cells = document.querySelectorAll('.t3-pm1-flash');
+            if (cells.length === 0) {
+                clearInterval(window._pm1PulseInterval);
+                window._pm1PulseInterval = null;
+                return;
+            }
+            cells.forEach(cell => {
+                cell.style.setProperty('background', bg, 'important');
+                cell.style.setProperty('box-shadow', shadow, 'important');
+                const s = cell.querySelector('span');
+                if (s) s.style.setProperty('background', bg, 'important');
+            });
+        }, 600);
+        console.log(`⚡ ±1 Flash pulse started for ${flashTargets.size} cells`);
+    }
 
     if (spins.length >= 2) {
         const lastSpin = spins[spins.length - 1].actual;

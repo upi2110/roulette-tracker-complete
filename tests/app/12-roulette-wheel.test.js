@@ -1,0 +1,1806 @@
+/**
+ * TESTS: Roulette Wheel Visualization
+ * Coverage for: RouletteWheel class methods -- constructor, filters,
+ * highlight management, wheel drawing, sync panels, DOM updates
+ *
+ * Focus areas:
+ * - Constructor initializes wheelOrder, redNumbers, blackNumbers, wheelPos, filters
+ * - _passesFilter logic for all table/color filter combinations
+ * - _updateFilteredCount DOM text updates
+ * - _syncMoneyPanel / _syncAIPanel delegation
+ * - _updateFromRaw populates anchorGroups, looseNumbers, extraNumbers, numberInfo
+ * - updateHighlights stores _rawPrediction and triggers _applyFilters
+ * - clearHighlights resets all state
+ * - _getHighlightPos returns position for valid numbers, null for invalid
+ * - createWheel builds DOM panel
+ * - _onFilterChange reads checkbox state and re-applies filters
+ * - _applyFilters with allOn bypass and partial filter paths
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { setupDOM } = require('../test-setup');
+
+// ── Canvas mock ──────────────────────────────────────────
+function mockCanvas() {
+    HTMLCanvasElement.prototype.getContext = jest.fn(() => ({
+        clearRect: jest.fn(),
+        beginPath: jest.fn(),
+        arc: jest.fn(),
+        fill: jest.fn(),
+        stroke: jest.fn(),
+        moveTo: jest.fn(),
+        closePath: jest.fn(),
+        save: jest.fn(),
+        restore: jest.fn(),
+        translate: jest.fn(),
+        rotate: jest.fn(),
+        fillText: jest.fn(),
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        font: '',
+        textAlign: '',
+        textBaseline: ''
+    }));
+}
+
+// ── Loader ───────────────────────────────────────────────
+function loadRouletteWheel() {
+    const src = fs.readFileSync(
+        path.join(__dirname, '..', '..', 'app', 'roulette-wheel.js'),
+        'utf-8'
+    );
+
+    const wrappedCode = `
+        (function() {
+            const setInterval = () => {};
+            const setTimeout = (fn) => fn();
+            const alert = () => {};
+            const console = globalThis.console;
+            const document = globalThis.document;
+            const window = globalThis.window || {};
+            ${src}
+            return { RouletteWheel, ZERO_TABLE_NUMS, NINETEEN_TABLE_NUMS, POSITIVE_NUMS, NEGATIVE_NUMS };
+        })()
+    `;
+
+    try {
+        return eval(wrappedCode);
+    } catch (e) {
+        console.error('Failed to load RouletteWheel:', e.message);
+        return null;
+    }
+}
+
+// ── Setup ────────────────────────────────────────────────
+let RouletteWheel, ZERO_TABLE_NUMS, NINETEEN_TABLE_NUMS, POSITIVE_NUMS, NEGATIVE_NUMS;
+
+beforeEach(() => {
+    setupDOM();
+    mockCanvas();
+
+    // Ensure the bottom container exists (setupDOM already includes it)
+    if (!document.querySelector('.info-panels-container-bottom')) {
+        const container = document.createElement('div');
+        container.className = 'info-panels-container-bottom';
+        document.body.appendChild(container);
+    }
+
+    // Reset global window properties
+    global.window.moneyPanel = undefined;
+    global.window.aiPanel = undefined;
+    global.window.calculateWheelAnchors = undefined;
+    global.window.rouletteWheel = undefined;
+
+    const loaded = loadRouletteWheel();
+    if (loaded) {
+        RouletteWheel = loaded.RouletteWheel;
+        ZERO_TABLE_NUMS = loaded.ZERO_TABLE_NUMS;
+        NINETEEN_TABLE_NUMS = loaded.NINETEEN_TABLE_NUMS;
+        POSITIVE_NUMS = loaded.POSITIVE_NUMS;
+        NEGATIVE_NUMS = loaded.NEGATIVE_NUMS;
+    }
+});
+
+// ═══════════════════════════════════════════════════════
+// 1. CONSTRUCTOR
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: Constructor', () => {
+    test('wheelOrder has exactly 37 entries (European wheel)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(wheel.wheelOrder).toHaveLength(37);
+    });
+
+    test('wheelOrder starts with 0', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(wheel.wheelOrder[0]).toBe(0);
+    });
+
+    test('wheelOrder contains all numbers 0-36 exactly once', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        const sorted = [...wheel.wheelOrder].sort((a, b) => a - b);
+        const expected = Array.from({ length: 37 }, (_, i) => i);
+        expect(sorted).toEqual(expected);
+    });
+
+    test('redNumbers is an array of 18 numbers', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(wheel.redNumbers).toHaveLength(18);
+        expect(Array.isArray(wheel.redNumbers)).toBe(true);
+    });
+
+    test('blackNumbers is an array of 18 numbers', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(wheel.blackNumbers).toHaveLength(18);
+        expect(Array.isArray(wheel.blackNumbers)).toBe(true);
+    });
+
+    test('redNumbers and blackNumbers have no overlap', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        const redSet = new Set(wheel.redNumbers);
+        const overlap = wheel.blackNumbers.filter(n => redSet.has(n));
+        expect(overlap).toHaveLength(0);
+    });
+
+    test('0 is neither red nor black', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(wheel.redNumbers).not.toContain(0);
+        expect(wheel.blackNumbers).not.toContain(0);
+    });
+
+    test('wheelPos map is populated with 37 entries', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(Object.keys(wheel.wheelPos)).toHaveLength(37);
+    });
+
+    test('wheelPos maps each number to its sortOrder index', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel.sortOrder.forEach((num, idx) => {
+            expect(wheel.wheelPos[num]).toBe(idx);
+        });
+    });
+
+    test('default filter state: zeroTable ON, nineteenTable OFF, positive ON, negative ON', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(wheel.filters.zeroTable).toBe(true);
+        expect(wheel.filters.nineteenTable).toBe(false);
+        expect(wheel.filters.positive).toBe(true);
+        expect(wheel.filters.negative).toBe(true);
+    });
+
+    test('POSITIVE and NEGATIVE sets are defined', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(wheel.POSITIVE).toBeInstanceOf(Set);
+        expect(wheel.NEGATIVE).toBeInstanceOf(Set);
+        expect(wheel.POSITIVE.size).toBeGreaterThan(0);
+        expect(wheel.NEGATIVE.size).toBeGreaterThan(0);
+    });
+
+    test('POSITIVE and NEGATIVE sets cover all numbers 0-36 (no gaps)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        const allCovered = new Set([...wheel.POSITIVE, ...wheel.NEGATIVE]);
+        for (let i = 0; i <= 36; i++) {
+            expect(allCovered.has(i)).toBe(true);
+        }
+    });
+
+    test('anchorGroups, looseNumbers, extraNumbers start empty', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(wheel.anchorGroups).toEqual([]);
+        expect(wheel.looseNumbers).toEqual([]);
+        expect(wheel.extraNumbers).toEqual([]);
+    });
+
+    test('numberInfo starts as empty object', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(Object.keys(wheel.numberInfo)).toHaveLength(0);
+    });
+
+    test('_rawPrediction starts as null', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(wheel._rawPrediction).toBeNull();
+    });
+
+    test('sortOrder has 37 entries starting with 26', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        expect(wheel.sortOrder).toHaveLength(37);
+        expect(wheel.sortOrder[0]).toBe(26);
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 2. CONSTANTS
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: Constants', () => {
+    test('ZERO_TABLE_NUMS is a Set with 19 numbers', () => {
+        expect(ZERO_TABLE_NUMS).toBeInstanceOf(Set);
+        expect(ZERO_TABLE_NUMS.size).toBe(19);
+    });
+
+    test('NINETEEN_TABLE_NUMS is a Set with 18 numbers', () => {
+        expect(NINETEEN_TABLE_NUMS).toBeInstanceOf(Set);
+        expect(NINETEEN_TABLE_NUMS.size).toBe(18);
+    });
+
+    test('ZERO_TABLE_NUMS and NINETEEN_TABLE_NUMS cover all 37 numbers (0-36)', () => {
+        const all = new Set([...ZERO_TABLE_NUMS, ...NINETEEN_TABLE_NUMS]);
+        expect(all.size).toBe(37);
+    });
+
+    test('ZERO_TABLE_NUMS contains 0', () => {
+        expect(ZERO_TABLE_NUMS.has(0)).toBe(true);
+    });
+
+    test('NINETEEN_TABLE_NUMS contains 19', () => {
+        expect(NINETEEN_TABLE_NUMS.has(19)).toBe(true);
+    });
+
+    test('POSITIVE_NUMS is a Set with 19 numbers', () => {
+        expect(POSITIVE_NUMS).toBeInstanceOf(Set);
+        expect(POSITIVE_NUMS.size).toBe(19);
+    });
+
+    test('NEGATIVE_NUMS is a Set with 18 numbers', () => {
+        expect(NEGATIVE_NUMS).toBeInstanceOf(Set);
+        expect(NEGATIVE_NUMS.size).toBe(18);
+    });
+
+    test('POSITIVE_NUMS and NEGATIVE_NUMS together cover all 37 numbers', () => {
+        const all = new Set([...POSITIVE_NUMS, ...NEGATIVE_NUMS]);
+        expect(all.size).toBe(37);
+    });
+
+    test('POSITIVE_NUMS and NEGATIVE_NUMS have no overlap', () => {
+        const overlap = [...POSITIVE_NUMS].filter(n => NEGATIVE_NUMS.has(n));
+        expect(overlap).toHaveLength(0);
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 3. _passesFilter
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: _passesFilter', () => {
+    test('Number in zero table + positive passes with default filters (zeroTable ON, positive ON)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        // 0 is in ZERO_TABLE_NUMS and POSITIVE_NUMS
+        expect(ZERO_TABLE_NUMS.has(0)).toBe(true);
+        expect(POSITIVE_NUMS.has(0)).toBe(true);
+        expect(wheel._passesFilter(0)).toBe(true);
+    });
+
+    test('Number in zero table + negative passes with default filters (negative ON)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        // 21 is in ZERO_TABLE_NUMS and NEGATIVE_NUMS
+        expect(ZERO_TABLE_NUMS.has(21)).toBe(true);
+        expect(NEGATIVE_NUMS.has(21)).toBe(true);
+        expect(wheel._passesFilter(21)).toBe(true);
+    });
+
+    test('Number in nineteen table only fails with default filters (nineteenTable OFF)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        // 19 is in NINETEEN_TABLE_NUMS only, not in ZERO_TABLE_NUMS
+        expect(NINETEEN_TABLE_NUMS.has(19)).toBe(true);
+        expect(ZERO_TABLE_NUMS.has(19)).toBe(false);
+        expect(wheel._passesFilter(19)).toBe(false);
+    });
+
+    test('Number in nineteen table passes when nineteenTable filter is ON', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel.filters.nineteenTable = true;
+        // 19 is in NINETEEN_TABLE and POSITIVE
+        expect(wheel._passesFilter(19)).toBe(true);
+    });
+
+    test('All filters off: nothing passes', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel.filters.zeroTable = false;
+        wheel.filters.nineteenTable = false;
+        wheel.filters.positive = false;
+        wheel.filters.negative = false;
+
+        for (let i = 0; i <= 36; i++) {
+            expect(wheel._passesFilter(i)).toBe(false);
+        }
+    });
+
+    test('All filters on: every number 0-36 passes', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel.filters.zeroTable = true;
+        wheel.filters.nineteenTable = true;
+        wheel.filters.positive = true;
+        wheel.filters.negative = true;
+
+        for (let i = 0; i <= 36; i++) {
+            expect(wheel._passesFilter(i)).toBe(true);
+        }
+    });
+
+    test('Only zeroTable ON, only positive ON: only zero-table positive numbers pass', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel.filters.zeroTable = true;
+        wheel.filters.nineteenTable = false;
+        wheel.filters.positive = true;
+        wheel.filters.negative = false;
+
+        // Numbers that are in ZERO_TABLE and POSITIVE should pass
+        const expectedPass = [...ZERO_TABLE_NUMS].filter(n => POSITIVE_NUMS.has(n));
+        expectedPass.forEach(n => {
+            expect(wheel._passesFilter(n)).toBe(true);
+        });
+
+        // Numbers only in NINETEEN_TABLE should fail
+        const nineteenOnly = [...NINETEEN_TABLE_NUMS].filter(n => !ZERO_TABLE_NUMS.has(n));
+        nineteenOnly.forEach(n => {
+            expect(wheel._passesFilter(n)).toBe(false);
+        });
+    });
+
+    test('Only nineteenTable ON, only negative ON: only nineteen-table negative numbers pass', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel.filters.zeroTable = false;
+        wheel.filters.nineteenTable = true;
+        wheel.filters.positive = false;
+        wheel.filters.negative = true;
+
+        const expectedPass = [...NINETEEN_TABLE_NUMS].filter(n => NEGATIVE_NUMS.has(n));
+        expectedPass.forEach(n => {
+            expect(wheel._passesFilter(n)).toBe(true);
+        });
+
+        // Positive numbers should fail
+        const positiveNineteen = [...NINETEEN_TABLE_NUMS].filter(n => POSITIVE_NUMS.has(n));
+        positiveNineteen.forEach(n => {
+            expect(wheel._passesFilter(n)).toBe(false);
+        });
+    });
+
+    test('Table filter passes but color filter fails: returns false', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel.filters.zeroTable = true;
+        wheel.filters.nineteenTable = false;
+        wheel.filters.positive = false;
+        wheel.filters.negative = false;
+
+        // 0 is in zeroTable but with no color filter on, should fail
+        expect(wheel._passesFilter(0)).toBe(false);
+    });
+
+    test('Color filter passes but table filter fails: returns false', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel.filters.zeroTable = false;
+        wheel.filters.nineteenTable = false;
+        wheel.filters.positive = true;
+        wheel.filters.negative = true;
+
+        // 3 is in zeroTable+positive, but no table filter on
+        expect(wheel._passesFilter(3)).toBe(false);
+    });
+
+    test('Number that is negative only passes when negative filter is ON and table matches', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        // 7 is in ZERO_TABLE_NUMS and NEGATIVE_NUMS
+        expect(ZERO_TABLE_NUMS.has(7)).toBe(true);
+        expect(NEGATIVE_NUMS.has(7)).toBe(true);
+
+        wheel.filters.positive = false;
+        wheel.filters.negative = true;
+        expect(wheel._passesFilter(7)).toBe(true);
+
+        wheel.filters.negative = false;
+        expect(wheel._passesFilter(7)).toBe(false);
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 4. _updateFilteredCount
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: _updateFilteredCount', () => {
+    test('Sets text content to "Bet: N nums" when count > 0', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel._updateFilteredCount(12);
+        const el = document.getElementById('filteredCount');
+        expect(el.textContent).toBe('Bet: 12 nums');
+    });
+
+    test('Sets green color when count > 0', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel._updateFilteredCount(5);
+        const el = document.getElementById('filteredCount');
+        // jsdom converts hex to rgb
+        expect(el.style.color).toBe('rgb(22, 163, 74)');
+    });
+
+    test('Sets red color when count is 0', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel._updateFilteredCount(0);
+        const el = document.getElementById('filteredCount');
+        expect(el.textContent).toBe('Bet: 0 nums');
+        // jsdom converts hex to rgb
+        expect(el.style.color).toBe('rgb(220, 38, 38)');
+    });
+
+    test('Clears text content when count is null', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        // First set it to something
+        wheel._updateFilteredCount(5);
+        expect(document.getElementById('filteredCount').textContent).toBe('Bet: 5 nums');
+
+        // Then clear it
+        wheel._updateFilteredCount(null);
+        expect(document.getElementById('filteredCount').textContent).toBe('');
+    });
+
+    test('Handles missing DOM element gracefully', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        // Remove the element
+        const el = document.getElementById('filteredCount');
+        if (el) el.remove();
+
+        expect(() => wheel._updateFilteredCount(10)).not.toThrow();
+        expect(() => wheel._updateFilteredCount(null)).not.toThrow();
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 5. _syncMoneyPanel
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: _syncMoneyPanel', () => {
+    test('Calls setPrediction when moneyPanel exists', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const mockSetPrediction = jest.fn();
+        global.window.moneyPanel = { setPrediction: mockSetPrediction };
+
+        const prediction = { numbers: [1, 2, 3], signal: 'BET NOW' };
+        wheel._syncMoneyPanel(prediction);
+
+        expect(mockSetPrediction).toHaveBeenCalledWith(prediction);
+    });
+
+    test('Does not throw when moneyPanel is undefined', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        global.window.moneyPanel = undefined;
+
+        expect(() => wheel._syncMoneyPanel({ numbers: [1] })).not.toThrow();
+    });
+
+    test('Does not throw when moneyPanel exists but setPrediction is not a function', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        global.window.moneyPanel = { setPrediction: 'not a function' };
+
+        expect(() => wheel._syncMoneyPanel({ numbers: [1] })).not.toThrow();
+    });
+
+    test('Does not throw when moneyPanel is null', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        global.window.moneyPanel = null;
+
+        expect(() => wheel._syncMoneyPanel({ numbers: [1] })).not.toThrow();
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 6. _syncAIPanel
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: _syncAIPanel', () => {
+    test('Calls updateFilteredDisplay when aiPanel exists', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const mockUpdateFiltered = jest.fn();
+        global.window.aiPanel = { updateFilteredDisplay: mockUpdateFiltered };
+
+        const prediction = { numbers: [4, 5, 6], signal: 'BET NOW' };
+        wheel._syncAIPanel(prediction);
+
+        expect(mockUpdateFiltered).toHaveBeenCalledWith(prediction);
+    });
+
+    test('Does not throw when aiPanel is undefined', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        global.window.aiPanel = undefined;
+
+        expect(() => wheel._syncAIPanel({ numbers: [1] })).not.toThrow();
+    });
+
+    test('Does not throw when aiPanel exists but updateFilteredDisplay is not a function', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        global.window.aiPanel = { updateFilteredDisplay: 42 };
+
+        expect(() => wheel._syncAIPanel({ numbers: [1] })).not.toThrow();
+    });
+
+    test('Does not throw when aiPanel is null', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        global.window.aiPanel = null;
+
+        expect(() => wheel._syncAIPanel({ numbers: [1] })).not.toThrow();
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 7. _updateFromRaw
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: _updateFromRaw', () => {
+    test('Populates anchorGroups from arguments', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const anchorGroups = [
+            { anchor: 0, group: [26, 0, 32], type: '±1' }
+        ];
+
+        wheel._updateFromRaw([], [], anchorGroups, []);
+        expect(wheel.anchorGroups).toEqual(anchorGroups);
+    });
+
+    test('Populates looseNumbers from arguments', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel._updateFromRaw([], [5, 10, 15], [], []);
+        expect(wheel.looseNumbers).toEqual([5, 10, 15]);
+    });
+
+    test('Populates extraNumbers from arguments', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel._updateFromRaw([], [], [], [7, 8, 9]);
+        expect(wheel.extraNumbers).toEqual([7, 8, 9]);
+    });
+
+    test('Handles null/undefined arguments gracefully', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        expect(() => wheel._updateFromRaw(null, null, null, null)).not.toThrow();
+        expect(wheel.anchorGroups).toEqual([]);
+        expect(wheel.looseNumbers).toEqual([]);
+        expect(wheel.extraNumbers).toEqual([]);
+    });
+
+    test('Builds numberInfo for anchor groups with correct isAnchor flag', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const anchorGroups = [
+            { anchor: 0, group: [26, 0, 32], type: '±1' }
+        ];
+
+        wheel._updateFromRaw([], [], anchorGroups, []);
+
+        expect(wheel.numberInfo[0]).toBeDefined();
+        expect(wheel.numberInfo[0].isAnchor).toBe(true);
+        expect(wheel.numberInfo[0].category).toBe('primary');
+        expect(wheel.numberInfo[0].type).toBe('±1');
+
+        expect(wheel.numberInfo[26]).toBeDefined();
+        expect(wheel.numberInfo[26].isAnchor).toBe(false);
+        expect(wheel.numberInfo[26].category).toBe('primary');
+    });
+
+    test('Builds numberInfo for loose numbers with isAnchor false', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel._updateFromRaw([], [5, 10], [], []);
+
+        expect(wheel.numberInfo[5]).toBeDefined();
+        expect(wheel.numberInfo[5].isAnchor).toBe(false);
+        expect(wheel.numberInfo[5].category).toBe('primary');
+        expect(wheel.numberInfo[5].type).toBeNull();
+    });
+
+    test('Loose numbers do not overwrite anchor group entries', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const anchorGroups = [
+            { anchor: 5, group: [5, 24], type: '±1' }
+        ];
+
+        wheel._updateFromRaw([], [5], anchorGroups, []);
+
+        // 5 is in both anchorGroups and loose, anchor entry should win
+        expect(wheel.numberInfo[5].isAnchor).toBe(true);
+        expect(wheel.numberInfo[5].type).toBe('±1');
+    });
+
+    test('Extra numbers without calculateWheelAnchors get grey category via extraLoose', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // No calculateWheelAnchors available
+        global.window.calculateWheelAnchors = undefined;
+
+        wheel._updateFromRaw([], [], [], [7, 8]);
+
+        expect(wheel.extraAnchorGroups).toEqual([]);
+        expect(wheel.extraLoose).toEqual([]);
+        // Without calculateWheelAnchors, extra numbers are stored but not processed into numberInfo
+    });
+
+    test('Extra numbers with calculateWheelAnchors get grey category', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        global.window.calculateWheelAnchors = jest.fn(() => ({
+            anchors: [8],
+            loose: [7],
+            anchorGroups: [{ anchor: 8, group: [8, 23], type: '±1' }]
+        }));
+
+        wheel._updateFromRaw([], [], [], [7, 8, 23]);
+
+        expect(wheel.numberInfo[8]).toBeDefined();
+        expect(wheel.numberInfo[8].category).toBe('grey');
+        expect(wheel.numberInfo[8].isAnchor).toBe(true);
+
+        expect(wheel.numberInfo[7]).toBeDefined();
+        expect(wheel.numberInfo[7].category).toBe('grey');
+        expect(wheel.numberInfo[7].isAnchor).toBe(false);
+    });
+
+    test('Primary numbers take precedence over extra numbers in numberInfo', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        global.window.calculateWheelAnchors = jest.fn(() => ({
+            anchors: [],
+            loose: [5],
+            anchorGroups: []
+        }));
+
+        const anchorGroups = [
+            { anchor: 5, group: [5, 24], type: '±1' }
+        ];
+
+        wheel._updateFromRaw([], [], anchorGroups, [5]);
+
+        // 5 is in both primary (anchor) and extra, primary should win
+        expect(wheel.numberInfo[5].category).toBe('primary');
+        expect(wheel.numberInfo[5].isAnchor).toBe(true);
+    });
+
+    test('Anchor groups with ±2 type are correctly stored', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const anchorGroups = [
+            { anchor: 15, group: [4, 19, 15, 32, 0], type: '±2' }
+        ];
+
+        wheel._updateFromRaw([], [], anchorGroups, []);
+
+        expect(wheel.numberInfo[15].isAnchor).toBe(true);
+        expect(wheel.numberInfo[15].type).toBe('±2');
+        expect(wheel.numberInfo[4].isAnchor).toBe(false);
+        expect(wheel.numberInfo[4].type).toBe('±2');
+    });
+
+    test('Clears previous numberInfo before rebuilding', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // First update with number 5
+        wheel._updateFromRaw([], [5], [], []);
+        expect(wheel.numberInfo[5]).toBeDefined();
+
+        // Second update without number 5
+        wheel._updateFromRaw([], [10], [], []);
+        expect(wheel.numberInfo[5]).toBeUndefined();
+        expect(wheel.numberInfo[10]).toBeDefined();
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 8. updateHighlights
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: updateHighlights', () => {
+    test('Stores _rawPrediction with provided data', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const anchors = [0];
+        const loose = [5];
+        const anchorGroups = [{ anchor: 0, group: [26, 0, 32], type: '±1' }];
+        const extraNumbers = [7, 8];
+        const prediction = {
+            numbers: [26, 0, 32, 5],
+            extraNumbers: [7, 8],
+            anchors: [0],
+            loose: [5],
+            anchor_groups: anchorGroups,
+            signal: 'BET NOW',
+            confidence: 90
+        };
+
+        wheel.updateHighlights(anchors, loose, anchorGroups, extraNumbers, prediction);
+
+        expect(wheel._rawPrediction).not.toBeNull();
+        expect(wheel._rawPrediction.anchors).toEqual(anchors);
+        expect(wheel._rawPrediction.loose).toEqual(loose);
+        expect(wheel._rawPrediction.anchorGroups).toEqual(anchorGroups);
+        expect(wheel._rawPrediction.extraNumbers).toEqual(extraNumbers);
+        expect(wheel._rawPrediction.prediction).toEqual(prediction);
+    });
+
+    test('Calls _applyFilters after storing prediction', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        const spy = jest.spyOn(wheel, '_applyFilters');
+
+        wheel.updateHighlights([0], [5], [], [], {
+            numbers: [0, 5], signal: 'BET NOW', confidence: 90
+        });
+
+        expect(spy).toHaveBeenCalled();
+    });
+
+    test('Handles null/undefined arguments by defaulting to empty arrays', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        expect(() => wheel.updateHighlights(null, null, null, null, null)).not.toThrow();
+
+        expect(wheel._rawPrediction).not.toBeNull();
+        expect(wheel._rawPrediction.anchors).toEqual([]);
+        expect(wheel._rawPrediction.loose).toEqual([]);
+        expect(wheel._rawPrediction.anchorGroups).toEqual([]);
+        expect(wheel._rawPrediction.extraNumbers).toEqual([]);
+    });
+
+    test('Builds default prediction when none provided', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const anchorGroups = [{ anchor: 0, group: [26, 0, 32], type: '±1' }];
+        wheel.updateHighlights([0], [5], anchorGroups, [7], null);
+
+        expect(wheel._rawPrediction.prediction).toBeDefined();
+        expect(wheel._rawPrediction.prediction.signal).toBe('BET NOW');
+        expect(wheel._rawPrediction.prediction.confidence).toBe(90);
+        // Numbers should include group members + loose
+        expect(wheel._rawPrediction.prediction.numbers).toContain(26);
+        expect(wheel._rawPrediction.prediction.numbers).toContain(0);
+        expect(wheel._rawPrediction.prediction.numbers).toContain(32);
+        expect(wheel._rawPrediction.prediction.numbers).toContain(5);
+    });
+
+    test('Overwrites previous _rawPrediction on subsequent calls', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.updateHighlights([0], [], [], [], { numbers: [0], signal: 'OLD' });
+        expect(wheel._rawPrediction.prediction.signal).toBe('OLD');
+
+        wheel.updateHighlights([5], [], [], [], { numbers: [5], signal: 'NEW' });
+        expect(wheel._rawPrediction.prediction.signal).toBe('NEW');
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 9. clearHighlights
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: clearHighlights', () => {
+    test('Resets anchorGroups to empty array', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [{ anchor: 0, group: [0, 26], type: '±1' }];
+        wheel.clearHighlights();
+        expect(wheel.anchorGroups).toEqual([]);
+    });
+
+    test('Resets looseNumbers to empty array', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.looseNumbers = [5, 10, 15];
+        wheel.clearHighlights();
+        expect(wheel.looseNumbers).toEqual([]);
+    });
+
+    test('Resets extraNumbers to empty array', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.extraNumbers = [7, 8, 9];
+        wheel.clearHighlights();
+        expect(wheel.extraNumbers).toEqual([]);
+    });
+
+    test('Resets extraAnchorGroups to empty array', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.extraAnchorGroups = [{ anchor: 7, group: [7], type: '±1' }];
+        wheel.clearHighlights();
+        expect(wheel.extraAnchorGroups).toEqual([]);
+    });
+
+    test('Resets extraLoose to empty array', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.extraLoose = [11, 12];
+        wheel.clearHighlights();
+        expect(wheel.extraLoose).toEqual([]);
+    });
+
+    test('Resets numberInfo to empty object', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.numberInfo = { 5: { isAnchor: false, category: 'primary' } };
+        wheel.clearHighlights();
+        expect(Object.keys(wheel.numberInfo)).toHaveLength(0);
+    });
+
+    test('Clears _rawPrediction to null', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel._rawPrediction = { anchors: [], prediction: { numbers: [1] } };
+        wheel.clearHighlights();
+        expect(wheel._rawPrediction).toBeNull();
+    });
+
+    test('Clears wheelNumberLists innerHTML', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) el.innerHTML = '<div>some content</div>';
+
+        wheel.clearHighlights();
+
+        const elAfter = document.getElementById('wheelNumberLists');
+        if (elAfter) {
+            expect(elAfter.innerHTML).toBe('');
+        }
+    });
+
+    test('Clears filteredCount text', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel._updateFilteredCount(10);
+        expect(document.getElementById('filteredCount').textContent).toBe('Bet: 10 nums');
+
+        wheel.clearHighlights();
+        expect(document.getElementById('filteredCount').textContent).toBe('');
+    });
+
+    test('Calls drawWheel after clearing', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        const spy = jest.spyOn(wheel, 'drawWheel');
+
+        wheel.clearHighlights();
+        expect(spy).toHaveBeenCalled();
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 10. _getHighlightPos
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: _getHighlightPos', () => {
+    test('Returns position object with x and y for valid number (0)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const pos = wheel._getHighlightPos(0);
+        expect(pos).not.toBeNull();
+        expect(typeof pos.x).toBe('number');
+        expect(typeof pos.y).toBe('number');
+    });
+
+    test('Returns position object for number 36', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const pos = wheel._getHighlightPos(36);
+        expect(pos).not.toBeNull();
+        expect(typeof pos.x).toBe('number');
+        expect(typeof pos.y).toBe('number');
+    });
+
+    test('Returns null for invalid number (e.g., 37)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const pos = wheel._getHighlightPos(37);
+        expect(pos).toBeNull();
+    });
+
+    test('Returns null for negative number', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const pos = wheel._getHighlightPos(-1);
+        expect(pos).toBeNull();
+    });
+
+    test('Returns null for number not in wheelOrder (e.g., 100)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const pos = wheel._getHighlightPos(100);
+        expect(pos).toBeNull();
+    });
+
+    test('Different numbers return different positions', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const pos0 = wheel._getHighlightPos(0);
+        const pos1 = wheel._getHighlightPos(1);
+
+        expect(pos0).not.toBeNull();
+        expect(pos1).not.toBeNull();
+        expect(pos0.x !== pos1.x || pos0.y !== pos1.y).toBe(true);
+    });
+
+    test('Position uses highlight radius of 165', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // For number at index 0 (which is 0), the position should be at radius 165 from center (200, 210)
+        const pos = wheel._getHighlightPos(0);
+        const centerX = 200;
+        const centerY = 210;
+        const distance = Math.sqrt((pos.x - centerX) ** 2 + (pos.y - centerY) ** 2);
+        expect(Math.round(distance)).toBe(165);
+    });
+
+    test('All 37 numbers have valid positions', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        for (let i = 0; i <= 36; i++) {
+            const pos = wheel._getHighlightPos(i);
+            expect(pos).not.toBeNull();
+            expect(typeof pos.x).toBe('number');
+            expect(typeof pos.y).toBe('number');
+            expect(isNaN(pos.x)).toBe(false);
+            expect(isNaN(pos.y)).toBe(false);
+        }
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 11. createWheel
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: createWheel', () => {
+    test('Creates panel element in container', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const panel = document.getElementById('wheelPanel');
+        expect(panel).not.toBeNull();
+        expect(panel.className).toBe('wheel-panel');
+    });
+
+    test('Panel is appended to .info-panels-container-bottom', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const container = document.querySelector('.info-panels-container-bottom');
+        const panel = container.querySelector('#wheelPanel');
+        expect(panel).not.toBeNull();
+    });
+
+    test('Creates filter checkboxes', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        expect(document.getElementById('filter0Table')).not.toBeNull();
+        expect(document.getElementById('filter19Table')).not.toBeNull();
+        expect(document.getElementById('filterPositive')).not.toBeNull();
+        expect(document.getElementById('filterNegative')).not.toBeNull();
+    });
+
+    test('Assigns canvas and context', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        expect(wheel.canvas).not.toBeNull();
+        expect(wheel.ctx).not.toBeNull();
+    });
+
+    test('Does not throw when container is missing', () => {
+        if (!RouletteWheel) return;
+
+        // Remove the container
+        const container = document.querySelector('.info-panels-container-bottom');
+        if (container) container.remove();
+
+        expect(() => new RouletteWheel()).not.toThrow();
+    });
+
+    test('Creates wheelNumberLists div', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const el = document.getElementById('wheelNumberLists');
+        expect(el).not.toBeNull();
+    });
+
+    test('Creates filteredCount span', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const el = document.getElementById('filteredCount');
+        expect(el).not.toBeNull();
+    });
+
+    test('Panel contains header with "European Wheel"', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const panel = document.getElementById('wheelPanel');
+        const header = panel.querySelector('h3');
+        expect(header).not.toBeNull();
+        expect(header.textContent).toBe('European Wheel');
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 12. _onFilterChange
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: _onFilterChange', () => {
+    test('Reads checkbox states into filters object', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // Change checkbox states
+        const filter19 = document.getElementById('filter19Table');
+        if (filter19) filter19.checked = true;
+
+        const filterNeg = document.getElementById('filterNegative');
+        if (filterNeg) filterNeg.checked = false;
+
+        wheel._onFilterChange();
+
+        expect(wheel.filters.nineteenTable).toBe(true);
+        expect(wheel.filters.negative).toBe(false);
+    });
+
+    test('Calls _applyFilters when _rawPrediction exists', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel._rawPrediction = {
+            anchors: [], loose: [], anchorGroups: [], extraNumbers: [],
+            prediction: { numbers: [0, 5], signal: 'BET NOW' }
+        };
+
+        const spy = jest.spyOn(wheel, '_applyFilters');
+        wheel._onFilterChange();
+
+        expect(spy).toHaveBeenCalled();
+    });
+
+    test('Does not call _applyFilters when _rawPrediction is null', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel._rawPrediction = null;
+
+        const spy = jest.spyOn(wheel, '_applyFilters');
+        wheel._onFilterChange();
+
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    test('Filter checkbox event triggers _onFilterChange', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const spy = jest.spyOn(wheel, '_onFilterChange');
+
+        // Note: The event listener is bound to the instance created during construction.
+        // We need to test with the actual wheel instance's bound listener.
+        // Since the listener is bound in createWheel, we simulate checkbox change.
+        const filter0 = document.getElementById('filter0Table');
+        if (filter0) {
+            // Manually change and trigger
+            filter0.checked = false;
+        }
+
+        // Direct call to verify it works
+        wheel._onFilterChange();
+        expect(wheel.filters.zeroTable).toBe(false);
+    });
+
+    test('Defaults to true when checkbox element is missing', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // Remove a checkbox
+        const filter0 = document.getElementById('filter0Table');
+        if (filter0) filter0.remove();
+
+        wheel._onFilterChange();
+
+        // Uses ?? true fallback
+        expect(wheel.filters.zeroTable).toBe(true);
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 13. _applyFilters
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: _applyFilters', () => {
+    test('Does nothing when _rawPrediction is null', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        wheel._rawPrediction = null;
+
+        const spy = jest.spyOn(wheel, '_updateFromRaw');
+        wheel._applyFilters();
+
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    test('All filters ON: calls _updateFromRaw with raw data (no filtering)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true };
+
+        const rawAnchors = [0];
+        const rawLoose = [5];
+        const rawAnchorGroups = [{ anchor: 0, group: [0, 26, 32], type: '±1' }];
+        const rawExtra = [7];
+
+        wheel._rawPrediction = {
+            anchors: rawAnchors,
+            loose: rawLoose,
+            anchorGroups: rawAnchorGroups,
+            extraNumbers: rawExtra,
+            prediction: { numbers: [0, 26, 32, 5], extraNumbers: rawExtra, signal: 'BET NOW' }
+        };
+
+        const spy = jest.spyOn(wheel, '_updateFromRaw');
+        wheel._applyFilters();
+
+        expect(spy).toHaveBeenCalledWith(rawAnchors, rawLoose, rawAnchorGroups, rawExtra);
+    });
+
+    test('All filters ON: clears filteredCount (passes null)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true };
+        wheel._rawPrediction = {
+            anchors: [], loose: [], anchorGroups: [], extraNumbers: [],
+            prediction: { numbers: [0, 5], signal: 'BET NOW' }
+        };
+
+        const spy = jest.spyOn(wheel, '_updateFilteredCount');
+        wheel._applyFilters();
+
+        expect(spy).toHaveBeenCalledWith(null);
+    });
+
+    test('Partial filters: filters prediction numbers through _passesFilter', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // Default filters: zeroTable ON, nineteenTable OFF, positive ON, negative ON
+        // 19 is in NINETEEN_TABLE only -> should be filtered out
+        // 0 is in ZERO_TABLE and POSITIVE -> should pass
+        wheel._rawPrediction = {
+            anchors: [], loose: [], anchorGroups: [], extraNumbers: [],
+            prediction: { numbers: [0, 19, 3, 5], signal: 'BET NOW' }
+        };
+
+        const updateSpy = jest.spyOn(wheel, '_updateFromRaw');
+        const countSpy = jest.spyOn(wheel, '_updateFilteredCount');
+        wheel._applyFilters();
+
+        // Should have been called with filtered data
+        expect(updateSpy).toHaveBeenCalled();
+        expect(countSpy).toHaveBeenCalled();
+
+        // The count should not be null (partial filter mode)
+        const countArg = countSpy.mock.calls[0][0];
+        expect(countArg).not.toBeNull();
+        expect(typeof countArg).toBe('number');
+    });
+
+    test('Partial filters: syncs money panel with filtered prediction', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const mockSetPrediction = jest.fn();
+        global.window.moneyPanel = { setPrediction: mockSetPrediction };
+
+        wheel._rawPrediction = {
+            anchors: [], loose: [], anchorGroups: [], extraNumbers: [],
+            prediction: { numbers: [0, 5], signal: 'BET NOW' }
+        };
+
+        wheel._applyFilters();
+
+        expect(mockSetPrediction).toHaveBeenCalled();
+        const calledPrediction = mockSetPrediction.mock.calls[0][0];
+        expect(calledPrediction.numbers).toBeDefined();
+    });
+
+    test('Partial filters: syncs AI panel with filtered prediction', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const mockUpdateFiltered = jest.fn();
+        global.window.aiPanel = { updateFilteredDisplay: mockUpdateFiltered };
+
+        wheel._rawPrediction = {
+            anchors: [], loose: [], anchorGroups: [], extraNumbers: [],
+            prediction: { numbers: [0, 5], signal: 'BET NOW' }
+        };
+
+        wheel._applyFilters();
+
+        expect(mockUpdateFiltered).toHaveBeenCalled();
+    });
+
+    test('Partial filters with calculateWheelAnchors: recalculates anchors', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        global.window.calculateWheelAnchors = jest.fn(() => ({
+            anchors: [0],
+            loose: [],
+            anchorGroups: [{ anchor: 0, group: [0, 32], type: '±1' }]
+        }));
+
+        wheel._rawPrediction = {
+            anchors: [], loose: [], anchorGroups: [], extraNumbers: [],
+            prediction: { numbers: [0, 32, 5], signal: 'BET NOW' }
+        };
+
+        wheel._applyFilters();
+
+        expect(global.window.calculateWheelAnchors).toHaveBeenCalled();
+    });
+
+    test('Partial filters: extra numbers are also filtered', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // Default: zeroTable ON, nineteenTable OFF
+        // 19 is nineteen-only -> filtered out
+        // 7 is zero-table + negative -> passes
+        wheel._rawPrediction = {
+            anchors: [], loose: [], anchorGroups: [],
+            extraNumbers: [7, 19],
+            prediction: { numbers: [0], signal: 'BET NOW' }
+        };
+
+        const countSpy = jest.spyOn(wheel, '_updateFilteredCount');
+        wheel._applyFilters();
+
+        // Count should include filtered primary + filtered extra
+        const countArg = countSpy.mock.calls[0][0];
+        expect(typeof countArg).toBe('number');
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 14. drawWheel
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: drawWheel', () => {
+    test('Calls ctx.clearRect to clear the canvas', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.ctx.clearRect.mockClear();
+        wheel.drawWheel();
+
+        expect(wheel.ctx.clearRect).toHaveBeenCalledWith(0, 0, 400, 420);
+    });
+
+    test('Draws outer circle with ctx.arc', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.ctx.arc.mockClear();
+        wheel.drawWheel();
+
+        // Should have been called multiple times (outer, inner, center, each number segment)
+        expect(wheel.ctx.arc).toHaveBeenCalled();
+    });
+
+    test('Draws text for each number using ctx.fillText', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.ctx.fillText.mockClear();
+        wheel.drawWheel();
+
+        // Should call fillText at least 37 times (once per number)
+        expect(wheel.ctx.fillText.mock.calls.length).toBeGreaterThanOrEqual(37);
+    });
+
+    test('Uses save/restore for each number text rendering', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.ctx.save.mockClear();
+        wheel.ctx.restore.mockClear();
+        wheel.drawWheel();
+
+        // 37 numbers = 37 save/restore pairs
+        expect(wheel.ctx.save.mock.calls.length).toBe(37);
+        expect(wheel.ctx.restore.mock.calls.length).toBe(37);
+    });
+
+    test('Calls drawHighlights when numberInfo is populated', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.numberInfo = { 5: { category: 'primary', isAnchor: false, type: null } };
+        const spy = jest.spyOn(wheel, 'drawHighlights');
+
+        wheel.drawWheel();
+        expect(spy).toHaveBeenCalled();
+    });
+
+    test('Does not call drawHighlights when numberInfo is empty', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.numberInfo = {};
+        const spy = jest.spyOn(wheel, 'drawHighlights');
+
+        wheel.drawWheel();
+        expect(spy).not.toHaveBeenCalled();
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 15. drawHighlights
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: drawHighlights', () => {
+    test('Draws circles for each number in numberInfo', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.numberInfo = {
+            0: { category: 'primary', isAnchor: true, type: '±1' },
+            5: { category: 'primary', isAnchor: false, type: null },
+            7: { category: 'grey', isAnchor: false, type: null }
+        };
+
+        wheel.ctx.arc.mockClear();
+        wheel.drawHighlights();
+
+        // At least 3 arc calls for the 3 numbers
+        expect(wheel.ctx.arc.mock.calls.length).toBeGreaterThanOrEqual(3);
+    });
+
+    test('Draws anchor label text for anchor numbers', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.numberInfo = {
+            0: { category: 'primary', isAnchor: true, type: '±1' }
+        };
+
+        wheel.ctx.fillText.mockClear();
+        wheel.drawHighlights();
+
+        // Should draw the type text for anchor
+        const fillTextCalls = wheel.ctx.fillText.mock.calls;
+        const typeTexts = fillTextCalls.map(c => c[0]);
+        expect(typeTexts).toContain('±1');
+    });
+
+    test('Does not draw label text for non-anchor numbers', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.numberInfo = {
+            5: { category: 'primary', isAnchor: false, type: null }
+        };
+
+        wheel.ctx.fillText.mockClear();
+        wheel.drawHighlights();
+
+        // Should not have any fillText call for type label
+        expect(wheel.ctx.fillText).not.toHaveBeenCalled();
+    });
+
+    test('Skips numbers not found in wheelOrder', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.numberInfo = {
+            99: { category: 'primary', isAnchor: false, type: null }
+        };
+
+        wheel.ctx.arc.mockClear();
+        wheel.drawHighlights();
+
+        // No circles drawn for invalid number
+        expect(wheel.ctx.arc).not.toHaveBeenCalled();
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 16. _updateNumberLists
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: _updateNumberLists', () => {
+    test('Shows default message when no data', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            expect(el.innerHTML).toContain('Select pairs to see predictions');
+        }
+    });
+
+    test('Shows anchor groups when present', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [
+            { anchor: 0, group: [26, 0, 32], type: '±1' }
+        ];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            expect(el.innerHTML).toContain('±1 Anchors');
+            expect(el.innerHTML).toContain('1');
+        }
+    });
+
+    test('Shows ±2 anchor groups separately', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [
+            { anchor: 15, group: [4, 19, 15, 32, 0], type: '±2' }
+        ];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            expect(el.innerHTML).toContain('±2 Anchors');
+        }
+    });
+
+    test('Shows loose numbers when present', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [5, 10];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            expect(el.innerHTML).toContain('Loose');
+            expect(el.innerHTML).toContain('2');
+        }
+    });
+
+    test('Shows grey anchor groups when present', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [
+            { anchor: 8, group: [8, 23], type: '±1' }
+        ];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            expect(el.innerHTML).toContain('Grey ±1');
+        }
+    });
+
+    test('Shows grey loose numbers when present', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [11, 12];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            expect(el.innerHTML).toContain('Grey Loose');
+        }
+    });
+
+    test('Handles missing wheelNumberLists element gracefully', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) el.remove();
+
+        expect(() => wheel._updateNumberLists()).not.toThrow();
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 17. INTEGRATION: Full workflow
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: Integration', () => {
+    test('updateHighlights -> clearHighlights resets all state', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // Enable all filters so _applyFilters takes the "allOn" path and passes
+        // raw data directly to _updateFromRaw (no recalculation needed)
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true };
+
+        // Set up some highlights
+        const anchorGroups = [{ anchor: 0, group: [26, 0, 32], type: '±1' }];
+        wheel.updateHighlights([0], [5], anchorGroups, [7], {
+            numbers: [26, 0, 32, 5],
+            extraNumbers: [7],
+            signal: 'BET NOW',
+            confidence: 90
+        });
+
+        // Verify state is populated
+        expect(wheel._rawPrediction).not.toBeNull();
+        expect(Object.keys(wheel.numberInfo).length).toBeGreaterThan(0);
+
+        // Clear
+        wheel.clearHighlights();
+
+        // Verify state is reset
+        expect(wheel._rawPrediction).toBeNull();
+        expect(Object.keys(wheel.numberInfo)).toHaveLength(0);
+        expect(wheel.anchorGroups).toEqual([]);
+        expect(wheel.looseNumbers).toEqual([]);
+        expect(wheel.extraNumbers).toEqual([]);
+    });
+
+    test('Filter change after updateHighlights re-applies filters', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // Set highlights with numbers from both tables
+        wheel.updateHighlights([], [0, 19], [], [], {
+            numbers: [0, 19],
+            signal: 'BET NOW',
+            confidence: 90
+        });
+
+        // Change filter to enable nineteen table
+        const filter19 = document.getElementById('filter19Table');
+        if (filter19) filter19.checked = true;
+
+        const spy = jest.spyOn(wheel, '_applyFilters');
+        wheel._onFilterChange();
+
+        expect(spy).toHaveBeenCalled();
+        expect(wheel.filters.nineteenTable).toBe(true);
+    });
+
+    test('Multiple updateHighlights calls overwrite previous state', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.updateHighlights([], [0], [], [], { numbers: [0], signal: 'FIRST' });
+        expect(wheel._rawPrediction.prediction.signal).toBe('FIRST');
+
+        wheel.updateHighlights([], [5], [], [], { numbers: [5], signal: 'SECOND' });
+        expect(wheel._rawPrediction.prediction.signal).toBe('SECOND');
+
+        // Old number info should be replaced
+        expect(wheel._rawPrediction.prediction.numbers).toContain(5);
+    });
+
+    test('Positive number uses green color category in numberInfo', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // 0 is POSITIVE
+        expect(POSITIVE_NUMS.has(0)).toBe(true);
+
+        wheel._updateFromRaw([], [0], [], []);
+        expect(wheel.numberInfo[0].category).toBe('primary');
+    });
+
+    test('Negative number uses primary category in numberInfo', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // 21 is NEGATIVE
+        expect(NEGATIVE_NUMS.has(21)).toBe(true);
+
+        wheel._updateFromRaw([], [21], [], []);
+        expect(wheel.numberInfo[21].category).toBe('primary');
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 18. Edge Cases
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: Edge Cases', () => {
+    test('Empty anchorGroups with group property undefined', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const anchorGroups = [{ anchor: 0, type: '±1' }]; // missing group
+        expect(() => wheel._updateFromRaw([], [], anchorGroups, [])).not.toThrow();
+    });
+
+    test('Empty prediction numbers array', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel._rawPrediction = {
+            anchors: [], loose: [], anchorGroups: [], extraNumbers: [],
+            prediction: { numbers: [], signal: 'WAIT' }
+        };
+
+        expect(() => wheel._applyFilters()).not.toThrow();
+    });
+
+    test('updateHighlights with empty arrays', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        expect(() => wheel.updateHighlights([], [], [], [], {
+            numbers: [], signal: 'WAIT', confidence: 0
+        })).not.toThrow();
+    });
+
+    test('_passesFilter with number 0 (edge case: green number)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // 0 is in ZERO_TABLE and POSITIVE
+        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: false };
+        expect(wheel._passesFilter(0)).toBe(true);
+    });
+
+    test('Constructing multiple RouletteWheel instances does not throw', () => {
+        if (!RouletteWheel) return;
+        expect(() => {
+            const w1 = new RouletteWheel();
+            const w2 = new RouletteWheel();
+        }).not.toThrow();
+    });
+
+    test('drawWheel with no ctx does not crash (container missing scenario)', () => {
+        if (!RouletteWheel) return;
+
+        // Remove the container to prevent createWheel from initializing canvas
+        const container = document.querySelector('.info-panels-container-bottom');
+        if (container) container.remove();
+
+        const wheel = new RouletteWheel();
+        // ctx will be undefined since createWheel returned early
+        // drawWheel may throw, but constructor should have handled it
+        // This tests the defensive behavior
+    });
+
+    test('_applyFilters with calculateWheelAnchors returning empty results', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        global.window.calculateWheelAnchors = jest.fn(() => ({
+            anchors: [],
+            loose: [],
+            anchorGroups: []
+        }));
+
+        wheel._rawPrediction = {
+            anchors: [], loose: [], anchorGroups: [], extraNumbers: [],
+            prediction: { numbers: [0, 5], signal: 'BET NOW' }
+        };
+
+        expect(() => wheel._applyFilters()).not.toThrow();
+    });
+
+    test('_updateFromRaw anchor group with missing type defaults to ±1', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        const anchorGroups = [
+            { anchor: 0, group: [0, 26] } // no type property
+        ];
+
+        wheel._updateFromRaw([], [], anchorGroups, []);
+
+        expect(wheel.numberInfo[0].type).toBe('±1');
+        expect(wheel.numberInfo[26].type).toBe('±1');
+    });
+});

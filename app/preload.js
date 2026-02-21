@@ -3,10 +3,22 @@
  * Electron bridge between renderer and backend API
  */
 
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 // Expose API to renderer process
 contextBridge.exposeInMainWorld('aiAPI', {
+
+    /**
+     * Write flash diagnostic log to project folder
+     */
+    async writeFlashLog(data) {
+        try {
+            return await ipcRenderer.invoke('write-flash-log', data);
+        } catch (e) {
+            console.warn('Flash log write failed:', e.message);
+            return null;
+        }
+    },
     
     /**
      * Test connection to AI server

@@ -264,23 +264,78 @@ th.t3-pair-selected {
 .col-prj-hit { background: #d4edda !important; font-weight: 900; }
 .col-prj-miss { background: #f8d7da !important; font-weight: 700; }
 
-/* ±1 Distance Flash — highlights cells that caused hits with ±1 distance difference */
+/* ±1 Distance Flash — highlights cells with ±1 distance difference between consecutive rows.
+   IMPORTANT: The JS (_flashPairCell) removes competing classes (cell-has-position, pos-s/pos-o/pos-xx)
+   before adding t3-pm1-flash / t3-flash-span. This eliminates all !important background battles
+   so that CSS animations can freely pulse. Do NOT add !important to background properties here. */
+
+/* TD flash styling — no !important on background so @keyframes can pulse it */
+td.t3-pm1-flash,
 .t3-pm1-flash {
-    animation: t3-pm1-pulse 1.2s ease-in-out infinite;
+    animation: t3-pm1-pulse 1.2s ease-in-out infinite !important;
     outline: 3px solid #f59e0b !important;
-    outline-offset: -2px;
-    z-index: 1;
-    position: relative;
+    outline-offset: -1px !important;
+    z-index: 10 !important;
+    position: relative !important;
+    background: #fef3c7;
+}
+
+/* Span inside flash cell — JS replaces pos-s/pos-o/pos-xx with this class.
+   No !important needed because the competing classes are removed by JS. */
+.t3-flash-span {
+    animation: t3-pm1-span-pulse 1.2s ease-in-out infinite;
+    background: #fef3c7;
+    color: #92400e;
+    padding: 1px 2px;
+    border-radius: 2px;
+    display: inline-block;
+    white-space: nowrap;
+    font-weight: 700;
+    font-size: 9px;
+    min-width: 28px;
+    text-align: center;
+}
+
+/* Also handle any generic span inside flash cell (fallback) */
+td.t3-pm1-flash span,
+.t3-pm1-flash span {
+    animation: t3-pm1-span-pulse 1.2s ease-in-out infinite;
+    background: #fef3c7;
+    color: #92400e;
+}
+
+/* Override when combined with t3-pair-selected (blue selection highlight) */
+td.t3-pm1-flash.t3-pair-selected,
+.t3-pm1-flash.t3-pair-selected {
+    animation: t3-pm1-pulse 1.2s ease-in-out infinite !important;
+    outline: 3px solid #f59e0b !important;
+    outline-offset: -1px !important;
+    background: #fef3c7;
+}
+td.t3-pm1-flash.t3-pair-selected span,
+.t3-pm1-flash.t3-pair-selected span {
+    animation: t3-pm1-span-pulse 1.2s ease-in-out infinite;
+    background: #fef3c7;
+    color: #92400e;
 }
 
 @keyframes t3-pm1-pulse {
     0%, 100% {
-        background-color: #fef3c7 !important;
-        box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+        background: #fef3c7;
+        box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
     }
     50% {
-        background-color: #fbbf24 !important;
-        box-shadow: 0 0 14px rgba(245, 158, 11, 0.9);
+        background: #fbbf24;
+        box-shadow: 0 0 16px rgba(245, 158, 11, 1);
+    }
+}
+
+@keyframes t3-pm1-span-pulse {
+    0%, 100% {
+        background: #fef3c7;
+    }
+    50% {
+        background: #fbbf24;
     }
 }
 

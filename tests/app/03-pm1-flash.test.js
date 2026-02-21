@@ -170,7 +170,7 @@ describe('±1 Flash: Integration with renderTable3', () => {
         });
     });
 
-    test('Flash only appears on last 2 data rows, never on NEXT row', () => {
+    test('Flash never appears on NEXT row', () => {
         const spins = R.spins || [];
         spins.length = 0;
 

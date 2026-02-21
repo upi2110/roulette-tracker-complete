@@ -114,41 +114,72 @@ function loadRendererFunctions() {
             const setTimeout = globalThis.setTimeout;
             const setInterval = globalThis.setInterval;
             const console = globalThis.console;
-            const fetch = () => Promise.resolve({ json: () => ({}) });
+            const fetch = (...args) => globalThis.fetch ? globalThis.fetch(...args) : Promise.resolve({ json: () => ({}) });
 
             ${src}
 
-            // Export the functions we need for testing
+            // Export ALL functions for 100% test coverage
+            // Constants
+            exports.WHEEL_STANDARD = WHEEL_STANDARD;
+            exports.WHEEL_NO_ZERO = WHEEL_NO_ZERO;
+            exports.WHEEL_36 = typeof WHEEL_36 !== 'undefined' ? WHEEL_36 : null;
+            exports.WHEEL_POS = typeof WHEEL_POS !== 'undefined' ? WHEEL_POS : null;
+            exports.REGULAR_OPPOSITES = REGULAR_OPPOSITES;
+            exports.DIGIT_13_OPPOSITES = DIGIT_13_OPPOSITES;
+            exports._PAIR_REFKEY_TO_DATA_PAIR = _PAIR_REFKEY_TO_DATA_PAIR;
+
+            // Core pure functions
             exports.calculatePositionCode = calculatePositionCode;
             exports.calculateWheelDistance = calculateWheelDistance;
             exports.getNumberAtPosition = getNumberAtPosition;
             exports.flipPositionCode = flipPositionCode;
             exports.generateAnchors = generateAnchors;
-            exports.expandAnchorsToBetNumbers = expandAnchorsToBetNumbers;
             exports.calculateReferences = calculateReferences;
+            exports.formatPos = typeof formatPos !== 'undefined' ? formatPos : null;
             exports._getPosCodeDistance = _getPosCodeDistance;
-            exports._PAIR_REFKEY_TO_DATA_PAIR = _PAIR_REFKEY_TO_DATA_PAIR;
-            exports.WHEEL_STANDARD = WHEEL_STANDARD;
-            exports.WHEEL_NO_ZERO = WHEEL_NO_ZERO;
-            exports.REGULAR_OPPOSITES = REGULAR_OPPOSITES;
-            exports.DIGIT_13_OPPOSITES = DIGIT_13_OPPOSITES;
+
+            // Wheel/pocket functions
+            exports.getWheel36Index = typeof getWheel36Index !== 'undefined' ? getWheel36Index : null;
+            exports.getNumbersAtPocket = typeof getNumbersAtPocket !== 'undefined' ? getNumbersAtPocket : null;
+            exports.expandAnchorsToBetNumbers = expandAnchorsToBetNumbers;
+            exports.expandTargetsToBetNumbers = typeof expandTargetsToBetNumbers !== 'undefined' ? expandTargetsToBetNumbers : null;
+            exports.calculateWheelAnchors = typeof calculateWheelAnchors !== 'undefined' ? calculateWheelAnchors : null;
+
+            // Projection functions
+            exports.getTable1NextProjections = typeof getTable1NextProjections !== 'undefined' ? getTable1NextProjections : null;
+            exports.getTable2NextProjections = typeof getTable2NextProjections !== 'undefined' ? getTable2NextProjections : null;
+            exports.getColumnFromCode = typeof getColumnFromCode !== 'undefined' ? getColumnFromCode : null;
+
+            // Spin management
             exports.spins = spins;
+            exports.addSpin = typeof addSpin !== 'undefined' ? addSpin : null;
+            exports.undoLast = typeof undoLast !== 'undefined' ? undoLast : null;
+            exports.resetAll = resetAll;
 
             // Table render functions
             exports.renderTable1 = renderTable1;
             exports.renderTable2 = renderTable2;
             exports.renderTable3 = renderTable3;
             exports.render = render;
-            exports.addSpin = typeof addSpin !== 'undefined' ? addSpin : undefined;
-            exports.resetAll = resetAll;
 
-            // Wheel anchors
-            if (typeof calculateWheelAnchors !== 'undefined') {
-                exports.calculateWheelAnchors = calculateWheelAnchors;
-            }
-            if (typeof formatPos !== 'undefined') {
-                exports.formatPos = formatPos;
-            }
+            // Flash functions
+            exports._applyPm1Flash = typeof _applyPm1Flash !== 'undefined' ? _applyPm1Flash : null;
+            exports._flashPairCell = typeof _flashPairCell !== 'undefined' ? _flashPairCell : null;
+            exports._computeFlashTargets = typeof _computeFlashTargets !== 'undefined' ? _computeFlashTargets : null;
+            exports.formatPosFlash = typeof formatPosFlash !== 'undefined' ? formatPosFlash : null;
+
+            // AI data export
+            exports.analyzeTable1Hits = typeof analyzeTable1Hits !== 'undefined' ? analyzeTable1Hits : null;
+            exports.analyzeTable2Hits = typeof analyzeTable2Hits !== 'undefined' ? analyzeTable2Hits : null;
+            exports.analyzeTable3Hits = typeof analyzeTable3Hits !== 'undefined' ? analyzeTable3Hits : null;
+            exports.getNextRowProjections = typeof getNextRowProjections !== 'undefined' ? getNextRowProjections : null;
+            exports.getAutoSelectedRefs = typeof getAutoSelectedRefs !== 'undefined' ? getAutoSelectedRefs : null;
+
+            // Internal helpers (for full coverage)
+            exports.checkRefHit = typeof checkRefHit !== 'undefined' ? checkRefHit : null;
+            exports.checkTable3Hit = typeof checkTable3Hit !== 'undefined' ? checkTable3Hit : null;
+            exports.logNextProjections = typeof logNextProjections !== 'undefined' ? logNextProjections : null;
+            exports.getAIDataV6 = typeof window !== 'undefined' && window.getAIDataV6 ? window.getAIDataV6 : null;
         })
     `;
 

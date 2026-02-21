@@ -63,8 +63,9 @@ describe('FIX #2: ±1 Flash works after pause/start betting', () => {
             'utf-8'
         );
 
-        // Verify _applyPm1Flash is called inside renderTable3 (after forEach loop)
-        expect(src).toContain('_applyPm1Flash(tbody, spins, startIdx, visibleSpins.length)');
+        // Verify flash is computed and baked into HTML via _computeFlashTargets + posCell
+        expect(src).toContain('_computeFlashTargets(spins, startIdx, visibleSpins.length)');
+        expect(src).toContain('posCell(');
     });
 
     test('toggleBetting triggers getPredictions which re-renders tables and flash', () => {
