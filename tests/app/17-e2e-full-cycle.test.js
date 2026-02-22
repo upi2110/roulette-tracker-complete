@@ -422,7 +422,7 @@ describe('E2E: Money panel initialization', () => {
         expect(mp.sessionData.consecutiveLosses).toBe(0);
         expect(mp.sessionData.consecutiveWins).toBe(0);
         expect(mp.sessionData.currentBetPerNumber).toBe(2);
-        expect(mp.sessionData.bettingStrategy).toBe(1);
+        expect(mp.sessionData.bettingStrategy).toBe(3);
         expect(mp.sessionData.isBettingEnabled).toBe(false);
     });
 
@@ -453,10 +453,13 @@ describe('E2E: Money panel initialization', () => {
 // =====================================================================
 
 describe('E2E: Strategy cycling integration', () => {
-    test('Strategy cycles 1 -> 2 -> 3 -> 1', () => {
+    test('Strategy cycles 3 -> 1 -> 2 -> 3', () => {
         const mp = createMoneyPanel();
         if (!mp) return;
 
+        expect(mp.sessionData.bettingStrategy).toBe(3);
+
+        mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(1);
 
         mp.toggleStrategy();
@@ -464,18 +467,13 @@ describe('E2E: Strategy cycling integration', () => {
 
         mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(3);
-
-        mp.toggleStrategy();
-        expect(mp.sessionData.bettingStrategy).toBe(1);
     });
 
     test('Button text updates for strategy 1 (Aggressive)', () => {
         const mp = createMoneyPanel();
         if (!mp) return;
 
-        // Start at strategy 1, cycle to 2, then 3, then back to 1
-        mp.toggleStrategy(); // 2
-        mp.toggleStrategy(); // 3
+        // Start at strategy 3 (Cautious), cycle to 1 (Aggressive)
         mp.toggleStrategy(); // 1
 
         const btn = document.getElementById('toggleStrategyBtn');
@@ -489,6 +487,7 @@ describe('E2E: Strategy cycling integration', () => {
         const mp = createMoneyPanel();
         if (!mp) return;
 
+        mp.toggleStrategy(); // 1
         mp.toggleStrategy(); // 2
 
         const btn = document.getElementById('toggleStrategyBtn');
@@ -502,6 +501,7 @@ describe('E2E: Strategy cycling integration', () => {
         const mp = createMoneyPanel();
         if (!mp) return;
 
+        mp.toggleStrategy(); // 1
         mp.toggleStrategy(); // 2
         mp.toggleStrategy(); // 3
 
@@ -525,14 +525,14 @@ describe('E2E: Strategy cycling integration', () => {
         const mp = createMoneyPanel();
         if (!mp) return;
 
-        // Cycle through twice
+        // Cycle through twice (starts at 3)
         for (let cycle = 0; cycle < 2; cycle++) {
+            mp.toggleStrategy(); // 1
+            expect(mp.sessionData.bettingStrategy).toBe(1);
             mp.toggleStrategy(); // 2
             expect(mp.sessionData.bettingStrategy).toBe(2);
             mp.toggleStrategy(); // 3
             expect(mp.sessionData.bettingStrategy).toBe(3);
-            mp.toggleStrategy(); // 1
-            expect(mp.sessionData.bettingStrategy).toBe(1);
         }
     });
 });

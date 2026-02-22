@@ -790,7 +790,7 @@ function resetAll() {
         // Reset Money Management Panel
         if (window.moneyPanel) {
             // Preserve current strategy selection across reset
-            const currentStrategy = window.moneyPanel.sessionData.bettingStrategy || 1;
+            const currentStrategy = window.moneyPanel.sessionData.bettingStrategy || 3;
             window.moneyPanel.sessionData = {
                 startingBankroll: 4000,
                 currentBankroll: 4000,

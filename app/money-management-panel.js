@@ -19,7 +19,7 @@ class MoneyManagementPanel {
             isSessionActive: false,
             spinsWithBets: [],
             isBettingEnabled: false,  // NEW: User control for betting
-            bettingStrategy: 1,  // 1=Aggressive, 2=Conservative, 3=Cautious
+            bettingStrategy: 3,  // 1=Aggressive, 2=Conservative, 3=Cautious (default: Cautious)
             consecutiveWins: 0,  // Track consecutive wins for strategies 2 & 3
             currentBetPerNumber: 2  // Track current bet amount (overrides backend)
         };
@@ -86,11 +86,11 @@ class MoneyManagementPanel {
                         border: none;
                         border-radius: 4px;
                         cursor: pointer;
-                        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+                        background: linear-gradient(135deg, #6f42c1 0%, #9b59b6 100%);
                         color: white;
                         margin-top: 8px;
                         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    ">🟢 Strategy 1: Aggressive</button>
+                    ">🟣 Strategy 3: Cautious</button>
             </div>
 
             <div class="panel-content" id="moneyPanelContent" style="display: block;">

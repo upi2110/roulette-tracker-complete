@@ -62,6 +62,16 @@ function setupDOM() {
                 </div>
             </div>
 
+            <!-- Auto Mode -->
+            <div id="aiSelectionPanel">
+                <div id="aiPanelContent">
+                    <div class="table-selection-section" data-table="3"></div>
+                    <div class="table-selection-section" data-table="2"></div>
+                    <div class="table-selection-section" data-table="1"></div>
+                </div>
+            </div>
+            <div id="predictionResultsContainer"></div>
+
             <!-- Money Panel -->
             <div class="info-panels-container-bottom"></div>
             <div id="bankrollValue">$4,000</div>
@@ -77,7 +87,23 @@ function setupDOM() {
             <div id="betHistoryList"></div>
             <div id="toggleBettingBtn">▶️ START BETTING</div>
             <div id="bettingStatus">⏸️ Betting PAUSED</div>
-            <div id="toggleStrategyBtn">🟢 Strategy 1: Aggressive</div>
+            <div id="toggleStrategyBtn">🟣 Strategy 3: Cautious</div>
+
+            <!-- Auto Test Panel -->
+            <div id="autoTestContainer">
+                <div id="autoTestHeader"></div>
+                <div id="autoTestProgress" style="display:none;">
+                    <div id="autoTestProgressBar" style="width:0%"></div>
+                    <div id="autoTestProgressText">0%</div>
+                </div>
+                <div id="autoTestTabs"></div>
+                <div id="autoTestContent"></div>
+                <div id="autoTestFileInfo"></div>
+                <button id="autoTestLoadBtn">📂 Load</button>
+                <button id="autoTestRunBtn">▶ Run</button>
+                <button id="autoTestExportBtn">📊 Export</button>
+                <textarea id="autoTestManualInput"></textarea>
+            </div>
         </div>
     `;
 }

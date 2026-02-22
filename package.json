@@ -27,6 +27,7 @@
     "jsdom": "^28.1.0"
   },
   "dependencies": {
-    "electron-store": "^8.1.0"
+    "electron-store": "^8.1.0",
+    "exceljs": "^4.4.0"
   }
 }

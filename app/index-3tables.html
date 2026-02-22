@@ -228,6 +228,9 @@
         <!-- Prediction results appended here by ai-prediction-panel.js -->
     </div>
 
+    <!-- ===== AUTO TEST PANEL (below prediction results, above fixed input) ===== -->
+    <div id="autoTestContainer" style="margin: 20px 10px;"></div>
+
     <!-- Input Section - FIXED AT BOTTOM -->
     <div class="input-section">
         <label for="spinNumber">Number (0-36):</label>
@@ -250,12 +253,19 @@
 <!-- Load all JavaScript files IN CORRECT ORDER -->
 <script src="table-lookup.js"></script>
 <script src="renderer-3tables.js"></script>
+<script src="ai-data-loader.js"></script>
+<script src="ai-auto-engine.js"></script>
 <script src="auto-update-orchestrator.js"></script>
 <script src="ai-integration.js"></script>
 <script src="roulette-wheel.js"></script>
 <script src="ai-prediction-panel.js"></script>
+<script src="ai-auto-mode-ui.js"></script>
 <script src="money-management-panel.js"></script>
 
+<!-- Auto Test Module -->
+<script src="auto-test-runner.js"></script>
+<script src="auto-test-report.js"></script>
+<script src="auto-test-ui.js"></script>
 
 <!-- Zoom Control Script - Must be AFTER the table JS loads -->
 <script>

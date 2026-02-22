@@ -869,11 +869,21 @@ describe('toggleBetting() - DOM updates', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('toggleStrategy() - DOM updates', () => {
+    test('strategy 3 -> 1 updates button to Aggressive with green gradient', () => {
+        const mp = getPanel();
+        expect(mp.sessionData.bettingStrategy).toBe(3);
+
+        mp.toggleStrategy(); // 3 -> 1
+        const btn = document.getElementById('toggleStrategyBtn');
+        expect(btn.textContent).toContain('Strategy 1: Aggressive');
+        expect(btn.style.background).toContain('#28a745');
+    });
+
     test('strategy 1 -> 2 updates button to Conservative with blue gradient', () => {
         const mp = getPanel();
-        expect(mp.sessionData.bettingStrategy).toBe(1);
-
+        mp.toggleStrategy(); // 3 -> 1
         mp.toggleStrategy(); // 1 -> 2
+
         const btn = document.getElementById('toggleStrategyBtn');
         expect(btn.textContent).toContain('Strategy 2: Conservative');
         expect(btn.style.background).toContain('#007bff');
@@ -881,23 +891,13 @@ describe('toggleStrategy() - DOM updates', () => {
 
     test('strategy 2 -> 3 updates button to Cautious with purple gradient', () => {
         const mp = getPanel();
+        mp.toggleStrategy(); // 3 -> 1
         mp.toggleStrategy(); // 1 -> 2
         mp.toggleStrategy(); // 2 -> 3
 
         const btn = document.getElementById('toggleStrategyBtn');
         expect(btn.textContent).toContain('Strategy 3: Cautious');
         expect(btn.style.background).toContain('#6f42c1');
-    });
-
-    test('strategy 3 -> 1 updates button to Aggressive with green gradient', () => {
-        const mp = getPanel();
-        mp.toggleStrategy(); // 1 -> 2
-        mp.toggleStrategy(); // 2 -> 3
-        mp.toggleStrategy(); // 3 -> 1
-
-        const btn = document.getElementById('toggleStrategyBtn');
-        expect(btn.textContent).toContain('Strategy 1: Aggressive');
-        expect(btn.style.background).toContain('#28a745');
     });
 
     test('toggleStrategy resets consecutiveWins to 0', () => {
@@ -1555,6 +1555,7 @@ describe('recordBetResult() - bet history tracking', () => {
 
     test('consecutive wins increment on win, reset on loss', async () => {
         const mp = getPanel();
+        mp.sessionData.bettingStrategy = 1; // Use Aggressive (no counter reset)
 
         await mp.recordBetResult(2, 10, true, 1);
         await mp.recordBetResult(2, 10, true, 2);
@@ -1682,11 +1683,11 @@ describe('setupBettingControl() - button listeners', () => {
 
     test('strategy button click cycles strategy', () => {
         const mp = getPanel();
-        expect(mp.sessionData.bettingStrategy).toBe(1);
+        expect(mp.sessionData.bettingStrategy).toBe(3);
 
         const btn = document.getElementById('toggleStrategyBtn');
         btn.click();
 
-        expect(mp.sessionData.bettingStrategy).toBe(2);
+        expect(mp.sessionData.bettingStrategy).toBe(1);
     });
 });

@@ -19,7 +19,43 @@ contextBridge.exposeInMainWorld('aiAPI', {
             return null;
         }
     },
+
+    /**
+     * Load historical spin data files from app/data/ directory
+     */
+    async loadHistoricalData() {
+        try {
+            return await ipcRenderer.invoke('load-historical-data');
+        } catch (e) {
+            console.warn('Historical data load failed:', e.message);
+            return { files: [], error: e.message };
+        }
+    },
     
+    /**
+     * Open a test data file for backtesting
+     */
+    async openTestFile() {
+        try {
+            return await ipcRenderer.invoke('open-test-file');
+        } catch (e) {
+            console.warn('Open test file failed:', e.message);
+            return null;
+        }
+    },
+
+    /**
+     * Save Excel report buffer to file
+     */
+    async saveXlsx(buffer) {
+        try {
+            return await ipcRenderer.invoke('save-xlsx', buffer);
+        } catch (e) {
+            console.warn('Save xlsx failed:', e.message);
+            return false;
+        }
+    },
+
     /**
      * Test connection to AI server
      */
