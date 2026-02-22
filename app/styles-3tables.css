@@ -44,52 +44,139 @@ h1 { color: #2c3e50; margin-bottom: 12px; text-align: center; font-size: 16px; }
     width: 100%;
 }
 
-/* Tables - MAXIMUM COMPACT */
-table { 
-    border-collapse: separate; 
+/* Tables - COMPACT but READABLE */
+table {
+    border-collapse: separate;
     border-spacing: 0;
-    width: 100%; 
-    font-size: 7px;
+    font-size: 9px;
 }
 
-/* Table headers - MAXIMUM COMPACT */
-th { 
-    background: #34495e; 
-    color: white; 
-    padding: 1px 0px; 
-    text-align: center; 
+/* Table headers - COMPACT but READABLE */
+th {
+    background: #34495e;
+    color: white;
+    padding: 1px 2px;
+    text-align: center;
     border: 1px solid #2c3e50;
-    position: sticky; 
-    top: 0; 
-    z-index: 10; 
-    font-size: 6px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    font-size: 9px;
     white-space: nowrap;
+    line-height: 1.1;
 }
 
-/* Table cells - DEFAULT (numbers) - MAXIMUM COMPACT */
-td { 
-    padding: 0px 1px; 
-    text-align: center; 
-    border: 1px solid #e8e8e8; 
-    font-size: 7px;
+/* Table cells - DEFAULT (numbers) - COMPACT but READABLE */
+td {
+    padding: 1px 2px;
+    text-align: center;
+    border: 1px solid #e8e8e8;
+    font-size: 9px;
     white-space: nowrap;
-    width: 16px;
+    line-height: 1.1;
 }
+
+/* ============================================
+   PER-TABLE FONT SIZE OVERRIDES
+   Table 1: 84 cols (no Dir/Actual) — most compact
+   Table 2: 49 cols (no Dir/Actual) — medium
+   Table 3: 32 cols (with Dir/Actual) — most room
+   ============================================ */
+#table1 { width: 100%; }
+#table1 th { font-size: 7px; padding: 1px 1px; }
+#table1 td { font-size: 8px; padding: 1px 1px; }
+#table1 .code-s, #table1 .code-o, #table1 .code-xx { font-size: 7px; }
+
+#table2 { width: 100%; }
+#table2 th { font-size: 9px; padding: 1px 1px; }
+#table2 td { font-size: 9px; font-weight: 600; padding: 1px 1px; }
+#table2 .code-s, #table2 .code-o, #table2 .code-xx { font-size: 8px; }
+
+#table3 { width: 100%; }
+#table3 th { font-size: 10px; }
+#table3 td { font-size: 11px; font-weight: 600; }
+#table3 .code-s, #table3 .code-o, #table3 .code-xx { font-size: 9px; }
 
 /* 13-DIGIT OPPOSITE CELLS - Light gray background */
 .opp13-cell {
     background: #e9ecef !important;
 }
 
-/* BLACK BORDER - ONLY on pair separators */
+/* BLACK BORDER - thick separator between pair groups */
 .pair-separator {
-    border-left: 4px solid #000 !important;
+    border-left: 6px solid #000 !important;
+}
+
+/* WHITE BORDER - separator between co-pairs (P and P-13OPP) within same group */
+.copair-separator {
+    border-left: 3px solid #fff !important;
+}
+
+/* Table 1: thinner separators to save space (84 cols) */
+#table1 .pair-separator { border-left: 4px solid #000 !important; }
+#table1 .copair-separator { border-left: 2px solid #fff !important; }
+/* Table 2: slightly thinner separators (49 cols) */
+#table2 .pair-separator { border-left: 5px solid #000 !important; }
+#table2 .copair-separator { border-left: 3px solid #fff !important; }
+
+/* ============================================
+   COLOR-CODED PAIR HEADERS (unified across all tables)
+   Light pastel backgrounds with dark text — easy on the eyes
+   13OPP variants use a slightly deeper shade
+   ============================================ */
+/* 0 / 0-13OPP — Light Red */
+th[data-pair="ref0"] { background: #fecaca !important; color: #991b1b !important; }
+th[data-pair="ref0_13opp"] { background: #fca5a5 !important; color: #7f1d1d !important; }
+/* 19 / 19-13OPP — Light Orange */
+th[data-pair="ref19"] { background: #fed7aa !important; color: #9a3412 !important; }
+th[data-pair="ref19_13opp"] { background: #fdba74 !important; color: #7c2d12 !important; }
+/* P / P-13OPP — Light Amber */
+th[data-pair="prev"] { background: #fde68a !important; color: #92400e !important; }
+th[data-pair="prev_13opp"] { background: #fcd34d !important; color: #78350f !important; }
+/* P+1 / P+1-13OPP — Light Green */
+th[data-pair="prevPlus1"] { background: #bbf7d0 !important; color: #166534 !important; }
+th[data-pair="prevPlus1_13opp"] { background: #86efac !important; color: #14532d !important; }
+/* P-1 / P-1-13OPP — Light Teal */
+th[data-pair="prevMinus1"] { background: #99f6e4 !important; color: #115e59 !important; }
+th[data-pair="prevMinus1_13opp"] { background: #5eead4 !important; color: #134e4a !important; }
+/* P+2 / P+2-13OPP — Light Blue */
+th[data-pair="prevPlus2"] { background: #bfdbfe !important; color: #1e40af !important; }
+th[data-pair="prevPlus2_13opp"] { background: #93c5fd !important; color: #1e3a8a !important; }
+/* P-2 / P-2-13OPP — Light Purple */
+th[data-pair="prevMinus2"] { background: #ddd6fe !important; color: #5b21b6 !important; }
+th[data-pair="prevMinus2_13opp"] { background: #c4b5fd !important; color: #4c1d95 !important; }
+/* P-PREV (Table 3 only) — Light Pink */
+th[data-pair="prevPrev"] { background: #fbcfe8 !important; color: #9d174d !important; }
+
+/* ============================================
+   CLICKABLE PAIR SELECTION (ALL TABLES)
+   ============================================ */
+th.t3-pair-header {
+    cursor: pointer;
+    transition: background 0.15s ease;
+    user-select: none;
+}
+th.t3-pair-header:hover {
+    filter: brightness(0.85);
+}
+td[data-pair] {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+/* Highlight selected pair columns across all tables */
+.t3-pair-selected {
+    outline: 3px solid #0ea5e9 !important;
+    outline-offset: -2px;
+    background-color: rgba(14, 165, 233, 0.15) !important;
+}
+th.t3-pair-selected {
+    background-color: rgba(14, 165, 233, 0.35) !important;
+    color: #0c4a6e !important;
 }
 
 /* Anchor cells */
 .anchor-cell {
     font-weight: 700;
-    width: 16px;
 }
 
 /* Anchor cells that are 13-digit opposites */
@@ -97,16 +184,14 @@ td {
     background: #d3d3d3 !important;
 }
 
-/* POSITION CODE CELLS - Compact */
+/* POSITION CODE CELLS - Compact but readable */
 .code-s,
 .code-o,
-.code-xx { 
-    width: 24px !important;
-    min-width: 24px !important;
-    padding: 0px 1px;
+.code-xx {
+    padding: 1px 1px;
     font-weight: 700;
     white-space: nowrap;
-    font-size: 6px;
+    font-size: 9px;
 }
 
 /* S codes = LIGHT GREEN */
@@ -147,14 +232,14 @@ td {
 /* Table3: S and O position codes - FULL CELL background like Table1/2 */
 .pos-s,
 .pos-o,
-.pos-xx { 
-    padding: 1px 3px;
+.pos-xx {
+    padding: 1px 2px;
     border-radius: 2px;
     display: inline-block;
     white-space: nowrap;
     font-weight: 700;
-    font-size: 6px;
-    min-width: 32px;
+    font-size: 9px;
+    min-width: 28px;
     text-align: center;
 }
 
@@ -174,30 +259,107 @@ td {
     font-weight: 600;
 }
 
-/* Table3 Projection columns */
-.col-prj { background: #f8f9fa; font-size: 6px; }
-.col-prj-hit { background: #d4edda; font-weight: 700; }
-.col-prj-miss { background: #f8d7da; }
+/* Table3 Projection columns — bold predictions */
+.col-prj { background: #f8f9fa; font-size: 10px; font-weight: 700; }
+.col-prj-hit { background: #d4edda !important; font-weight: 900; }
+.col-prj-miss { background: #f8d7da !important; font-weight: 700; }
 
-/* Anchors in projections */
-.anchor-purple { 
-    background: #e6ccff; 
-    color: #6f42c1; 
-    padding: 1px 2px; 
-    margin: 1px; 
-    border-radius: 2px; 
-    font-size: 6px; 
-    display: inline-block; 
+/* ±1 Distance Flash — highlights cells with ±1 distance difference between consecutive rows.
+   IMPORTANT: The JS (_flashPairCell) removes competing classes (cell-has-position, pos-s/pos-o/pos-xx)
+   before adding t3-pm1-flash / t3-flash-span. This eliminates all !important background battles
+   so that CSS animations can freely pulse. Do NOT add !important to background properties here. */
+
+/* TD flash styling — no !important on background so @keyframes can pulse it */
+td.t3-pm1-flash,
+.t3-pm1-flash {
+    animation: t3-pm1-pulse 1.2s ease-in-out infinite !important;
+    outline: 3px solid #f59e0b !important;
+    outline-offset: -1px !important;
+    z-index: 10 !important;
+    position: relative !important;
+    background: #fef3c7;
 }
 
-.anchor-green { 
-    background: #c3e6cb; 
-    color: #28a745; 
-    padding: 1px 2px; 
-    margin: 1px; 
-    border-radius: 2px; 
-    font-size: 6px; 
-    display: inline-block; 
+/* Span inside flash cell — JS replaces pos-s/pos-o/pos-xx with this class.
+   No !important needed because the competing classes are removed by JS. */
+.t3-flash-span {
+    animation: t3-pm1-span-pulse 1.2s ease-in-out infinite;
+    background: #fef3c7;
+    color: #92400e;
+    padding: 1px 2px;
+    border-radius: 2px;
+    display: inline-block;
+    white-space: nowrap;
+    font-weight: 700;
+    font-size: 9px;
+    min-width: 28px;
+    text-align: center;
+}
+
+/* Also handle any generic span inside flash cell (fallback) */
+td.t3-pm1-flash span,
+.t3-pm1-flash span {
+    animation: t3-pm1-span-pulse 1.2s ease-in-out infinite;
+    background: #fef3c7;
+    color: #92400e;
+}
+
+/* Override when combined with t3-pair-selected (blue selection highlight) */
+td.t3-pm1-flash.t3-pair-selected,
+.t3-pm1-flash.t3-pair-selected {
+    animation: t3-pm1-pulse 1.2s ease-in-out infinite !important;
+    outline: 3px solid #f59e0b !important;
+    outline-offset: -1px !important;
+    background: #fef3c7;
+}
+td.t3-pm1-flash.t3-pair-selected span,
+.t3-pm1-flash.t3-pair-selected span {
+    animation: t3-pm1-span-pulse 1.2s ease-in-out infinite;
+    background: #fef3c7;
+    color: #92400e;
+}
+
+@keyframes t3-pm1-pulse {
+    0%, 100% {
+        background: #fef3c7;
+        box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+    }
+    50% {
+        background: #fbbf24;
+        box-shadow: 0 0 16px rgba(245, 158, 11, 1);
+    }
+}
+
+@keyframes t3-pm1-span-pulse {
+    0%, 100% {
+        background: #fef3c7;
+    }
+    50% {
+        background: #fbbf24;
+    }
+}
+
+/* Anchors in projections */
+.anchor-purple {
+    background: #e6ccff;
+    color: #6f42c1;
+    padding: 1px 3px;
+    margin: 1px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-block;
+}
+
+.anchor-green {
+    background: #c3e6cb;
+    color: #28a745;
+    padding: 1px 3px;
+    margin: 1px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-block;
 }
 
 /* Direction cells */
@@ -329,22 +491,40 @@ td {
 }
 
 /* ============================================
+   HOVER MAGNIFIER TOOLTIP
+   ============================================ */
+#cellMagnifier {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    text-align: center;
+    min-width: 40px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35), 0 0 0 2px rgba(0,0,0,0.15);
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    white-space: nowrap;
+    line-height: 1.3;
+}
+#cellMagnifier.visible {
+    opacity: 1;
+}
+
+/* ============================================
    PANEL STYLES - AI, MONEY, WHEEL
    ============================================ */
 
-.info-panels-container-bottom {
-    display: flex;
-    gap: 15px;
-    margin-top: 20px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-}
+/* info-panels-container-bottom layout is defined in panels-bottom.css (grid) */
 
 .ai-panel,
+.ai-selection-panel,
+.ai-results-panel,
 .money-panel,
 .wheel-panel {
-    flex: 1;
-    min-width: 350px;
     background: white;
     border: 2px solid #dee2e6;
     border-radius: 8px;
@@ -353,12 +533,15 @@ td {
 }
 
 .ai-panel.expanded,
+.ai-selection-panel.expanded,
 .money-panel.expanded,
 .wheel-panel.expanded {
     border-color: #007bff;
 }
 
 .ai-panel .panel-header,
+.ai-selection-panel .panel-header,
+.ai-results-panel .panel-header,
 .money-panel .panel-header,
 .wheel-panel .panel-header {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -371,6 +554,8 @@ td {
 }
 
 .ai-panel .panel-header h3,
+.ai-selection-panel .panel-header h3,
+.ai-results-panel .panel-header h3,
 .money-panel .panel-header h3,
 .wheel-panel .panel-header h3 {
     margin: 0;
@@ -395,6 +580,8 @@ td {
 }
 
 .ai-panel .panel-content,
+.ai-selection-panel .panel-content,
+.ai-results-panel .panel-content,
 .money-panel .panel-content,
 .wheel-panel .panel-content {
     padding: 16px;
@@ -727,4 +914,56 @@ td {
 .auto-update-indicator.show {
     opacity: 1;
     transform: translateY(0);
+}
+
+/* ============================================
+   MULTI-TABLE SELECTION SECTIONS (AI Panel)
+   ============================================ */
+.table-selection-section {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.table-selection-header {
+    cursor: pointer;
+    user-select: none;
+    transition: filter 0.15s ease;
+}
+
+.table-selection-header:hover {
+    filter: brightness(0.95);
+}
+
+/* Sub-ref checkboxes for Table 1 & 2 */
+.table1-sub-refs,
+.table2-sub-refs {
+    transition: all 0.2s ease;
+}
+
+.table1-sub-refs label,
+.table2-sub-refs label {
+    transition: background 0.15s ease;
+    border-radius: 3px;
+    padding: 1px 3px;
+}
+
+.table1-sub-refs label:hover,
+.table2-sub-refs label:hover {
+    background: #f1f5f9;
+}
+
+/* Pair checkbox pills - hover effect */
+.t3-pair-cb:checked + span,
+.table1-pair-cb:checked + span,
+.table2-pair-cb:checked + span {
+    font-weight: 900;
+}
+
+/* Override for collapsible section content */
+#table3Checkboxes,
+#table1Checkboxes,
+#table2Checkboxes {
+    transition: all 0.2s ease;
 }

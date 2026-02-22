@@ -40,7 +40,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Start the server
-echo "🚀 Starting AI Server on http://localhost:8000"
+echo "🚀 Starting AI Server on http://localhost:8002"
 echo "📡 Press Ctrl+C to stop"
 echo ""
 echo "==============================================="

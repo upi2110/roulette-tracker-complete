@@ -1,7 +1,6 @@
 /**
- * Auto-Update Orchestrator - UPDATED FOR MANUAL MODE
+ * Auto-Update Orchestrator - FIXED INTEGRATION
  * Coordinates updates between all panels
- * CHANGE: Loads available pairs when new spins added (for manual selection)
  */
 
 class AutoUpdateOrchestrator {
@@ -23,36 +22,19 @@ class AutoUpdateOrchestrator {
             if (currentCount > this.lastSpinCount) {
                 console.log(`🔄 New spin detected! Count: ${currentCount}`);
                 
-                // CHANGED: Load available pairs for manual selection
-                this.loadPairsForManualSelection();
-                
                 // Start session if needed
                 if (!this.sessionStarted) {
                     console.log('🚀 Starting session FIRST...');
                     this.startSessionFirst().then(() => {
-                        // Don't auto-update prediction in manual mode
-                        // User must select pairs manually
+                        this.updateAll();
                     });
                 } else {
-                    // Don't auto-update prediction in manual mode
-                    // User must select pairs manually
+                    this.updateAll();
                 }
                 
                 this.lastSpinCount = currentCount;
             }
         }, 500);
-    }
-
-    /**
-     * NEW: Load available pairs when spins are added
-     */
-    loadPairsForManualSelection() {
-        if (window.aiPanel && typeof window.aiPanel.loadAvailablePairs === 'function') {
-            console.log('📊 Loading pairs for manual selection...');
-            window.aiPanel.loadAvailablePairs();
-        } else {
-            console.warn('⚠️ AI panel not available for pair loading');
-        }
     }
 
     async startSessionFirst() {
@@ -71,6 +53,65 @@ class AutoUpdateOrchestrator {
             
         } catch (error) {
             console.error('❌ Failed to start session:', error);
+        }
+    }
+
+    async updateAll() {
+        console.log('🔄 Updating all panels...');
+        
+        try {
+            // 1. Get AI prediction (this updates AI panel internally)
+            await this.updateAIPrediction();
+            
+            // Note: Wheel and money panel are updated inside updateAIPrediction
+            // via aiPanel.updatePrediction() which calls:
+            //   - window.rouletteWheel.updateHighlights()
+            //   - window.moneyPanel.setPrediction()
+            
+            console.log('✅ All panels updated');
+            
+        } catch (error) {
+            console.error('❌ Error updating panels:', error);
+        }
+    }
+
+    async updateAIPrediction() {
+        try {
+            // Use V6 integration
+            const integration = window.aiIntegrationV6 || window.aiIntegration;
+            
+            if (!integration) {
+                console.error('❌ AI Integration not found!');
+                return;
+            }
+            
+            // Get prediction from backend
+            const prediction = await integration.getPrediction(window.spins || []);
+            
+            if (!prediction) {
+                console.log('⏳ No prediction yet (need more spins)');
+                return;
+            }
+            
+            console.log('🤖 V6 Prediction received:', {
+                signal: prediction.signal,
+                numbers: prediction.numbers?.length || 0,
+                anchors: prediction.anchors?.length || 0,
+                loose: prediction.loose?.length || 0,
+                confidence: prediction.confidence
+            });
+            
+            // Update AI prediction panel
+            // This will cascade to wheel and money panel
+            if (window.aiPanel && typeof window.aiPanel.updatePrediction === 'function') {
+                window.aiPanel.updatePrediction(prediction);
+                console.log('✅ AI panel update triggered (cascades to wheel & money)');
+            } else {
+                console.warn('⚠️ AI panel not available yet');
+            }
+            
+        } catch (error) {
+            console.error('❌ Error getting AI prediction:', error);
         }
     }
 

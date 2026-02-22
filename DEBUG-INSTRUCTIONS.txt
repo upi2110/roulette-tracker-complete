@@ -1,0 +1,103 @@
+================================================================================
+DEBUGGING MANUAL MODE - STEP BY STEP
+================================================================================
+
+Your code is 100% CORRECT in all files:
+✅ backend/api/ai_server_v6.py - Has selectedPairs in TableData model
+✅ backend/models/ai_engine_v6_NEW_STRATEGY.py - Has complete manual mode logic
+✅ app/ai-prediction-panel.js - Sends selectedPairs correctly
+✅ app/preload.js - Forwards all data to backend
+
+BUT something is preventing selectedPairs from reaching the backend!
+
+================================================================================
+STEP 1: ADD DETAILED LOGGING
+================================================================================
+
+In app/ai-prediction-panel.js, find the getPredictions() function around line 350
+and ADD these console.log lines:
+
+    async getPredictions() {
+        if (this.selectedPairs.size === 0) {
+            alert('Please select at least one pair');
+            return;
+        }
+
+        // ADD THESE LINES:
+        console.log('\n🔍 DEBUG: selectedPairs Set:', this.selectedPairs);
+        console.log('🔍 DEBUG: selectedPairs Array:', Array.from(this.selectedPairs));
+        console.log('🔍 DEBUG: Size:', this.selectedPairs.size);
+
+        console.log('\n========================================');
+        console.log('🎲 MANUAL PREDICTION REQUEST');
+        // ... rest of the code
+
+    Then RIGHT BEFORE calling the backend (around line 370):
+
+        const requestData = {
+            ...tableData,
+            selectedPairs: Array.from(this.selectedPairs)
+        };
+        
+        // ADD THESE LINES:
+        console.log('🔍 DEBUG: Full requestData:', requestData);
+        console.log('🔍 DEBUG: requestData.selectedPairs:', requestData.selectedPairs);
+        console.log('🔍 DEBUG: JSON.stringify test:');
+        const jsonString = JSON.stringify(requestData);
+        console.log('   Contains "selectedPairs"?', jsonString.includes('selectedPairs'));
+        console.log('   First 200 chars:', jsonString.substring(0, 200));
+        
+        console.log('📤 Sending to backend with selectedPairs:', requestData.selectedPairs);
+
+================================================================================
+STEP 2: ADD LOGGING TO BACKEND API
+================================================================================
+
+In backend/api/ai_server_v6.py, around line 88-95, ADD these print statements:
+
+    try:
+        print("\n" + "="*80)
+        print("📥 RECEIVED PREDICTION REQUEST")
+        print("="*80)
+        
+        # ADD THESE LINES:
+        print(f"🔍 DEBUG: data object type: {type(data)}")
+        print(f"🔍 DEBUG: data.selectedPairs: {data.selectedPairs}")
+        print(f"🔍 DEBUG: hasattr selectedPairs: {hasattr(data, 'selectedPairs')}")
+        
+        print(f"Current spin count: {data.currentSpinCount}")
+        print(f"Recent spins: {data.recentSpins}")
+
+================================================================================
+STEP 3: TEST AND COLLECT LOGS
+================================================================================
+
+1. Restart backend:
+   cd backend
+   python api/ai_server_v6.py
+
+2. Restart frontend (or just refresh page with Ctrl+R)
+
+3. Open browser console (F12 → Console tab)
+
+4. Enter 3-4 spins
+
+5. Select P and P+1 pairs
+
+6. Click GET PREDICTIONS
+
+7. Collect these logs:
+   - Browser console output (all the 🔍 DEBUG lines)
+   - Backend terminal output (all the 🔍 DEBUG lines)
+
+================================================================================
+STEP 4: SEND ME THE LOGS
+================================================================================
+
+Copy and paste:
+1. Frontend console (F12 → Console) - everything from "🔍 DEBUG" onwards
+2. Backend terminal - everything from "📥 RECEIVED" onwards
+
+This will tell us EXACTLY where selectedPairs is being lost!
+
+================================================================================

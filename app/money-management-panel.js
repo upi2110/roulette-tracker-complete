@@ -174,9 +174,9 @@ class MoneyManagementPanel {
             console.log('✅ Betting ENABLED - System will place bets automatically');
     
             // CRITICAL: Get fresh prediction immediately when starting
-            if (window.aiPanel && window.aiPanel.getPredictionAuto) {
+            if (window.aiPanel && window.aiPanel.getPredictions) {
                 setTimeout(() => {
-                    window.aiPanel.getPredictionAuto();
+                    window.aiPanel.getPredictions();
                     console.log('🔄 Triggered fresh prediction after START');
                 }, 100);
             }
@@ -682,6 +682,80 @@ class MoneyManagementPanel {
             historyEl.appendChild(div);
         });
     }
+
+    setPrediction(prediction) {
+        /**
+         * Receive prediction from AI panel
+         * Store it as pending bet to be placed on next spin
+         */
+        
+        if (!prediction || !prediction.numbers || prediction.numbers.length === 0) {
+            console.log('⚠️ No valid prediction to set');
+            return;
+        }
+        
+        console.log('💰 Money panel received prediction:', {
+            signal: prediction.signal,
+            numbers: prediction.numbers.length,
+            confidence: prediction.confidence
+        });
+        
+        // Start session if not already active
+        if (!this.sessionData.isSessionActive) {
+            console.log('🚀 Starting session (first prediction received)');
+            this.sessionData.isSessionActive = true;
+            // Sync lastSpinCount to current count so the interval doesn't
+            // treat the current spin as a "new" result to check against
+            const currentSpins = window.spins || window.spinData;
+            if (currentSpins) {
+                this.lastSpinCount = currentSpins.length;
+                console.log(`📌 Synced lastSpinCount to ${this.lastSpinCount}`);
+            }
+        }
+        
+        // Store prediction details
+        const betAmount = this.calculateBetAmount(prediction.numbers.length);
+
+        // Only store pending bet if betting is ENABLED
+        if (this.sessionData.isBettingEnabled) {
+            this.pendingBet = {
+                betAmount: betAmount,
+                numbersCount: prediction.numbers.length,
+                predictedNumbers: prediction.numbers,
+                signal: prediction.signal,
+                confidence: prediction.confidence
+            };
+            console.log('💰 Pending bet stored:', {
+                betPerNumber: betAmount,
+                totalNumbers: prediction.numbers.length,
+                totalBet: betAmount * prediction.numbers.length
+            });
+        } else {
+            this.pendingBet = null;
+            console.log('⏸️ Betting paused - prediction received but no bet placed');
+        }
+
+        // Update session data for display (always show what WOULD be bet)
+        this.sessionData.lastBetAmount = betAmount;
+        this.sessionData.lastBetNumbers = prediction.numbers.length;
+        
+        // Update display
+        this.render();
+    }
+    
+    calculateBetAmount(numberCount) {
+        /**
+         * Calculate bet amount based on strategy and bankroll
+         */
+        
+        const currentBet = this.sessionData.currentBetPerNumber;
+        
+        // Safety check: ensure we have enough bankroll
+        const maxBet = Math.floor(this.sessionData.currentBankroll / (numberCount * 2));
+        const safeBet = Math.min(currentBet, maxBet);
+        
+        return Math.max(1, safeBet); // Minimum $1 per number
+    }
 }
 
 // Create global instance
@@ -690,6 +764,8 @@ window.moneyPanel = null;
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         window.moneyPanel = new MoneyManagementPanel();
-        console.log('✅ Money Management Panel initialized (EXPANDED)');
-    }, 100);
+        console.log('✅ Money Management Panel initialized (RIGHT position)');
+    }, 200); // Delay to ensure wheel and AI panels load first
 });
+
+console.log('✅ Money Management Panel script loaded');

@@ -28,6 +28,13 @@ function createWindow() {
         mainWindow.webContents.reloadIgnoringCache();
     });
 
+    // IPC handler: append flash diagnostic log to project folder
+    ipcMain.handle('write-flash-log', async (event, data) => {
+        const logPath = path.join(__dirname, 'flash-debug.log');
+        fs.appendFileSync(logPath, data, 'utf-8');
+        return logPath;
+    });
+
     // Create menu
     const template = [
         {

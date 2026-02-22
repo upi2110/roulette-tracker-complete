@@ -1,56 +1,97 @@
 /**
- * Preload Script for AI Integration
- * Exposes AI server communication to renderer process
+ * Preload Script - UPDATED FOR V6
+ * Electron bridge between renderer and backend API
  */
 
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
-// Expose AI API to renderer
+// Expose API to renderer process
 contextBridge.exposeInMainWorld('aiAPI', {
+
+    /**
+     * Write flash diagnostic log to project folder
+     */
+    async writeFlashLog(data) {
+        try {
+            return await ipcRenderer.invoke('write-flash-log', data);
+        } catch (e) {
+            console.warn('Flash log write failed:', e.message);
+            return null;
+        }
+    },
+    
     /**
      * Test connection to AI server
      */
     async testConnection() {
         try {
-            const response = await fetch('http://localhost:8000');
+            const response = await fetch('http://localhost:8002/');
+            if (!response.ok) return false;
             const data = await response.json();
-            return data.status === 'AI Server Running';
+            console.log('✅ AI Server connected:', data);
+            return true;
         } catch (error) {
-            console.error('AI Server connection failed:', error);
+            console.error('❌ AI Server connection failed:', error);
             return false;
         }
     },
 
     /**
-     * Get AI prediction
+     * Get prediction with table data (V6 compatible)
+     * Now accepts table3NextProjections!
      */
     async getPredictionWithTableData(tableData) {
         try {
-            const response = await fetch('http://localhost:8000/predict', {
+            console.log('📤 Sending V6 data to backend...');
+            console.log('   Current spin count:', tableData.currentSpinCount);
+            console.log('   Table 3 NEXT projections:', Object.keys(tableData.table3NextProjections || {}).length);
+            
+            const response = await fetch('http://localhost:8002/predict', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                },
                 body: JSON.stringify(tableData)
             });
-            return await response.json();
+
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+
+            const prediction = await response.json();
+            
+            console.log('📥 V6 Prediction received:');
+            console.log('   Signal:', prediction.signal);
+            console.log('   Numbers:', prediction.numbers?.length || 0);
+            console.log('   Full pool:', prediction.full_pool?.length || 0);
+            console.log('   Confidence:', prediction.confidence, '%');
+            
+            return prediction;
+            
         } catch (error) {
-            console.error('Prediction request failed:', error);
-            return null;
+            console.error('❌ Prediction request failed:', error);
+            throw error;
         }
     },
 
     /**
-     * Start betting session
+     * Start a new session
      */
     async startSession(bankroll = 4000, target = 100) {
         try {
-            const response = await fetch(
-                `http://localhost:8000/start_session?starting_bankroll=${bankroll}&session_target=${target}`,
-                { method: 'POST' }
-            );
+            const response = await fetch(`http://localhost:8002/start_session?starting_bankroll=${bankroll}&session_target=${target}`, {
+                method: 'POST'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+            
             return await response.json();
+            
         } catch (error) {
-            console.error('Start session failed:', error);
-            return null;
+            console.error('❌ Start session failed:', error);
+            throw error;
         }
     },
 
@@ -59,18 +100,26 @@ contextBridge.exposeInMainWorld('aiAPI', {
      */
     async processResult(betPerNumber, hit) {
         try {
-            const response = await fetch('http://localhost:8000/process_result', {
+            const response = await fetch('http://localhost:8002/process_result', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
                     bet_per_number: betPerNumber,
                     hit: hit
                 })
             });
+            
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+            
             return await response.json();
+            
         } catch (error) {
-            console.error('Process result failed:', error);
-            return null;
+            console.error('❌ Process result failed:', error);
+            throw error;
         }
     },
 
@@ -79,24 +128,17 @@ contextBridge.exposeInMainWorld('aiAPI', {
      */
     async getStatus() {
         try {
-            const response = await fetch('http://localhost:8000/status');
+            const response = await fetch('http://localhost:8002/status');
+            
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+            
             return await response.json();
+            
         } catch (error) {
-            console.error('Get status failed:', error);
-            return null;
-        }
-    },
-
-    /**
-     * Get session report
-     */
-    async getSessionReport() {
-        try {
-            const response = await fetch('http://localhost:8000/session_report');
-            return await response.json();
-        } catch (error) {
-            console.error('Get report failed:', error);
-            return null;
+            console.error('❌ Get status failed:', error);
+            throw error;
         }
     },
 
@@ -105,15 +147,21 @@ contextBridge.exposeInMainWorld('aiAPI', {
      */
     async resetSession() {
         try {
-            const response = await fetch('http://localhost:8000/reset', {
+            const response = await fetch('http://localhost:8002/reset', {
                 method: 'POST'
             });
+            
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+            
             return await response.json();
+            
         } catch (error) {
-            console.error('Reset session failed:', error);
-            return null;
+            console.error('❌ Reset session failed:', error);
+            throw error;
         }
     }
 });
 
-console.log('✅ Preload: AI API exposed to renderer');
+console.log('✅ Preload script loaded (V6 compatible)');
