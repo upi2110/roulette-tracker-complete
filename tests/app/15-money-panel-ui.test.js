@@ -1691,3 +1691,151 @@ describe('setupBettingControl() - button listeners', () => {
         expect(mp.sessionData.bettingStrategy).toBe(1);
     });
 });
+
+// ═══════════════════════════════════════════════════════
+// recordBetResult() — AI engine feedback loop
+// ═══════════════════════════════════════════════════════
+
+describe('recordBetResult() - AI engine feedback loop', () => {
+    test('calls engine.recordResult() when engine is available and enabled', async () => {
+        const mp = getPanel();
+        const mockRecordResult = jest.fn();
+        global.window.aiAutoEngine = {
+            isTrained: true,
+            isEnabled: true,
+            lastDecision: {
+                selectedPair: 'prev',
+                selectedFilter: 'zero_positive',
+                numbers: [5, 10, 15]
+            },
+            recordResult: mockRecordResult
+        };
+
+        await mp.recordBetResult(2, 10, true, 15);
+
+        expect(mockRecordResult).toHaveBeenCalledWith(
+            'prev', 'zero_positive', true, 15, [5, 10, 15]
+        );
+    });
+
+    test('passes correct pairKey, filterKey, hit, actual, and numbers', async () => {
+        const mp = getPanel();
+        const mockRecordResult = jest.fn();
+        global.window.aiAutoEngine = {
+            isTrained: true,
+            isEnabled: true,
+            lastDecision: {
+                selectedPair: 'prevPlus1',
+                selectedFilter: 'nineteen_negative',
+                numbers: [1, 2, 3, 4]
+            },
+            recordResult: mockRecordResult
+        };
+
+        await mp.recordBetResult(3, 8, false, 7);
+
+        expect(mockRecordResult).toHaveBeenCalledWith(
+            'prevPlus1', 'nineteen_negative', false, 7, [1, 2, 3, 4]
+        );
+    });
+
+    test('does NOT call engine when engine is null', async () => {
+        const mp = getPanel();
+        global.window.aiAutoEngine = null;
+
+        // Should not throw
+        await expect(mp.recordBetResult(2, 10, true, 15)).resolves.toBeUndefined();
+    });
+
+    test('does NOT call engine when engine.isEnabled is false', async () => {
+        const mp = getPanel();
+        const mockRecordResult = jest.fn();
+        global.window.aiAutoEngine = {
+            isTrained: true,
+            isEnabled: false,
+            lastDecision: {
+                selectedPair: 'prev',
+                selectedFilter: 'both_both',
+                numbers: [5, 10]
+            },
+            recordResult: mockRecordResult
+        };
+
+        await mp.recordBetResult(2, 10, true, 15);
+
+        expect(mockRecordResult).not.toHaveBeenCalled();
+    });
+
+    test('does NOT call engine when lastDecision is null', async () => {
+        const mp = getPanel();
+        const mockRecordResult = jest.fn();
+        global.window.aiAutoEngine = {
+            isTrained: true,
+            isEnabled: true,
+            lastDecision: null,
+            recordResult: mockRecordResult
+        };
+
+        await mp.recordBetResult(2, 10, false, 7);
+
+        expect(mockRecordResult).not.toHaveBeenCalled();
+    });
+
+    test('clears lastDecision after consuming it', async () => {
+        const mp = getPanel();
+        const engine = {
+            isTrained: true,
+            isEnabled: true,
+            lastDecision: {
+                selectedPair: 'prevMinus1',
+                selectedFilter: 'zero_negative',
+                numbers: [8, 9, 10]
+            },
+            recordResult: jest.fn()
+        };
+        global.window.aiAutoEngine = engine;
+
+        await mp.recordBetResult(2, 10, true, 10);
+
+        expect(engine.lastDecision).toBeNull();
+    });
+
+    test('still works normally without engine (backward compatible)', async () => {
+        const mp = getPanel();
+        global.window.aiAutoEngine = undefined;
+        mp.sessionData.currentBankroll = 4000;
+
+        await mp.recordBetResult(2, 10, true, 15);
+
+        // P&L still calculated: 2*35 - 2*10 = 50
+        expect(mp.sessionData.sessionProfit).toBe(50);
+        expect(mp.sessionData.totalWins).toBe(1);
+        expect(mp.sessionData.totalBets).toBe(1);
+    });
+
+    test('handles engine.recordResult throwing (catches error)', async () => {
+        const mp = getPanel();
+        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+        global.window.aiAutoEngine = {
+            isTrained: true,
+            isEnabled: true,
+            lastDecision: {
+                selectedPair: 'prev',
+                selectedFilter: 'both_both',
+                numbers: [5]
+            },
+            recordResult: jest.fn().mockImplementation(() => { throw new Error('engine boom'); })
+        };
+        mp.sessionData.currentBankroll = 4000;
+
+        await mp.recordBetResult(2, 10, false, 7);
+
+        // Should not throw — error caught internally
+        expect(mp.sessionData.totalLosses).toBe(1);
+        expect(consoleSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Failed to update AI engine'),
+            expect.anything()
+        );
+        consoleSpy.mockRestore();
+    });
+});

@@ -47,6 +47,9 @@ Object.entries(REFKEY_TO_PAIR_NAME).forEach(([k, v]) => { PAIR_NAME_TO_REFKEY[v]
 const GOLDEN_CODES = ['S+0', 'O+0'];
 const NEAR_CODES = ['SL+1', 'SR+1', 'OL+1', 'OR+1'];
 
+// European roulette wheel order (clockwise from 0)
+const EUROPEAN_WHEEL = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
+
 class AIAutoEngine {
     /**
      * @param {Object} [options]
@@ -65,6 +68,7 @@ class AIAutoEngine {
 
         // Session adaptation
         this.session = this._createSessionTracker();
+        this.lastDecision = null;  // Stored by orchestrator for feedback loop
 
         // Configuration
         this.confidenceThreshold = options.confidenceThreshold ?? 65;
@@ -79,10 +83,14 @@ class AIAutoEngine {
             wins: 0,
             losses: 0,
             consecutiveSkips: 0,
+            consecutiveLosses: 0,          // NEW: track loss streaks
+            cooldownActive: false,          // NEW: true after 3 consecutive losses
+            cooldownThreshold: 80,          // NEW: elevated confidence during cooldown
+            nearMisses: 0,                  // NEW: near-miss counter
             pairPerformance: {},     // { [refKey]: { attempts, hits } }
             filterPerformance: {},   // { [filterKey]: { attempts, hits } }
             sessionWinRate: 0,
-            recentDecisions: [],     // last 10 { refKey, filterKey, hit }
+            recentDecisions: [],     // last 10 { refKey, filterKey, hit, nearMiss }
             adaptationWeight: 0.0
         };
     }
@@ -492,19 +500,25 @@ class AIAutoEngine {
         // 7. Confidence
         const confidence = this._computeConfidence(bestPair.score, filterResult.score, filterResult.filteredNumbers);
 
-        // 8. Skip logic
-        const forcebet = this.session.consecutiveSkips >= this.maxConsecutiveSkips;
+        // 8. Skip logic — with cooldown protection
+        const effectiveThreshold = this.session.cooldownActive
+            ? Math.max(this.confidenceThreshold, this.session.cooldownThreshold || 80)
+            : this.confidenceThreshold;
+        // Don't force-bet during cooldown — wait for strong signal
+        const forcebet = this.session.consecutiveSkips >= this.maxConsecutiveSkips
+            && !this.session.cooldownActive;
         let action;
         let reason;
 
-        if (confidence >= this.confidenceThreshold || forcebet) {
+        if (confidence >= effectiveThreshold || forcebet) {
             action = 'BET';
-            reason = forcebet && confidence < this.confidenceThreshold
+            reason = forcebet && confidence < effectiveThreshold
                 ? `Forced bet after ${this.session.consecutiveSkips} skips (conf: ${confidence}%)`
                 : `Pair ${bestPair.pairName} with ${filterResult.filterKey} filter (conf: ${confidence}%)`;
         } else {
             action = 'SKIP';
-            reason = `Low confidence ${confidence}% < ${this.confidenceThreshold}% threshold (skip ${this.session.consecutiveSkips + 1}/${this.maxConsecutiveSkips})`;
+            const cooldownNote = this.session.cooldownActive ? ' [COOLDOWN]' : '';
+            reason = `Low confidence ${confidence}% < ${effectiveThreshold}% threshold (skip ${this.session.consecutiveSkips + 1}/${this.maxConsecutiveSkips})${cooldownNote}`;
         }
 
         return {
@@ -570,11 +584,15 @@ class AIAutoEngine {
             composite += 0.10; // Near-golden performance
         }
 
-        // Recency bonus: hit in last 3 session bets
-        const recentHits = this.session.recentDecisions.slice(-3)
-            .filter(d => d.refKey === refKey && d.hit).length;
-        if (recentHits > 0) {
-            composite += 0.05 * recentHits;
+        // Recency bonus: hit or near-miss in last 3 session bets
+        // Near-misses get 0.5× credit (engine direction was right, just off by 1 pocket)
+        const recentForPair = this.session.recentDecisions.slice(-3)
+            .filter(d => d.refKey === refKey);
+        const recentFullHits = recentForPair.filter(d => d.hit).length;
+        const recentNearMisses = recentForPair.filter(d => d.nearMiss && !d.hit).length;
+        const recentCredit = recentFullHits + recentNearMisses * 0.5;
+        if (recentCredit > 0) {
+            composite += 0.05 * recentCredit;
         }
 
         // Penalties
@@ -692,18 +710,36 @@ class AIAutoEngine {
 
     /**
      * Record the result of a bet for session adaptation.
+     *
+     * @param {string} pairKey - Pair name or refKey
+     * @param {string} filterKey - Filter combination key
+     * @param {boolean} hit - Whether the actual number was in predicted set
+     * @param {number} actual - The actual roulette number that appeared
+     * @param {number[]} [predictedNumbers=[]] - Numbers that were bet on (for near-miss detection)
      */
-    recordResult(pairKey, filterKey, hit, actual) {
+    recordResult(pairKey, filterKey, hit, actual, predictedNumbers = []) {
         // Convert pairName to refKey if needed
         const refKey = PAIR_NAME_TO_REFKEY[pairKey] || pairKey;
 
         this.session.totalBets++;
         if (hit) {
             this.session.wins++;
+            this.session.consecutiveLosses = 0;
+            this.session.cooldownActive = false; // Exit cooldown on any win
         } else {
             this.session.losses++;
+            this.session.consecutiveLosses++;
+            if (this.session.consecutiveLosses >= 3) {
+                this.session.cooldownActive = true;
+            }
         }
         this.session.consecutiveSkips = 0;
+
+        // Near-miss detection: actual is ±1 pocket from any predicted number on wheel
+        const nearMiss = !hit && predictedNumbers.length > 0 && this._isNearMiss(actual, predictedNumbers);
+        if (nearMiss) {
+            this.session.nearMisses++;
+        }
 
         // Per-pair performance
         if (!this.session.pairPerformance[refKey]) {
@@ -722,8 +758,8 @@ class AIAutoEngine {
         // Update session win rate
         this.session.sessionWinRate = this.session.wins / this.session.totalBets;
 
-        // Recent decisions (keep last 10)
-        this.session.recentDecisions.push({ refKey, filterKey, hit });
+        // Recent decisions (keep last 10) — includes nearMiss flag
+        this.session.recentDecisions.push({ refKey, filterKey, hit, nearMiss });
         if (this.session.recentDecisions.length > 10) {
             this.session.recentDecisions.shift();
         }
@@ -735,6 +771,22 @@ class AIAutoEngine {
                 0.1 + (this.session.totalBets - this.sessionAdaptationStart) * 0.02
             );
         }
+    }
+
+    /**
+     * Detect if actual number is ±1 pocket from any predicted number on the European wheel.
+     * For learning only — P&L is unchanged (a miss is still a financial loss).
+     *
+     * @param {number} actual - The actual number that appeared
+     * @param {number[]} predictedNumbers - Numbers that were bet on
+     * @returns {boolean} True if actual is adjacent to any predicted number on the wheel
+     */
+    _isNearMiss(actual, predictedNumbers) {
+        const idx = EUROPEAN_WHEEL.indexOf(actual);
+        if (idx === -1) return false;
+        const leftNeighbor = EUROPEAN_WHEEL[(idx - 1 + 37) % 37];
+        const rightNeighbor = EUROPEAN_WHEEL[(idx + 1) % 37];
+        return predictedNumbers.includes(leftNeighbor) || predictedNumbers.includes(rightNeighbor);
     }
 
     /**
@@ -761,6 +813,7 @@ class AIAutoEngine {
 
     resetSession() {
         this.session = this._createSessionTracker();
+        this.lastDecision = null;
     }
 
     fullReset() {
@@ -904,7 +957,7 @@ class AIAutoEngine {
 
 // Export for both browser and Node.js (tests)
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, PAIR_NAME_TO_REFKEY };
+    module.exports = { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, PAIR_NAME_TO_REFKEY, EUROPEAN_WHEEL };
 }
 if (typeof window !== 'undefined') {
     window.AIAutoEngine = AIAutoEngine;

@@ -73,12 +73,20 @@ class AutoUpdateOrchestrator {
         const decision = window.aiAutoEngine.decide();
         console.log('🤖 AUTO DECISION:', decision);
 
-        // 3. Update UI
+        // 3. Store decision on engine for feedback loop
+        // money-management-panel reads this after bet resolves to call engine.recordResult()
+        window.aiAutoEngine.lastDecision = decision.action === 'BET' ? {
+            selectedPair: decision.selectedPair,
+            selectedFilter: decision.selectedFilter,
+            numbers: decision.numbers
+        } : null;
+
+        // 4. Update UI
         if (window.aiAutoModeUI) {
             window.aiAutoModeUI.updateDecisionDisplay(decision);
         }
 
-        // 4. Execute decision
+        // 5. Execute decision
         if (decision.action === 'BET') {
             // a. Clear old selections + select the chosen pair
             if (window.aiPanel) {

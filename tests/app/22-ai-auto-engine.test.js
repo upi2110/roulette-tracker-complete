@@ -1498,5 +1498,251 @@ describe('AIAutoEngine', () => {
             expect(engine.isEnabled).toBe(false);
             expect(() => engine.enable()).toThrow();
         });
+
+        test('resetSession clears lastDecision', () => {
+            engine.lastDecision = { selectedPair: 'prev', selectedFilter: 'both_both', numbers: [1, 2] };
+            engine.resetSession();
+            expect(engine.lastDecision).toBeNull();
+        });
+    });
+
+    // ─── P. Near-Miss Detection ───
+    describe('P. _isNearMiss', () => {
+        // European wheel: [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26]
+        // Neighbors: 0↔32, 0↔26; 5↔10, 5↔24; 26↔3, 26↔0
+
+        test('P1: returns true when actual is right neighbor of predicted', () => {
+            // Wheel: ...10, 5, 24... → 24 is right neighbor of 5
+            expect(engine._isNearMiss(24, [5])).toBe(true);
+        });
+
+        test('P2: returns true when actual is left neighbor of predicted', () => {
+            // Wheel: ...10, 5, 24... → 10 is left neighbor of 5
+            expect(engine._isNearMiss(10, [5])).toBe(true);
+        });
+
+        test('P3: returns false when actual is 2+ pockets away', () => {
+            // 16 is 2 pockets from 5: ...5, 24, 16...
+            expect(engine._isNearMiss(16, [5])).toBe(false);
+        });
+
+        test('P4: wraps around wheel — 26↔0 are neighbors', () => {
+            // Wheel ends: ...3, 26] and starts [0, 32...
+            expect(engine._isNearMiss(0, [26])).toBe(true);
+            expect(engine._isNearMiss(26, [0])).toBe(true);
+        });
+
+        test('P5: wraps around — 26→3 left neighbor', () => {
+            // Wheel: ...35, 3, 26]
+            expect(engine._isNearMiss(3, [26])).toBe(true);
+        });
+
+        test('P6: returns false with empty predicted array', () => {
+            expect(engine._isNearMiss(5, [])).toBe(false);
+        });
+
+        test('P7: returns false when actual not on wheel', () => {
+            expect(engine._isNearMiss(99, [5, 10])).toBe(false);
+        });
+
+        test('P8: returns true when multiple predicted, one is neighbor', () => {
+            // 32 is right neighbor of 0
+            expect(engine._isNearMiss(32, [17, 22, 0])).toBe(true);
+        });
+    });
+
+    // ─── Q. Cooldown Mechanism ───
+    describe('Q. Cooldown', () => {
+        test('Q1: _createSessionTracker initializes cooldown fields', () => {
+            const tracker = engine._createSessionTracker();
+            expect(tracker.consecutiveLosses).toBe(0);
+            expect(tracker.cooldownActive).toBe(false);
+            expect(tracker.cooldownThreshold).toBe(80);
+            expect(tracker.nearMisses).toBe(0);
+        });
+
+        test('Q2: recordResult sets cooldownActive after 3 consecutive losses', () => {
+            engine.recordResult('prev', 'both_both', false, 5);
+            expect(engine.session.consecutiveLosses).toBe(1);
+            expect(engine.session.cooldownActive).toBe(false);
+
+            engine.recordResult('prev', 'both_both', false, 10);
+            expect(engine.session.consecutiveLosses).toBe(2);
+            expect(engine.session.cooldownActive).toBe(false);
+
+            engine.recordResult('prev', 'both_both', false, 15);
+            expect(engine.session.consecutiveLosses).toBe(3);
+            expect(engine.session.cooldownActive).toBe(true);
+        });
+
+        test('Q3: recordResult does NOT set cooldown after only 2 losses', () => {
+            engine.recordResult('prev', 'both_both', false, 5);
+            engine.recordResult('prev', 'both_both', false, 10);
+            expect(engine.session.cooldownActive).toBe(false);
+        });
+
+        test('Q4: recordResult clears cooldown on any win', () => {
+            // Enter cooldown
+            engine.recordResult('prev', 'both_both', false, 5);
+            engine.recordResult('prev', 'both_both', false, 10);
+            engine.recordResult('prev', 'both_both', false, 15);
+            expect(engine.session.cooldownActive).toBe(true);
+
+            // Win clears it
+            engine.recordResult('prev', 'both_both', true, 20);
+            expect(engine.session.cooldownActive).toBe(false);
+            expect(engine.session.consecutiveLosses).toBe(0);
+        });
+
+        test('Q5: recordResult resets consecutiveLosses on win', () => {
+            engine.recordResult('prev', 'both_both', false, 5);
+            engine.recordResult('prev', 'both_both', false, 10);
+            expect(engine.session.consecutiveLosses).toBe(2);
+
+            engine.recordResult('prev', 'both_both', true, 15);
+            expect(engine.session.consecutiveLosses).toBe(0);
+        });
+
+        test('Q6: cooldown stays active through continued losses', () => {
+            for (let i = 0; i < 5; i++) {
+                engine.recordResult('prev', 'both_both', false, i);
+            }
+            expect(engine.session.consecutiveLosses).toBe(5);
+            expect(engine.session.cooldownActive).toBe(true);
+        });
+
+        test('Q7: lastDecision defaults to null', () => {
+            expect(engine.lastDecision).toBeNull();
+        });
+
+        test('Q8: lastDecision can be set and read', () => {
+            engine.lastDecision = { selectedPair: 'prev', selectedFilter: 'both_both', numbers: [1, 2, 3] };
+            expect(engine.lastDecision.selectedPair).toBe('prev');
+            expect(engine.lastDecision.numbers).toEqual([1, 2, 3]);
+        });
+
+        test('Q9: recordResult with predictedNumbers param works (backward compatible)', () => {
+            // Without 5th param (old callers)
+            engine.recordResult('prev', 'both_both', false, 5);
+            expect(engine.session.totalBets).toBe(1);
+
+            // With 5th param (new callers)
+            engine.recordResult('prev', 'both_both', true, 10, [10, 15, 20]);
+            expect(engine.session.totalBets).toBe(2);
+            expect(engine.session.wins).toBe(1);
+        });
+
+        test('Q10: cooldown win exits even if win was during cooldown', () => {
+            // Enter cooldown
+            for (let i = 0; i < 3; i++) engine.recordResult('prev', 'both_both', false, i);
+            expect(engine.session.cooldownActive).toBe(true);
+
+            // A win during cooldown should clear it
+            engine.recordResult('prev', 'both_both', true, 5, [5, 10]);
+            expect(engine.session.cooldownActive).toBe(false);
+        });
+    });
+
+    // ─── R. Near-Miss in recordResult ───
+    describe('R. Near-miss tracking in recordResult', () => {
+        test('R1: recordResult tracks nearMisses count', () => {
+            // 24 is right neighbor of 5 on wheel
+            engine.recordResult('prev', 'both_both', false, 24, [5]);
+            expect(engine.session.nearMisses).toBe(1);
+        });
+
+        test('R2: recordResult stores nearMiss flag in recentDecisions', () => {
+            engine.recordResult('prev', 'both_both', false, 24, [5]);
+            expect(engine.session.recentDecisions[0].nearMiss).toBe(true);
+        });
+
+        test('R3: hit is NOT near-miss even if neighbor exists', () => {
+            engine.recordResult('prev', 'both_both', true, 5, [5, 10]);
+            expect(engine.session.nearMisses).toBe(0);
+            expect(engine.session.recentDecisions[0].nearMiss).toBe(false);
+        });
+
+        test('R4: full miss (not neighbor) has nearMiss=false', () => {
+            // 33 is not neighbor of 5 (5→24→16→33)
+            engine.recordResult('prev', 'both_both', false, 33, [5]);
+            expect(engine.session.nearMisses).toBe(0);
+            expect(engine.session.recentDecisions[0].nearMiss).toBe(false);
+        });
+
+        test('R5: no predictedNumbers = no near-miss check', () => {
+            engine.recordResult('prev', 'both_both', false, 24);
+            expect(engine.session.nearMisses).toBe(0);
+            expect(engine.session.recentDecisions[0].nearMiss).toBe(false);
+        });
+
+        test('R6: multiple near-misses accumulate', () => {
+            engine.recordResult('prev', 'both_both', false, 24, [5]);   // near-miss
+            engine.recordResult('prev', 'both_both', false, 32, [0]);   // near-miss (0→32)
+            engine.recordResult('prev', 'both_both', false, 33, [5]);   // NOT near-miss
+            expect(engine.session.nearMisses).toBe(2);
+        });
+    });
+
+    // ─── S. Near-Miss in _scorePair ───
+    describe('S. Near-miss partial credit in _scorePair', () => {
+        beforeEach(() => {
+            engine.train([[0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6]]);
+        });
+
+        test('S1: near-miss gives 0.5x recency bonus vs full hit', () => {
+            // Force low base score by resetting model stats
+            engine.pairModels['prev'] = {
+                totalFlashes: 10,
+                projectionHits: 1,
+                hitRate: 0.10,
+                totalProjectionSize: 100,
+                avgProjectionSize: 10,
+                coverageEfficiency: 0.3  // Low efficiency → low base score
+            };
+
+            // Set up session with a near-miss for 'prev'
+            engine.session.recentDecisions = [
+                { refKey: 'prev', filterKey: 'both_both', hit: false, nearMiss: true }
+            ];
+            const scoreWithNearMiss = engine._scorePair('prev', { numbers: [1, 2, 3] });
+
+            // Compare with full hit
+            engine.session.recentDecisions = [
+                { refKey: 'prev', filterKey: 'both_both', hit: true, nearMiss: false }
+            ];
+            const scoreWithHit = engine._scorePair('prev', { numbers: [1, 2, 3] });
+
+            // Full hit: +0.05, Near miss: +0.05 * 0.5 = +0.025
+            // With low base, the difference should be visible
+            expect(scoreWithHit).toBeGreaterThan(scoreWithNearMiss);
+        });
+
+        test('S2: near-miss does NOT count as hit for pair performance', () => {
+            engine.recordResult('prev', 'both_both', false, 24, [5]); // near-miss
+            expect(engine.session.pairPerformance['prev'].hits).toBe(0);
+            expect(engine.session.pairPerformance['prev'].attempts).toBe(1);
+        });
+
+        test('S3: full miss with no near-miss gives zero recency bonus', () => {
+            engine.session.recentDecisions = [
+                { refKey: 'prev', filterKey: 'both_both', hit: false, nearMiss: false }
+            ];
+            const scoreNoCredit = engine._scorePair('prev', { numbers: [1, 2, 3] });
+
+            engine.session.recentDecisions = [
+                { refKey: 'prev', filterKey: 'both_both', hit: false, nearMiss: true }
+            ];
+            const scoreNearMiss = engine._scorePair('prev', { numbers: [1, 2, 3] });
+
+            // Near-miss should give more than full miss
+            expect(scoreNearMiss).toBeGreaterThanOrEqual(scoreNoCredit);
+        });
+
+        test('S4: nearMisses counter in session', () => {
+            engine.recordResult('prev', 'both_both', false, 24, [5]); // near
+            engine.recordResult('prev', 'both_both', false, 32, [0]); // near
+            engine.recordResult('prev', 'both_both', true, 5, [5]);   // hit (not near)
+            expect(engine.session.nearMisses).toBe(2);
+        });
     });
 });

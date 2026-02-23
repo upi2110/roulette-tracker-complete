@@ -454,3 +454,160 @@ describe('AutoUpdateOrchestrator - setupListeners()', () => {
         expect(loadSpy).not.toHaveBeenCalled();
     });
 });
+
+// ─── 8. handleAutoMode() — lastDecision storage for feedback loop ───
+
+describe('AutoUpdateOrchestrator - handleAutoMode() lastDecision', () => {
+    beforeEach(() => {
+        // Load with real setTimeout (handleAutoMode uses await setTimeout(150))
+        const src = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'app', 'auto-update-orchestrator.js'),
+            'utf-8'
+        );
+        const wrappedCode = `
+            (function() {
+                const setTimeout = globalThis.setTimeout;
+                const setInterval = () => {};
+                const document = { addEventListener: () => {}, getElementById: () => null };
+                const window = globalThis.window || {};
+                const console = globalThis.console;
+                ${src}
+                return AutoUpdateOrchestrator;
+            })()
+        `;
+        const Cls = eval(wrappedCode);
+        orchestrator = new Cls();
+    });
+
+    test('sets engine.lastDecision to decision fields on BET', async () => {
+        const mockEngine = {
+            isEnabled: true,
+            decide: jest.fn().mockReturnValue({
+                action: 'BET',
+                selectedPair: 'prev',
+                selectedFilter: 'zero_positive',
+                numbers: [5, 10, 15],
+                confidence: 85,
+                reason: 'test'
+            }),
+            lastDecision: null,
+            recordSkip: jest.fn()
+        };
+        global.window.aiAutoEngine = mockEngine;
+        global.window.aiPanel = { loadAvailablePairs: jest.fn(), clearSelections: jest.fn(), _handleTable3Selection: jest.fn() };
+        global.window.aiAutoModeUI = { updateDecisionDisplay: jest.fn() };
+        global.window.rouletteWheel = null;
+
+        await orchestrator.handleAutoMode();
+
+        expect(mockEngine.lastDecision).toEqual({
+            selectedPair: 'prev',
+            selectedFilter: 'zero_positive',
+            numbers: [5, 10, 15]
+        });
+    });
+
+    test('sets engine.lastDecision to null on SKIP', async () => {
+        const mockEngine = {
+            isEnabled: true,
+            decide: jest.fn().mockReturnValue({
+                action: 'SKIP',
+                selectedPair: null,
+                selectedFilter: null,
+                numbers: [],
+                confidence: 30,
+                reason: 'Low confidence'
+            }),
+            lastDecision: { old: 'data' }, // Pre-existing value
+            recordSkip: jest.fn()
+        };
+        global.window.aiAutoEngine = mockEngine;
+        global.window.aiPanel = { loadAvailablePairs: jest.fn() };
+        global.window.aiAutoModeUI = { updateDecisionDisplay: jest.fn() };
+        global.window.moneyPanel = { pendingBet: null };
+
+        await orchestrator.handleAutoMode();
+
+        expect(mockEngine.lastDecision).toBeNull();
+    });
+
+    test('lastDecision contains selectedPair, selectedFilter, and numbers', async () => {
+        const mockEngine = {
+            isEnabled: true,
+            decide: jest.fn().mockReturnValue({
+                action: 'BET',
+                selectedPair: 'prevPlus1',
+                selectedFilter: 'nineteen_negative',
+                numbers: [1, 2, 3, 4],
+                confidence: 90,
+                reason: 'test'
+            }),
+            lastDecision: null,
+            recordSkip: jest.fn()
+        };
+        global.window.aiAutoEngine = mockEngine;
+        global.window.aiPanel = { loadAvailablePairs: jest.fn(), clearSelections: jest.fn(), _handleTable3Selection: jest.fn() };
+        global.window.aiAutoModeUI = { updateDecisionDisplay: jest.fn() };
+        global.window.rouletteWheel = null;
+
+        await orchestrator.handleAutoMode();
+
+        const ld = mockEngine.lastDecision;
+        expect(ld).toHaveProperty('selectedPair', 'prevPlus1');
+        expect(ld).toHaveProperty('selectedFilter', 'nineteen_negative');
+        expect(ld).toHaveProperty('numbers');
+        expect(ld.numbers).toEqual([1, 2, 3, 4]);
+    });
+
+    test('still calls recordSkip on SKIP', async () => {
+        const mockEngine = {
+            isEnabled: true,
+            decide: jest.fn().mockReturnValue({
+                action: 'SKIP',
+                selectedPair: null,
+                selectedFilter: null,
+                numbers: [],
+                confidence: 20,
+                reason: 'test'
+            }),
+            lastDecision: null,
+            recordSkip: jest.fn()
+        };
+        global.window.aiAutoEngine = mockEngine;
+        global.window.aiPanel = { loadAvailablePairs: jest.fn() };
+        global.window.aiAutoModeUI = { updateDecisionDisplay: jest.fn() };
+        global.window.moneyPanel = { pendingBet: null };
+
+        await orchestrator.handleAutoMode();
+
+        expect(mockEngine.recordSkip).toHaveBeenCalledTimes(1);
+    });
+
+    test('works when engine.lastDecision property does not exist initially', async () => {
+        const mockEngine = {
+            isEnabled: true,
+            decide: jest.fn().mockReturnValue({
+                action: 'BET',
+                selectedPair: 'prevMinus2',
+                selectedFilter: 'both_both',
+                numbers: [7, 8],
+                confidence: 70,
+                reason: 'test'
+            }),
+            recordSkip: jest.fn()
+            // Note: no lastDecision property defined
+        };
+        global.window.aiAutoEngine = mockEngine;
+        global.window.aiPanel = { loadAvailablePairs: jest.fn(), clearSelections: jest.fn(), _handleTable3Selection: jest.fn() };
+        global.window.aiAutoModeUI = { updateDecisionDisplay: jest.fn() };
+        global.window.rouletteWheel = null;
+
+        await orchestrator.handleAutoMode();
+
+        expect(mockEngine.lastDecision).toEqual({
+            selectedPair: 'prevMinus2',
+            selectedFilter: 'both_both',
+            numbers: [7, 8]
+        });
+    });
+});

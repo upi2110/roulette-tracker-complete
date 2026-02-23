@@ -195,7 +195,7 @@ class AutoTestRunner {
                 const refKey = decision.selectedPair
                     ? (Object.entries(TEST_REFKEY_TO_PAIR_NAME).find(([k, v]) => v === decision.selectedPair) || [decision.selectedPair])[0]
                     : 'unknown';
-                this.engine.recordResult(refKey, decision.selectedFilter || 'both_both', hit, nextActual);
+                this.engine.recordResult(refKey, decision.selectedFilter || 'both_both', hit, nextActual, decision.numbers);
 
                 steps.push({
                     spinIdx: i,
@@ -336,23 +336,28 @@ class AutoTestRunner {
             bestPair.score, filterResult.score, filterResult.filteredNumbers
         );
 
-        // 6. Skip logic
-        const forcebet = this.engine.session.consecutiveSkips >= this.engine.maxConsecutiveSkips;
+        // 6. Skip logic — with cooldown protection
+        const effectiveThreshold = this.engine.session.cooldownActive
+            ? Math.max(this.engine.confidenceThreshold, this.engine.session.cooldownThreshold || 80)
+            : this.engine.confidenceThreshold;
+        // Don't force-bet during cooldown
+        const forcebet = this.engine.session.consecutiveSkips >= this.engine.maxConsecutiveSkips
+            && !this.engine.session.cooldownActive;
 
-        if (confidence >= this.engine.confidenceThreshold || forcebet) {
+        if (confidence >= effectiveThreshold || forcebet) {
             return {
                 action: 'BET',
                 selectedPair: bestPair.pairName,
                 selectedFilter: filterResult.filterKey,
                 numbers: filterResult.filteredNumbers,
                 confidence,
-                reason: forcebet && confidence < this.engine.confidenceThreshold
+                reason: forcebet && confidence < effectiveThreshold
                     ? `Forced bet after ${this.engine.session.consecutiveSkips} skips`
                     : `Pair ${bestPair.pairName} with ${filterResult.filterKey} (conf: ${confidence}%)`
             };
         }
 
-        return skipResult(`Low confidence ${confidence}% < ${this.engine.confidenceThreshold}%`);
+        return skipResult(`Low confidence ${confidence}% < ${effectiveThreshold}%`);
     }
 
     // ═══════════════════════════════════════════════════════════

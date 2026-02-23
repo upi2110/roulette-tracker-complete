@@ -426,6 +426,25 @@ class MoneyManagementPanel {
             }
         }
 
+        // CRITICAL: Feed result back to AI engine for session adaptation
+        // The engine needs to learn from every bet result (win/loss/near-miss)
+        try {
+            const engine = typeof window !== 'undefined' ? window.aiAutoEngine : null;
+            if (engine && engine.isTrained && engine.isEnabled && engine.lastDecision) {
+                engine.recordResult(
+                    engine.lastDecision.selectedPair,
+                    engine.lastDecision.selectedFilter,
+                    hit,
+                    actualNumber,
+                    engine.lastDecision.numbers || []
+                );
+                engine.lastDecision = null; // Consumed
+                console.log('🧠 AI engine session adaptation updated');
+            }
+        } catch (engineError) {
+            console.warn('⚠️ Failed to update AI engine:', engineError.message);
+        }
+
         // ═══════════════════════════════════════════════════════
         // STRATEGY-BASED BET ADJUSTMENT
         // ═══════════════════════════════════════════════════════

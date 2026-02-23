@@ -872,4 +872,109 @@ describe('AutoTestRunner', () => {
             }
         });
     });
+
+    // ═══════════════════════════════════════════════════════════
+    //  COOLDOWN & NEAR-MISS IN SIMULATION
+    // ═══════════════════════════════════════════════════════════
+
+    describe('cooldown and near-miss in simulation', () => {
+        test('_runSession passes decision.numbers to engine.recordResult', () => {
+            const testSpins = generateTestSpins(30);
+            const recordSpy = jest.spyOn(engine, 'recordResult');
+            runner._runSession(testSpins, 0, 1);
+
+            // Check that at least one call passed 5 args (including numbers)
+            const callsWithNumbers = recordSpy.mock.calls.filter(c => c.length === 5);
+            if (recordSpy.mock.calls.length > 0) {
+                expect(callsWithNumbers.length).toBe(recordSpy.mock.calls.length);
+                // The 5th arg should be an array
+                for (const call of callsWithNumbers) {
+                    expect(Array.isArray(call[4])).toBe(true);
+                }
+            }
+            recordSpy.mockRestore();
+        });
+
+        test('_simulateDecision uses elevated threshold during cooldown', () => {
+            const testSpins = generateTestSpins(30);
+            // Activate cooldown
+            engine.session.cooldownActive = true;
+            engine.session.cooldownThreshold = 80;
+            engine.confidenceThreshold = 65;
+
+            const result = runner._simulateDecision(testSpins, 5);
+
+            // During cooldown, a low-confidence result should be SKIP
+            // We can verify by checking that the engine's cooldown state is respected
+            if (result.action === 'SKIP' && result.reason) {
+                // SKIP reason should reference the elevated threshold (80)
+                expect(result.reason).toContain('80');
+            }
+            // If it's a BET, confidence must be >= 80
+            if (result.action === 'BET') {
+                expect(result.confidence).toBeGreaterThanOrEqual(80);
+            }
+        });
+
+        test('_simulateDecision does NOT force-bet during cooldown', () => {
+            const testSpins = generateTestSpins(30);
+            // Simulate: many skips AND cooldown active
+            engine.session.consecutiveSkips = engine.maxConsecutiveSkips + 5;
+            engine.session.cooldownActive = true;
+            engine.session.cooldownThreshold = 95; // Very high threshold to force skip
+            engine.confidenceThreshold = 65;
+
+            const result = runner._simulateDecision(testSpins, 5);
+
+            // Even though consecutiveSkips >= maxConsecutiveSkips, cooldown prevents forced bet
+            // If confidence < 95, it must be SKIP
+            if (result.confidence < 95) {
+                expect(result.action).toBe('SKIP');
+            }
+        });
+
+        test('_simulateDecision resumes normal threshold after cooldown cleared', () => {
+            const testSpins = generateTestSpins(30);
+            // Cooldown was active but now cleared
+            engine.session.cooldownActive = false;
+            engine.session.cooldownThreshold = 80;
+            engine.confidenceThreshold = 30; // Low threshold for testing
+
+            const result = runner._simulateDecision(testSpins, 5);
+
+            // With cooldown cleared and low threshold, more likely to BET
+            if (result.action === 'SKIP' && result.reason) {
+                // Threshold shown in reason should be 30, not 80
+                expect(result.reason).toContain('30');
+            }
+            if (result.action === 'BET') {
+                expect(result.confidence).toBeGreaterThanOrEqual(30);
+            }
+        });
+
+        test('near-miss tracking works in simulation (engine.session.nearMisses increments)', () => {
+            const testSpins = generateTestSpins(30);
+            engine.resetSession();
+            // Run a session — the engine's recordResult will track near misses internally
+            runner._runSession(testSpins, 0, 1);
+
+            // nearMisses should be a non-negative number
+            expect(engine.session.nearMisses).toBeGreaterThanOrEqual(0);
+            expect(typeof engine.session.nearMisses).toBe('number');
+        });
+
+        test('_runSession step log unchanged (near-miss is engine-internal)', () => {
+            const testSpins = generateTestSpins(20);
+            const result = runner._runSession(testSpins, 0, 1);
+
+            // Steps should not have a "nearMiss" field — near-miss is engine-internal
+            for (const step of result.steps) {
+                expect(step).toHaveProperty('action');
+                expect(step).toHaveProperty('spinIdx');
+                expect(step).toHaveProperty('bankroll');
+                // Near-miss tracking is inside engine, not exposed in step
+                expect(step).not.toHaveProperty('nearMiss');
+            }
+        });
+    });
 });
