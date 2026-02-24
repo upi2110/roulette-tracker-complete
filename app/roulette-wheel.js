@@ -414,6 +414,41 @@ class RouletteWheel {
         }
     }
 
+    /**
+     * Group an array of numbers into clusters of wheel-adjacent numbers.
+     * Returns array of arrays — each sub-array is a contiguous group on the wheel.
+     */
+    _groupAdjacent(nums) {
+        if (nums.length === 0) return [];
+        const sorted = nums.slice().sort((a, b) => (this.wheelPos[a] ?? 99) - (this.wheelPos[b] ?? 99));
+        const groups = [];
+        let current = [sorted[0]];
+        for (let i = 1; i < sorted.length; i++) {
+            const prevPos = this.wheelPos[sorted[i - 1]] ?? 99;
+            const currPos = this.wheelPos[sorted[i]] ?? 99;
+            if (currPos === prevPos + 1) {
+                current.push(sorted[i]);
+            } else {
+                groups.push(current);
+                current = [sorted[i]];
+            }
+        }
+        groups.push(current);
+        // Also check wrap-around: if last group ends at position 36 and first starts at 0
+        if (groups.length > 1) {
+            const lastGroup = groups[groups.length - 1];
+            const firstGroup = groups[0];
+            const lastPos = this.wheelPos[lastGroup[lastGroup.length - 1]] ?? -1;
+            const firstPos = this.wheelPos[firstGroup[0]] ?? 99;
+            if (lastPos === 36 && firstPos === 0) {
+                // Merge: last group wraps around to first
+                groups[0] = lastGroup.concat(firstGroup);
+                groups.pop();
+            }
+        }
+        return groups;
+    }
+
     _updateNumberLists() {
         const el = document.getElementById('wheelNumberLists');
         if (!el) return;
@@ -436,48 +471,78 @@ class RouletteWheel {
         const looseList = wSort(this.looseNumbers);
         const greyLooseList = wSort(this.extraLoose);
 
+        // Badge: larger font for readability
         const badge = (n, bgOverride) => {
             const isPos = this.POSITIVE.has(n);
             const bg = bgOverride || (isPos ? '#22c55e' : '#1e293b');
-            return `<span style="display:inline-block;padding:1px 5px;border-radius:4px;background:${bg};color:#fff;font-weight:700;font-size:10px;margin:1px;">${n}</span>`;
+            return `<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${bg};color:#fff;font-weight:700;font-size:13px;margin:1px;">${n}</span>`;
         };
         const greyBadge = (n) => badge(n, '#9ca3af');
 
+        // Render grouped badges — adjacent numbers wrapped in a black-bordered box
+        const renderGrouped = (nums, badgeFn) => {
+            const groups = this._groupAdjacent(nums);
+            return groups.map(group => {
+                if (group.length > 1) {
+                    // Adjacent group: wrap in black square box
+                    return `<span style="display:inline-flex;gap:1px;border:2px solid #000;border-radius:4px;padding:1px 2px;margin:2px 3px;background:rgba(0,0,0,0.05);">${group.map(n => badgeFn(n)).join('')}</span>`;
+                }
+                // Single number: no box
+                return `<span style="margin:2px 1px;">${badgeFn(group[0])}</span>`;
+            }).join('');
+        };
+
         let html = '';
 
-        if (anchors1.length > 0) {
-            const nums = wSort(anchors1.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:3px;"><strong style="color:#334155;">±1 Anchors (${nums.length}):</strong> ${nums.map(n => badge(n)).join('')}</div>`;
-        }
-
+        // ±2 Anchors FIRST
         if (anchors2.length > 0) {
             const nums = wSort(anchors2.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:3px;"><strong style="color:#334155;">±2 Anchors (${nums.length}):</strong> ${nums.map(n => badge(n)).join('')}</div>`;
+            html += `<div style="margin-bottom:4px;"><strong style="color:#334155;font-size:12px;">±2 Anchors (${nums.length}):</strong> ${renderGrouped(nums, badge)}</div>`;
         }
 
+        // ±1 Anchors NEXT
+        if (anchors1.length > 0) {
+            const nums = wSort(anchors1.map(ag => ag.anchor));
+            html += `<div style="margin-bottom:4px;"><strong style="color:#334155;font-size:12px;">±1 Anchors (${nums.length}):</strong> ${renderGrouped(nums, badge)}</div>`;
+        }
+
+        // Loose LAST
         if (looseList.length > 0) {
-            html += `<div style="margin-bottom:3px;"><strong style="color:#334155;">Loose (${looseList.length}):</strong> ${looseList.map(n => badge(n)).join('')}</div>`;
+            html += `<div style="margin-bottom:4px;"><strong style="color:#334155;font-size:12px;">Loose (${looseList.length}):</strong> ${renderGrouped(looseList, badge)}</div>`;
+        }
+
+        // Grey: ±2 first, then ±1, then loose
+        if (greyAnchors2.length > 0) {
+            const nums = wSort(greyAnchors2.map(ag => ag.anchor));
+            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;font-size:11px;">Grey ±2 (${nums.length}):</strong> ${renderGrouped(nums, greyBadge)}</div>`;
         }
 
         if (greyAnchors1.length > 0) {
             const nums = wSort(greyAnchors1.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;">Grey ±1 (${nums.length}):</strong> ${nums.map(n => greyBadge(n)).join('')}</div>`;
-        }
-
-        if (greyAnchors2.length > 0) {
-            const nums = wSort(greyAnchors2.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;">Grey ±2 (${nums.length}):</strong> ${nums.map(n => greyBadge(n)).join('')}</div>`;
+            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;font-size:11px;">Grey ±1 (${nums.length}):</strong> ${renderGrouped(nums, greyBadge)}</div>`;
         }
 
         if (greyLooseList.length > 0) {
-            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;">Grey Loose (${greyLooseList.length}):</strong> ${greyLooseList.map(n => greyBadge(n)).join('')}</div>`;
+            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;font-size:11px;">Grey Loose (${greyLooseList.length}):</strong> ${renderGrouped(greyLooseList, greyBadge)}</div>`;
         }
 
         if (!html) {
             html = '<div style="color:#aaa; text-align:center;">Select pairs to see predictions</div>';
         }
 
-        el.innerHTML = html;
+        // Bet amount info from money panel
+        let betInfoHTML = '';
+        if (typeof window !== 'undefined' && window.moneyPanel && window.moneyPanel.sessionData) {
+            const sd = window.moneyPanel.sessionData;
+            if (sd.isSessionActive && sd.lastBetAmount > 0) {
+                const betPerNum = sd.currentBetPerNumber || sd.lastBetAmount;
+                const numCount = sd.lastBetNumbers || 0;
+                const total = betPerNum * numCount;
+                betInfoHTML = `<div style="margin-bottom:4px;padding:4px 8px;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:5px;font-size:11px;font-weight:700;color:#92400e;">💰 Next Bet: $${betPerNum}/num × ${numCount} nums = $${total} total</div>`;
+            }
+        }
+
+        el.innerHTML = betInfoHTML + html;
     }
 
     _getHighlightPos(num) {
@@ -509,7 +574,7 @@ class RouletteWheel {
             if (info.category === 'primary') {
                 const isPositive = this.POSITIVE.has(num);
                 const fillColor = isPositive ? '#22c55e' : '#1e293b';
-                const radius = info.isAnchor ? 12 : 10;
+                const radius = info.isAnchor ? 14 : 11;
 
                 ctx.beginPath();
                 ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
@@ -518,13 +583,13 @@ class RouletteWheel {
 
                 if (info.isAnchor && info.type) {
                     ctx.fillStyle = '#fff';
-                    ctx.font = 'bold 9px Arial';
+                    ctx.font = 'bold 11px Arial';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.fillText(info.type, pos.x, pos.y);
                 }
             } else {
-                const radius = info.isAnchor ? 10 : 8;
+                const radius = info.isAnchor ? 12 : 9;
 
                 ctx.beginPath();
                 ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
@@ -533,7 +598,7 @@ class RouletteWheel {
 
                 if (info.isAnchor && info.type) {
                     ctx.fillStyle = '#fff';
-                    ctx.font = 'bold 8px Arial';
+                    ctx.font = 'bold 10px Arial';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.fillText(info.type, pos.x, pos.y);

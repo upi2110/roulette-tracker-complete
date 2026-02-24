@@ -6,6 +6,8 @@
 class AIAutoModeUI {
     constructor() {
         this.isAutoMode = false;
+        this.isSemiAutoMode = false;
+        this.currentMode = 'manual'; // 'manual' | 'semi' | 'auto'
         this.engine = null;      // Will be set to window.aiAutoEngine
         this.dataLoader = null;  // Will be set to window.aiDataLoader
 
@@ -36,6 +38,11 @@ class AIAutoModeUI {
                     border:2px solid #3b82f6;border-radius:6px;cursor:pointer;
                     background:#3b82f6;color:white;
                 ">MANUAL</button>
+                <button id="semiAutoModeBtn" style="
+                    flex:1;padding:6px 12px;font-size:12px;font-weight:700;
+                    border:2px solid #64748b;border-radius:6px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">SEMI</button>
                 <button id="autoModeBtn" style="
                     flex:1;padding:6px 12px;font-size:12px;font-weight:700;
                     border:2px solid #64748b;border-radius:6px;cursor:pointer;
@@ -68,18 +75,25 @@ class AIAutoModeUI {
 
     setupEventListeners() {
         const manualBtn = document.getElementById('manualModeBtn');
+        const semiBtn = document.getElementById('semiAutoModeBtn');
         const autoBtn = document.getElementById('autoModeBtn');
         const trainBtn = document.getElementById('trainBtn');
 
         if (manualBtn) {
             manualBtn.addEventListener('click', () => {
-                if (this.isAutoMode) this.toggleMode();
+                if (this.currentMode !== 'manual') this.setMode('manual');
+            });
+        }
+
+        if (semiBtn) {
+            semiBtn.addEventListener('click', () => {
+                if (this.currentMode !== 'semi') this.setMode('semi');
             });
         }
 
         if (autoBtn) {
             autoBtn.addEventListener('click', () => {
-                if (!this.isAutoMode) this.toggleMode();
+                if (this.currentMode !== 'auto') this.setMode('auto');
             });
         }
 
@@ -89,13 +103,15 @@ class AIAutoModeUI {
     }
 
     /**
-     * Toggle between manual and auto modes.
+     * Set mode: 'manual', 'semi', or 'auto'.
+     * Replaces the old toggleMode() — supports 3-way switching.
      */
-    toggleMode() {
+    setMode(mode) {
         const engine = this.engine || (typeof window !== 'undefined' ? window.aiAutoEngine : null);
+        const semiFilter = typeof window !== 'undefined' ? window.semiAutoFilter : null;
 
-        if (!this.isAutoMode) {
-            // Switching to AUTO
+        if (mode === 'auto') {
+            // Switching to AUTO — requires trained engine
             if (!engine || !engine.isTrained) {
                 console.warn('⚠️ Cannot switch to AUTO — engine not trained');
                 this._showTrainingStatusBar(true);
@@ -104,17 +120,35 @@ class AIAutoModeUI {
                 return;
             }
 
+            this.currentMode = 'auto';
             this.isAutoMode = true;
+            this.isSemiAutoMode = false;
             engine.enable();
+            if (semiFilter) semiFilter.disable();
 
-            // Update orchestrator
             if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
                 window.autoUpdateOrchestrator.setAutoMode(true);
             }
+
+        } else if (mode === 'semi') {
+            // Switching to SEMI-AUTO — user picks pair, system picks filter
+            this.currentMode = 'semi';
+            this.isAutoMode = false;
+            this.isSemiAutoMode = true;
+            if (engine) engine.disable();
+            if (semiFilter) semiFilter.enable();
+
+            if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
+                window.autoUpdateOrchestrator.setAutoMode(false);
+            }
+
         } else {
             // Switching to MANUAL
+            this.currentMode = 'manual';
             this.isAutoMode = false;
+            this.isSemiAutoMode = false;
             if (engine) engine.disable();
+            if (semiFilter) semiFilter.disable();
 
             if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
                 window.autoUpdateOrchestrator.setAutoMode(false);
@@ -122,30 +156,51 @@ class AIAutoModeUI {
         }
 
         this._updateModeButtons();
-        this.togglePairSelection(!this.isAutoMode);
+        // SEMI and MANUAL both show pair selection; AUTO hides it
+        this.togglePairSelection(this.currentMode !== 'auto');
 
         const statusDiv = document.getElementById('autoModeStatus');
         if (statusDiv) {
             statusDiv.style.display = this.isAutoMode ? 'block' : 'none';
         }
 
-        console.log(`🔄 Mode switched to ${this.isAutoMode ? 'AUTO' : 'MANUAL'}`);
+        console.log(`🔄 Mode switched to ${this.currentMode.toUpperCase()}`);
+    }
+
+    /**
+     * Legacy toggle for backward compat — delegates to setMode.
+     */
+    toggleMode() {
+        if (this.isAutoMode) {
+            this.setMode('manual');
+        } else {
+            this.setMode('auto');
+        }
     }
 
     _updateModeButtons() {
         const manualBtn = document.getElementById('manualModeBtn');
+        const semiBtn = document.getElementById('semiAutoModeBtn');
         const autoBtn = document.getElementById('autoModeBtn');
 
+        const mode = this.currentMode;
+
         if (manualBtn) {
-            manualBtn.style.background = this.isAutoMode ? 'transparent' : '#3b82f6';
-            manualBtn.style.color = this.isAutoMode ? '#94a3b8' : 'white';
-            manualBtn.style.borderColor = this.isAutoMode ? '#64748b' : '#3b82f6';
+            manualBtn.style.background = mode === 'manual' ? '#3b82f6' : 'transparent';
+            manualBtn.style.color = mode === 'manual' ? 'white' : '#94a3b8';
+            manualBtn.style.borderColor = mode === 'manual' ? '#3b82f6' : '#64748b';
+        }
+
+        if (semiBtn) {
+            semiBtn.style.background = mode === 'semi' ? '#f97316' : 'transparent';
+            semiBtn.style.color = mode === 'semi' ? 'white' : '#94a3b8';
+            semiBtn.style.borderColor = mode === 'semi' ? '#f97316' : '#64748b';
         }
 
         if (autoBtn) {
-            autoBtn.style.background = this.isAutoMode ? '#22c55e' : 'transparent';
-            autoBtn.style.color = this.isAutoMode ? 'white' : '#94a3b8';
-            autoBtn.style.borderColor = this.isAutoMode ? '#22c55e' : '#64748b';
+            autoBtn.style.background = mode === 'auto' ? '#22c55e' : 'transparent';
+            autoBtn.style.color = mode === 'auto' ? 'white' : '#94a3b8';
+            autoBtn.style.borderColor = mode === 'auto' ? '#22c55e' : '#64748b';
         }
     }
 
@@ -197,7 +252,13 @@ class AIAutoModeUI {
             const sessionArrays = loadResult.sessions.map(s => s.spins);
             const trainResult = engine.train(sessionArrays);
 
-            this.updateTrainingProgress(100, `Trained on ${trainResult.totalSpins} spins — Hit rate: ${Math.round(trainResult.overallHitRate * 100)}%`);
+            // Wire sequence model to semi-auto filter
+            if (typeof window !== 'undefined' && window.semiAutoFilter && engine.sequenceModel) {
+                window.semiAutoFilter.setSequenceModel(engine.sequenceModel);
+            }
+
+            const seqNote = engine.sequenceModel && engine.sequenceModel.isTrained ? ' + sequences' : '';
+            this.updateTrainingProgress(100, `Trained on ${trainResult.totalSpins} spins — Hit rate: ${Math.round(trainResult.overallHitRate * 100)}%${seqNote}`);
 
             this.renderStatus();
 

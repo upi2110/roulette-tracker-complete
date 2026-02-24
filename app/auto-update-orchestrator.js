@@ -105,12 +105,18 @@ class AutoUpdateOrchestrator {
             //         wheel._syncMoneyPanel() → moneyPanel.setPrediction()
 
         } else {
-            // SKIP
+            // SKIP — clear stale UI from previous BET
             window.aiAutoEngine.recordSkip();
+            if (window.aiPanel) {
+                window.aiPanel.clearSelections();
+            }
+            if (window.rouletteWheel && typeof window.rouletteWheel.clearHighlights === 'function') {
+                window.rouletteWheel.clearHighlights();
+            }
             if (window.moneyPanel) {
                 window.moneyPanel.pendingBet = null;
             }
-            console.log('🤖 AUTO: Skipped this spin');
+            console.log('🤖 AUTO: Skipped this spin (UI cleared)');
         }
     }
 

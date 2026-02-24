@@ -75,6 +75,21 @@ class AIAutoEngine {
         this.maxConsecutiveSkips = options.maxConsecutiveSkips ?? 5;
         this.sessionAdaptationStart = options.sessionAdaptationStart ?? 10;
         this.historicalWeight = options.historicalWeight ?? 0.7;
+
+        // Sequence model (multi-layer n-gram)
+        const SeqModelClass = typeof AISequenceModel !== 'undefined' ? AISequenceModel :
+            (typeof window !== 'undefined' && window.AISequenceModel ? window.AISequenceModel : null);
+        this.sequenceModel = SeqModelClass ? new SeqModelClass({
+            minSamples: options.sequenceMinSamples ?? 3,
+            confidenceThreshold: options.sequenceConfidence ?? 0.70
+        }) : null;
+
+        // Live retrain
+        this.liveSpins = [];
+        this._originalTrainingData = null;
+        this._retrainInterval = options.retrainInterval ?? 10;
+        this._retrainLossStreak = options.retrainLossStreak ?? 3;
+        this._lastRetrainBetCount = 0;
     }
 
     _createSessionTracker() {
@@ -106,6 +121,9 @@ class AIAutoEngine {
      * @returns {{ totalSpins: number, pairStats: Object, filterStats: Object, overallHitRate: number }}
      */
     train(sessions) {
+        // Store original training data for live retrain merging
+        this._originalTrainingData = sessions;
+
         // Reset models
         this.pairModels = {};
         this.filterModels = {};
@@ -166,6 +184,11 @@ class AIAutoEngine {
         });
 
         this.isTrained = true;
+
+        // Train sequence model on same sessions
+        if (this.sequenceModel) {
+            this.sequenceModel.train(sessions);
+        }
 
         const pairStats = {};
         PAIR_REFKEYS.forEach(refKey => {
@@ -500,13 +523,10 @@ class AIAutoEngine {
         // 7. Confidence
         const confidence = this._computeConfidence(bestPair.score, filterResult.score, filterResult.filteredNumbers);
 
-        // 8. Skip logic — with cooldown protection
-        const effectiveThreshold = this.session.cooldownActive
-            ? Math.max(this.confidenceThreshold, this.session.cooldownThreshold || 80)
-            : this.confidenceThreshold;
-        // Don't force-bet during cooldown — wait for strong signal
-        const forcebet = this.session.consecutiveSkips >= this.maxConsecutiveSkips
-            && !this.session.cooldownActive;
+        // 8. Skip logic — AI always decides with its own confidence
+        const effectiveThreshold = this.confidenceThreshold;
+        // Force-bet after maxConsecutiveSkips — absolute limit
+        const forcebet = this.session.consecutiveSkips >= this.maxConsecutiveSkips;
         let action;
         let reason;
 
@@ -517,8 +537,7 @@ class AIAutoEngine {
                 : `Pair ${bestPair.pairName} with ${filterResult.filterKey} filter (conf: ${confidence}%)`;
         } else {
             action = 'SKIP';
-            const cooldownNote = this.session.cooldownActive ? ' [COOLDOWN]' : '';
-            reason = `Low confidence ${confidence}% < ${effectiveThreshold}% threshold (skip ${this.session.consecutiveSkips + 1}/${this.maxConsecutiveSkips})${cooldownNote}`;
+            reason = `Low confidence ${confidence}% < ${effectiveThreshold}% threshold (skip ${this.session.consecutiveSkips + 1}/${this.maxConsecutiveSkips})`;
         }
 
         return {
@@ -621,9 +640,27 @@ class AIAutoEngine {
      */
     _selectBestFilter(numbers) {
         let bestFilter = { filterKey: 'both_both', filteredNumbers: [...numbers], score: 0 };
-        let bestScore = -1;
+        let bestScore = -Infinity;
+
+        // Cache sequence model scores (computed once, used per filter)
+        let sequenceFilterScores = null;
+        if (this.sequenceModel && this.sequenceModel.isTrained) {
+            const recentSpins = this._getWindowSpins();
+            if (recentSpins && recentSpins.length >= 1) {
+                const seqResult = this.sequenceModel.scoreFilterCombos(recentSpins);
+                sequenceFilterScores = seqResult.scores;
+                sequenceFilterScores._confident = seqResult.confident;
+            }
+        }
+
+        // Determine if sequence model is confident on either axis
+        const seqConfident = sequenceFilterScores && sequenceFilterScores._confident;
 
         FILTER_COMBOS.forEach(fc => {
+            // NEVER actively choose both_both — it provides no filtering value.
+            // It's already the default fallback (line 646) for when no filter works.
+            if (fc.key === 'both_both') return;
+
             const filtered = this._applyFilterToNumbers(numbers, fc.key);
 
             // Skip filters that produce too few or too many numbers
@@ -644,14 +681,35 @@ class AIAutoEngine {
             const histWeight = 1 - sessionWeight;
             let score = histWeight * historicalScore + sessionWeight * sessionScore;
 
-            // Prefer 6-14 number range (ideal coverage)
-            if (filtered.length >= 6 && filtered.length <= 14) {
-                score += 0.05;
+            // Coverage scoring: wider coverage is SAFER, restrict only with evidence
+            // Penalize overly restrictive filters (< 6 numbers) — too narrow to be reliable
+            if (filtered.length < 6) {
+                score -= 0.03;
+            }
+            // Mild penalty for excess numbers above 16 (too scattered)
+            if (filtered.length > 16) {
+                score -= (filtered.length - 16) * 0.005;
             }
 
-            // Slight bonus for reducing number count (more focused bets)
-            if (filtered.length < numbers.length) {
-                score += 0.02;
+            // Sequence model: the main intelligence for filter selection
+            // Only apply real bias when the model is CONFIDENT (≥ 70%)
+            // Otherwise, prefer wider coverage (both_* filters)
+            if (sequenceFilterScores) {
+                const seqScore = sequenceFilterScores[fc.key] || 0;
+
+                if (seqConfident) {
+                    // Confident: reward specificity — probability per number
+                    const hitValue = (seqScore / filtered.length) * 37;
+                    score += hitValue * 0.10;
+                } else {
+                    // NOT confident: favor wider filters (both_* combos)
+                    // Restrictive filters get penalized when no evidence supports them
+                    if (fc.table !== 'both' && fc.sign !== 'both') {
+                        score -= 0.04; // double-restrictive (e.g. zero_positive)
+                    } else if (fc.table !== 'both' || fc.sign !== 'both') {
+                        score -= 0.01; // single-axis restrictive
+                    }
+                }
             }
 
             if (score > bestScore) {
@@ -659,11 +717,6 @@ class AIAutoEngine {
                 bestFilter = { filterKey: fc.key, filteredNumbers: filtered, score };
             }
         });
-
-        // If no filter beats both_both, use unfiltered
-        if (bestScore <= 0) {
-            bestFilter = { filterKey: 'both_both', filteredNumbers: [...numbers], score: 0 };
-        }
 
         return bestFilter;
     }
@@ -721,6 +774,11 @@ class AIAutoEngine {
         // Convert pairName to refKey if needed
         const refKey = PAIR_NAME_TO_REFKEY[pairKey] || pairKey;
 
+        // Collect live spin for retrain
+        if (typeof actual === 'number' && actual >= 0 && actual <= 36) {
+            this.liveSpins.push(actual);
+        }
+
         this.session.totalBets++;
         if (hit) {
             this.session.wins++;
@@ -771,6 +829,9 @@ class AIAutoEngine {
                 0.1 + (this.session.totalBets - this.sessionAdaptationStart) * 0.02
             );
         }
+
+        // Check if live retrain is needed
+        this._checkRetrainNeeded();
     }
 
     /**
@@ -791,9 +852,68 @@ class AIAutoEngine {
 
     /**
      * Record a skip decision.
+     * Pushes a neutral entry to recentDecisions so the "consecutive flash bonus"
+     * doesn't stale-lock on the last BET pair across unlimited SKIPs.
      */
     recordSkip() {
         this.session.consecutiveSkips++;
+        // Push a skip marker — refKey: null means no pair gets the consecutive bonus
+        this.session.recentDecisions.push({ refKey: null, filterKey: null, hit: false, nearMiss: false, skipped: true });
+        if (this.session.recentDecisions.length > 10) {
+            this.session.recentDecisions.shift();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  LIVE RETRAIN
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Check if live retrain is needed based on bet count or loss streak.
+     * Triggers after _retrainInterval bets or _retrainLossStreak consecutive losses.
+     */
+    _checkRetrainNeeded() {
+        if (!this._originalTrainingData || this.liveSpins.length < 5) return;
+
+        const betsSinceRetrain = this.session.totalBets - this._lastRetrainBetCount;
+        const lossStreakTrigger = this.session.consecutiveLosses >= this._retrainLossStreak;
+        const intervalTrigger = betsSinceRetrain >= this._retrainInterval;
+
+        if (lossStreakTrigger || intervalTrigger) {
+            const reason = lossStreakTrigger
+                ? `${this.session.consecutiveLosses} consecutive losses`
+                : `${betsSinceRetrain} bets since last retrain`;
+            console.log(`🔄 LIVE RETRAIN triggered: ${reason} (${this.liveSpins.length} live spins)`);
+            this.retrain();
+        }
+    }
+
+    /**
+     * Retrain by merging original training data with accumulated live spins.
+     * Preserves isEnabled state and session stats (totalBets, wins, etc.)
+     * but resets adaptationWeight to 0 since models now include live data.
+     */
+    retrain() {
+        if (!this._originalTrainingData) {
+            console.warn('⚠️ Cannot retrain: no original training data stored');
+            return;
+        }
+
+        const mergedSessions = [...this._originalTrainingData, this.liveSpins];
+        const wasEnabled = this.isEnabled;
+        const savedSession = { ...this.session };
+
+        // train() will update pairModels and filterModels with live data trends
+        const result = this.train(mergedSessions);
+
+        // Restore session state (train() resets it)
+        this.isEnabled = wasEnabled;
+        this.session = savedSession;
+        this.session.adaptationWeight = 0; // Reset since models now include live data
+        this._lastRetrainBetCount = this.session.totalBets;
+
+        console.log(`✅ LIVE RETRAIN complete: ${result.totalSpins} total spins, hit rate: ${(result.overallHitRate * 100).toFixed(1)}%`);
+        return result;
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -814,6 +934,8 @@ class AIAutoEngine {
     resetSession() {
         this.session = this._createSessionTracker();
         this.lastDecision = null;
+        this.liveSpins = [];
+        this._lastRetrainBetCount = 0;
     }
 
     fullReset() {
@@ -822,6 +944,10 @@ class AIAutoEngine {
         this.pairModels = {};
         this.filterModels = {};
         this.session = this._createSessionTracker();
+        this.liveSpins = [];
+        this._originalTrainingData = null;
+        this._lastRetrainBetCount = 0;
+        if (this.sequenceModel) this.sequenceModel.reset();
     }
 
     getState() {
@@ -831,7 +957,8 @@ class AIAutoEngine {
             pairModelCount: Object.keys(this.pairModels).length,
             sessionStats: { ...this.session },
             topPairs: this._getTopPairs(3),
-            topFilters: this._getTopFilters(3)
+            topFilters: this._getTopFilters(3),
+            sequenceStats: this.sequenceModel ? this.sequenceModel.getStats() : null
         };
     }
 

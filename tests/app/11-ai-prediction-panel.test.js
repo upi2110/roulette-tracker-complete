@@ -393,3 +393,48 @@ describe('AIPredictionPanel: togglePairFromTable', () => {
         expect(panel.table3Selections.has('prev')).toBe(false);
     });
 });
+
+// ═══════════════════════════════════════════════════════
+// updatePrediction — anchor group wheel-order sorting
+// ═══════════════════════════════════════════════════════
+
+describe('AIPredictionPanel: updatePrediction anchor wheel order', () => {
+    test('Sorts anchor groups by European wheel position', () => {
+        if (!AIPredictionPanel) return;
+        const panel = new AIPredictionPanel();
+
+        // setupDOM() already created #aiResultsPanel > .prediction-numbers and #signalIndicator
+        // European wheel order: 0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,...
+        // Anchor 36 is at wheel position 13, anchor 4 is at position 4, anchor 32 is at position 1
+        // Input order: 36, 4, 32 — sorted order should be: 32, 4, 36
+        const prediction = {
+            anchors: [36, 4, 32],
+            loose: [],
+            numbers: [36, 4, 32, 13, 11, 19, 21, 0, 15],
+            anchor_groups: [
+                { anchor: 36, group: [36, 13, 11], type: '±1' },
+                { anchor: 4, group: [4, 19, 21], type: '±1' },
+                { anchor: 32, group: [32, 0, 15], type: '±1' }
+            ]
+        };
+
+        panel.updatePrediction(prediction);
+
+        const numbersDiv = document.querySelector('#aiResultsPanel .prediction-numbers');
+        const html = numbersDiv.innerHTML;
+
+        // Anchor numbers are rendered inside styled spans
+        // Use regex to find each anchor's first appearance in the HTML
+        const match32 = html.search(/>\s*32\b/);
+        const match4 = html.search(/>\s*4\b/);
+        const match36 = html.search(/>\s*36\b/);
+
+        expect(match32).toBeGreaterThan(-1);
+        expect(match4).toBeGreaterThan(-1);
+        expect(match36).toBeGreaterThan(-1);
+
+        // 32 (wheel pos 1) should come before 4 (wheel pos 4) before 36 (wheel pos 13)
+        expect(match32).toBeLessThan(match4);
+        expect(match4).toBeLessThan(match36);
+    });
+});

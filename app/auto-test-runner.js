@@ -84,6 +84,14 @@ class AutoTestRunner {
         const totalWork = (maxStart + 1) * 3;
         let completed = 0;
 
+        // Disable live retrain during batch testing — retrain is designed for
+        // real-time play (1 bet/min), not batch simulation (thousands/sec).
+        // Without this guard the runner hangs during losing streaks.
+        const savedRetrainInterval = this.engine._retrainInterval;
+        const savedRetrainLossStreak = this.engine._retrainLossStreak;
+        this.engine._retrainInterval = Infinity;
+        this.engine._retrainLossStreak = Infinity;
+
         for (let startIdx = 0; startIdx <= maxStart; startIdx++) {
             for (const strategy of [1, 2, 3]) {
                 // Reset engine session between simulations
@@ -97,13 +105,15 @@ class AutoTestRunner {
                     const pct = Math.round((completed / totalWork) * 100);
                     progressCallback(pct, `Session ${completed}/${totalWork} (Start: ${startIdx}, Strategy: ${strategy})`);
                 }
-            }
 
-            // Yield to event loop every batchSize starting positions
-            if (startIdx > 0 && startIdx % batchSize === 0) {
+                // Yield after every session — runs like live, one at a time
                 await new Promise(r => setTimeout(r, 0));
             }
         }
+
+        // Restore live retrain settings
+        this.engine._retrainInterval = savedRetrainInterval;
+        this.engine._retrainLossStreak = savedRetrainLossStreak;
 
         const result = {
             testFile,
@@ -336,13 +346,10 @@ class AutoTestRunner {
             bestPair.score, filterResult.score, filterResult.filteredNumbers
         );
 
-        // 6. Skip logic — with cooldown protection
-        const effectiveThreshold = this.engine.session.cooldownActive
-            ? Math.max(this.engine.confidenceThreshold, this.engine.session.cooldownThreshold || 80)
-            : this.engine.confidenceThreshold;
-        // Don't force-bet during cooldown
-        const forcebet = this.engine.session.consecutiveSkips >= this.engine.maxConsecutiveSkips
-            && !this.engine.session.cooldownActive;
+        // 6. Skip logic — AI always decides with its own confidence
+        const effectiveThreshold = this.engine.confidenceThreshold;
+        // Force-bet after maxConsecutiveSkips — absolute limit
+        const forcebet = this.engine.session.consecutiveSkips >= this.engine.maxConsecutiveSkips;
 
         if (confidence >= effectiveThreshold || forcebet) {
             return {

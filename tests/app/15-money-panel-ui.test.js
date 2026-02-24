@@ -1839,3 +1839,52 @@ describe('recordBetResult() - AI engine feedback loop', () => {
         consoleSpy.mockRestore();
     });
 });
+
+// ═══════════════════════════════════════════════════════
+// setPrediction() — AI AUTO SKIP guard
+// ═══════════════════════════════════════════════════════
+
+describe('setPrediction() - AI AUTO SKIP guard', () => {
+    test('returns early when AI engine is enabled and lastDecision is null (SKIP)', () => {
+        const mp = getPanel();
+        mp.sessionData.isBettingEnabled = true;
+        mp.sessionData.isSessionActive = true;
+        global.window.aiAutoEngine = { isEnabled: true, lastDecision: null };
+
+        mp.setPrediction({ numbers: [1, 5, 10, 15, 20], signal: 'BET', confidence: 90 });
+        expect(mp.pendingBet).toBeNull();
+    });
+
+    test('creates pendingBet when engine is enabled and lastDecision has value (BET)', () => {
+        const mp = getPanel();
+        mp.sessionData.isBettingEnabled = true;
+        mp.sessionData.isSessionActive = true;
+        global.window.aiAutoEngine = {
+            isEnabled: true,
+            lastDecision: { selectedPair: 'prev', selectedFilter: 'zero_positive', numbers: [1, 5, 10] }
+        };
+
+        mp.setPrediction({ numbers: [1, 5, 10], signal: 'BET', confidence: 90 });
+        expect(mp.pendingBet).not.toBeNull();
+    });
+
+    test('creates pendingBet normally when engine is not enabled (manual mode)', () => {
+        const mp = getPanel();
+        mp.sessionData.isBettingEnabled = true;
+        mp.sessionData.isSessionActive = true;
+        global.window.aiAutoEngine = { isEnabled: false, lastDecision: null };
+
+        mp.setPrediction({ numbers: [1, 5, 10], signal: 'BET', confidence: 80 });
+        expect(mp.pendingBet).not.toBeNull();
+    });
+
+    test('creates pendingBet normally when no AI engine exists', () => {
+        const mp = getPanel();
+        mp.sessionData.isBettingEnabled = true;
+        mp.sessionData.isSessionActive = true;
+        global.window.aiAutoEngine = undefined;
+
+        mp.setPrediction({ numbers: [1, 5, 10], signal: 'BET', confidence: 80 });
+        expect(mp.pendingBet).not.toBeNull();
+    });
+});

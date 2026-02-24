@@ -1599,6 +1599,10 @@ function renderTable3() {
     // avoiding all CSS specificity battles with .pos-s/.pos-o/.pos-xx.
     const flashTargets = _computeFlashTargets(spins, startIdx, visibleSpins.length);
 
+    // Positive / negative number sets for actual-number color coding
+    const _T3_POS = new Set([3, 26, 0, 32, 15, 19, 4, 27, 13, 36, 11, 30, 8, 1, 20, 14, 31, 9, 22]);
+    const _T3_NEG = new Set([21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35]);
+
     visibleSpins.forEach((spin, relIdx) => {
         const idx = startIdx + relIdx;
         const prev = idx > 0 ? spins[idx - 1].actual : null;
@@ -1616,9 +1620,10 @@ function renderTable3() {
                     emptyCells.push('<td></td>');
                 }
             }
+            const _actColor1 = _T3_POS.has(spin.actual) ? '#22c55e' : _T3_NEG.has(spin.actual) ? '#ef4444' : '#94a3b8';
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
-                <td><strong>${spin.actual}</strong></td>
+                <td style="color:${_actColor1}"><strong>${spin.actual}</strong></td>
                 ${emptyCells.join('')}
             `;
         } else {
@@ -1695,9 +1700,10 @@ function renderTable3() {
                 return `<td class="${cls}" data-pair="${dataPairAttr}">${formatPos(posCode)}</td>`;
             };
 
+            const _actColor2 = _T3_POS.has(spin.actual) ? '#22c55e' : _T3_NEG.has(spin.actual) ? '#ef4444' : '#94a3b8';
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
-                <td><strong>${spin.actual}</strong></td>
+                <td style="color:${_actColor2}"><strong>${spin.actual}</strong></td>
                 <td class="${cellClass('prev', 'pair', true)}" data-pair="prev">${data.prev.ref}</td>
                 ${posCell('prev', 'pair')}
                 <td class="${cellClass('prev', 'pair13Opp')}" data-pair="prev">${data.prev.ref13Opp}</td>

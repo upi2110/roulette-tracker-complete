@@ -895,60 +895,57 @@ describe('AutoTestRunner', () => {
             recordSpy.mockRestore();
         });
 
-        test('_simulateDecision uses elevated threshold during cooldown', () => {
+        test('_simulateDecision uses normal threshold even during cooldown (no elevation)', () => {
             const testSpins = generateTestSpins(30);
-            // Activate cooldown
             engine.session.cooldownActive = true;
-            engine.session.cooldownThreshold = 80;
+            engine.session.consecutiveSkips = 0;
             engine.confidenceThreshold = 65;
 
             const result = runner._simulateDecision(testSpins, 5);
 
-            // During cooldown, a low-confidence result should be SKIP
-            // We can verify by checking that the engine's cooldown state is respected
+            // Cooldown does NOT raise the threshold — AI decides with its own confidence
             if (result.action === 'SKIP' && result.reason) {
-                // SKIP reason should reference the elevated threshold (80)
-                expect(result.reason).toContain('80');
+                // Threshold should be 65 (normal), NOT 80
+                expect(result.reason).toContain('65');
             }
-            // If it's a BET, confidence must be >= 80
             if (result.action === 'BET') {
-                expect(result.confidence).toBeGreaterThanOrEqual(80);
+                expect(result.confidence).toBeGreaterThanOrEqual(65);
             }
         });
 
-        test('_simulateDecision does NOT force-bet during cooldown', () => {
+        test('_simulateDecision force-bets during cooldown after maxConsecutiveSkips', () => {
             const testSpins = generateTestSpins(30);
-            // Simulate: many skips AND cooldown active
             engine.session.consecutiveSkips = engine.maxConsecutiveSkips + 5;
             engine.session.cooldownActive = true;
-            engine.session.cooldownThreshold = 95; // Very high threshold to force skip
             engine.confidenceThreshold = 65;
 
             const result = runner._simulateDecision(testSpins, 5);
 
-            // Even though consecutiveSkips >= maxConsecutiveSkips, cooldown prevents forced bet
-            // If confidence < 95, it must be SKIP
-            if (result.confidence < 95) {
-                expect(result.action).toBe('SKIP');
+            // maxConsecutiveSkips is an ABSOLUTE limit
+            if (result.selectedPair !== null) {
+                expect(result.action).toBe('BET');
             }
         });
 
-        test('_simulateDecision resumes normal threshold after cooldown cleared', () => {
+        test('_simulateDecision always uses confidenceThreshold regardless of cooldown state', () => {
             const testSpins = generateTestSpins(30);
-            // Cooldown was active but now cleared
+
+            // Test with cooldown active
+            engine.session.cooldownActive = true;
+            engine.confidenceThreshold = 30;
+            const result1 = runner._simulateDecision(testSpins, 5);
+
+            // Test with cooldown cleared
             engine.session.cooldownActive = false;
-            engine.session.cooldownThreshold = 80;
-            engine.confidenceThreshold = 30; // Low threshold for testing
+            engine.confidenceThreshold = 30;
+            const result2 = runner._simulateDecision(testSpins, 5);
 
-            const result = runner._simulateDecision(testSpins, 5);
-
-            // With cooldown cleared and low threshold, more likely to BET
-            if (result.action === 'SKIP' && result.reason) {
-                // Threshold shown in reason should be 30, not 80
-                expect(result.reason).toContain('30');
+            // Both should use same threshold (30) — cooldown makes no difference
+            if (result1.action === 'SKIP' && result1.reason) {
+                expect(result1.reason).toContain('30');
             }
-            if (result.action === 'BET') {
-                expect(result.confidence).toBeGreaterThanOrEqual(30);
+            if (result2.action === 'SKIP' && result2.reason) {
+                expect(result2.reason).toContain('30');
             }
         });
 

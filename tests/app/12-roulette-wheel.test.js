@@ -2490,3 +2490,44 @@ describe('RouletteWheel: Radio Event Listeners', () => {
         expect(wheel.filters.nineteenTable).toBe(true);
     });
 });
+
+// ═══════════════════════════════════════════════════════
+// _updateNumberLists — bet info display
+// ═══════════════════════════════════════════════════════
+
+describe('_updateNumberLists — bet info display', () => {
+    test('shows bet info when moneyPanel session is active', () => {
+        const wheel = new RouletteWheel();
+        global.window.moneyPanel = {
+            sessionData: {
+                isSessionActive: true,
+                lastBetAmount: 3,
+                currentBetPerNumber: 3,
+                lastBetNumbers: 10
+            }
+        };
+        wheel.anchorGroups = [{ anchor: 5, group: [5, 24, 10], type: '±1' }];
+        wheel.looseNumbers = [32];
+        wheel._updateNumberLists();
+        const el = document.getElementById('wheelNumberLists');
+        expect(el.innerHTML).toContain('3/num');
+        expect(el.innerHTML).toContain('30 total');
+    });
+
+    test('hides bet info when session not active', () => {
+        const wheel = new RouletteWheel();
+        global.window.moneyPanel = {
+            sessionData: {
+                isSessionActive: false,
+                lastBetAmount: 0,
+                currentBetPerNumber: 2,
+                lastBetNumbers: 0
+            }
+        };
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [];
+        wheel._updateNumberLists();
+        const el = document.getElementById('wheelNumberLists');
+        expect(el.innerHTML).not.toContain('Next Bet');
+    });
+});

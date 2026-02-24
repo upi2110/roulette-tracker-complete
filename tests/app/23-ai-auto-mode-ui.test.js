@@ -292,7 +292,7 @@ describe('AIAutoModeUI', () => {
         }
 
         test('manual button highlighted when in manual mode', () => {
-            ui.isAutoMode = false;
+            ui.currentMode = 'manual';
             ui._updateModeButtons();
 
             const manualBtn = document.getElementById('manualModeBtn');
@@ -302,7 +302,7 @@ describe('AIAutoModeUI', () => {
         });
 
         test('auto button highlighted when in auto mode', () => {
-            ui.isAutoMode = true;
+            ui.currentMode = 'auto';
             ui._updateModeButtons();
 
             const autoBtn = document.getElementById('autoModeBtn');
@@ -311,7 +311,7 @@ describe('AIAutoModeUI', () => {
         });
 
         test('manual button dimmed when in auto mode', () => {
-            ui.isAutoMode = true;
+            ui.currentMode = 'auto';
             ui._updateModeButtons();
 
             const manualBtn = document.getElementById('manualModeBtn');
@@ -319,11 +319,28 @@ describe('AIAutoModeUI', () => {
         });
 
         test('auto button dimmed when in manual mode', () => {
-            ui.isAutoMode = false;
+            ui.currentMode = 'manual';
             ui._updateModeButtons();
 
             const autoBtn = document.getElementById('autoModeBtn');
             expect(autoBtn.style.background).toBe('transparent');
+        });
+
+        test('semi button highlighted when in semi mode', () => {
+            ui.currentMode = 'semi';
+            ui._updateModeButtons();
+
+            const semiBtn = document.getElementById('semiAutoModeBtn');
+            expect(semiBtn.style.background).not.toBe('transparent');
+            expect(semiBtn.style.color).toBe('white');
+        });
+
+        test('semi button dimmed when in manual mode', () => {
+            ui.currentMode = 'manual';
+            ui._updateModeButtons();
+
+            const semiBtn = document.getElementById('semiAutoModeBtn');
+            expect(semiBtn.style.background).toBe('transparent');
         });
     });
 

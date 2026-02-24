@@ -930,6 +930,11 @@ class AIPredictionPanel {
 
             console.log('✅ Frontend prediction:', prediction);
 
+            // SEMI-AUTO: auto-select optimal filter before displaying
+            if (typeof window !== 'undefined' && window.semiAutoFilter && window.semiAutoFilter.isEnabled) {
+                window.semiAutoFilter.applyOptimalFilter(prediction.numbers);
+            }
+
             // Use existing display logic
             this.updatePrediction(prediction);
 
@@ -967,6 +972,9 @@ class AIPredictionPanel {
         const allNumbers = prediction.numbers || [];
         const anchorGroups = prediction.anchor_groups || [];
         const extraNumbers = prediction.extraNumbers || [];
+
+        // Sort anchor groups by European wheel position of their anchor number
+        anchorGroups.sort((a, b) => (WHEEL_POS[a.anchor] ?? 99) - (WHEEL_POS[b.anchor] ?? 99));
 
         // Color palette for anchor groups
         const groupColors = [
@@ -1479,6 +1487,9 @@ class AIPredictionPanel {
         const loose = mergedPrediction.loose || [];
         const allNumbers = mergedPrediction.numbers || [];
         const anchorGroups = mergedPrediction.anchor_groups || [];
+
+        // Sort anchor groups by European wheel position of their anchor number
+        anchorGroups.sort((a, b) => (WHEEL_POS[a.anchor] ?? 99) - (WHEEL_POS[b.anchor] ?? 99));
         const extraNumbers = mergedPrediction.extraNumbers || [];
 
         // Color palette for anchor groups (same as updatePrediction)

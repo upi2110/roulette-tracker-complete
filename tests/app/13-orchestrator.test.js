@@ -522,9 +522,10 @@ describe('AutoUpdateOrchestrator - handleAutoMode() lastDecision', () => {
             recordSkip: jest.fn()
         };
         global.window.aiAutoEngine = mockEngine;
-        global.window.aiPanel = { loadAvailablePairs: jest.fn() };
+        global.window.aiPanel = { loadAvailablePairs: jest.fn(), clearSelections: jest.fn() };
         global.window.aiAutoModeUI = { updateDecisionDisplay: jest.fn() };
         global.window.moneyPanel = { pendingBet: null };
+        global.window.rouletteWheel = { clearHighlights: jest.fn() };
 
         await orchestrator.handleAutoMode();
 
@@ -574,13 +575,58 @@ describe('AutoUpdateOrchestrator - handleAutoMode() lastDecision', () => {
             recordSkip: jest.fn()
         };
         global.window.aiAutoEngine = mockEngine;
-        global.window.aiPanel = { loadAvailablePairs: jest.fn() };
+        global.window.aiPanel = { loadAvailablePairs: jest.fn(), clearSelections: jest.fn() };
         global.window.aiAutoModeUI = { updateDecisionDisplay: jest.fn() };
         global.window.moneyPanel = { pendingBet: null };
+        global.window.rouletteWheel = { clearHighlights: jest.fn() };
 
         await orchestrator.handleAutoMode();
 
         expect(mockEngine.recordSkip).toHaveBeenCalledTimes(1);
+    });
+
+    test('SKIP clears AI panel selections', async () => {
+        const mockEngine = {
+            isEnabled: true,
+            decide: jest.fn().mockReturnValue({
+                action: 'SKIP', selectedPair: null, selectedFilter: null,
+                numbers: [], confidence: 20, reason: 'test'
+            }),
+            lastDecision: null,
+            recordSkip: jest.fn()
+        };
+        const mockPanel = { loadAvailablePairs: jest.fn(), clearSelections: jest.fn() };
+        global.window.aiAutoEngine = mockEngine;
+        global.window.aiPanel = mockPanel;
+        global.window.aiAutoModeUI = { updateDecisionDisplay: jest.fn() };
+        global.window.moneyPanel = { pendingBet: null };
+        global.window.rouletteWheel = { clearHighlights: jest.fn() };
+
+        await orchestrator.handleAutoMode();
+
+        expect(mockPanel.clearSelections).toHaveBeenCalledTimes(1);
+    });
+
+    test('SKIP clears wheel highlights', async () => {
+        const mockEngine = {
+            isEnabled: true,
+            decide: jest.fn().mockReturnValue({
+                action: 'SKIP', selectedPair: null, selectedFilter: null,
+                numbers: [], confidence: 20, reason: 'test'
+            }),
+            lastDecision: null,
+            recordSkip: jest.fn()
+        };
+        const mockWheel = { clearHighlights: jest.fn() };
+        global.window.aiAutoEngine = mockEngine;
+        global.window.aiPanel = { loadAvailablePairs: jest.fn(), clearSelections: jest.fn() };
+        global.window.aiAutoModeUI = { updateDecisionDisplay: jest.fn() };
+        global.window.moneyPanel = { pendingBet: null };
+        global.window.rouletteWheel = mockWheel;
+
+        await orchestrator.handleAutoMode();
+
+        expect(mockWheel.clearHighlights).toHaveBeenCalledTimes(1);
     });
 
     test('works when engine.lastDecision property does not exist initially', async () => {

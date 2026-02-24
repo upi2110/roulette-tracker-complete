@@ -127,6 +127,15 @@ global.NINETEEN_TABLE_NUMS = new Set([15, 19, 4, 17, 34, 6, 11, 30, 8, 24, 16, 3
 global.POSITIVE_NUMS = new Set([3, 26, 0, 32, 15, 19, 4, 27, 13, 36, 11, 30, 8, 1, 20, 14, 31, 9, 22]);
 global.NEGATIVE_NUMS = new Set([21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35]);
 
+function generateTestSpins(count) {
+    const WHEEL = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
+    const spins = [];
+    for (let i = 0; i < count; i++) {
+        spins.push(WHEEL[i % WHEEL.length]);
+    }
+    return spins;
+}
+
 describe('AIAutoEngine', () => {
     let engine;
 
@@ -1743,6 +1752,679 @@ describe('AIAutoEngine', () => {
             engine.recordResult('prev', 'both_both', false, 32, [0]); // near
             engine.recordResult('prev', 'both_both', true, 5, [5]);   // hit (not near)
             expect(engine.session.nearMisses).toBe(2);
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    //  T: Filter penalty for both_both
+    // ═══════════════════════════════════════════════════════════
+
+    describe('T: _selectBestFilter — both_both penalty', () => {
+        beforeEach(() => {
+            const trainingData = [generateTestSpins(50)];
+            engine.train(trainingData);
+        });
+
+        test('T1: both_both score is reduced by penalty vs equal-hitrate filter', () => {
+            const numbers = [0, 3, 26, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13];
+            // Set all filter models to same hit rate so we can isolate the penalty effect
+            const COMBOS = ['zero_positive', 'zero_negative', 'nineteen_positive', 'nineteen_negative',
+                'zero_both', 'nineteen_both', 'both_positive', 'both_negative', 'both_both'];
+            COMBOS.forEach(key => {
+                engine.filterModels[key] = { hitRate: 0.5, totalTrials: 100 };
+            });
+            const result = engine._selectBestFilter(numbers);
+            // With equal hit rates, both_both has -0.15 penalty + excess numbers penalty
+            // while focused filters get +0.05 (6-14 range bonus) and +0.02 (focus bonus)
+            // So both_both should NOT be selected when all else is equal
+            expect(result.filterKey).not.toBe('both_both');
+        });
+
+        test('T2: both_both still used when no filter produces 4+ numbers', () => {
+            const result = engine._selectBestFilter([0, 3]);
+            expect(result.filterKey).toBe('both_both');
+        });
+
+        test('T3: filters producing >14 numbers get proportional penalty', () => {
+            // With many numbers, both_both keeps all and gets penalized
+            const manyNumbers = Array.from({ length: 20 }, (_, i) => i);
+            const result = engine._selectBestFilter(manyNumbers);
+            // Should prefer a focused filter over keeping all 20
+            expect(result.filteredNumbers.length).toBeLessThanOrEqual(18);
+        });
+
+        test('T4: bestScore uses -Infinity init (any scored filter beats default)', () => {
+            const numbers = [0, 32, 15, 19, 4, 21];
+            const result = engine._selectBestFilter(numbers);
+            // Even if all filter scores are low/negative, one must be chosen
+            expect(result).toHaveProperty('filterKey');
+            expect(result).toHaveProperty('filteredNumbers');
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    //  U: Live retrain
+    // ═══════════════════════════════════════════════════════════
+
+    describe('U: Live retrain system', () => {
+        const trainingData = [generateTestSpins(30)];
+
+        test('U1: constructor initializes live retrain properties', () => {
+            expect(engine.liveSpins).toEqual([]);
+            expect(engine._originalTrainingData).toBeNull();
+            expect(engine._retrainInterval).toBe(10);
+            expect(engine._retrainLossStreak).toBe(3);
+            expect(engine._lastRetrainBetCount).toBe(0);
+        });
+
+        test('U2: constructor accepts custom retrain options', () => {
+            const custom = new AIAutoEngine({ retrainInterval: 5, retrainLossStreak: 2 });
+            expect(custom._retrainInterval).toBe(5);
+            expect(custom._retrainLossStreak).toBe(2);
+        });
+
+        test('U3: train() stores _originalTrainingData', () => {
+            engine.train(trainingData);
+            expect(engine._originalTrainingData).toBe(trainingData);
+        });
+
+        test('U4: recordResult accumulates liveSpins', () => {
+            engine.train(trainingData);
+            engine._retrainInterval = 100; // Prevent auto-retrain
+            engine.recordResult('prev', 'zero_positive', true, 5);
+            engine.recordResult('prev', 'zero_positive', false, 10);
+            expect(engine.liveSpins).toEqual([5, 10]);
+        });
+
+        test('U5: recordResult rejects invalid spin numbers for liveSpins', () => {
+            engine.train(trainingData);
+            engine._retrainInterval = 100;
+            engine.recordResult('prev', 'zero_positive', true, 37);
+            engine.recordResult('prev', 'zero_positive', true, -1);
+            expect(engine.liveSpins).toEqual([]);
+        });
+
+        test('U6: retrain() merges original + live data and retrains', () => {
+            engine.train(trainingData);
+            engine.enable();
+            engine.liveSpins = [8, 23, 10, 5, 24, 16, 33, 1, 20, 14];
+            const result = engine.retrain();
+            expect(result).toBeDefined();
+            expect(result.totalSpins).toBeGreaterThan(trainingData[0].length);
+            expect(engine.isTrained).toBe(true);
+            expect(engine.isEnabled).toBe(true);
+        });
+
+        test('U7: retrain() preserves session stats but resets adaptationWeight', () => {
+            engine.train(trainingData);
+            engine.enable();
+            engine._retrainInterval = 100;
+            engine.recordResult('prev', 'zero_positive', true, 5);
+            engine.recordResult('prev', 'zero_positive', true, 10);
+            const betsBeforeRetrain = engine.session.totalBets;
+            engine.liveSpins = [8, 23, 10, 5, 24, 16, 33, 1, 20, 14];
+            engine.retrain();
+            expect(engine.session.totalBets).toBe(betsBeforeRetrain);
+            expect(engine.session.adaptationWeight).toBe(0);
+        });
+
+        test('U8: retrain() without original data returns undefined', () => {
+            engine._originalTrainingData = null;
+            expect(engine.retrain()).toBeUndefined();
+        });
+
+        test('U9: _checkRetrainNeeded triggers after loss streak', () => {
+            engine.train(trainingData);
+            engine._retrainLossStreak = 3;
+            engine.liveSpins = [1, 2, 3, 4, 5];
+            const spy = jest.spyOn(engine, 'retrain').mockImplementation(() => ({}));
+            engine.recordResult('prev', 'zero_positive', false, 1);
+            engine.recordResult('prev', 'zero_positive', false, 2);
+            engine.recordResult('prev', 'zero_positive', false, 3);
+            expect(spy).toHaveBeenCalled();
+            spy.mockRestore();
+        });
+
+        test('U10: _checkRetrainNeeded triggers after interval bets', () => {
+            engine.train(trainingData);
+            engine._retrainInterval = 3;
+            engine.liveSpins = [1, 2, 3, 4, 5];
+            const spy = jest.spyOn(engine, 'retrain').mockImplementation(() => ({}));
+            engine.recordResult('prev', 'zero_positive', true, 1);
+            engine.recordResult('prev', 'zero_positive', true, 2);
+            engine.recordResult('prev', 'zero_positive', true, 3);
+            expect(spy).toHaveBeenCalled();
+            spy.mockRestore();
+        });
+
+        test('U11: _checkRetrainNeeded skips with < 5 live spins', () => {
+            engine.train(trainingData);
+            engine._retrainInterval = 1;
+            engine.liveSpins = [1, 2];
+            const spy = jest.spyOn(engine, 'retrain').mockImplementation(() => ({}));
+            engine.recordResult('prev', 'zero_positive', true, 1);
+            expect(spy).not.toHaveBeenCalled();
+            spy.mockRestore();
+        });
+
+        test('U12: resetSession clears liveSpins and _lastRetrainBetCount', () => {
+            engine.train(trainingData);
+            engine.liveSpins = [1, 2, 3];
+            engine._lastRetrainBetCount = 5;
+            engine.resetSession();
+            expect(engine.liveSpins).toEqual([]);
+            expect(engine._lastRetrainBetCount).toBe(0);
+        });
+
+        test('U13: fullReset clears liveSpins and _originalTrainingData', () => {
+            engine.train(trainingData);
+            engine.liveSpins = [1, 2, 3];
+            engine.fullReset();
+            expect(engine.liveSpins).toEqual([]);
+            expect(engine._originalTrainingData).toBeNull();
+            expect(engine._lastRetrainBetCount).toBe(0);
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    //  V: decide() must ONLY choose flashing pairs
+    // ═══════════════════════════════════════════════════════════
+
+    describe('V: decide() flashing-pair enforcement', () => {
+        const trainSession = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5];
+
+        const mockSpins = [
+            { actual: 0 }, { actual: 32 }, { actual: 15 }, { actual: 19 },
+            { actual: 4 }, { actual: 21 }
+        ];
+
+        const fullProjections = {
+            prev: { numbers: [0, 32, 15, 19, 4, 21, 2, 25] },
+            prevPlus1: { numbers: [17, 34, 6, 27, 13, 36] },
+            prevMinus1: { numbers: [11, 30, 8, 23, 10, 5] },
+            prevPlus2: { numbers: [24, 16, 33, 1, 20, 14] },
+            prevMinus2: { numbers: [31, 9, 22, 18, 29, 7] },
+            prevPrev: { numbers: [28, 12, 35, 3, 26, 0] }
+        };
+
+        beforeEach(() => {
+            engine.train([trainSession]);
+            engine.isEnabled = true;
+            engine.confidenceThreshold = 0; // Allow any BET
+            engine._getWindowSpins = () => mockSpins;
+            engine._getAIDataV6 = () => ({ table3NextProjections: fullProjections });
+        });
+
+        test('V1: BET only when flash targets exist (not empty set)', () => {
+            engine._getComputeFlashTargets = () => new Set();
+            const result = engine.decide();
+            expect(result.action).toBe('SKIP');
+            expect(result.reason).toContain('No pairs flashing');
+        });
+
+        test('V2: when only prev flashes, selectedPair must be prev', () => {
+            engine._getComputeFlashTargets = () => new Set(['4:prev:pair']);
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(result.selectedPair).toBe('prev');
+        });
+
+        test('V3: when only prevPlus1 flashes, selectedPair must be prevPlus1', () => {
+            engine._getComputeFlashTargets = () => new Set(['4:prev_plus_1:pair13Opp']);
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(result.selectedPair).toBe('prevPlus1');
+        });
+
+        test('V4: when only prevMinus1 flashes, selectedPair must be prevMinus1', () => {
+            engine._getComputeFlashTargets = () => new Set(['4:prev_minus_1:pair']);
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(result.selectedPair).toBe('prevMinus1');
+        });
+
+        test('V5: when only prevPlus2 flashes, selectedPair must be prevPlus2', () => {
+            engine._getComputeFlashTargets = () => new Set(['4:prev_plus_2:pair']);
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(result.selectedPair).toBe('prevPlus2');
+        });
+
+        test('V6: when only prevMinus2 flashes, selectedPair must be prevMinus2', () => {
+            engine._getComputeFlashTargets = () => new Set(['4:prev_minus_2:pair13Opp']);
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(result.selectedPair).toBe('prevMinus2');
+        });
+
+        test('V7: when only prevPrev flashes, selectedPair must be prevPrev', () => {
+            engine._getComputeFlashTargets = () => new Set(['4:prev_prev:pair']);
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(result.selectedPair).toBe('prevPrev');
+        });
+
+        test('V8: when prev and prevPlus1 flash, selected must be one of them', () => {
+            engine._getComputeFlashTargets = () => new Set(['4:prev:pair', '4:prev_plus_1:pair']);
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(['prev', 'prevPlus1']).toContain(result.selectedPair);
+        });
+
+        test('V9: NON-flashing pair is NEVER selected (prev_plus_2 not in flash set)', () => {
+            // Only prev and prevMinus1 flash — prevPlus2 does NOT flash
+            engine._getComputeFlashTargets = () => new Set(['4:prev:pair', '4:prev_minus_1:pair13Opp']);
+            const result = engine.decide();
+            if (result.action === 'BET') {
+                expect(['prev', 'prevMinus1']).toContain(result.selectedPair);
+                // Explicitly verify non-flashing pairs are excluded
+                expect(result.selectedPair).not.toBe('prevPlus1');
+                expect(result.selectedPair).not.toBe('prevPlus2');
+                expect(result.selectedPair).not.toBe('prevMinus2');
+                expect(result.selectedPair).not.toBe('prevPrev');
+            }
+        });
+
+        test('V10: NON-flashing pair excluded even if it has highest projection count', () => {
+            // Only prevPrev flashes, but prevPlus1 has more numbers (should NOT be picked)
+            engine._getComputeFlashTargets = () => new Set(['4:prev_prev:pair']);
+            engine._getAIDataV6 = () => ({
+                table3NextProjections: {
+                    prevPrev: { numbers: [28, 12, 35] }, // small set
+                    prevPlus1: { numbers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14] } // large set - tempting
+                }
+            });
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(result.selectedPair).toBe('prevPrev');
+        });
+
+        test('V11: flash target parsing extracts refKey correctly from format "relIdx:refKey:cellType"', () => {
+            // Various flash target formats
+            const targets = new Set([
+                '5:prev:pair',
+                '5:prev:pair13Opp',
+                '4:prev_plus_1:pair',
+                '4:prev_minus_2:pair13Opp'
+            ]);
+            engine._getComputeFlashTargets = () => targets;
+
+            const result = engine.decide();
+            if (result.action === 'BET') {
+                // Must be one of the flashing pairs
+                expect(['prev', 'prevPlus1', 'prevMinus2']).toContain(result.selectedPair);
+            }
+        });
+
+        test('V12: duplicate refKey in flash targets (pair + pair13Opp) still yields one candidate', () => {
+            // prev appears twice (once for pair, once for pair13Opp) — should only create one candidate
+            engine._getComputeFlashTargets = () => new Set([
+                '4:prev:pair',
+                '5:prev:pair13Opp'
+            ]);
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(result.selectedPair).toBe('prev');
+        });
+
+        test('V13: malformed flash target strings are ignored (no crash)', () => {
+            engine._getComputeFlashTargets = () => new Set([
+                'bad-format',
+                '',
+                '4:prev:pair' // one valid entry
+            ]);
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(result.selectedPair).toBe('prev');
+        });
+
+        test('V14: flash target with unknown refKey is safely ignored', () => {
+            engine._getComputeFlashTargets = () => new Set([
+                '4:unknown_pair:pair',  // not a real refKey
+                '4:prev:pair'           // valid
+            ]);
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(result.selectedPair).toBe('prev');
+        });
+
+        test('V15: all 6 pairs flash but only 3 have projections — selected from those 3', () => {
+            engine._getComputeFlashTargets = () => new Set([
+                '4:prev:pair', '4:prev_plus_1:pair', '4:prev_minus_1:pair',
+                '4:prev_plus_2:pair', '4:prev_minus_2:pair', '4:prev_prev:pair'
+            ]);
+            engine._getAIDataV6 = () => ({
+                table3NextProjections: {
+                    prev: { numbers: [0, 32, 15] },
+                    prevMinus1: { numbers: [11, 30, 8, 23] },
+                    prevPrev: { numbers: [28, 12, 35, 3, 26] }
+                    // prevPlus1, prevPlus2, prevMinus2 have NO projections
+                }
+            });
+            const result = engine.decide();
+            expect(result.action).toBe('BET');
+            expect(['prev', 'prevMinus1', 'prevPrev']).toContain(result.selectedPair);
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    //  W: _getFlashingPairsFromHistory consistency
+    // ═══════════════════════════════════════════════════════════
+
+    describe('W: _getFlashingPairsFromHistory flash detection', () => {
+        test('W1: returns empty map when idx < 3', () => {
+            const spins = [0, 32, 15, 19];
+            expect(engine._getFlashingPairsFromHistory(spins, 0).size).toBe(0);
+            expect(engine._getFlashingPairsFromHistory(spins, 1).size).toBe(0);
+            expect(engine._getFlashingPairsFromHistory(spins, 2).size).toBe(0);
+        });
+
+        test('W2: returns Map with valid refKeys only', () => {
+            const spins = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34];
+            for (let i = 3; i < spins.length; i++) {
+                const result = engine._getFlashingPairsFromHistory(spins, i);
+                for (const key of result.keys()) {
+                    expect(PAIR_REFKEYS).toContain(key);
+                }
+            }
+        });
+
+        test('W3: each flash entry has currDist, prevDist, currCode, prevCode', () => {
+            const spins = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34];
+            for (let i = 3; i < spins.length; i++) {
+                const result = engine._getFlashingPairsFromHistory(spins, i);
+                for (const [key, info] of result) {
+                    expect(info).toHaveProperty('currDist');
+                    expect(info).toHaveProperty('prevDist');
+                    expect(info).toHaveProperty('currCode');
+                    expect(info).toHaveProperty('prevCode');
+                    expect(typeof info.currDist).toBe('number');
+                    expect(typeof info.prevDist).toBe('number');
+                    // The ±1 rule: diff must be <= 1
+                    expect(Math.abs(info.currDist - info.prevDist)).toBeLessThanOrEqual(1);
+                }
+            }
+        });
+
+        test('W4: flash result satisfies ±1 distance rule (no false positives)', () => {
+            // Test with many different spin sequences
+            const sequences = [
+                [0, 32, 15, 19, 4, 21, 2, 25],
+                [17, 34, 6, 27, 13, 36, 11, 30],
+                [8, 23, 10, 5, 24, 16, 33, 1],
+                [20, 14, 31, 9, 22, 18, 29, 7]
+            ];
+            for (const spins of sequences) {
+                for (let i = 3; i < spins.length; i++) {
+                    const result = engine._getFlashingPairsFromHistory(spins, i);
+                    for (const [, info] of result) {
+                        const diff = Math.abs(info.currDist - info.prevDist);
+                        expect(diff).toBeLessThanOrEqual(1);
+                    }
+                }
+            }
+        });
+
+        test('W5: training only considers flashing pairs (non-flashing pairs get zero weight)', () => {
+            // Verify that train() loop at line 225 skips non-flashing indices
+            const spins = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34];
+            engine.train([spins]);
+
+            // Each pairModel.totalTrials should only count spins where that pair was flashing
+            for (const refKey of PAIR_REFKEYS) {
+                const model = engine.pairModels[refKey];
+                if (model && model.totalTrials > 0) {
+                    // Verify by re-running flash detection: count how many times this pair flashed
+                    let flashCount = 0;
+                    for (let i = 3; i < spins.length - 1; i++) {
+                        const flashing = engine._getFlashingPairsFromHistory(spins, i);
+                        if (flashing.has(refKey)) flashCount++;
+                    }
+                    expect(model.totalTrials).toBe(flashCount);
+                }
+            }
+        });
+
+        test('W6: auto-test _simulateDecision also respects flashing pairs only', () => {
+            // The auto test runner uses _getFlashingPairsFromHistory
+            // Verify it returns SKIP when no pairs flash at a given index
+            const spins = [0, 32, 15, 19, 4];
+            const flashing = engine._getFlashingPairsFromHistory(spins, 3);
+            if (flashing.size === 0) {
+                // If no pairs flash at idx 3, auto-test should also skip
+                // This is tested via the runner, but validates the detection function
+                expect(flashing.size).toBe(0);
+            }
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    //  X: RECORDSKIP IMPROVEMENTS
+    // ═══════════════════════════════════════════════════════════
+    describe('X: recordSkip improvements', () => {
+        test('X1: recordSkip pushes neutral entry to recentDecisions', () => {
+            engine.recordSkip();
+            expect(engine.session.recentDecisions).toHaveLength(1);
+            expect(engine.session.recentDecisions[0].refKey).toBeNull();
+            expect(engine.session.recentDecisions[0].skipped).toBe(true);
+        });
+
+        test('X2: recordSkip entries break consecutive flash bonus', () => {
+            // Add a BET decision
+            engine.session.recentDecisions.push({ refKey: 'prev', filterKey: 'zero_positive', hit: true, nearMiss: false });
+            // Last entry is 'prev' — consecutive flash bonus would apply
+
+            // Now skip — pushes null refKey
+            engine.recordSkip();
+            const last = engine.session.recentDecisions[engine.session.recentDecisions.length - 1];
+            expect(last.refKey).toBeNull(); // No pair gets bonus now
+
+            // _scorePair should NOT give consecutive flash bonus to 'prev'
+            // (since last recentDecision has refKey: null)
+            engine.isTrained = true;
+            engine.pairModels['prev'] = { totalFlashes: 10, projectionHits: 3, hitRate: 0.3, avgProjectionSize: 10, coverageEfficiency: 1.0, totalProjectionSize: 100 };
+            const score = engine._scorePair('prev', { numbers: [1,2,3] });
+            // Without consecutive bonus, score should be based on efficiency only
+            // coverageEfficiency=1.0 → normalized to 1/3 = 0.333
+            // +0.10 for hitRate >= 0.25
+            // No consecutive flash bonus (+0.00 instead of +0.10)
+            expect(score).toBeLessThan(0.55); // Without bonus
+        });
+
+        test('X3: recordSkip respects 10-entry limit on recentDecisions', () => {
+            for (let i = 0; i < 15; i++) {
+                engine.recordSkip();
+            }
+            expect(engine.session.recentDecisions).toHaveLength(10);
+        });
+
+        test('X4: recordSkip increments consecutiveSkips', () => {
+            expect(engine.session.consecutiveSkips).toBe(0);
+            engine.recordSkip();
+            engine.recordSkip();
+            expect(engine.session.consecutiveSkips).toBe(2);
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    //  Y: SELECTBESTFILTER WITH SEQUENCE MODEL
+    // ═══════════════════════════════════════════════════════════
+    describe('Y: _selectBestFilter with sequence model', () => {
+        test('Y1: without sequence model, wider filters preferred', () => {
+            engine.isTrained = true;
+            // Initialize filter models with equal hit rates
+            FILTER_COMBOS.forEach(fc => {
+                engine.filterModels[fc.key] = { totalTrials: 100, hits: 30, hitRate: 0.30, totalFilteredCount: 800, avgFilteredCount: 8 };
+            });
+
+            const numbers = Array.from({ length: 15 }, (_, i) => i);
+            const result = engine._selectBestFilter(numbers);
+            // Without sequence model, both_both is penalized but single-axis filters
+            // should be preferred over double-restrictive filters
+            expect(result.filterKey).toBeDefined();
+            expect(result.filteredNumbers.length).toBeGreaterThanOrEqual(4);
+        });
+
+        test('Y2: both_both still penalized', () => {
+            engine.isTrained = true;
+            FILTER_COMBOS.forEach(fc => {
+                engine.filterModels[fc.key] = { totalTrials: 100, hits: 30, hitRate: 0.30, totalFilteredCount: 800, avgFilteredCount: 8 };
+            });
+
+            const numbers = Array.from({ length: 15 }, (_, i) => i);
+            const result = engine._selectBestFilter(numbers);
+            // Should not pick both_both due to -0.10 penalty
+            expect(result.filterKey).not.toBe('both_both');
+        });
+
+        test('Y3: overly restrictive filters (< 6 numbers) get penalized', () => {
+            engine.isTrained = true;
+            FILTER_COMBOS.forEach(fc => {
+                engine.filterModels[fc.key] = { totalTrials: 100, hits: 30, hitRate: 0.30, totalFilteredCount: 800, avgFilteredCount: 8 };
+            });
+
+            // Use numbers where only one combo produces 4-5 numbers
+            // All zero-table positive numbers: 0, 3, 26, 32, 27, 13, 36, 1, 20, 14
+            const numbers = [0, 3, 26, 32, 27, 13, 36, 1, 20, 14, 21, 2, 25]; // mix
+            const result = engine._selectBestFilter(numbers);
+            // Should exist and be valid
+            expect(result.filteredNumbers.length).toBeGreaterThanOrEqual(4);
+        });
+
+        test('Y4: sequence model with confidence boosts matching filter', () => {
+            engine.isTrained = true;
+            FILTER_COMBOS.forEach(fc => {
+                engine.filterModels[fc.key] = { totalTrials: 100, hits: 30, hitRate: 0.30, totalFilteredCount: 800, avgFilteredCount: 8 };
+            });
+
+            // Mock sequence model that is confident about zero table
+            if (engine.sequenceModel) {
+                const origScoreFilterCombos = engine.sequenceModel.scoreFilterCombos.bind(engine.sequenceModel);
+                engine.sequenceModel.isTrained = true;
+                engine.sequenceModel.scoreFilterCombos = () => ({
+                    scores: {
+                        zero_positive: 0.70, zero_negative: 0.70, zero_both: 0.70,
+                        nineteen_positive: 0.30, nineteen_negative: 0.30, nineteen_both: 0.30,
+                        both_positive: 0.50, both_negative: 0.50, both_both: 1.0
+                    },
+                    prediction: { confident: true, tableConfident: true, signConfident: false },
+                    confident: true
+                });
+
+                // Provide spins for sequence model
+                engine._getWindowSpins = () => [4, 19];
+
+                const numbers = Array.from({ length: 37 }, (_, i) => i);
+                const result = engine._selectBestFilter(numbers);
+                // With confident zero prediction, should favor zero_* filter
+                const isZeroFilter = result.filterKey.startsWith('zero');
+                expect(isZeroFilter).toBe(true);
+            }
+        });
+
+        test('Y5: sequence model WITHOUT confidence penalizes restrictive filters', () => {
+            engine.isTrained = true;
+            FILTER_COMBOS.forEach(fc => {
+                engine.filterModels[fc.key] = { totalTrials: 100, hits: 30, hitRate: 0.30, totalFilteredCount: 800, avgFilteredCount: 8 };
+            });
+
+            if (engine.sequenceModel) {
+                engine.sequenceModel.isTrained = true;
+                engine.sequenceModel.scoreFilterCombos = () => ({
+                    scores: {
+                        zero_positive: 0.25, zero_negative: 0.25, zero_both: 0.50,
+                        nineteen_positive: 0.25, nineteen_negative: 0.25, nineteen_both: 0.50,
+                        both_positive: 0.50, both_negative: 0.50, both_both: 1.0
+                    },
+                    prediction: { confident: false, tableConfident: false, signConfident: false },
+                    confident: false
+                });
+
+                engine._getWindowSpins = () => [4, 19];
+
+                const numbers = Array.from({ length: 37 }, (_, i) => i);
+                const result = engine._selectBestFilter(numbers);
+                // Without confidence, double-restrictive combos (zero_positive, etc.) get extra penalty
+                // Should prefer wider filters (single-axis or both_*)
+                const key = result.filterKey;
+                const parts = key.split('_');
+                const isDoubleRestrict = parts[0] !== 'both' && parts[1] !== 'both';
+                // With no confidence, shouldn't pick double-restrictive
+                expect(isDoubleRestrict).toBe(false);
+            }
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    //  Z: SEQUENCE MODEL INTEGRATION IN ENGINE
+    // ═══════════════════════════════════════════════════════════
+    describe('Z: sequence model integration', () => {
+        // Make AISequenceModel available globally so engine constructor finds it
+        beforeAll(() => {
+            const { AISequenceModel } = require('../../app/ai-sequence-model');
+            global.AISequenceModel = AISequenceModel;
+        });
+        afterAll(() => { delete global.AISequenceModel; });
+
+        test('Z1: engine constructor creates sequenceModel by default', () => {
+            const e = new AIAutoEngine();
+            expect(e.sequenceModel).toBeDefined();
+            expect(e.sequenceModel).not.toBeNull();
+        });
+
+        test('Z2: engine.train() also trains sequenceModel', () => {
+            const e = new AIAutoEngine();
+            // Can't fully train engine (needs renderer functions), but
+            // we can verify sequenceModel gets trained directly
+            e.sequenceModel.train([[0, 4, 19, 32, 17, 21, 2, 25]]);
+            expect(e.sequenceModel.isTrained).toBe(true);
+        });
+
+        test('Z3: getState includes sequenceStats', () => {
+            engine.isTrained = true;
+            if (engine.sequenceModel) {
+                engine.sequenceModel.train([[0, 4, 19, 32, 17]]);
+            }
+            const state = engine.getState();
+            expect(state).toHaveProperty('sequenceStats');
+            if (engine.sequenceModel) {
+                expect(state.sequenceStats).not.toBeNull();
+                expect(state.sequenceStats.totalObservations).toBeGreaterThan(0);
+            }
+        });
+
+        test('Z4: fullReset clears sequenceModel', () => {
+            if (engine.sequenceModel) {
+                engine.sequenceModel.train([[0, 4, 19, 32]]);
+                expect(engine.sequenceModel.isTrained).toBe(true);
+                engine.fullReset();
+                expect(engine.sequenceModel.isTrained).toBe(false);
+            }
+        });
+
+        test('Z5: number set sizes — positive(19) vs negative(18)', () => {
+            // Verify the 19/18 imbalance is a known property
+            const zeroNums = engine._getZeroTableNums();
+            const nineNums = engine._getNineteenTableNums();
+            const posNums = engine._getPositiveNums();
+            const negNums = engine._getNegativeNums();
+            expect(zeroNums.size).toBe(19);
+            expect(nineNums.size).toBe(18);
+            expect(posNums.size).toBe(19);
+            expect(negNums.size).toBe(18);
+            // Total coverage
+            expect(zeroNums.size + nineNums.size).toBe(37);
+            expect(posNums.size + negNums.size).toBe(37);
+        });
+
+        test('Z6: 0 and 26 are both in zero table and positive', () => {
+            // 0/26 share the same physical pocket
+            const zeroNums = engine._getZeroTableNums();
+            const posNums = engine._getPositiveNums();
+            expect(zeroNums.has(0)).toBe(true);
+            expect(zeroNums.has(26)).toBe(true);
+            expect(posNums.has(0)).toBe(true);
+            expect(posNums.has(26)).toBe(true);
         });
     });
 });

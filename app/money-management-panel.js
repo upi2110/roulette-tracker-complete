@@ -707,12 +707,21 @@ class MoneyManagementPanel {
          * Receive prediction from AI panel
          * Store it as pending bet to be placed on next spin
          */
-        
+
         if (!prediction || !prediction.numbers || prediction.numbers.length === 0) {
             console.log('⚠️ No valid prediction to set');
             return;
         }
-        
+
+        // AUTO MODE SKIP: If AI engine decided SKIP, don't create a bet
+        // This prevents the delayed prediction cascade from overwriting a SKIP decision
+        const autoEngine = typeof window !== 'undefined' ? window.aiAutoEngine : null;
+        if (autoEngine && autoEngine.isEnabled && autoEngine.lastDecision === null) {
+            this.pendingBet = null;
+            console.log('⏭️ AUTO SKIP: Not creating pending bet (engine decided SKIP)');
+            return;
+        }
+
         console.log('💰 Money panel received prediction:', {
             signal: prediction.signal,
             numbers: prediction.numbers.length,
