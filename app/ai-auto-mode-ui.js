@@ -63,6 +63,12 @@ class AIAutoModeUI {
                     <div id="trainingProgressText" style="font-size:9px;color:#94a3b8;text-align:center;margin-top:2px;">0%</div>
                 </div>
             </div>
+            <div id="aiVersionToggle" style="display:none;margin-bottom:4px;">
+                <label style="font-size:10px;color:#94a3b8;cursor:pointer;user-select:none;">
+                    <input type="checkbox" id="aiV2Toggle" checked style="margin-right:4px;">
+                    AI Learning v2 (Bayesian)
+                </label>
+            </div>
             <div id="autoModeStatus" style="display:none;">
                 <div id="currentDecision" style="font-size:11px;color:#e2e8f0;font-weight:600;margin-bottom:2px;">--</div>
                 <div id="skipCounter" style="font-size:10px;color:#94a3b8;">Skips: 0/5</div>
@@ -99,6 +105,18 @@ class AIAutoModeUI {
 
         if (trainBtn) {
             trainBtn.addEventListener('click', () => this.startTraining());
+        }
+
+        const v2Toggle = document.getElementById('aiV2Toggle');
+        if (v2Toggle) {
+            v2Toggle.addEventListener('change', (e) => {
+                const engine = this.engine || (typeof window !== 'undefined' ? window.aiAutoEngine : null);
+                if (engine) {
+                    engine.setLearningVersion(e.target.checked ? 'v2' : 'v1');
+                    const versionLabel = e.target.checked ? 'v2 (Bayesian AI)' : 'v1 (Static)';
+                    console.log(`🧠 AI version switched to ${versionLabel}`);
+                }
+            });
         }
     }
 
@@ -258,7 +276,8 @@ class AIAutoModeUI {
             }
 
             const seqNote = engine.sequenceModel && engine.sequenceModel.isTrained ? ' + sequences' : '';
-            this.updateTrainingProgress(100, `Trained on ${trainResult.totalSpins} spins — Hit rate: ${Math.round(trainResult.overallHitRate * 100)}%${seqNote}`);
+            const v2Note = engine.learningVersion === 'v2' ? ' + Bayesian AI' : '';
+            this.updateTrainingProgress(100, `Trained on ${trainResult.totalSpins} spins — Hit rate: ${Math.round(trainResult.overallHitRate * 100)}%${seqNote}${v2Note}`);
 
             this.renderStatus();
 
@@ -334,9 +353,14 @@ class AIAutoModeUI {
             const sessionStr = state.sessionStats.totalBets > 0
                 ? ` | Session: ${state.sessionStats.wins}W/${state.sessionStats.losses}L (${Math.round(state.sessionStats.sessionWinRate * 100)}%)`
                 : '';
-            statusEl.textContent = `✅ Trained (${state.pairModelCount} pairs)${sessionStr}`;
+            const versionStr = engine.learningVersion === 'v2' ? ' | v2 Bayesian' : ' | v1 Static';
+            statusEl.textContent = `✅ Trained (${state.pairModelCount} pairs)${sessionStr}${versionStr}`;
             statusEl.style.color = '#22c55e';
             this._showTrainingStatusBar(true);
+
+            // Show v1/v2 toggle after training
+            const toggleDiv = document.getElementById('aiVersionToggle');
+            if (toggleDiv) toggleDiv.style.display = 'block';
         } else {
             statusEl.textContent = 'Not trained — click TRAIN to load data';
             statusEl.style.color = '#94a3b8';

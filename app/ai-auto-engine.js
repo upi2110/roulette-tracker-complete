@@ -13,17 +13,48 @@
  *   ZERO_TABLE_NUMS, NINETEEN_TABLE_NUMS, POSITIVE_NUMS, NEGATIVE_NUMS
  */
 
-// ── Filter Combinations ──
+// ── Filter Combinations (table × sign × set = 36 total) ──
 const FILTER_COMBOS = [
-    { key: 'zero_positive',     table: 'zero',     sign: 'positive' },
-    { key: 'zero_negative',     table: 'zero',     sign: 'negative' },
-    { key: 'zero_both',         table: 'zero',     sign: 'both' },
-    { key: 'nineteen_positive', table: 'nineteen', sign: 'positive' },
-    { key: 'nineteen_negative', table: 'nineteen', sign: 'negative' },
-    { key: 'nineteen_both',     table: 'nineteen', sign: 'both' },
-    { key: 'both_positive',     table: 'both',     sign: 'positive' },
-    { key: 'both_negative',     table: 'both',     sign: 'negative' },
-    { key: 'both_both',         table: 'both',     sign: 'both' },
+    // Original 9: set='all' (no set filtering — backward compatible)
+    { key: 'zero_positive',     table: 'zero',     sign: 'positive', set: 'all' },
+    { key: 'zero_negative',     table: 'zero',     sign: 'negative', set: 'all' },
+    { key: 'zero_both',         table: 'zero',     sign: 'both',     set: 'all' },
+    { key: 'nineteen_positive', table: 'nineteen', sign: 'positive', set: 'all' },
+    { key: 'nineteen_negative', table: 'nineteen', sign: 'negative', set: 'all' },
+    { key: 'nineteen_both',     table: 'nineteen', sign: 'both',     set: 'all' },
+    { key: 'both_positive',     table: 'both',     sign: 'positive', set: 'all' },
+    { key: 'both_negative',     table: 'both',     sign: 'negative', set: 'all' },
+    { key: 'both_both',         table: 'both',     sign: 'both',     set: 'all' },
+    // 0 Set combos (9)
+    { key: 'zero_positive_set0',     table: 'zero',     sign: 'positive', set: 'set0' },
+    { key: 'zero_negative_set0',     table: 'zero',     sign: 'negative', set: 'set0' },
+    { key: 'zero_both_set0',         table: 'zero',     sign: 'both',     set: 'set0' },
+    { key: 'nineteen_positive_set0', table: 'nineteen', sign: 'positive', set: 'set0' },
+    { key: 'nineteen_negative_set0', table: 'nineteen', sign: 'negative', set: 'set0' },
+    { key: 'nineteen_both_set0',     table: 'nineteen', sign: 'both',     set: 'set0' },
+    { key: 'both_positive_set0',     table: 'both',     sign: 'positive', set: 'set0' },
+    { key: 'both_negative_set0',     table: 'both',     sign: 'negative', set: 'set0' },
+    { key: 'both_both_set0',         table: 'both',     sign: 'both',     set: 'set0' },
+    // 5 Set combos (9)
+    { key: 'zero_positive_set5',     table: 'zero',     sign: 'positive', set: 'set5' },
+    { key: 'zero_negative_set5',     table: 'zero',     sign: 'negative', set: 'set5' },
+    { key: 'zero_both_set5',         table: 'zero',     sign: 'both',     set: 'set5' },
+    { key: 'nineteen_positive_set5', table: 'nineteen', sign: 'positive', set: 'set5' },
+    { key: 'nineteen_negative_set5', table: 'nineteen', sign: 'negative', set: 'set5' },
+    { key: 'nineteen_both_set5',     table: 'nineteen', sign: 'both',     set: 'set5' },
+    { key: 'both_positive_set5',     table: 'both',     sign: 'positive', set: 'set5' },
+    { key: 'both_negative_set5',     table: 'both',     sign: 'negative', set: 'set5' },
+    { key: 'both_both_set5',         table: 'both',     sign: 'both',     set: 'set5' },
+    // 6 Set combos (9)
+    { key: 'zero_positive_set6',     table: 'zero',     sign: 'positive', set: 'set6' },
+    { key: 'zero_negative_set6',     table: 'zero',     sign: 'negative', set: 'set6' },
+    { key: 'zero_both_set6',         table: 'zero',     sign: 'both',     set: 'set6' },
+    { key: 'nineteen_positive_set6', table: 'nineteen', sign: 'positive', set: 'set6' },
+    { key: 'nineteen_negative_set6', table: 'nineteen', sign: 'negative', set: 'set6' },
+    { key: 'nineteen_both_set6',     table: 'nineteen', sign: 'both',     set: 'set6' },
+    { key: 'both_positive_set6',     table: 'both',     sign: 'positive', set: 'set6' },
+    { key: 'both_negative_set6',     table: 'both',     sign: 'negative', set: 'set6' },
+    { key: 'both_both_set6',         table: 'both',     sign: 'both',     set: 'set6' },
 ];
 
 // Pair refKeys (same as renderer-3tables.js)
@@ -84,6 +115,19 @@ class AIAutoEngine {
             confidenceThreshold: options.sequenceConfidence ?? 0.70
         }) : null;
 
+        // Learning version: 'v2' = adaptive learning, 'v1' = original static behavior
+        this.learningVersion = options.learningVersion ?? 'v2';
+
+        // Bayesian pair scoring (v2)
+        this.pairBayesian = {};           // { [refKey]: { alpha, beta } }
+        this._totalBayesianDecisions = 0;
+
+        // EMA live learning (v2)
+        this.emaDecay = options.emaDecay ?? 0.05;
+
+        // Position code performance (v2)
+        this.posCodePerformance = {};     // { "S+0": { attempts, hits, hitRate } }
+
         // Live retrain
         this.liveSpins = [];
         this._originalTrainingData = null;
@@ -104,6 +148,7 @@ class AIAutoEngine {
             nearMisses: 0,                  // NEW: near-miss counter
             pairPerformance: {},     // { [refKey]: { attempts, hits } }
             filterPerformance: {},   // { [filterKey]: { attempts, hits } }
+            pairFilterCross: {},     // v2: { "prev|zero_positive": { attempts, hits } }
             sessionWinRate: 0,
             recentDecisions: [],     // last 10 { refKey, filterKey, hit, nearMiss }
             adaptationWeight: 0.0
@@ -185,6 +230,24 @@ class AIAutoEngine {
 
         this.isTrained = true;
 
+        // v2 learning: Initialize Bayesian priors from training data
+        if (this.learningVersion === 'v2') {
+            this.pairBayesian = {};
+            PAIR_REFKEYS.forEach(refKey => {
+                const m = this.pairModels[refKey];
+                this.pairBayesian[refKey] = {
+                    alpha: m.projectionHits + 1,       // successes + prior
+                    beta: (m.totalFlashes - m.projectionHits) + 1,  // failures + prior
+                };
+            });
+            this._totalBayesianDecisions = 0;
+
+            // Compute position code hit rates from training
+            Object.values(this.posCodePerformance).forEach(p => {
+                p.hitRate = p.attempts > 0 ? p.hits / p.attempts : 0;
+            });
+        }
+
         // Train sequence model on same sessions
         if (this.sequenceModel) {
             this.sequenceModel.train(sessions);
@@ -256,6 +319,17 @@ class AIAutoEngine {
                 }
                 trials++;
 
+                // v2: Track position code → hit performance
+                if (this.learningVersion === 'v2' && flashInfo.codes) {
+                    flashInfo.codes.forEach(code => {
+                        if (!this.posCodePerformance[code]) {
+                            this.posCodePerformance[code] = { attempts: 0, hits: 0, hitRate: 0 };
+                        }
+                        this.posCodePerformance[code].attempts++;
+                        if (isHit) this.posCodePerformance[code].hits++;
+                    });
+                }
+
                 // Test all filter combinations
                 FILTER_COMBOS.forEach(fc => {
                     const filtered = this._applyFilterToNumbers(projection.numbers, fc.key);
@@ -326,11 +400,15 @@ class AIAutoEngine {
             for (const cd of currDists) {
                 for (const pd of prevDists) {
                     if (Math.abs(cd.dist - pd.dist) <= 1) {
+                        // Collect all non-XX position codes for this flash (v2 learning)
+                        const allCodes = [currPairCode, currPair13Code, prevPairCode, prevPair13Code]
+                            .filter(c => c && c !== 'XX');
                         result.set(refKey, {
                             currCode: cd.code,
                             prevCode: pd.code,
                             currDist: cd.dist,
-                            prevDist: pd.dist
+                            prevDist: pd.dist,
+                            codes: allCodes
                         });
                         return; // First match per pair exits
                     }
@@ -395,6 +473,14 @@ class AIAutoEngine {
         const posNums = this._getPositiveNums();
         const negNums = this._getNegativeNums();
 
+        // Get set numbers if needed
+        let set0Nums, set5Nums, set6Nums;
+        if (combo.set && combo.set !== 'all') {
+            set0Nums = this._getSet0Nums();
+            set5Nums = this._getSet5Nums();
+            set6Nums = this._getSet6Nums();
+        }
+
         return numbers.filter(num => {
             // Table filter
             const inZero = zeroNums.has(num);
@@ -420,7 +506,16 @@ class AIAutoEngine {
             } else {
                 signPass = isNeg;
             }
-            return signPass;
+            if (!signPass) return false;
+
+            // Set filter
+            if (combo.set && combo.set !== 'all') {
+                if (combo.set === 'set0') return set0Nums.has(num);
+                if (combo.set === 'set5') return set5Nums.has(num);
+                if (combo.set === 'set6') return set6Nums.has(num);
+            }
+
+            return true;
         });
     }
 
@@ -511,8 +606,8 @@ class AIAutoEngine {
 
         const bestPair = scored[0];
 
-        // 5. Select best filter
-        const filterResult = this._selectBestFilter(bestPair.numbers);
+        // 5. Select best filter (v2: pass refKey for cross-performance lookup)
+        const filterResult = this._selectBestFilter(bestPair.numbers, bestPair.refKey);
 
         // 6. Compute anchors
         const anchorsResult = this._getCalculateWheelAnchors(filterResult.filteredNumbers);
@@ -568,10 +663,21 @@ class AIAutoEngine {
         const model = this.pairModels[refKey];
         if (!model || model.totalFlashes === 0) return 0;
 
-        // Historical score
-        let historicalScore = model.coverageEfficiency;
-        // Normalize: typical efficiency is 1.0-3.0, scale to 0-1
-        historicalScore = Math.min(historicalScore / 3.0, 1.0);
+        // Historical score — v2 uses Bayesian UCB, v1 uses static coverageEfficiency
+        let historicalScore;
+        if (this.learningVersion === 'v2' && this.pairBayesian && this.pairBayesian[refKey]) {
+            const bay = this.pairBayesian[refKey];
+            const mean = bay.alpha / (bay.alpha + bay.beta);
+            const n = bay.alpha + bay.beta;
+            // UCB exploration bonus: less-tried pairs get a boost
+            const exploration = Math.sqrt(2 * Math.log((this._totalBayesianDecisions || 1) + 1) / n);
+            historicalScore = Math.min(1.0, mean + exploration * 0.3);
+        } else {
+            // v1 fallback: original coverageEfficiency
+            historicalScore = model.coverageEfficiency;
+            // Normalize: typical efficiency is 1.0-3.0, scale to 0-1
+            historicalScore = Math.min(historicalScore / 3.0, 1.0);
+        }
 
         // Session score
         let sessionScore = 0;
@@ -594,13 +700,43 @@ class AIAutoEngine {
             composite += 0.10;
         }
 
-        // Position code quality bonus - check current flash info
-        // We don't have the code here directly, so use historical model
-        // Pairs with higher hit rates get a natural boost already
-        if (model.hitRate >= 0.35) {
-            composite += 0.15; // Golden-level performance
-        } else if (model.hitRate >= 0.25) {
-            composite += 0.10; // Near-golden performance
+        // Position code quality bonus
+        if (this.learningVersion === 'v2' && this.posCodePerformance && pairData && pairData.codes) {
+            // v2: Use learned position code performance
+            let codeBonus = 0;
+            let codeCount = 0;
+            pairData.codes.forEach(code => {
+                const perf = this.posCodePerformance[code];
+                if (perf && perf.attempts >= 10) {
+                    codeBonus += perf.hitRate;
+                    codeCount++;
+                }
+            });
+            if (codeCount > 0) {
+                const avgCodeRate = codeBonus / codeCount;
+                // Scale: 0.30 hitRate → 0, 0.60 hitRate → 0.15
+                composite += Math.max(0, (avgCodeRate - 0.30) * 0.5);
+            }
+        } else {
+            // v1: static threshold-based bonus
+            if (model.hitRate >= 0.35) {
+                composite += 0.15; // Golden-level performance
+            } else if (model.hitRate >= 0.25) {
+                composite += 0.10; // Near-golden performance
+            }
+        }
+
+        // v2: Sequence model alignment — does this pair's projection match predicted pattern?
+        if (this.learningVersion === 'v2' && this.sequenceModel && this.sequenceModel.isTrained) {
+            const recentSpins = this._getWindowSpins();
+            if (recentSpins && recentSpins.length >= 1) {
+                const prediction = this.sequenceModel.predict(recentSpins);
+                const projNumbers = pairData && pairData.numbers ? pairData.numbers : [];
+                if (projNumbers.length > 0 && prediction) {
+                    const alignment = this._computeSequenceAlignment(projNumbers, prediction);
+                    composite += alignment * 0.15;  // Up to +0.15 for strong alignment
+                }
+            }
         }
 
         // Recency bonus: hit or near-miss in last 3 session bets
@@ -632,13 +768,35 @@ class AIAutoEngine {
             composite -= 0.05;
         }
 
+        // v2: Projection sign balance penalty — prefer pairs with mixed-sign projections
+        // When both anchors land in the same sign territory, projection is 100% one-sign
+        // which eliminates all opposite-sign filters and forces a one-sided bet.
+        if (this.learningVersion === 'v2' && pairData && pairData.numbers && pairData.numbers.length > 0) {
+            const posNums = this._getPositiveNums();
+            const negNums = this._getNegativeNums();
+            const posCount = pairData.numbers.filter(n => posNums.has(n)).length;
+            const negCount = pairData.numbers.filter(n => negNums.has(n)).length;
+            const total = posCount + negCount;
+            if (total > 0) {
+                const signMinority = Math.min(posCount, negCount);
+                const signRatio = signMinority / total;
+                if (signRatio < 0.1) {
+                    composite -= 0.15; // Pure one-sign: strong penalty
+                } else if (signRatio < 0.2) {
+                    composite -= 0.08; // Heavily one-sign: moderate penalty
+                }
+            }
+        }
+
         return Math.max(0, Math.min(1.0, composite));
     }
 
     /**
      * Select the best filter combination for given numbers.
+     * @param {number[]} numbers - Unfiltered projection numbers
+     * @param {string} [selectedRefKey] - v2: The selected pair's refKey for cross-performance lookup
      */
-    _selectBestFilter(numbers) {
+    _selectBestFilter(numbers, selectedRefKey) {
         let bestFilter = { filterKey: 'both_both', filteredNumbers: [...numbers], score: 0 };
         let bestScore = -Infinity;
 
@@ -657,9 +815,10 @@ class AIAutoEngine {
         const seqConfident = sequenceFilterScores && sequenceFilterScores._confident;
 
         FILTER_COMBOS.forEach(fc => {
-            // NEVER actively choose both_both — it provides no filtering value.
+            // NEVER actively choose both_both with set='all' — it provides no filtering value.
             // It's already the default fallback (line 646) for when no filter works.
-            if (fc.key === 'both_both') return;
+            // BUT both_both with a specific set (set0/set5/set6) IS valid (12-13 numbers).
+            if (fc.key === 'both_both' && (!fc.set || fc.set === 'all')) return;
 
             const filtered = this._applyFilterToNumbers(numbers, fc.key);
 
@@ -692,22 +851,54 @@ class AIAutoEngine {
             }
 
             // Sequence model: the main intelligence for filter selection
-            // Only apply real bias when the model is CONFIDENT (≥ 70%)
-            // Otherwise, prefer wider coverage (both_* filters)
             if (sequenceFilterScores) {
                 const seqScore = sequenceFilterScores[fc.key] || 0;
 
-                if (seqConfident) {
-                    // Confident: reward specificity — probability per number
+                if (this.learningVersion === 'v2') {
+                    // v2: gradient weighting — always use signal, weighted by confidence
+                    const seqWeight = seqConfident ? 1.0 : 0.4;
                     const hitValue = (seqScore / filtered.length) * 37;
-                    score += hitValue * 0.10;
+                    score += hitValue * 0.10 * seqWeight;
                 } else {
-                    // NOT confident: favor wider filters (both_* combos)
-                    // Restrictive filters get penalized when no evidence supports them
-                    if (fc.table !== 'both' && fc.sign !== 'both') {
-                        score -= 0.04; // double-restrictive (e.g. zero_positive)
-                    } else if (fc.table !== 'both' || fc.sign !== 'both') {
-                        score -= 0.01; // single-axis restrictive
+                    // v1: binary gate — only apply when confident
+                    if (seqConfident) {
+                        const hitValue = (seqScore / filtered.length) * 37;
+                        score += hitValue * 0.10;
+                    } else {
+                        if (fc.table !== 'both' && fc.sign !== 'both') {
+                            score -= 0.04;
+                        } else if (fc.table !== 'both' || fc.sign !== 'both') {
+                            score -= 0.01;
+                        }
+                    }
+                }
+            }
+
+            // v2: Cross-performance boost/penalty for this pair+filter combo
+            if (this.learningVersion === 'v2' && selectedRefKey) {
+                const crossKey = `${selectedRefKey}|${fc.key}`;
+                const cross = this.session.pairFilterCross[crossKey];
+                if (cross && cross.attempts >= 3) {
+                    const crossRate = cross.hits / cross.attempts;
+                    score += (crossRate - 0.3) * 0.20;  // ±0.20 based on performance
+                }
+            }
+
+            // v2: Sign diversity penalty — penalize filters that produce 100% one-sign results.
+            // When all filtered numbers are the same sign, coverage is structurally weak.
+            if (this.learningVersion === 'v2') {
+                const posNums = this._getPositiveNums();
+                const negNums = this._getNegativeNums();
+                const fPosCount = filtered.filter(n => posNums.has(n)).length;
+                const fNegCount = filtered.filter(n => negNums.has(n)).length;
+                const fTotal = fPosCount + fNegCount;
+                if (fTotal > 0) {
+                    const fMinority = Math.min(fPosCount, fNegCount);
+                    const fSignRatio = fMinority / fTotal;
+                    if (fSignRatio === 0) {
+                        score -= 0.06; // 100% one-sign: significant penalty
+                    } else if (fSignRatio < 0.15) {
+                        score -= 0.03; // Heavily one-sign: mild penalty
                     }
                 }
             }
@@ -752,6 +943,29 @@ class AIAutoEngine {
         // Consecutive skip pressure (makes us more willing to bet)
         if (this.session.consecutiveSkips > 0) {
             confidence += this.session.consecutiveSkips * 3;
+        }
+
+        // Sign balance penalty — MULTIPLICATIVE, applied LAST after all bonuses.
+        // When projection is heavily one-sided (all positive or all negative),
+        // the AI covers only ~50% of outcomes. This multiplier ensures the penalty
+        // cannot be overcome by additive bonuses (filter, momentum, skip pressure).
+        if (finalNumbers.length > 0) {
+            const posNums = this._getPositiveNums();
+            const negNums = this._getNegativeNums();
+            const posCount = finalNumbers.filter(n => posNums.has(n)).length;
+            const negCount = finalNumbers.filter(n => negNums.has(n)).length;
+            const total = posCount + negCount;
+            if (total > 0) {
+                const minority = Math.min(posCount, negCount);
+                const signRatio = minority / total;  // 0 = all one sign, 0.5 = balanced
+                if (signRatio < 0.1) {
+                    // Pure one-sign (0-10% minority): 45% reduction
+                    confidence *= 0.55;
+                } else if (signRatio < 0.2) {
+                    // Heavily one-sign (10-20% minority): 25% reduction
+                    confidence *= 0.75;
+                }
+            }
         }
 
         return Math.max(0, Math.min(100, Math.round(confidence)));
@@ -830,6 +1044,27 @@ class AIAutoEngine {
             );
         }
 
+        // v2 learning updates
+        if (this.learningVersion === 'v2') {
+            // Bayesian: update alpha/beta for the pair
+            if (this.pairBayesian && this.pairBayesian[refKey]) {
+                if (hit) this.pairBayesian[refKey].alpha++;
+                else this.pairBayesian[refKey].beta++;
+                this._totalBayesianDecisions++;
+            }
+
+            // Cross-performance: track pair+filter combo
+            const crossKey = `${refKey}|${filterKey}`;
+            if (!this.session.pairFilterCross[crossKey]) {
+                this.session.pairFilterCross[crossKey] = { attempts: 0, hits: 0 };
+            }
+            this.session.pairFilterCross[crossKey].attempts++;
+            if (hit) this.session.pairFilterCross[crossKey].hits++;
+
+            // EMA: incrementally shift pair/filter hit rates
+            this._emaUpdate(refKey, filterKey, hit);
+        }
+
         // Check if live retrain is needed
         this._checkRetrainNeeded();
     }
@@ -848,6 +1083,57 @@ class AIAutoEngine {
         const leftNeighbor = EUROPEAN_WHEEL[(idx - 1 + 37) % 37];
         const rightNeighbor = EUROPEAN_WHEEL[(idx + 1) % 37];
         return predictedNumbers.includes(leftNeighbor) || predictedNumbers.includes(rightNeighbor);
+    }
+
+    /**
+     * Compute how well a set of numbers aligns with the sequence model's prediction.
+     * Returns 0 to ~1 — higher means better alignment.
+     */
+    _computeSequenceAlignment(numbers, prediction) {
+        if (!numbers || numbers.length === 0 || !prediction) return 0;
+        const zeroNums = this._getZeroTableNums();
+        const nineNums = this._getNineteenTableNums();
+        const posNums = this._getPositiveNums();
+        const negNums = this._getNegativeNums();
+
+        const zeroCount = numbers.filter(n => zeroNums.has(n)).length;
+        const nineCount = numbers.filter(n => nineNums.has(n)).length;
+        const posCount = numbers.filter(n => posNums.has(n)).length;
+        const negCount = numbers.filter(n => negNums.has(n)).length;
+
+        const pZero = prediction.pZeroTable || 0;
+        const pNine = prediction.pNineteenTable || 0;
+        const pPos = prediction.pPositive || 0;
+        const pNeg = prediction.pNegative || 0;
+
+        const tableAlignment = (pZero * zeroCount + pNine * nineCount) / numbers.length;
+        const signAlignment = (pPos * posCount + pNeg * negCount) / numbers.length;
+
+        return (tableAlignment + signAlignment) / 2;
+    }
+
+    /**
+     * v2: EMA (Exponential Moving Average) update for live learning.
+     * Incrementally shifts pair/filter hit rates toward recent results.
+     */
+    _emaUpdate(refKey, filterKey, hit) {
+        if (this.learningVersion !== 'v2') return;
+
+        // EMA update pair model hit rate
+        const model = this.pairModels[refKey];
+        if (model && model.totalFlashes > 0) {
+            const target = hit ? 1.0 : 0.0;
+            model.hitRate = model.hitRate * (1 - this.emaDecay) + target * this.emaDecay;
+            const randomRate = model.avgProjectionSize / 37;
+            model.coverageEfficiency = randomRate > 0 ? model.hitRate / randomRate : 0;
+        }
+
+        // EMA update filter model hit rate
+        const fModel = this.filterModels[filterKey];
+        if (fModel && fModel.totalTrials > 0) {
+            const target = hit ? 1.0 : 0.0;
+            fModel.hitRate = fModel.hitRate * (1 - this.emaDecay) + target * this.emaDecay;
+        }
     }
 
     /**
@@ -899,6 +1185,18 @@ class AIAutoEngine {
             return;
         }
 
+        if (this.learningVersion === 'v2') {
+            // v2: Only retrain sequence model — pair/filter models update via EMA
+            if (this.sequenceModel) {
+                const mergedSessions = [...this._originalTrainingData, this.liveSpins];
+                this.sequenceModel.train(mergedSessions);
+            }
+            this._lastRetrainBetCount = this.session.totalBets;
+            console.log(`✅ v2 RETRAIN: sequence model updated (${this.liveSpins.length} live spins)`);
+            return;
+        }
+
+        // v1: Full retrain (original behavior)
         const mergedSessions = [...this._originalTrainingData, this.liveSpins];
         const wasEnabled = this.isEnabled;
         const savedSession = { ...this.session };
@@ -919,6 +1217,20 @@ class AIAutoEngine {
     // ═══════════════════════════════════════════════════════════
     //  MODE CONTROL
     // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Set learning version: 'v1' = original static, 'v2' = adaptive learning.
+     * If already trained, re-trains with new version to initialize properly.
+     */
+    setLearningVersion(version) {
+        if (version !== 'v1' && version !== 'v2') {
+            throw new Error('learningVersion must be "v1" or "v2"');
+        }
+        this.learningVersion = version;
+        if (this._originalTrainingData) {
+            this.train(this._originalTrainingData);
+        }
+    }
 
     enable() {
         if (!this.isTrained) {
@@ -943,6 +1255,9 @@ class AIAutoEngine {
         this.isEnabled = false;
         this.pairModels = {};
         this.filterModels = {};
+        this.pairBayesian = {};
+        this._totalBayesianDecisions = 0;
+        this.posCodePerformance = {};
         this.session = this._createSessionTracker();
         this.liveSpins = [];
         this._originalTrainingData = null;
@@ -954,12 +1269,46 @@ class AIAutoEngine {
         return {
             isTrained: this.isTrained,
             isEnabled: this.isEnabled,
+            learningVersion: this.learningVersion,
             pairModelCount: Object.keys(this.pairModels).length,
             sessionStats: { ...this.session },
             topPairs: this._getTopPairs(3),
             topFilters: this._getTopFilters(3),
-            sequenceStats: this.sequenceModel ? this.sequenceModel.getStats() : null
+            sequenceStats: this.sequenceModel ? this.sequenceModel.getStats() : null,
+            bayesianStats: this.learningVersion === 'v2' ? this._getBayesianStats() : null,
+            posCodeStats: this.learningVersion === 'v2' ? this._getPosCodeStats() : null
         };
+    }
+
+    _getBayesianStats() {
+        if (!this.pairBayesian) return null;
+        const stats = {};
+        Object.entries(this.pairBayesian).forEach(([refKey, bay]) => {
+            const mean = bay.alpha / (bay.alpha + bay.beta);
+            stats[refKey] = {
+                alpha: bay.alpha,
+                beta: bay.beta,
+                mean: Math.round(mean * 1000) / 1000,
+                samples: bay.alpha + bay.beta
+            };
+        });
+        return { totalDecisions: this._totalBayesianDecisions, pairs: stats };
+    }
+
+    _getPosCodeStats() {
+        if (!this.posCodePerformance) return null;
+        const stats = {};
+        Object.entries(this.posCodePerformance)
+            .filter(([_, p]) => p.attempts >= 5)
+            .sort((a, b) => b[1].hitRate - a[1].hitRate)
+            .forEach(([code, p]) => {
+                stats[code] = {
+                    attempts: p.attempts,
+                    hits: p.hits,
+                    hitRate: Math.round(p.hitRate * 1000) / 1000
+                };
+            });
+        return stats;
     }
 
     _getTopPairs(n) {
@@ -1079,6 +1428,24 @@ class AIAutoEngine {
         if (typeof NEGATIVE_NUMS !== 'undefined') return NEGATIVE_NUMS;
         if (typeof window !== 'undefined' && window.NEGATIVE_NUMS) return window.NEGATIVE_NUMS;
         return new Set([21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35]);
+    }
+
+    _getSet0Nums() {
+        if (typeof SET_0_NUMS !== 'undefined') return SET_0_NUMS;
+        if (typeof window !== 'undefined' && window.SET_0_NUMS) return window.SET_0_NUMS;
+        return new Set([0, 26, 19, 2, 34, 13, 30, 10, 16, 20, 9, 29, 12]);
+    }
+
+    _getSet5Nums() {
+        if (typeof SET_5_NUMS !== 'undefined') return SET_5_NUMS;
+        if (typeof window !== 'undefined' && window.SET_5_NUMS) return window.SET_5_NUMS;
+        return new Set([32, 15, 25, 17, 36, 11, 5, 24, 14, 31, 7, 28]);
+    }
+
+    _getSet6Nums() {
+        if (typeof SET_6_NUMS !== 'undefined') return SET_6_NUMS;
+        if (typeof window !== 'undefined' && window.SET_6_NUMS) return window.SET_6_NUMS;
+        return new Set([4, 21, 6, 27, 8, 23, 33, 1, 22, 18, 35, 3]);
     }
 }
 

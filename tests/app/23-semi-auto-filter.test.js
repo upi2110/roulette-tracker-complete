@@ -6,7 +6,7 @@
  * from same table as last spin actual.
  */
 
-const { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SEMI_FILTER_COMBOS, SEMI_MIN_NUMBERS } = require('../../app/semi-auto-filter');
+const { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SA_SET0, SA_SET5, SA_SET6, SEMI_FILTER_COMBOS, SEMI_MIN_NUMBERS } = require('../../app/semi-auto-filter');
 
 describe('SemiAutoFilter', () => {
     let filter;
@@ -77,8 +77,8 @@ describe('SemiAutoFilter', () => {
         }
     });
 
-    test('B7: SEMI_FILTER_COMBOS has 9 entries', () => {
-        expect(SEMI_FILTER_COMBOS.length).toBe(9);
+    test('B7: SEMI_FILTER_COMBOS has 36 entries', () => {
+        expect(SEMI_FILTER_COMBOS.length).toBe(36);
     });
 
     test('B8: SEMI_MIN_NUMBERS is 4', () => {
@@ -170,7 +170,7 @@ describe('SemiAutoFilter', () => {
         expect(filter.computeOptimalFilter(undefined)).toBeNull();
     });
 
-    test('D3: returns combo with fewest numbers ≥ 4', () => {
+    test('D3: returns optimal combo considering count and sign diversity', () => {
         // Use numbers that span both tables & both signs
         // so multiple combos produce different counts
         const numbers = [0, 3, 26, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6];
@@ -178,13 +178,17 @@ describe('SemiAutoFilter', () => {
         expect(result).not.toBeNull();
         expect(result.count).toBeGreaterThanOrEqual(4);
 
-        // Verify this IS the minimum — no other combo has fewer ≥ 4
-        for (const combo of SEMI_FILTER_COMBOS) {
-            const filtered = numbers.filter(n => filter._passesComboFilter(n, combo));
-            if (filtered.length >= 4) {
-                expect(filtered.length).toBeGreaterThanOrEqual(result.count);
-            }
-        }
+        // The optimal filter should prefer mixed-sign filters over pure-one-sign
+        // even if the pure-one-sign has fewer numbers, because sign diversity
+        // penalty (-0.06) makes mixed filters more competitive.
+        // Result should be a valid filter with >= 4 numbers
+        expect(result.filtered.length).toBe(result.count);
+        // All filtered numbers should pass the combo filter
+        const combo = SEMI_FILTER_COMBOS.find(c => c.key === result.key);
+        expect(combo).toBeDefined();
+        result.filtered.forEach(n => {
+            expect(filter._passesComboFilter(n, combo)).toBe(true);
+        });
     });
 
     test('D4: skips combos producing < 4 numbers', () => {
@@ -395,21 +399,32 @@ describe('SemiAutoFilter', () => {
 
     test('H3: each combo produces correct count from full 0-36', () => {
         const allNums = Array.from({ length: 37 }, (_, i) => i);
-        const expectedCounts = {
-            'zero_positive': [...SA_ZERO].filter(n => SA_POS.has(n)).length,
-            'zero_negative': [...SA_ZERO].filter(n => SA_NEG.has(n)).length,
-            'zero_both': SA_ZERO.size,
-            'nineteen_positive': [...SA_NINE].filter(n => SA_POS.has(n)).length,
-            'nineteen_negative': [...SA_NINE].filter(n => SA_NEG.has(n)).length,
-            'nineteen_both': SA_NINE.size,
-            'both_positive': SA_POS.size,
-            'both_negative': SA_NEG.size,
-            'both_both': 37,
-        };
+        const setMap = { set0: SA_SET0, set5: SA_SET5, set6: SA_SET6 };
+
+        function expectedCount(combo) {
+            // Determine table filter
+            let tableNums;
+            if (combo.table === 'both') tableNums = allNums;
+            else if (combo.table === 'zero') tableNums = allNums.filter(n => SA_ZERO.has(n));
+            else tableNums = allNums.filter(n => SA_NINE.has(n));
+
+            // Apply sign filter
+            let filtered;
+            if (combo.sign === 'both') filtered = tableNums;
+            else if (combo.sign === 'positive') filtered = tableNums.filter(n => SA_POS.has(n));
+            else filtered = tableNums.filter(n => SA_NEG.has(n));
+
+            // Apply set filter
+            if (combo.set && combo.set !== 'all') {
+                const setNums = setMap[combo.set];
+                filtered = filtered.filter(n => setNums.has(n));
+            }
+            return filtered.length;
+        }
 
         for (const combo of SEMI_FILTER_COMBOS) {
             const filtered = allNums.filter(n => filter._passesComboFilter(n, combo));
-            expect(filtered.length).toBe(expectedCounts[combo.key]);
+            expect(filtered.length).toBe(expectedCount(combo));
         }
     });
 

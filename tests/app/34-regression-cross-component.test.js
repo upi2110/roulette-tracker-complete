@@ -350,8 +350,8 @@ describe('D. Number set consistency across modules', () => {
         expect(global.POSITIVE_NUMS.has(26)).toBe(true);
     });
 
-    test('D7: FILTER_COMBOS has exactly 9 entries', () => {
-        expect(FILTER_COMBOS.length).toBe(9);
+    test('D7: FILTER_COMBOS has exactly 36 entries', () => {
+        expect(FILTER_COMBOS.length).toBe(36);
         const keys = FILTER_COMBOS.map(fc => fc.key);
         expect(keys).toContain('zero_positive');
         expect(keys).toContain('zero_negative');

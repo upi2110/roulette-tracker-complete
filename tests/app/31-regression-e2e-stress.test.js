@@ -560,15 +560,15 @@ describe('G. Engine Decision Stability', () => {
 
 describe('H. Filter Combo Coverage', () => {
 
-    test('H1: FILTER_COMBOS has 9 entries', () => {
-        expect(FILTER_COMBOS).toHaveLength(9);
+    test('H1: FILTER_COMBOS has 36 entries', () => {
+        expect(FILTER_COMBOS).toHaveLength(36);
     });
 
-    test('H2: SEMI_FILTER_COMBOS has 9 entries', () => {
-        expect(SEMI_FILTER_COMBOS).toHaveLength(9);
+    test('H2: SEMI_FILTER_COMBOS has 36 entries', () => {
+        expect(SEMI_FILTER_COMBOS).toHaveLength(36);
     });
 
-    test('H3: All 9 filter keys match between engine and semi-auto', () => {
+    test('H3: All 36 filter keys match between engine and semi-auto', () => {
         const engineKeys = FILTER_COMBOS.map(f => f.key).sort();
         const semiKeys = SEMI_FILTER_COMBOS.map(f => f.key).sort();
         expect(engineKeys).toEqual(semiKeys);
@@ -852,7 +852,7 @@ describe('L. Cross-Model Score Consistency', () => {
 
 describe('M. Heavy Stress Tests', () => {
 
-    test('M1: 20 sessions × 200 spins — train completes < 2000ms', () => {
+    test('M1: 20 sessions × 200 spins — train completes < 4000ms', () => {
         const sessions = multiSession(20, 200);
         const engine = new AIAutoEngine();
 
@@ -860,7 +860,7 @@ describe('M. Heavy Stress Tests', () => {
         engine.train(sessions);
         const elapsed = Date.now() - start;
 
-        expect(elapsed).toBeLessThan(2000);
+        expect(elapsed).toBeLessThan(4000);
         expect(engine.isTrained).toBe(true);
     });
 

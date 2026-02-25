@@ -14,6 +14,20 @@ const NINETEEN_TABLE_NUMS = new Set([15, 19, 4, 17, 34, 6, 11, 30, 8, 24, 16, 33
 const POSITIVE_NUMS = new Set([3, 26, 0, 32, 15, 19, 4, 27, 13, 36, 11, 30, 8, 1, 20, 14, 31, 9, 22]);
 const NEGATIVE_NUMS = new Set([21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35]);
 
+// Number Set Filters (3 sets covering all 37 numbers, based on wheel position patterns)
+const SET_0_NUMS = new Set([0, 26, 19, 2, 34, 13, 30, 10, 16, 20, 9, 29, 12]); // 0 Set: 13 numbers (0/26 same pocket)
+const SET_5_NUMS = new Set([32, 15, 25, 17, 36, 11, 5, 24, 14, 31, 7, 28]);   // 5 Set: 12 numbers
+const SET_6_NUMS = new Set([4, 21, 6, 27, 8, 23, 33, 1, 22, 18, 35, 3]);      // 6 Set: 12 numbers
+
+// D13 Opposites: use existing global from renderer-3tables.js, fallback to inline definition
+// (renderer-3tables.js loads before roulette-wheel.js so DIGIT_13_OPPOSITES is already available)
+const WHEEL_D13_OPPOSITES = (typeof DIGIT_13_OPPOSITES !== 'undefined') ? DIGIT_13_OPPOSITES : {
+    0:34, 1:28, 2:30, 3:17, 4:36, 5:22, 6:5, 7:4, 8:14, 9:26,
+    10:9, 11:1, 12:2, 13:16, 14:35, 15:27, 16:29, 17:23, 18:15,
+    19:13, 20:12, 21:11, 22:32, 23:31, 24:18, 25:8, 26:34, 27:24,
+    28:21, 29:19, 30:20, 31:3, 32:6, 33:7, 34:10, 35:25, 36:33
+};
+
 class RouletteWheel {
     constructor() {
         this.wheelOrder = [
@@ -41,8 +55,9 @@ class RouletteWheel {
         // Map: number -> { isAnchor, type } for drawing labels
         this.numberInfo = {};
 
-        // Filter state — default: 0 Table ON, 19 Table OFF, Positive ON, Negative ON
-        this.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: true };
+        // Filter state — default: 0 Table ON, 19 Table OFF, Positive ON, Negative ON, All sets ON
+        this.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: true,
+                         set0: true, set5: true, set6: true };
 
         // Store the raw/unfiltered prediction for re-filtering
         this._rawPrediction = null;
@@ -91,6 +106,18 @@ class RouletteWheel {
                             <input type="radio" name="signFilter" id="filterBothSigns" value="both" checked style="accent-color:#3b82f6;"> Both
                         </label>
                     </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:10px;font-weight:700;color:#475569;min-width:40px;">Set:</span>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#d97706;">
+                            <input type="checkbox" id="filterSet0" checked class="set-cb" style="accent-color:#d97706;"> 0
+                        </label>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#059669;">
+                            <input type="checkbox" id="filterSet5" checked class="set-cb" style="accent-color:#059669;"> 5
+                        </label>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#7c3aed;">
+                            <input type="checkbox" id="filterSet6" checked class="set-cb" style="accent-color:#7c3aed;"> 6
+                        </label>
+                    </div>
                 </div>
                 <div id="wheelNumberLists" style="font-size:11px; padding:4px 8px; line-height:1.6;"></div>
                 <div class="wheel-container" id="wheelContainer" style="position: relative; width: 400px; height: 420px; margin: 0 auto;">
@@ -113,6 +140,11 @@ class RouletteWheel {
         ['filter0Table', 'filter19Table', 'filterBothTables', 'filterPositive', 'filterNegative', 'filterBothSigns'].forEach(id => {
             const rb = document.getElementById(id);
             if (rb) rb.addEventListener('change', () => this._onFilterChange());
+        });
+
+        // Attach set checkbox listeners
+        document.querySelectorAll('.set-cb').forEach(cb => {
+            cb.addEventListener('change', () => this._onFilterChange());
         });
 
         this.drawWheel();
@@ -159,6 +191,14 @@ class RouletteWheel {
             this.filters.negative = true;
         }
 
+        // Read set checkboxes
+        const s0 = document.getElementById('filterSet0');
+        const s5 = document.getElementById('filterSet5');
+        const s6 = document.getElementById('filterSet6');
+        this.filters.set0 = s0 ? s0.checked : true;
+        this.filters.set5 = s5 ? s5.checked : true;
+        this.filters.set6 = s6 ? s6.checked : true;
+
         console.log('🔄 Filters changed:', this.filters);
 
         if (this._rawPrediction) {
@@ -179,6 +219,15 @@ class RouletteWheel {
         const colorPass = (this.filters.positive && isPos) || (this.filters.negative && isNeg);
         if (!colorPass) return false;
 
+        // Set filter: number must be in at least one CHECKED set
+        const allSetsOn = this.filters.set0 && this.filters.set5 && this.filters.set6;
+        if (!allSetsOn) {
+            const setPass = (this.filters.set0 && SET_0_NUMS.has(num)) ||
+                            (this.filters.set5 && SET_5_NUMS.has(num)) ||
+                            (this.filters.set6 && SET_6_NUMS.has(num));
+            if (!setPass) return false;
+        }
+
         return true;
     }
 
@@ -187,14 +236,16 @@ class RouletteWheel {
         if (!raw) return;
 
         const allOn = this.filters.zeroTable && this.filters.nineteenTable &&
-                      this.filters.positive && this.filters.negative;
+                      this.filters.positive && this.filters.negative &&
+                      this.filters.set0 && this.filters.set5 && this.filters.set6;
 
         if (allOn) {
             // No filtering needed — show everything
-            this._updateFromRaw(raw.anchors, raw.loose, raw.anchorGroups, raw.extraNumbers);
-            this._updateFilteredCount(null);
+            // Sync money panel FIRST so _updateNumberLists reads current data
             this._syncMoneyPanel(raw.prediction);
             this._syncAIPanel(raw.prediction);
+            this._updateFromRaw(raw.anchors, raw.loose, raw.anchorGroups, raw.extraNumbers);
+            this._updateFilteredCount(null);
             return;
         }
 
@@ -204,17 +255,22 @@ class RouletteWheel {
 
         // Recalculate anchors from filtered primary
         let filteredAnchors = [], filteredLoose = [], filteredAnchorGroups = [];
-        if (filteredPrimary.length > 0 && typeof window.calculateWheelAnchors === 'function') {
-            const result = window.calculateWheelAnchors(filteredPrimary);
-            filteredAnchors = result.anchors;
-            filteredLoose = result.loose;
-            filteredAnchorGroups = result.anchorGroups;
+        try {
+            if (filteredPrimary.length > 0 && typeof window.calculateWheelAnchors === 'function') {
+                const result = window.calculateWheelAnchors(filteredPrimary);
+                filteredAnchors = result.anchors || [];
+                filteredLoose = result.loose || [];
+                filteredAnchorGroups = result.anchorGroups || [];
+            } else if (filteredPrimary.length > 0) {
+                // Fallback: treat all filtered numbers as loose
+                filteredLoose = filteredPrimary.slice();
+            }
+        } catch (e) {
+            console.error('⚠️ calculateWheelAnchors error, using fallback:', e.message);
+            filteredLoose = filteredPrimary.slice();
         }
 
-        this._updateFromRaw(filteredAnchors, filteredLoose, filteredAnchorGroups, filteredExtra);
-        this._updateFilteredCount(filteredPrimary.length + filteredExtra.length);
-
-        // Sync money panel with filtered numbers
+        // Build filtered prediction and sync ALL panels
         const filteredPrediction = {
             ...raw.prediction,
             numbers: filteredPrimary,
@@ -223,8 +279,14 @@ class RouletteWheel {
             loose: filteredLoose,
             anchor_groups: filteredAnchorGroups
         };
+
+        // Sync money panel FIRST so _updateNumberLists reads current bet data
         this._syncMoneyPanel(filteredPrediction);
+        // Sync AI panel — updates signal count + number display
         this._syncAIPanel(filteredPrediction);
+
+        this._updateFromRaw(filteredAnchors, filteredLoose, filteredAnchorGroups, filteredExtra);
+        this._updateFilteredCount(filteredPrimary.length);
     }
 
     _updateFilteredCount(count) {
@@ -506,9 +568,29 @@ class RouletteWheel {
             html += `<div style="margin-bottom:4px;"><strong style="color:#334155;font-size:12px;">±1 Anchors (${nums.length}):</strong> ${renderGrouped(nums, badge)}</div>`;
         }
 
-        // Loose LAST
+        // Loose
         if (looseList.length > 0) {
             html += `<div style="margin-bottom:4px;"><strong style="color:#334155;font-size:12px;">Loose (${looseList.length}):</strong> ${renderGrouped(looseList, badge)}</div>`;
+
+            // Compute D13 opposites of loose numbers
+            // Exclude any already in primary prediction (anchors + loose + anchor group members)
+            const primarySet = new Set();
+            this.anchorGroups.forEach(ag => (ag.group || []).forEach(n => primarySet.add(n)));
+            this.looseNumbers.forEach(n => primarySet.add(n));
+
+            const d13Opposites = [];
+            looseList.forEach(n => {
+                const opp = WHEEL_D13_OPPOSITES[n];
+                if (opp !== undefined && !primarySet.has(opp) && !d13Opposites.includes(opp)) {
+                    d13Opposites.push(opp);
+                }
+            });
+
+            if (d13Opposites.length > 0) {
+                const d13Sorted = wSort(d13Opposites);
+                const oppBadge = (n) => badge(n, '#b45309');
+                html += `<div style="margin-bottom:4px;"><strong style="color:#92400e;font-size:12px;">13 Opp (${d13Sorted.length}):</strong> ${renderGrouped(d13Sorted, oppBadge)}</div>`;
+            }
         }
 
         // Grey: ±2 first, then ±1, then loose

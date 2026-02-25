@@ -140,7 +140,8 @@ describe('AIAutoEngine', () => {
     let engine;
 
     beforeEach(() => {
-        engine = new AIAutoEngine();
+        // Use v1 (original static behavior) for legacy test assertions
+        engine = new AIAutoEngine({ learningVersion: 'v1' });
     });
 
     // ═══════════════════════════════════════════════════════════
@@ -148,8 +149,8 @@ describe('AIAutoEngine', () => {
     // ═══════════════════════════════════════════════════════════
 
     describe('exported constants', () => {
-        test('FILTER_COMBOS has 9 entries', () => {
-            expect(FILTER_COMBOS.length).toBe(9);
+        test('FILTER_COMBOS has 36 entries', () => {
+            expect(FILTER_COMBOS.length).toBe(36);
         });
 
         test('FILTER_COMBOS contains zero_positive', () => {
@@ -301,9 +302,9 @@ describe('AIAutoEngine', () => {
             });
         });
 
-        test('initializes all 9 filter models', () => {
+        test('initializes all 36 filter models', () => {
             engine.train([sampleSession]);
-            expect(Object.keys(engine.filterModels).length).toBe(9);
+            expect(Object.keys(engine.filterModels).length).toBe(36);
             FILTER_COMBOS.forEach(fc => {
                 expect(engine.filterModels[fc.key]).toBeDefined();
             });
@@ -604,10 +605,10 @@ describe('AIAutoEngine', () => {
     // ═══════════════════════════════════════════════════════════
 
     describe('_testAllFilters', () => {
-        test('returns result for all 9 filter combos', () => {
+        test('returns result for all 36 filter combos', () => {
             const numbers = [0, 3, 26, 32, 15, 19];
             const result = engine._testAllFilters(numbers, 0);
-            expect(Object.keys(result).length).toBe(9);
+            expect(Object.keys(result).length).toBe(36);
         });
 
         test('returns true for filters where actual is in filtered set', () => {

@@ -338,8 +338,8 @@ class AutoTestRunner {
 
         const bestPair = scored[0];
 
-        // 4. Select best filter
-        const filterResult = this.engine._selectBestFilter(bestPair.numbers);
+        // 4. Select best filter (v2: pass refKey for cross-performance lookup)
+        const filterResult = this.engine._selectBestFilter(bestPair.numbers, bestPair.refKey);
 
         // 5. Compute confidence
         const confidence = this.engine._computeConfidence(

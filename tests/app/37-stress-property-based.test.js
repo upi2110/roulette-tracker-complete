@@ -762,8 +762,8 @@ describe('K: Large data performance stress', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('L: FILTER_COMBOS and PAIR_REFKEYS invariants', () => {
-    test('L1: FILTER_COMBOS has 9 entries', () => {
-        expect(FILTER_COMBOS.length).toBe(9);
+    test('L1: FILTER_COMBOS has 36 entries', () => {
+        expect(FILTER_COMBOS.length).toBe(36);
     });
 
     test('L2: Each combo has key, table, sign', () => {
@@ -777,7 +777,7 @@ describe('L: FILTER_COMBOS and PAIR_REFKEYS invariants', () => {
     test('L3: All combo keys are unique', () => {
         const keys = FILTER_COMBOS.map(c => c.key);
         const unique = new Set(keys);
-        expect(unique.size).toBe(9);
+        expect(unique.size).toBe(36);
     });
 
     test('L4: Combo tables are zero, nineteen, or both', () => {
@@ -811,12 +811,14 @@ describe('L: FILTER_COMBOS and PAIR_REFKEYS invariants', () => {
         expect(keys).toContain('both_both');
     });
 
-    test('L10: 3 tables × 3 signs = 9 combos (complete coverage)', () => {
+    test('L10: 3 tables × 3 signs × 4 sets = 36 combos (complete coverage)', () => {
         const tables = new Set(FILTER_COMBOS.map(c => c.table));
         const signs = new Set(FILTER_COMBOS.map(c => c.sign));
+        const sets = new Set(FILTER_COMBOS.map(c => c.set));
         expect(tables.size).toBe(3);
         expect(signs.size).toBe(3);
-        expect(tables.size * signs.size).toBe(9);
+        expect(sets.size).toBe(4);
+        expect(tables.size * signs.size * sets.size).toBe(36);
     });
 });
 

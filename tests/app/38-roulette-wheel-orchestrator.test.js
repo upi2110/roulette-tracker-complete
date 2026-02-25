@@ -214,42 +214,42 @@ describe('B: RouletteWheel _passesFilter', () => {
     });
 
     test('B1: All filters on → all 37 numbers pass', () => {
-        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true };
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true, set0: true, set5: true, set6: true };
         for (let n = 0; n <= 36; n++) {
             expect(wheel._passesFilter(n)).toBe(true);
         }
     });
 
     test('B2: Only zeroTable → only zero-table numbers pass', () => {
-        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: true };
+        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: true, set0: true, set5: true, set6: true };
         for (let n = 0; n <= 36; n++) {
             expect(wheel._passesFilter(n)).toBe(ZERO_TABLE_NUMS.has(n));
         }
     });
 
     test('B3: Only nineteenTable → only nineteen-table numbers pass', () => {
-        wheel.filters = { zeroTable: false, nineteenTable: true, positive: true, negative: true };
+        wheel.filters = { zeroTable: false, nineteenTable: true, positive: true, negative: true, set0: true, set5: true, set6: true };
         for (let n = 0; n <= 36; n++) {
             expect(wheel._passesFilter(n)).toBe(NINETEEN_TABLE_NUMS.has(n));
         }
     });
 
     test('B4: Only positive → only positive numbers pass', () => {
-        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: false };
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: false, set0: true, set5: true, set6: true };
         for (let n = 0; n <= 36; n++) {
             expect(wheel._passesFilter(n)).toBe(POSITIVE_NUMS.has(n));
         }
     });
 
     test('B5: Only negative → only negative numbers pass', () => {
-        wheel.filters = { zeroTable: true, nineteenTable: true, positive: false, negative: true };
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: false, negative: true, set0: true, set5: true, set6: true };
         for (let n = 0; n <= 36; n++) {
             expect(wheel._passesFilter(n)).toBe(NEGATIVE_NUMS.has(n));
         }
     });
 
     test('B6: zero_positive filter → intersection', () => {
-        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: false };
+        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: false, set0: true, set5: true, set6: true };
         let count = 0;
         for (let n = 0; n <= 36; n++) {
             const expected = ZERO_TABLE_NUMS.has(n) && POSITIVE_NUMS.has(n);
@@ -260,7 +260,7 @@ describe('B: RouletteWheel _passesFilter', () => {
     });
 
     test('B7: nineteen_negative filter → intersection', () => {
-        wheel.filters = { zeroTable: false, nineteenTable: true, positive: false, negative: true };
+        wheel.filters = { zeroTable: false, nineteenTable: true, positive: false, negative: true, set0: true, set5: true, set6: true };
         let count = 0;
         for (let n = 0; n <= 36; n++) {
             const expected = NINETEEN_TABLE_NUMS.has(n) && NEGATIVE_NUMS.has(n);
@@ -271,14 +271,14 @@ describe('B: RouletteWheel _passesFilter', () => {
     });
 
     test('B8: No tables selected → no numbers pass', () => {
-        wheel.filters = { zeroTable: false, nineteenTable: false, positive: true, negative: true };
+        wheel.filters = { zeroTable: false, nineteenTable: false, positive: true, negative: true, set0: true, set5: true, set6: true };
         for (let n = 0; n <= 36; n++) {
             expect(wheel._passesFilter(n)).toBe(false);
         }
     });
 
     test('B9: No signs selected → no numbers pass', () => {
-        wheel.filters = { zeroTable: true, nineteenTable: true, positive: false, negative: false };
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: false, negative: false, set0: true, set5: true, set6: true };
         for (let n = 0; n <= 36; n++) {
             expect(wheel._passesFilter(n)).toBe(false);
         }
@@ -915,20 +915,31 @@ describe('M: AIIntegrationV6 with mock API', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('N: Cross-module integration', () => {
-    test('N1: Orchestrator _setWheelFilters maps all 9 combos correctly', () => {
+    test('N1: Orchestrator _setWheelFilters maps all 36 combos correctly', () => {
         setupDOM();
         const Orchestrator = loadOrchestrator();
         const orch = new Orchestrator();
 
-        const combos = [
-            'zero_positive', 'zero_negative', 'zero_both',
-            'nineteen_positive', 'nineteen_negative', 'nineteen_both',
-            'both_positive', 'both_negative', 'both_both'
-        ];
+        const tables = ['zero', 'nineteen', 'both'];
+        const signs = ['positive', 'negative', 'both'];
+        const sets = [null, 'set0', 'set5', 'set6'];  // null = no set key (all sets on)
+
+        const combos = [];
+        for (const t of tables) {
+            for (const s of signs) {
+                for (const st of sets) {
+                    combos.push(st ? `${t}_${s}_${st}` : `${t}_${s}`);
+                }
+            }
+        }
+        expect(combos.length).toBe(36);
 
         for (const combo of combos) {
             orch._setWheelFilters(combo);
-            const [table, sign] = combo.split('_');
+            const parts = combo.split('_');
+            const table = parts[0];
+            const sign = parts[1];
+            const setKey = parts.length > 2 ? parts[2] : null;
 
             if (table === 'zero') {
                 expect(document.getElementById('filter0Table').checked).toBe(true);
@@ -945,6 +956,20 @@ describe('N: Cross-module integration', () => {
             } else {
                 expect(document.getElementById('filterBothSigns').checked).toBe(true);
             }
+
+            // Verify set checkboxes
+            const SET_MAP = { set0: 'filterSet0', set5: 'filterSet5', set6: 'filterSet6' };
+            if (setKey) {
+                // Only the specified set should be checked
+                for (const [key, id] of Object.entries(SET_MAP)) {
+                    expect(document.getElementById(id).checked).toBe(key === setKey);
+                }
+            } else {
+                // No set specified — all sets should be checked
+                for (const id of Object.values(SET_MAP)) {
+                    expect(document.getElementById(id).checked).toBe(true);
+                }
+            }
         }
     });
 
@@ -955,7 +980,7 @@ describe('N: Cross-module integration', () => {
         const wheel = new RouletteWheel();
 
         // Test zero_positive count
-        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: false };
+        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: false, set0: true, set5: true, set6: true };
         let count = 0;
         for (let n = 0; n <= 36; n++) {
             if (wheel._passesFilter(n)) count++;

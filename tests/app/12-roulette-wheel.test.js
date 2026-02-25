@@ -1241,7 +1241,7 @@ describe('RouletteWheel: _applyFilters', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
 
-        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true };
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true, set0: true, set5: true, set6: true };
 
         const rawAnchors = [0];
         const rawLoose = [5];
@@ -1266,7 +1266,7 @@ describe('RouletteWheel: _applyFilters', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
 
-        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true };
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true, set0: true, set5: true, set6: true };
         wheel._rawPrediction = {
             anchors: [], loose: [], anchorGroups: [], extraNumbers: [],
             prediction: { numbers: [0, 5], signal: 'BET NOW' }
@@ -1662,7 +1662,7 @@ describe('RouletteWheel: Integration', () => {
 
         // Enable all filters so _applyFilters takes the "allOn" path and passes
         // raw data directly to _updateFromRaw (no recalculation needed)
-        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true };
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true, set0: true, set5: true, set6: true };
 
         // Set up some highlights
         const anchorGroups = [{ anchor: 0, group: [26, 0, 32], type: '±1' }];
@@ -1790,7 +1790,7 @@ describe('RouletteWheel: Edge Cases', () => {
         const wheel = new RouletteWheel();
 
         // 0 is in ZERO_TABLE and POSITIVE
-        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: false };
+        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: false, set0: true, set5: true, set6: true };
         expect(wheel._passesFilter(0)).toBe(true);
     });
 
@@ -1876,18 +1876,20 @@ describe('RouletteWheel: Radio Button UI Structure', () => {
         });
     });
 
-    test('Source code uses type="radio" for all filter inputs', () => {
+    test('Source code uses type="radio" for table/sign inputs and type="checkbox" for set inputs', () => {
         if (!RouletteWheel) return;
         // Verify the source code directly to avoid jsdom DOM duplication issues
         const src = fs.readFileSync(
             path.join(__dirname, '../../app/roulette-wheel.js'), 'utf-8'
         );
-        // All 6 filter inputs should be type="radio"
+        // 6 filter inputs should be type="radio" (3 table + 3 sign)
         const radioMatches = src.match(/type="radio".*id="filter/g);
         expect(radioMatches).not.toBeNull();
         expect(radioMatches.length).toBe(6);
-        // No checkboxes for filters
-        expect(src).not.toContain('type="checkbox" id="filter');
+        // 3 checkboxes for set filters
+        const checkboxMatches = src.match(/type="checkbox".*id="filterSet/g);
+        expect(checkboxMatches).not.toBeNull();
+        expect(checkboxMatches.length).toBe(3);
     });
 
     test('Source code uses name="tableFilter" for table radios', () => {
@@ -1942,20 +1944,21 @@ describe('RouletteWheel: Radio Button UI Structure', () => {
         expect(wheel.filters.negative).toBe(true);
     });
 
-    test('Layout: 2-row structure with "Table:" and "Sign:" labels in source', () => {
+    test('Layout: 3-row structure with "Table:", "Sign:", and "Set:" labels in source', () => {
         if (!RouletteWheel) return;
         const src = fs.readFileSync(
             path.join(__dirname, '../../app/roulette-wheel.js'), 'utf-8'
         );
-        // wheelFilters uses flex-direction:column for 2 rows
+        // wheelFilters uses flex-direction:column for 3 rows
         expect(src).toContain('flex-direction:column');
         // Row labels
         expect(src).toContain('Table:');
         expect(src).toContain('Sign:');
-        // Two inner rows with display:flex
+        expect(src).toContain('Set:');
+        // Three inner rows with display:flex
         const rowDivMatches = src.match(/display:flex; align-items:center; gap:10px/g);
         expect(rowDivMatches).not.toBeNull();
-        expect(rowDivMatches.length).toBe(2);
+        expect(rowDivMatches.length).toBe(3);
     });
 
     test('filteredCount span exists in wheel panel', () => {

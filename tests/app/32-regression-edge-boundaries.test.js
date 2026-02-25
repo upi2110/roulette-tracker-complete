@@ -298,8 +298,8 @@ describe('C. Semi-Auto Filter Edge Cases', () => {
         const zeroNums = [...SA_ZERO];
         const result = filter.computeOptimalFilter(zeroNums);
         if (result) {
-            // Should favor a zero-table filter
-            expect(['zero_positive', 'zero_negative', 'zero_both']).toContain(result.key);
+            // Should favor a zero-table filter (including set-specific variants)
+            expect(result.key.startsWith('zero_')).toBe(true);
         }
     });
 

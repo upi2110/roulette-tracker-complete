@@ -130,6 +130,7 @@ class AutoUpdateOrchestrator {
         const parts = filterKey.split('_');
         const table = parts[0];
         const sign = parts.length > 1 ? parts[1] : 'both';
+        const setKey = parts.length > 2 ? parts[2] : null; // 'set0', 'set5', 'set6', or null
 
         // Set table radio
         const TABLE_IDS = ['filter0Table', 'filter19Table', 'filterBothTables'];
@@ -151,12 +152,28 @@ class AutoUpdateOrchestrator {
             if (el) el.checked = (id === signId);
         });
 
+        // Set checkboxes: if a specific set is chosen, check only that one;
+        // otherwise (no set key = original 2-part key) check all sets
+        const SET_MAP = { set0: 'filterSet0', set5: 'filterSet5', set6: 'filterSet6' };
+        if (setKey && SET_MAP[setKey]) {
+            Object.entries(SET_MAP).forEach(([key, id]) => {
+                const el = document.getElementById(id);
+                if (el) el.checked = (key === setKey);
+            });
+        } else {
+            // No set specified — check all sets
+            Object.values(SET_MAP).forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.checked = true;
+            });
+        }
+
         // Trigger filter change on wheel
         if (window.rouletteWheel && typeof window.rouletteWheel._onFilterChange === 'function') {
             window.rouletteWheel._onFilterChange();
         }
 
-        console.log(`🎡 Wheel filters set: ${filterKey} → table=${tableId}, sign=${signId}`);
+        console.log(`🎡 Wheel filters set: ${filterKey} → table=${tableId}, sign=${signId}${setKey ? ', set=' + setKey : ''}`);
     }
 
     /**

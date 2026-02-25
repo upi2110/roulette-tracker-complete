@@ -734,7 +734,8 @@ describe('H. Engine — Live Retrain', () => {
     });
 
     test('H2: Retrain merges original + live data', () => {
-        const engine = new AIAutoEngine();
+        // Use v1 for legacy retrain behavior (v2 retrain only updates sequence model)
+        const engine = new AIAutoEngine({ learningVersion: 'v1' });
         // Mock dependencies for training
         engine._getCalculatePositionCode = () => 'XX';
         engine._getCalculateReferences = (prev, pp) => ({
@@ -1467,15 +1468,15 @@ describe('O. Number Set Correctness', () => {
         }
     });
 
-    test('O14: FILTER_COMBOS has exactly 9 entries', () => {
-        expect(FILTER_COMBOS).toHaveLength(9);
+    test('O14: FILTER_COMBOS has exactly 36 entries', () => {
+        expect(FILTER_COMBOS).toHaveLength(36);
         expect(SEQ_FILTER_COMBOS).toHaveLength(9);
-        expect(SEMI_FILTER_COMBOS).toHaveLength(9);
+        expect(SEMI_FILTER_COMBOS).toHaveLength(36);
     });
 
     test('O15: All filter combo keys are unique', () => {
         const keys = FILTER_COMBOS.map(f => f.key);
-        expect(new Set(keys).size).toBe(9);
+        expect(new Set(keys).size).toBe(36);
     });
 });
 
@@ -1624,7 +1625,7 @@ describe('P. Regression — Opposite Prediction Fix', () => {
         const model = new AISequenceModel({ minSamples: 1 });
         model.train([randomSession(200)]);
         const result = model.scoreFilterCombos([4]);
-        const expectedKeys = FILTER_COMBOS.map(f => f.key);
+        const expectedKeys = SEQ_FILTER_COMBOS.map(f => f.key);
         for (const key of expectedKeys) {
             expect(result.scores[key]).toBeDefined();
             expect(typeof result.scores[key]).toBe('number');
@@ -2293,15 +2294,22 @@ describe('W. both_both Exclusion Regression', () => {
         expect(result.filterKey).not.toBe('both_both');
     });
 
-    test('W8: All 8 non-both_both filters produce >= 4 numbers from full set', () => {
+    test('W8: All non-both_both filters with set="all" produce >= 4 numbers; narrow set combos may produce fewer', () => {
         const engine = new AIAutoEngine();
         const allNums = Array.from({ length: 37 }, (_, i) => i);
-        const nonBothBoth = FILTER_COMBOS.filter(f => f.key !== 'both_both');
-        for (const fc of nonBothBoth) {
+        // Original 8 non-both_both filters (set:'all') must each produce ≥ 4 numbers
+        const originalNonBB = FILTER_COMBOS.filter(f => f.key !== 'both_both' && f.set === 'all');
+        for (const fc of originalNonBB) {
             const filtered = engine._applyFilterToNumbers(allNums, fc.key);
             expect(filtered.length).toBeGreaterThanOrEqual(4);
-            // Some single-axis filters (zero_both=19, both_positive=19) exceed 18
-            // but double-restrictive ones (zero_positive=10) are in range
+        }
+        // Set-specific combos: wider ones (both_both_setX) produce 12-13,
+        // narrow triple-intersections may produce < 4 (by design — _selectBestFilter skips them)
+        const setSpecific = FILTER_COMBOS.filter(f => f.set !== 'all');
+        for (const fc of setSpecific) {
+            const filtered = engine._applyFilterToNumbers(allNums, fc.key);
+            expect(filtered.length).toBeGreaterThan(0); // Always some numbers
+            expect(filtered.length).toBeLessThanOrEqual(13); // At most one full set
         }
     });
 });

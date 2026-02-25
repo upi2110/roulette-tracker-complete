@@ -13,17 +13,53 @@ const SA_NINE = new Set([15, 19, 4, 17, 34, 6, 11, 30, 8, 24, 16, 33, 31, 9, 22,
 const SA_POS  = new Set([3, 26, 0, 32, 15, 19, 4, 27, 13, 36, 11, 30, 8, 1, 20, 14, 31, 9, 22]);
 const SA_NEG  = new Set([21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35]);
 
-// All 9 filter combinations
+// Number Set Filters (3 sets covering all 37 numbers)
+const SA_SET0 = new Set([0, 26, 19, 2, 34, 13, 30, 10, 16, 20, 9, 29, 12]); // 0 Set: 13 numbers (0/26 same pocket)
+const SA_SET5 = new Set([32, 15, 25, 17, 36, 11, 5, 24, 14, 31, 7, 28]);   // 5 Set: 12 numbers
+const SA_SET6 = new Set([4, 21, 6, 27, 8, 23, 33, 1, 22, 18, 35, 3]);      // 6 Set: 12 numbers
+
+// All 36 filter combinations (table × sign × set)
 const SEMI_FILTER_COMBOS = [
-    { key: 'zero_positive',     table: 'zero',     sign: 'positive' },
-    { key: 'zero_negative',     table: 'zero',     sign: 'negative' },
-    { key: 'zero_both',         table: 'zero',     sign: 'both' },
-    { key: 'nineteen_positive', table: 'nineteen', sign: 'positive' },
-    { key: 'nineteen_negative', table: 'nineteen', sign: 'negative' },
-    { key: 'nineteen_both',     table: 'nineteen', sign: 'both' },
-    { key: 'both_positive',     table: 'both',     sign: 'positive' },
-    { key: 'both_negative',     table: 'both',     sign: 'negative' },
-    { key: 'both_both',         table: 'both',     sign: 'both' },
+    // Original 9: set='all' (no set filtering — backward compatible)
+    { key: 'zero_positive',     table: 'zero',     sign: 'positive', set: 'all' },
+    { key: 'zero_negative',     table: 'zero',     sign: 'negative', set: 'all' },
+    { key: 'zero_both',         table: 'zero',     sign: 'both',     set: 'all' },
+    { key: 'nineteen_positive', table: 'nineteen', sign: 'positive', set: 'all' },
+    { key: 'nineteen_negative', table: 'nineteen', sign: 'negative', set: 'all' },
+    { key: 'nineteen_both',     table: 'nineteen', sign: 'both',     set: 'all' },
+    { key: 'both_positive',     table: 'both',     sign: 'positive', set: 'all' },
+    { key: 'both_negative',     table: 'both',     sign: 'negative', set: 'all' },
+    { key: 'both_both',         table: 'both',     sign: 'both',     set: 'all' },
+    // 0 Set combos (9)
+    { key: 'zero_positive_set0',     table: 'zero',     sign: 'positive', set: 'set0' },
+    { key: 'zero_negative_set0',     table: 'zero',     sign: 'negative', set: 'set0' },
+    { key: 'zero_both_set0',         table: 'zero',     sign: 'both',     set: 'set0' },
+    { key: 'nineteen_positive_set0', table: 'nineteen', sign: 'positive', set: 'set0' },
+    { key: 'nineteen_negative_set0', table: 'nineteen', sign: 'negative', set: 'set0' },
+    { key: 'nineteen_both_set0',     table: 'nineteen', sign: 'both',     set: 'set0' },
+    { key: 'both_positive_set0',     table: 'both',     sign: 'positive', set: 'set0' },
+    { key: 'both_negative_set0',     table: 'both',     sign: 'negative', set: 'set0' },
+    { key: 'both_both_set0',         table: 'both',     sign: 'both',     set: 'set0' },
+    // 5 Set combos (9)
+    { key: 'zero_positive_set5',     table: 'zero',     sign: 'positive', set: 'set5' },
+    { key: 'zero_negative_set5',     table: 'zero',     sign: 'negative', set: 'set5' },
+    { key: 'zero_both_set5',         table: 'zero',     sign: 'both',     set: 'set5' },
+    { key: 'nineteen_positive_set5', table: 'nineteen', sign: 'positive', set: 'set5' },
+    { key: 'nineteen_negative_set5', table: 'nineteen', sign: 'negative', set: 'set5' },
+    { key: 'nineteen_both_set5',     table: 'nineteen', sign: 'both',     set: 'set5' },
+    { key: 'both_positive_set5',     table: 'both',     sign: 'positive', set: 'set5' },
+    { key: 'both_negative_set5',     table: 'both',     sign: 'negative', set: 'set5' },
+    { key: 'both_both_set5',         table: 'both',     sign: 'both',     set: 'set5' },
+    // 6 Set combos (9)
+    { key: 'zero_positive_set6',     table: 'zero',     sign: 'positive', set: 'set6' },
+    { key: 'zero_negative_set6',     table: 'zero',     sign: 'negative', set: 'set6' },
+    { key: 'zero_both_set6',         table: 'zero',     sign: 'both',     set: 'set6' },
+    { key: 'nineteen_positive_set6', table: 'nineteen', sign: 'positive', set: 'set6' },
+    { key: 'nineteen_negative_set6', table: 'nineteen', sign: 'negative', set: 'set6' },
+    { key: 'nineteen_both_set6',     table: 'nineteen', sign: 'both',     set: 'set6' },
+    { key: 'both_positive_set6',     table: 'both',     sign: 'positive', set: 'set6' },
+    { key: 'both_negative_set6',     table: 'both',     sign: 'negative', set: 'set6' },
+    { key: 'both_both_set6',         table: 'both',     sign: 'both',     set: 'set6' },
 ];
 
 const SEMI_MIN_NUMBERS = 4;
@@ -78,9 +114,9 @@ class SemiAutoFilter {
         const seqConfident = seqScores && seqScores._confident;
 
         for (const combo of SEMI_FILTER_COMBOS) {
-            // NEVER actively choose both_both — it provides no filtering value.
-            // The caller should use unfiltered numbers as fallback.
-            if (combo.key === 'both_both') continue;
+            // NEVER actively choose both_both (set:'all') — it provides no filtering value.
+            // BUT both_both with a specific set (set0/set5/set6) IS valid (12-13 numbers).
+            if (combo.key === 'both_both' && (!combo.set || combo.set === 'all')) continue;
 
             const filtered = predictionNumbers.filter(n => this._passesComboFilter(n, combo));
 
@@ -112,6 +148,16 @@ class SemiAutoFilter {
             } else {
                 // No sequence model at all: fall back to fewest numbers ≥ 4
                 score += (18 - filtered.length) / 14 * 0.10;
+            }
+
+            // Sign diversity penalty: penalize filters that produce 100% one-sign results.
+            // When projection is heavily one-sided, all sign-specific filters are equally
+            // one-sided — this at least reduces their scores to help confidence downstream.
+            const fPosCount = filtered.filter(n => SA_POS.has(n)).length;
+            const fNegCount = filtered.filter(n => SA_NEG.has(n)).length;
+            const fTotal = fPosCount + fNegCount;
+            if (fTotal > 0 && Math.min(fPosCount, fNegCount) === 0) {
+                score -= 0.06; // 100% one-sign: penalty
             }
 
             if (score > bestScore) {
@@ -147,7 +193,16 @@ class SemiAutoFilter {
         } else if (combo.sign === 'negative') {
             signPass = SA_NEG.has(num);
         }
-        return signPass;
+        if (!signPass) return false;
+
+        // Set filter
+        if (combo.set && combo.set !== 'all') {
+            if (combo.set === 'set0') return SA_SET0.has(num);
+            if (combo.set === 'set5') return SA_SET5.has(num);
+            if (combo.set === 'set6') return SA_SET6.has(num);
+        }
+
+        return true;
     }
 
     /**
@@ -196,7 +251,7 @@ class SemiAutoFilter {
 
 // Export for both browser and Node.js (tests)
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SEMI_FILTER_COMBOS, SEMI_MIN_NUMBERS };
+    module.exports = { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SA_SET0, SA_SET5, SA_SET6, SEMI_FILTER_COMBOS, SEMI_MIN_NUMBERS };
 }
 
 // Browser global

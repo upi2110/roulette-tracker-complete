@@ -59,6 +59,9 @@ function setupDOM() {
                     <input type="radio" name="signFilter" id="filterPositive" value="positive" />
                     <input type="radio" name="signFilter" id="filterNegative" value="negative" />
                     <input type="radio" name="signFilter" id="filterBothSigns" value="both" checked />
+                    <input type="checkbox" id="filterSet0" checked />
+                    <input type="checkbox" id="filterSet5" checked />
+                    <input type="checkbox" id="filterSet6" checked />
                 </div>
             </div>
 

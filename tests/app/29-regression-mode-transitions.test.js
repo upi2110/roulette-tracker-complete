@@ -630,10 +630,10 @@ describe('H. Data Integrity — Number Sets Across Components', () => {
     });
 
     test('H3: Filter combos are identical across all components', () => {
-        // Engine has 9 combos
-        expect(FILTER_COMBOS).toHaveLength(9);
-        // Semi-auto has 9 combos
-        expect(SEMI_FILTER_COMBOS).toHaveLength(9);
+        // Engine has 36 combos
+        expect(FILTER_COMBOS).toHaveLength(36);
+        // Semi-auto has 36 combos
+        expect(SEMI_FILTER_COMBOS).toHaveLength(36);
 
         // Keys should match
         const engineKeys = new Set(FILTER_COMBOS.map(f => f.key));
