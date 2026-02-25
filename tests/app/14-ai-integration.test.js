@@ -251,7 +251,7 @@ describe('AIIntegrationV6: getPredictionV6', () => {
     test('Calls api.getPredictionWithTableData with tableData on success', async () => {
         if (!AIIntegrationV6) return;
         const tableData = {
-            table3NextProjections: { prev: { numbers: [5, 6] } },
+            table3NextProjections: { prev: { anchors: [5], neighbors: [6], numbers: [5, 6] } },
             currentSpinCount: 5,
         };
         global.window.spins = [10, 20, 30, 5];

@@ -47,9 +47,9 @@ beforeEach(() => {
     global.window.spins = R.spins;
     global.window.getAIDataV6 = jest.fn(() => ({
         table3NextProjections: {
-            prev: { numbers: [1, 2, 3, 4, 5], purple: [1], green: [2] },
-            prevPlus1: { numbers: [3, 4, 5, 6, 7], purple: [3], green: [4] },
-            prevMinus1: { numbers: [5, 6, 7, 8, 9], purple: [5], green: [6] }
+            prev: { anchors: [2, 3], neighbors: [1], numbers: [1, 2, 3, 4, 5], purple: [1], green: [2] },
+            prevPlus1: { anchors: [4, 5], neighbors: [3], numbers: [3, 4, 5, 6, 7], purple: [3], green: [4] },
+            prevMinus1: { anchors: [6, 7], neighbors: [5], numbers: [5, 6, 7, 8, 9], purple: [5], green: [6] }
         },
         table1NextProjections: {},
         table2NextProjections: {},

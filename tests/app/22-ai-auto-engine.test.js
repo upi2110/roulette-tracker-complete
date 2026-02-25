@@ -686,7 +686,7 @@ describe('AIAutoEngine', () => {
 
             const result = engine.decide();
             expect(result.action).toBe('SKIP');
-            expect(result.reason).toContain('No pairs flashing');
+            expect(result.reason).toContain('No T2 or T3 flash data available');
         });
 
         test('returns SKIP when no table data available', () => {
@@ -702,7 +702,7 @@ describe('AIAutoEngine', () => {
 
             const result = engine.decide();
             expect(result.action).toBe('SKIP');
-            expect(result.reason).toContain('No table data');
+            expect(result.reason).toContain('No T2 or T3 flash data available');
         });
 
         test('returns SKIP when no flashing pairs have projections', () => {
@@ -716,13 +716,13 @@ describe('AIAutoEngine', () => {
             engine._getComputeFlashTargets = () => new Set(['0:prev:pair']);
             engine._getAIDataV6 = () => ({
                 table3NextProjections: {
-                    prev: { numbers: [] } // Empty projection
+                    prev: { anchors: [], neighbors: [], numbers: [] } // Empty projection
                 }
             });
 
             const result = engine.decide();
             expect(result.action).toBe('SKIP');
-            expect(result.reason).toContain('No flashing pairs have projections');
+            expect(result.reason).toContain('No T2 or T3 flash data available');
         });
 
         test('returns BET when confidence is high enough', () => {
@@ -737,8 +737,8 @@ describe('AIAutoEngine', () => {
             engine._getComputeFlashTargets = () => new Set(['0:prev:pair', '0:prev_plus_1:pair13Opp']);
             engine._getAIDataV6 = () => ({
                 table3NextProjections: {
-                    prev: { numbers: [4, 21, 2, 25, 17, 34, 6, 27] },
-                    prevPlus1: { numbers: [15, 19, 4, 21] }
+                    prev: { anchors: [21, 25, 34], neighbors: [4, 2, 6], numbers: [4, 21, 2, 25, 17, 34, 6, 27] },
+                    prevPlus1: { anchors: [19, 4], neighbors: [15], numbers: [15, 19, 4, 21] }
                 }
             });
 
@@ -768,7 +768,7 @@ describe('AIAutoEngine', () => {
             engine._getComputeFlashTargets = () => new Set(['0:prev:pair']);
             engine._getAIDataV6 = () => ({
                 table3NextProjections: {
-                    prev: { numbers: Array.from({length: 20}, (_, i) => i) } // Many numbers → penalty
+                    prev: { anchors: [0, 5, 10], neighbors: [3, 8, 15], numbers: Array.from({length: 20}, (_, i) => i) } // Many numbers → penalty
                 }
             });
 
@@ -796,7 +796,7 @@ describe('AIAutoEngine', () => {
             engine._getComputeFlashTargets = () => new Set(['0:prev:pair']);
             engine._getAIDataV6 = () => ({
                 table3NextProjections: {
-                    prev: { numbers: Array.from({length: 20}, (_, i) => i) }
+                    prev: { anchors: [0, 5, 10], neighbors: [3, 8, 15], numbers: Array.from({length: 20}, (_, i) => i) }
                 }
             });
 
@@ -817,15 +817,15 @@ describe('AIAutoEngine', () => {
             engine._getComputeFlashTargets = () => new Set(['0:prev:pair']);
             engine._getAIDataV6 = () => ({
                 table3NextProjections: {
-                    prev: { numbers: [4, 21, 2, 25, 17, 34, 6] }
+                    prev: { anchors: [21, 25, 34], neighbors: [4, 2, 6], numbers: [4, 21, 2, 25, 17, 34, 6] }
                 }
             });
 
             const result = engine.decide();
-            expect(result.debug).toHaveProperty('flashingRefKeys');
-            expect(result.debug).toHaveProperty('candidates');
-            expect(result.debug).toHaveProperty('bestPairScore');
-            expect(result.debug).toHaveProperty('filterScore');
+            expect(result.debug).toHaveProperty('t3FlashingRefKeys');
+            expect(result.debug).toHaveProperty('t2FlashPair');
+            expect(result.debug).toHaveProperty('predictedSet');
+            expect(result.debug).toHaveProperty('setScore');
         });
     });
 
@@ -1940,12 +1940,12 @@ describe('AIAutoEngine', () => {
         ];
 
         const fullProjections = {
-            prev: { numbers: [0, 32, 15, 19, 4, 21, 2, 25] },
-            prevPlus1: { numbers: [17, 34, 6, 27, 13, 36] },
-            prevMinus1: { numbers: [11, 30, 8, 23, 10, 5] },
-            prevPlus2: { numbers: [24, 16, 33, 1, 20, 14] },
-            prevMinus2: { numbers: [31, 9, 22, 18, 29, 7] },
-            prevPrev: { numbers: [28, 12, 35, 3, 26, 0] }
+            prev: { anchors: [32, 19, 4], neighbors: [0, 21, 25], numbers: [0, 32, 15, 19, 4, 21, 2, 25] },
+            prevPlus1: { anchors: [34, 27, 13], neighbors: [6, 36], numbers: [17, 34, 6, 27, 13, 36] },
+            prevMinus1: { anchors: [30, 23, 10], neighbors: [11, 8], numbers: [11, 30, 8, 23, 10, 5] },
+            prevPlus2: { anchors: [16, 1, 20], neighbors: [24, 33], numbers: [24, 16, 33, 1, 20, 14] },
+            prevMinus2: { anchors: [9, 18, 29], neighbors: [31, 22], numbers: [31, 9, 22, 18, 29, 7] },
+            prevPrev: { anchors: [12, 3, 26], neighbors: [28, 35], numbers: [28, 12, 35, 3, 26, 0] }
         };
 
         beforeEach(() => {
@@ -1960,7 +1960,7 @@ describe('AIAutoEngine', () => {
             engine._getComputeFlashTargets = () => new Set();
             const result = engine.decide();
             expect(result.action).toBe('SKIP');
-            expect(result.reason).toContain('No pairs flashing');
+            expect(result.reason).toContain('No T2 or T3 flash data available');
         });
 
         test('V2: when only prev flashes, selectedPair must be prev', () => {
@@ -2031,8 +2031,8 @@ describe('AIAutoEngine', () => {
             engine._getComputeFlashTargets = () => new Set(['4:prev_prev:pair']);
             engine._getAIDataV6 = () => ({
                 table3NextProjections: {
-                    prevPrev: { numbers: [28, 12, 35] }, // small set
-                    prevPlus1: { numbers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14] } // large set - tempting
+                    prevPrev: { anchors: [12, 35], neighbors: [28], numbers: [28, 12, 35] }, // small set
+                    prevPlus1: { anchors: [1, 5, 10], neighbors: [3, 8], numbers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14] } // large set - tempting
                 }
             });
             const result = engine.decide();
@@ -2096,9 +2096,9 @@ describe('AIAutoEngine', () => {
             ]);
             engine._getAIDataV6 = () => ({
                 table3NextProjections: {
-                    prev: { numbers: [0, 32, 15] },
-                    prevMinus1: { numbers: [11, 30, 8, 23] },
-                    prevPrev: { numbers: [28, 12, 35, 3, 26] }
+                    prev: { anchors: [32], neighbors: [15], numbers: [0, 32, 15] },
+                    prevMinus1: { anchors: [30, 23], neighbors: [11, 8], numbers: [11, 30, 8, 23] },
+                    prevPrev: { anchors: [12, 3], neighbors: [35, 26], numbers: [28, 12, 35, 3, 26] }
                     // prevPlus1, prevPlus2, prevMinus2 have NO projections
                 }
             });

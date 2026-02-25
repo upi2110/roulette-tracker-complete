@@ -201,6 +201,15 @@ function loadRendererFunctions() {
             exports._computeFlashTargets = typeof _computeFlashTargets !== 'undefined' ? _computeFlashTargets : null;
             exports.formatPosFlash = typeof formatPosFlash !== 'undefined' ? formatPosFlash : null;
 
+            // T1/T2 anchor flash functions
+            exports._computeT1FlashTargets = typeof _computeT1FlashTargets !== 'undefined' ? _computeT1FlashTargets : null;
+            exports._computeT2FlashTargets = typeof _computeT2FlashTargets !== 'undefined' ? _computeT2FlashTargets : null;
+            exports._computeAnchorFlashTargets = typeof _computeAnchorFlashTargets !== 'undefined' ? _computeAnchorFlashTargets : null;
+            exports._T1_VALID_CODES = typeof _T1_VALID_CODES !== 'undefined' ? _T1_VALID_CODES : null;
+            exports._T2_VALID_CODES = typeof _T2_VALID_CODES !== 'undefined' ? _T2_VALID_CODES : null;
+            exports._T1_PAIR_DEFS = typeof _T1_PAIR_DEFS !== 'undefined' ? _T1_PAIR_DEFS : null;
+            exports._T2_PAIR_DEFS = typeof _T2_PAIR_DEFS !== 'undefined' ? _T2_PAIR_DEFS : null;
+
             // AI data export
             exports.analyzeTable1Hits = typeof analyzeTable1Hits !== 'undefined' ? analyzeTable1Hits : null;
             exports.analyzeTable2Hits = typeof analyzeTable2Hits !== 'undefined' ? analyzeTable2Hits : null;

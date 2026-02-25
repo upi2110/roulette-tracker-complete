@@ -298,8 +298,8 @@ describe('C. Semi-Auto Filter Edge Cases', () => {
         const zeroNums = [...SA_ZERO];
         const result = filter.computeOptimalFilter(zeroNums);
         if (result) {
-            // Should favor a zero-table filter (including set-specific variants)
-            expect(result.key.startsWith('zero_')).toBe(true);
+            // Set prediction now runs first — returns both_both_setN (or falls back to zero_*)
+            expect(result.key).toMatch(/^(zero_|both_both_set[056]$)/);
         }
     });
 
@@ -309,8 +309,8 @@ describe('C. Semi-Auto Filter Edge Cases', () => {
         const posNums = [...SEQ_POS];
         const result = filter.computeOptimalFilter(posNums);
         if (result) {
-            // Should favor a positive filter
-            expect(result.key).toContain('positive');
+            // Set prediction now runs first — returns both_both_setN (or falls back to *positive)
+            expect(result.key).toMatch(/(positive|^both_both_set[056]$)/);
         }
     });
 });

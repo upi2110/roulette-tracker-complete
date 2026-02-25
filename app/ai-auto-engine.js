@@ -74,6 +74,20 @@ const REFKEY_TO_PAIR_NAME = {
 const PAIR_NAME_TO_REFKEY = {};
 Object.entries(REFKEY_TO_PAIR_NAME).forEach(([k, v]) => { PAIR_NAME_TO_REFKEY[v] = k; });
 
+// Table 2 pair keys (different from T3 — includes ref0/ref19, no prevPrev)
+const T2_PAIR_KEYS = ['ref0', 'ref19', 'prev', 'prevPlus1', 'prevMinus1', 'prevPlus2', 'prevMinus2'];
+
+// Map T2 pair key → refNum calculator (same logic as _T2_PAIR_DEFS in renderer)
+const T2_PAIR_REFNUM = {
+    ref0:       (lastSpin) => 0,
+    ref19:      (lastSpin) => 19,
+    prev:       (lastSpin) => lastSpin,
+    prevPlus1:  (lastSpin) => Math.min(lastSpin + 1, 36),
+    prevMinus1: (lastSpin) => Math.max(lastSpin - 1, 0),
+    prevPlus2:  (lastSpin) => Math.min(lastSpin + 2, 36),
+    prevMinus2: (lastSpin) => Math.max(lastSpin - 2, 0),
+};
+
 // Golden position codes — highest priority patterns
 const GOLDEN_CODES = ['S+0', 'O+0'];
 const NEAR_CODES = ['SL+1', 'SR+1', 'OL+1', 'OR+1'];
@@ -461,6 +475,146 @@ class AIAutoEngine {
         return { numbers, anchors: purple, neighbors: green };
     }
 
+    // ═══════════════════════════════════════════════════════════
+    //  T2 FLASH DETECTION + NEXT ROW NUMBERS
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Detect T2 flashing pairs and extract NEXT row anchor numbers for the best pair.
+     *
+     * @param {Array<{actual: number}>} spins - Spin objects with .actual
+     * @returns {{ dataPair: string, anchorCount: number, targets: number[], numbers: number[], score: number } | null}
+     */
+    _getT2FlashingPairsAndNumbers(spins) {
+        if (!spins || spins.length < 4) return null;
+
+        // 1. Get T2 flash targets (match renderTable2's visible window)
+        const startIdx = Math.max(0, spins.length - 8);
+        const visibleCount = spins.length - startIdx;
+        const t2Targets = this._getComputeT2FlashTargets(spins, startIdx, visibleCount);
+        if (t2Targets.size === 0) return null;
+
+        // 2. Parse flash targets → { dataPair → Set<anchorIdx> }
+        const pairAnchors = {};
+        for (const target of t2Targets) {
+            const parts = target.split(':');
+            if (parts.length >= 3) {
+                const dataPair = parts[1];
+                const anchorIdx = parseInt(parts[2], 10);
+                if (!pairAnchors[dataPair]) pairAnchors[dataPair] = new Set();
+                pairAnchors[dataPair].add(anchorIdx);
+            }
+        }
+
+        if (Object.keys(pairAnchors).length === 0) return null;
+
+        // 3. Score each T2 pair and get NEXT row numbers
+        const lastSpin = spins[spins.length - 1].actual;
+        const scored = [];
+
+        for (const [dataPair, anchors] of Object.entries(pairAnchors)) {
+            const getRefNum = T2_PAIR_REFNUM[dataPair];
+            if (!getRefNum) continue;
+
+            const refNum = getRefNum(lastSpin);
+            const lookupRow = this._getLookupRow(refNum);
+            if (!lookupRow) continue;
+
+            const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
+            const flashingTargets = [];
+            for (const idx of anchors) {
+                if (targets[idx] !== undefined) flashingTargets.push(targets[idx]);
+            }
+
+            if (flashingTargets.length === 0) continue;
+
+            // Expand flashing anchor targets with ±2 wheel neighbors (Table 2 range)
+            const numbers = this._getExpandTargetsToBetNumbers(flashingTargets, 2);
+
+            scored.push({
+                dataPair,
+                anchorCount: anchors.size,
+                targets: flashingTargets,
+                numbers,
+                score: anchors.size * 0.5 + numbers.length * 0.01
+            });
+        }
+
+        if (scored.length === 0) return null;
+
+        // 4. Pick best T2 pair (most anchors → then coverage)
+        scored.sort((a, b) => b.score - a.score);
+        return scored[0];
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  SET PREDICTION
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Predict which one set (0/5/6) the next spin will land in.
+     * Uses multiple signals: coverage overlap, recent frequency, anti-streak, historical.
+     *
+     * @param {number[]} combinedNumbers - Union of T2 + T3 prediction numbers
+     * @param {number[]} recentSpins - Last 10 spin actuals
+     * @returns {{ setKey: string, filterKey: string, score: number }}
+     */
+    _predictBestSet(combinedNumbers, recentSpins) {
+        const set0 = this._getSet0Nums();
+        const set5 = this._getSet5Nums();
+        const set6 = this._getSet6Nums();
+
+        const sets = [
+            { key: 'set0', nums: set0, filterKey: 'both_both_set0' },
+            { key: 'set5', nums: set5, filterKey: 'both_both_set5' },
+            { key: 'set6', nums: set6, filterKey: 'both_both_set6' },
+        ];
+
+        let bestSet = sets[0];
+        let bestScore = -Infinity;
+
+        for (const s of sets) {
+            let score = 0;
+
+            // Factor 1 (40%): Coverage overlap — how many prediction numbers fall in this set
+            const overlap = combinedNumbers.filter(n => s.nums.has(n)).length;
+            score += (overlap / Math.max(combinedNumbers.length, 1)) * 0.40;
+
+            // Factor 2 (30%): Recent frequency — how many of last 10 spins fell in this set
+            const recent = recentSpins || [];
+            const recentInSet = recent.filter(n => s.nums.has(n)).length;
+            const recentRate = recent.length > 0 ? recentInSet / recent.length : (s.nums.size / 37);
+            score += recentRate * 0.30;
+
+            // Factor 3 (15%): Anti-streak — if this set hasn't appeared in last 3 spins, give bonus
+            const last3 = recent.slice(-3);
+            const last3InSet = last3.filter(n => s.nums.has(n)).length;
+            if (last3InSet === 0 && recent.length >= 3) {
+                score += 0.10;
+            }
+
+            // Factor 4 (15%): Historical filter model performance
+            const fm = this.filterModels[s.filterKey];
+            if (fm && fm.totalTrials > 0) {
+                score += fm.hitRate * 0.15;
+            }
+
+            // Factor 5: Session filter performance (adaptive)
+            const sf = this.session.filterPerformance[s.filterKey];
+            if (sf && sf.attempts >= 3) {
+                const sfRate = sf.hits / sf.attempts;
+                score += sfRate * this.session.adaptationWeight * 0.10;
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestSet = s;
+            }
+        }
+
+        return { setKey: bestSet.key, filterKey: bestSet.filterKey, score: bestScore };
+    }
+
     /**
      * Internal: Apply a filter combination to a set of numbers.
      */
@@ -560,76 +714,78 @@ class AIAutoEngine {
         if (!this.isTrained) return skipResult('Engine not trained');
         if (!this.isEnabled) return skipResult('Engine not enabled');
 
-        // 1. Get current flash targets
         const currentSpins = this._getWindowSpins();
         if (!currentSpins || currentSpins.length < 4) return skipResult('Not enough spins');
 
-        const flashTargets = this._getComputeFlashTargets(
-            currentSpins, 0, currentSpins.length
-        );
-
-        // Parse flash targets to get flashing refKeys
+        // ── Step 1: T3 Flash Detection + Pair Selection ──
+        const flashTargets = this._getComputeFlashTargets(currentSpins, 0, currentSpins.length);
         const flashingRefKeys = new Set();
         for (const target of flashTargets) {
             const parts = target.split(':');
-            if (parts.length >= 2) {
-                flashingRefKeys.add(parts[1]); // refKey
+            if (parts.length >= 2) flashingRefKeys.add(parts[1]);
+        }
+
+        let t3Numbers = [];
+        let t3BestPair = null;
+
+        if (flashingRefKeys.size > 0) {
+            const tableData = this._getAIDataV6();
+            const nextProjections = tableData ? (tableData.table3NextProjections || {}) : {};
+            const t3Candidates = [];
+            for (const refKey of flashingRefKeys) {
+                const pairName = REFKEY_TO_PAIR_NAME[refKey];
+                const projData = nextProjections[pairName];
+                if (projData && projData.numbers && projData.numbers.length > 0) {
+                    t3Candidates.push({ refKey, pairName, numbers: projData.numbers, data: projData });
+                }
+            }
+            if (t3Candidates.length > 0) {
+                const scored = t3Candidates.map(c => ({ ...c, score: this._scorePair(c.refKey, c) }));
+                scored.sort((a, b) => b.score - a.score);
+                t3BestPair = scored[0];
+                t3Numbers = t3BestPair.numbers;
             }
         }
 
-        if (flashingRefKeys.size === 0) return skipResult('No pairs flashing');
+        // ── Step 2: T2 Flash Detection + NEXT Row Numbers ──
+        const t2Data = this._getT2FlashingPairsAndNumbers(currentSpins);
+        const t2Numbers = t2Data ? t2Data.numbers : [];
 
-        // 2. Get available pairs from getAIDataV6
-        const tableData = this._getAIDataV6();
-        if (!tableData) return skipResult('No table data available');
-
-        const nextProjections = tableData.table3NextProjections || {};
-
-        // 3. Intersect: flashing AND have projection numbers
-        const candidates = [];
-        for (const refKey of flashingRefKeys) {
-            const pairName = REFKEY_TO_PAIR_NAME[refKey];
-            const projData = nextProjections[pairName];
-            if (projData && projData.numbers && projData.numbers.length > 0) {
-                candidates.push({ refKey, pairName, numbers: projData.numbers, data: projData });
-            }
+        // ── Must have at least one source ──
+        if (t3Numbers.length === 0 && t2Numbers.length === 0) {
+            return skipResult('No T2 or T3 flash data available');
         }
 
-        if (candidates.length === 0) return skipResult('No flashing pairs have projections');
+        // ── Step 3: Combine T2 + T3 Numbers ──
+        const combinedSet = new Set([...t3Numbers, ...t2Numbers]);
+        const combinedNumbers = Array.from(combinedSet);
 
-        // 4. Score each candidate
-        const scored = candidates.map(c => ({
-            ...c,
-            score: this._scorePair(c.refKey, c)
-        }));
-        scored.sort((a, b) => b.score - a.score);
+        // ── Step 4: Predict Best Set (replaces _selectBestFilter) ──
+        const recentSpins = currentSpins.slice(-10).map(s => s.actual);
+        const setPrediction = this._predictBestSet(combinedNumbers, recentSpins);
 
-        const bestPair = scored[0];
+        // ── Step 5: Apply both_both_setN Filter ──
+        const filteredNumbers = this._applyFilterToNumbers(combinedNumbers, setPrediction.filterKey);
 
-        // 5. Select best filter (v2: pass refKey for cross-performance lookup)
-        const filterResult = this._selectBestFilter(bestPair.numbers, bestPair.refKey);
-
-        // 6. Compute anchors
-        const anchorsResult = this._getCalculateWheelAnchors(filterResult.filteredNumbers);
+        // ── Step 6: Confidence + BET/SKIP ──
+        const pairScore = t3BestPair ? this._scorePair(t3BestPair.refKey, t3BestPair) : 0.5;
+        const anchorsResult = this._getCalculateWheelAnchors(filteredNumbers);
         const anchors = anchorsResult ? anchorsResult.anchors : [];
         const loose = anchorsResult ? anchorsResult.loose : [];
         const anchorGroups = anchorsResult ? anchorsResult.anchorGroups : [];
 
-        // 7. Confidence
-        const confidence = this._computeConfidence(bestPair.score, filterResult.score, filterResult.filteredNumbers);
+        const confidence = this._computeConfidence(pairScore, setPrediction.score, filteredNumbers);
 
-        // 8. Skip logic — AI always decides with its own confidence
         const effectiveThreshold = this.confidenceThreshold;
-        // Force-bet after maxConsecutiveSkips — absolute limit
         const forcebet = this.session.consecutiveSkips >= this.maxConsecutiveSkips;
-        let action;
-        let reason;
+        let action, reason;
 
         if (confidence >= effectiveThreshold || forcebet) {
             action = 'BET';
+            const pairName = t3BestPair ? t3BestPair.pairName : (t2Data ? t2Data.dataPair : 'unknown');
             reason = forcebet && confidence < effectiveThreshold
                 ? `Forced bet after ${this.session.consecutiveSkips} skips (conf: ${confidence}%)`
-                : `Pair ${bestPair.pairName} with ${filterResult.filterKey} filter (conf: ${confidence}%)`;
+                : `T2:${t2Data ? t2Data.dataPair : 'none'}+T3:${t3BestPair ? t3BestPair.pairName : 'none'} → ${setPrediction.filterKey} (conf: ${confidence}%)`;
         } else {
             action = 'SKIP';
             reason = `Low confidence ${confidence}% < ${effectiveThreshold}% threshold (skip ${this.session.consecutiveSkips + 1}/${this.maxConsecutiveSkips})`;
@@ -637,21 +793,20 @@ class AIAutoEngine {
 
         return {
             action,
-            selectedPair: bestPair.pairName,
-            selectedFilter: filterResult.filterKey,
-            numbers: filterResult.filteredNumbers,
-            anchors,
-            loose,
-            anchorGroups,
-            confidence,
-            reason,
+            selectedPair: t3BestPair ? t3BestPair.pairName : (t2Data ? t2Data.dataPair : null),
+            selectedFilter: setPrediction.filterKey,
+            numbers: filteredNumbers,
+            anchors, loose, anchorGroups, confidence, reason,
             debug: {
-                flashingRefKeys: Array.from(flashingRefKeys),
-                candidates: scored.map(s => ({ refKey: s.refKey, score: Math.round(s.score * 1000) / 1000 })),
-                bestPairScore: bestPair.score,
-                filterScore: filterResult.score,
-                unfilteredCount: bestPair.numbers.length,
-                filteredCount: filterResult.filteredNumbers.length
+                t3FlashingRefKeys: Array.from(flashingRefKeys),
+                t2FlashPair: t2Data ? t2Data.dataPair : null,
+                t2AnchorCount: t2Data ? t2Data.anchorCount : 0,
+                t3NumberCount: t3Numbers.length,
+                t2NumberCount: t2Numbers.length,
+                combinedCount: combinedNumbers.length,
+                filteredCount: filteredNumbers.length,
+                predictedSet: setPrediction.setKey,
+                setScore: setPrediction.score
             }
         };
     }
@@ -1387,6 +1542,28 @@ class AIAutoEngine {
         return new Set();
     }
 
+    _getComputeT2FlashTargets(allSpins, startIdx, visibleCount) {
+        if (typeof _computeT2FlashTargets === 'function') return _computeT2FlashTargets(allSpins, startIdx, visibleCount);
+        if (typeof window !== 'undefined' && typeof window._computeT2FlashTargets === 'function')
+            return window._computeT2FlashTargets(allSpins, startIdx, visibleCount);
+        return new Set();
+    }
+
+    _getLookupRow(refNum) {
+        if (typeof getLookupRow === 'function') return getLookupRow(refNum);
+        if (typeof window !== 'undefined' && typeof window.getLookupRow === 'function')
+            return window.getLookupRow(refNum);
+        return null;
+    }
+
+    _getExpandTargetsToBetNumbers(targets, neighborRange) {
+        if (typeof expandTargetsToBetNumbers === 'function')
+            return expandTargetsToBetNumbers(targets, neighborRange);
+        if (typeof window !== 'undefined' && typeof window.expandTargetsToBetNumbers === 'function')
+            return window.expandTargetsToBetNumbers(targets, neighborRange);
+        return targets; // Fallback: return raw targets
+    }
+
     _getCalculateWheelAnchors(numbers) {
         if (!numbers || numbers.length === 0) return { anchors: [], loose: [], anchorGroups: [] };
         if (typeof calculateWheelAnchors === 'function') return calculateWheelAnchors(numbers);
@@ -1451,7 +1628,7 @@ class AIAutoEngine {
 
 // Export for both browser and Node.js (tests)
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, PAIR_NAME_TO_REFKEY, EUROPEAN_WHEEL };
+    module.exports = { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, PAIR_NAME_TO_REFKEY, EUROPEAN_WHEEL, T2_PAIR_KEYS, T2_PAIR_REFNUM };
 }
 if (typeof window !== 'undefined') {
     window.AIAutoEngine = AIAutoEngine;

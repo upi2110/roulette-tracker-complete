@@ -176,8 +176,12 @@ class MoneyManagementPanel {
             // CRITICAL: Get fresh prediction immediately when starting
             if (window.aiPanel && window.aiPanel.getPredictions) {
                 setTimeout(() => {
-                    window.aiPanel.getPredictions();
-                    console.log('🔄 Triggered fresh prediction after START');
+                    try {
+                        window.aiPanel.getPredictions();
+                        console.log('🔄 Triggered fresh prediction after START');
+                    } catch (e) {
+                        console.warn('⚠️ Failed to trigger prediction on START:', e.message);
+                    }
                 }, 100);
             }
         } else {
@@ -293,9 +297,16 @@ class MoneyManagementPanel {
 
     setupSpinListener() {
         // Check for new spins every 200ms - FASTER than orchestrator
+        if (this._spinListenerInterval) {
+            clearInterval(this._spinListenerInterval);
+        }
         this.lastSpinCount = 0;
-        setInterval(() => {
-            this.checkForNewSpin();
+        this._spinListenerInterval = setInterval(() => {
+            try {
+                this.checkForNewSpin();
+            } catch (e) {
+                console.warn('⚠️ Spin listener error:', e.message);
+            }
         }, 200);
     }
 

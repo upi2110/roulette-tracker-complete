@@ -24,6 +24,17 @@ const TEST_REFKEY_TO_PAIR_NAME = {
     'prev_prev': 'prevPrev'
 };
 
+// Table 2 pair key → refNum calculator (same as T2_PAIR_REFNUM in ai-auto-engine.js)
+const TEST_T2_PAIR_REFNUM = {
+    ref0:       (lastSpin) => 0,
+    ref19:      (lastSpin) => 19,
+    prev:       (lastSpin) => lastSpin,
+    prevPlus1:  (lastSpin) => Math.min(lastSpin + 1, 36),
+    prevMinus1: (lastSpin) => Math.max(lastSpin - 1, 0),
+    prevPlus2:  (lastSpin) => Math.min(lastSpin + 2, 36),
+    prevMinus2: (lastSpin) => Math.max(lastSpin - 2, 0),
+};
+
 const STRATEGY_NAMES = {
     1: 'Aggressive',
     2: 'Conservative',
@@ -284,11 +295,82 @@ class AutoTestRunner {
     }
 
     // ═══════════════════════════════════════════════════════════
+    //  T2 FLASH SIMULATION
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Simulate T2 flash detection and NEXT row number extraction for backtesting.
+     * Mirrors engine._getT2FlashingPairsAndNumbers() but works on plain number arrays.
+     *
+     * @param {number[]} testSpins - Full test data (plain numbers)
+     * @param {number} idx - Current index
+     * @returns {{ dataPair: string, anchorCount: number, targets: number[], numbers: number[], score: number } | null}
+     */
+    _simulateT2FlashAndNumbers(testSpins, idx) {
+        if (idx < 4) return null;
+
+        // Build spin objects for _computeT2FlashTargets (needs {actual} format)
+        const spinObjs = testSpins.slice(0, idx + 1).map(n => ({ actual: n }));
+        const startIdx = Math.max(0, spinObjs.length - 8);
+        const visibleCount = spinObjs.length - startIdx;
+
+        const t2Targets = this.engine._getComputeT2FlashTargets(spinObjs, startIdx, visibleCount);
+        if (t2Targets.size === 0) return null;
+
+        // Parse to { dataPair → Set<anchorIdx> }
+        const pairAnchors = {};
+        for (const target of t2Targets) {
+            const parts = target.split(':');
+            if (parts.length >= 3) {
+                const dataPair = parts[1];
+                const anchorIdx = parseInt(parts[2], 10);
+                if (!pairAnchors[dataPair]) pairAnchors[dataPair] = new Set();
+                pairAnchors[dataPair].add(anchorIdx);
+            }
+        }
+
+        if (Object.keys(pairAnchors).length === 0) return null;
+
+        // Score each pair, get NEXT row numbers
+        const lastSpin = testSpins[idx - 1]; // "last spin" for NEXT row
+        const scored = [];
+
+        for (const [dataPair, anchors] of Object.entries(pairAnchors)) {
+            const getRefNum = TEST_T2_PAIR_REFNUM[dataPair];
+            if (!getRefNum) continue;
+            const refNum = getRefNum(lastSpin);
+            const lookupRow = this.engine._getLookupRow(refNum);
+            if (!lookupRow) continue;
+
+            const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
+            const flashingTargets = [];
+            for (const ai of anchors) {
+                if (targets[ai] !== undefined) flashingTargets.push(targets[ai]);
+            }
+            if (flashingTargets.length === 0) continue;
+
+            const numbers = this.engine._getExpandTargetsToBetNumbers(flashingTargets, 2);
+            scored.push({
+                dataPair,
+                anchorCount: anchors.size,
+                targets: flashingTargets,
+                numbers,
+                score: anchors.size * 0.5 + numbers.length * 0.01
+            });
+        }
+
+        if (scored.length === 0) return null;
+        scored.sort((a, b) => b.score - a.score);
+        return scored[0];
+    }
+
+    // ═══════════════════════════════════════════════════════════
     //  DECISION SIMULATION
     // ═══════════════════════════════════════════════════════════
 
     /**
      * Simulate a decision at spin index idx using engine internals.
+     * NEW: Combines T3 flash + T2 flash + Set prediction pipeline.
      * Mirrors engine.decide() but works on plain number arrays.
      *
      * @param {number[]} testSpins - Full test data
@@ -308,59 +390,66 @@ class AutoTestRunner {
 
         if (idx < 3) return skipResult('Insufficient history');
 
-        // 1. Find flashing pairs at this index
+        // ── Step 1: T3 Flash Detection + Pair Selection (existing) ──
         const flashingPairs = this.engine._getFlashingPairsFromHistory(testSpins, idx);
-        if (flashingPairs.size === 0) return skipResult('No pairs flashing');
+        let t3Numbers = [];
+        let t3BestPair = null;
 
-        // 2. Compute projections for each flashing pair
-        const candidates = [];
-        for (const [refKey, flashInfo] of flashingPairs) {
-            const projection = this.engine._computeProjectionForPair(testSpins, idx, refKey);
-            if (projection && projection.numbers.length > 0) {
-                const pairName = TEST_REFKEY_TO_PAIR_NAME[refKey] || refKey;
-                candidates.push({
-                    refKey,
-                    pairName,
-                    numbers: projection.numbers,
-                    data: projection
-                });
+        if (flashingPairs.size > 0) {
+            const t3Candidates = [];
+            for (const [refKey, flashInfo] of flashingPairs) {
+                const projection = this.engine._computeProjectionForPair(testSpins, idx, refKey);
+                if (projection && projection.numbers.length > 0) {
+                    const pairName = TEST_REFKEY_TO_PAIR_NAME[refKey] || refKey;
+                    t3Candidates.push({ refKey, pairName, numbers: projection.numbers, data: projection });
+                }
+            }
+            if (t3Candidates.length > 0) {
+                const scored = t3Candidates.map(c => ({ ...c, score: this.engine._scorePair(c.refKey, c) }));
+                scored.sort((a, b) => b.score - a.score);
+                t3BestPair = scored[0];
+                t3Numbers = t3BestPair.numbers;
             }
         }
 
-        if (candidates.length === 0) return skipResult('No projections for flashing pairs');
+        // ── Step 2: T2 Flash Detection + NEXT Row Numbers ──
+        const t2Data = this._simulateT2FlashAndNumbers(testSpins, idx);
+        const t2Numbers = t2Data ? t2Data.numbers : [];
 
-        // 3. Score each candidate pair
-        const scored = candidates.map(c => ({
-            ...c,
-            score: this.engine._scorePair(c.refKey, c)
-        }));
-        scored.sort((a, b) => b.score - a.score);
+        // ── Must have at least one source ──
+        if (t3Numbers.length === 0 && t2Numbers.length === 0) {
+            return skipResult('No T2 or T3 flash data available');
+        }
 
-        const bestPair = scored[0];
+        // ── Step 3: Combine T2 + T3 Numbers ──
+        const combinedSet = new Set([...t3Numbers, ...t2Numbers]);
+        const combinedNumbers = Array.from(combinedSet);
 
-        // 4. Select best filter (v2: pass refKey for cross-performance lookup)
-        const filterResult = this.engine._selectBestFilter(bestPair.numbers, bestPair.refKey);
+        // ── Step 4: Predict Best Set ──
+        const recentSpins = testSpins.slice(Math.max(0, idx - 10), idx);
+        const setPrediction = this.engine._predictBestSet(combinedNumbers, recentSpins);
 
-        // 5. Compute confidence
-        const confidence = this.engine._computeConfidence(
-            bestPair.score, filterResult.score, filterResult.filteredNumbers
-        );
+        // ── Step 5: Apply both_both_setN Filter ──
+        const filteredNumbers = this.engine._applyFilterToNumbers(combinedNumbers, setPrediction.filterKey);
 
-        // 6. Skip logic — AI always decides with its own confidence
+        // ── Step 6: Confidence + BET/SKIP ──
+        const pairScore = t3BestPair ? this.engine._scorePair(t3BestPair.refKey, t3BestPair) : 0.5;
+        const confidence = this.engine._computeConfidence(pairScore, setPrediction.score, filteredNumbers);
+
         const effectiveThreshold = this.engine.confidenceThreshold;
-        // Force-bet after maxConsecutiveSkips — absolute limit
         const forcebet = this.engine.session.consecutiveSkips >= this.engine.maxConsecutiveSkips;
 
         if (confidence >= effectiveThreshold || forcebet) {
+            const pairName = t3BestPair ? t3BestPair.pairName : (t2Data ? t2Data.dataPair : 'unknown');
             return {
                 action: 'BET',
-                selectedPair: bestPair.pairName,
-                selectedFilter: filterResult.filterKey,
-                numbers: filterResult.filteredNumbers,
+                selectedPair: pairName,
+                selectedFilter: setPrediction.filterKey,
+                numbers: filteredNumbers,
                 confidence,
                 reason: forcebet && confidence < effectiveThreshold
                     ? `Forced bet after ${this.engine.session.consecutiveSkips} skips`
-                    : `Pair ${bestPair.pairName} with ${filterResult.filterKey} (conf: ${confidence}%)`
+                    : `T2:${t2Data ? t2Data.dataPair : 'none'}+T3:${t3BestPair ? t3BestPair.pairName : 'none'} → ${setPrediction.filterKey} (conf: ${confidence}%)`
             };
         }
 

@@ -78,6 +78,7 @@ class RouletteWheel {
         panel.innerHTML = `
             <div class="panel-header">
                 <h3>European Wheel</h3>
+                <button class="btn-toggle" id="toggleWheelPanel">−</button>
             </div>
             <div class="panel-content">
                 <div id="wheelFilters" style="display:flex; flex-direction:column; gap:4px; padding:6px 8px; background:#f1f5f9; border-radius:6px; margin-bottom:4px;">
@@ -148,6 +149,19 @@ class RouletteWheel {
         });
 
         this.drawWheel();
+
+        // Wheel panel collapse/expand toggle
+        const wheelToggleBtn = document.getElementById('toggleWheelPanel');
+        const wheelPanelContent = panel.querySelector('.panel-content');
+        if (wheelToggleBtn && wheelPanelContent) {
+            wheelToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isVisible = wheelPanelContent.style.display !== 'none';
+                wheelPanelContent.style.display = isVisible ? 'none' : 'block';
+                wheelToggleBtn.textContent = isVisible ? '+' : '−';
+            });
+        }
+
         console.log('✅ Wheel visualization initialized (LEFT position)');
     }
 
@@ -301,16 +315,24 @@ class RouletteWheel {
     }
 
     _syncMoneyPanel(prediction) {
-        if (window.moneyPanel && typeof window.moneyPanel.setPrediction === 'function') {
-            window.moneyPanel.setPrediction(prediction);
-            console.log(`✅ Money panel synced with ${prediction.numbers.length} filtered numbers`);
+        try {
+            if (window.moneyPanel && typeof window.moneyPanel.setPrediction === 'function') {
+                window.moneyPanel.setPrediction(prediction);
+                console.log(`✅ Money panel synced with ${prediction.numbers.length} filtered numbers`);
+            }
+        } catch (e) {
+            console.warn('⚠️ Money panel sync failed:', e.message);
         }
     }
 
     _syncAIPanel(filteredPrediction) {
-        if (window.aiPanel && typeof window.aiPanel.updateFilteredDisplay === 'function') {
-            window.aiPanel.updateFilteredDisplay(filteredPrediction);
-            console.log(`✅ AI panel synced with ${filteredPrediction.numbers.length} filtered numbers`);
+        try {
+            if (window.aiPanel && typeof window.aiPanel.updateFilteredDisplay === 'function') {
+                window.aiPanel.updateFilteredDisplay(filteredPrediction);
+                console.log(`✅ AI panel synced with ${filteredPrediction.numbers.length} filtered numbers`);
+            }
+        } catch (e) {
+            console.warn('⚠️ AI panel sync failed:', e.message);
         }
     }
 
@@ -407,6 +429,7 @@ class RouletteWheel {
     }
 
     drawWheel() {
+        if (!this.ctx) return;
         const ctx = this.ctx;
         const centerX = 200;
         const centerY = 210;
@@ -571,26 +594,6 @@ class RouletteWheel {
         // Loose
         if (looseList.length > 0) {
             html += `<div style="margin-bottom:4px;"><strong style="color:#334155;font-size:12px;">Loose (${looseList.length}):</strong> ${renderGrouped(looseList, badge)}</div>`;
-
-            // Compute D13 opposites of loose numbers
-            // Exclude any already in primary prediction (anchors + loose + anchor group members)
-            const primarySet = new Set();
-            this.anchorGroups.forEach(ag => (ag.group || []).forEach(n => primarySet.add(n)));
-            this.looseNumbers.forEach(n => primarySet.add(n));
-
-            const d13Opposites = [];
-            looseList.forEach(n => {
-                const opp = WHEEL_D13_OPPOSITES[n];
-                if (opp !== undefined && !primarySet.has(opp) && !d13Opposites.includes(opp)) {
-                    d13Opposites.push(opp);
-                }
-            });
-
-            if (d13Opposites.length > 0) {
-                const d13Sorted = wSort(d13Opposites);
-                const oppBadge = (n) => badge(n, '#b45309');
-                html += `<div style="margin-bottom:4px;"><strong style="color:#92400e;font-size:12px;">13 Opp (${d13Sorted.length}):</strong> ${renderGrouped(d13Sorted, oppBadge)}</div>`;
-            }
         }
 
         // Grey: ±2 first, then ±1, then loose
@@ -703,7 +706,7 @@ class RouletteWheel {
 
         this._updateFilteredCount(null);
 
-        this.drawWheel();
+        if (this.ctx) this.drawWheel();
         console.log('🎡 Wheel highlights cleared');
     }
 }

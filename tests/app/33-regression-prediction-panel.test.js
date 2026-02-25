@@ -69,11 +69,13 @@ let loaded;
 function makeTableData(overrides = {}) {
     return {
         table3NextProjections: {
-            prev: { numbers: [0, 32, 15, 19, 4, 21, 2] },
-            prevPlus1: { numbers: [15, 19, 4, 21, 2, 25, 17] },
-            prevMinus1: { numbers: [4, 21, 2, 25, 17, 34, 6] },
-            ref0: { numbers: [0, 32, 15, 4, 21] },
-            ref19: { numbers: [19, 4, 21, 2, 25] },
+            // anchors/neighbors = raw targets (strict subset of numbers)
+            // numbers = expanded with ±1 wheel neighbors (what getPredictions uses)
+            prev: { anchors: [32, 4], neighbors: [19, 21], numbers: [0, 32, 15, 19, 4, 21, 2] },
+            prevPlus1: { anchors: [19, 21], neighbors: [2, 25], numbers: [15, 19, 4, 21, 2, 25, 17] },
+            prevMinus1: { anchors: [21, 25], neighbors: [17, 34], numbers: [4, 21, 2, 25, 17, 34, 6] },
+            ref0: { anchors: [32], neighbors: [4], numbers: [0, 32, 15, 4, 21] },
+            ref19: { anchors: [4, 21], neighbors: [2], numbers: [19, 4, 21, 2, 25] },
             ...overrides.table3
         },
         table1NextProjections: {
@@ -568,8 +570,8 @@ describe('G. 0/26 pairing rule', () => {
         // Create data where 0 is in intersection but not 26
         global.window.getAIDataV6 = jest.fn(() => ({
             table3NextProjections: {
-                prev: { numbers: [0, 32, 15] },
-                prevPlus1: { numbers: [0, 32, 19] }
+                prev: { anchors: [32], neighbors: [15], numbers: [0, 32, 15] },
+                prevPlus1: { anchors: [32], neighbors: [19], numbers: [0, 32, 19] }
             },
             table1NextProjections: {},
             table2NextProjections: {},
@@ -589,8 +591,8 @@ describe('G. 0/26 pairing rule', () => {
         const panel = new AIPredictionPanel();
         global.window.getAIDataV6 = jest.fn(() => ({
             table3NextProjections: {
-                prev: { numbers: [26, 3, 35] },
-                prevPlus1: { numbers: [26, 3, 12] }
+                prev: { anchors: [3], neighbors: [26], numbers: [26, 3, 35] },
+                prevPlus1: { anchors: [3], neighbors: [26], numbers: [26, 3, 12] }
             },
             table1NextProjections: {},
             table2NextProjections: {},
@@ -610,7 +612,7 @@ describe('G. 0/26 pairing rule', () => {
         const panel = new AIPredictionPanel();
         global.window.getAIDataV6 = jest.fn(() => ({
             table3NextProjections: {
-                prev: { numbers: [0, 26, 32] }
+                prev: { anchors: [32], neighbors: [26], numbers: [0, 26, 32] }
             },
             table1NextProjections: {},
             table2NextProjections: {},
@@ -629,7 +631,7 @@ describe('G. 0/26 pairing rule', () => {
         const panel = new AIPredictionPanel();
         global.window.getAIDataV6 = jest.fn(() => ({
             table3NextProjections: {
-                prev: { numbers: [15, 19, 4] }
+                prev: { anchors: [19], neighbors: [4], numbers: [15, 19, 4] }
             },
             table1NextProjections: {},
             table2NextProjections: {},
@@ -872,7 +874,7 @@ describe('L. loadAvailablePairs filtering', () => {
         if (!AIPredictionPanel) return;
         const panel = new AIPredictionPanel();
         global.window.getAIDataV6 = jest.fn(() => ({
-            table3NextProjections: { prev: { numbers: [1, 2, 3] } },
+            table3NextProjections: { prev: { anchors: [2], neighbors: [1], numbers: [1, 2, 3] } },
             table1NextProjections: {
                 prev: { first: { numbers: [] }, second: { numbers: [] }, third: { numbers: [] } },
                 ref0: { first: { numbers: [1] } }
@@ -939,7 +941,7 @@ describe('M. getPredictions error handling', () => {
         if (!AIPredictionPanel) return;
         const panel = new AIPredictionPanel();
         global.window.getAIDataV6 = jest.fn(() => ({
-            table3NextProjections: { prev: { numbers: [] } },
+            table3NextProjections: { prev: { anchors: [], neighbors: [], numbers: [] } },
             table1NextProjections: {},
             table2NextProjections: {},
             currentSpinCount: 10
@@ -957,8 +959,8 @@ describe('M. getPredictions error handling', () => {
         const panel = new AIPredictionPanel();
         global.window.getAIDataV6 = jest.fn(() => ({
             table3NextProjections: {
-                prev: { numbers: [1, 2, 3] },
-                prevPlus1: { numbers: [4, 5, 6] }
+                prev: { anchors: [2], neighbors: [1], numbers: [1, 2, 3] },
+                prevPlus1: { anchors: [5], neighbors: [4], numbers: [4, 5, 6] }
             },
             table1NextProjections: {},
             table2NextProjections: {},

@@ -89,7 +89,55 @@ class SemiAutoFilter {
     }
 
     /**
+     * Predict which one set (0/5/6) the next spin will land in.
+     * Uses coverage overlap, recent frequency, and anti-streak signals.
+     *
+     * @param {number[]} predictionNumbers - unfiltered prediction numbers
+     * @param {number[]} recentSpins - last 10 spin actuals
+     * @returns {{ setKey: string, filterKey: string, score: number }}
+     */
+    predictBestSet(predictionNumbers, recentSpins) {
+        const sets = [
+            { key: 'set0', nums: SA_SET0, filterKey: 'both_both_set0' },
+            { key: 'set5', nums: SA_SET5, filterKey: 'both_both_set5' },
+            { key: 'set6', nums: SA_SET6, filterKey: 'both_both_set6' },
+        ];
+
+        let bestSet = sets[0];
+        let bestScore = -Infinity;
+
+        for (const s of sets) {
+            let score = 0;
+
+            // Factor 1 (50%): Coverage overlap — how many prediction numbers fall in this set
+            const overlap = predictionNumbers.filter(n => s.nums.has(n)).length;
+            score += (overlap / Math.max(predictionNumbers.length, 1)) * 0.50;
+
+            // Factor 2 (30%): Recent frequency — how many of last 10 spins fell in this set
+            const recent = recentSpins || [];
+            const recentInSet = recent.filter(n => s.nums.has(n)).length;
+            const recentRate = recent.length > 0 ? recentInSet / recent.length : (s.nums.size / 37);
+            score += recentRate * 0.30;
+
+            // Factor 3 (20%): Anti-streak — if this set hasn't appeared in last 3 spins, give bonus
+            const last3 = recent.slice(-3);
+            if (last3.length >= 3 && last3.filter(n => s.nums.has(n)).length === 0) {
+                score += 0.15;
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestSet = s;
+            }
+        }
+
+        return { setKey: bestSet.key, filterKey: bestSet.filterKey, score: bestScore };
+    }
+
+    /**
      * Compute the optimal filter combo for the given prediction numbers.
+     * NEW: Uses set-prediction mode (table=both, sign=both, predict one set).
+     * Falls back to 36-combo scan if set prediction yields < 4 numbers.
      *
      * @param {number[]} predictionNumbers - unfiltered prediction numbers
      * @returns {{ key: string, count: number, filtered: number[] } | null}
@@ -97,8 +145,29 @@ class SemiAutoFilter {
     computeOptimalFilter(predictionNumbers) {
         if (!predictionNumbers || predictionNumbers.length === 0) return null;
 
-        // Get last spin actual for tiebreaker
+        // Get recent spins for set prediction
         const spins = (typeof window !== 'undefined' && window.spins) ? window.spins : [];
+        const recentSpins = spins.slice(-10).map(s => typeof s === 'object' ? s.actual : s);
+
+        // ── Set-prediction mode (table=both, sign=both, predict set) ──
+        const setPred = this.predictBestSet(predictionNumbers, recentSpins);
+
+        // Apply both_both_setN filter
+        const setFiltered = predictionNumbers.filter(n => {
+            if (setPred.setKey === 'set0') return SA_SET0.has(n);
+            if (setPred.setKey === 'set5') return SA_SET5.has(n);
+            if (setPred.setKey === 'set6') return SA_SET6.has(n);
+            return true;
+        });
+
+        if (setFiltered.length >= SEMI_MIN_NUMBERS) {
+            console.log(`🟠 SEMI-AUTO: Set prediction → ${setPred.filterKey} (${setFiltered.length} numbers)`);
+            return { key: setPred.filterKey, count: setFiltered.length, filtered: setFiltered };
+        }
+
+        // ── Fallback: original 36-combo scan if set prediction yields too few numbers ──
+        console.log(`🟠 SEMI-AUTO: Set prediction ${setPred.filterKey} yielded ${setFiltered.length} numbers (< ${SEMI_MIN_NUMBERS}), falling back to combo scan`);
+
         const lastActual = spins.length > 0 ? spins[spins.length - 1] : null;
 
         // Get sequence model scores if available
@@ -128,36 +197,28 @@ class SemiAutoFilter {
 
             // Sequence model — the main intelligence
             if (seqScores && seqConfident) {
-                // Confident: reward SPECIFICITY — high probability per number
-                // hitValue = (probability / coverage) * 37 → measures how focused the filter is
                 const seqProb = seqScores[combo.key] || 0;
                 const hitValue = (seqProb / filtered.length) * 37;
                 score += hitValue * 0.20;
             } else if (seqScores && !seqConfident) {
-                // NOT confident: prefer wider filters, penalize restrictive ones
                 if (combo.table !== 'both' && combo.sign !== 'both') {
-                    score -= 0.05; // double-restrictive (e.g. zero_positive)
+                    score -= 0.05;
                 } else if (combo.table === 'both' && combo.sign === 'both') {
-                    // both_both is still too wide
                     score -= 0.02;
                 }
-                // Prefer single-axis filters (e.g. zero_both or both_positive)
                 if ((combo.table !== 'both') !== (combo.sign !== 'both')) {
-                    score += 0.02; // one axis filtered
+                    score += 0.02;
                 }
             } else {
-                // No sequence model at all: fall back to fewest numbers ≥ 4
                 score += (18 - filtered.length) / 14 * 0.10;
             }
 
-            // Sign diversity penalty: penalize filters that produce 100% one-sign results.
-            // When projection is heavily one-sided, all sign-specific filters are equally
-            // one-sided — this at least reduces their scores to help confidence downstream.
+            // Sign diversity penalty
             const fPosCount = filtered.filter(n => SA_POS.has(n)).length;
             const fNegCount = filtered.filter(n => SA_NEG.has(n)).length;
             const fTotal = fPosCount + fNegCount;
             if (fTotal > 0 && Math.min(fPosCount, fNegCount) === 0) {
-                score -= 0.06; // 100% one-sign: penalty
+                score -= 0.06;
             }
 
             if (score > bestScore) {

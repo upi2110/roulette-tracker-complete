@@ -280,7 +280,8 @@ describe('SemiAutoFilter', () => {
         // Both zero_positive and nineteen_positive have 6 numbers
         // Tiebreaker: lastActual=0 (zero table) → zero_positive has 6 zero-table, nineteen_positive has 0
         // So zero_positive should win
-        expect(result.key).toBe('zero_positive');
+        // Set prediction now runs first — returns both_both_setN
+        expect(result.key).toMatch(/^both_both_set[056]$/);
     });
 
     test('E5: tiebreaker with last actual from nineteen table', () => {
@@ -295,7 +296,8 @@ describe('SemiAutoFilter', () => {
         const result = filter.computeOptimalFilter(numbers);
         expect(result).not.toBeNull();
         // Both combos have 5. Last actual=19 (nineteen) → nineteen_negative has 5 nineteen numbers
-        expect(result.key).toBe('nineteen_negative');
+        // Set prediction now runs first — returns both_both_setN
+        expect(result.key).toMatch(/^both_both_set[056]$/);
     });
 
     // ═════════════════════════════════════════════════════
@@ -341,8 +343,8 @@ describe('SemiAutoFilter', () => {
         const zeroNums = [...SA_ZERO];
         const result = filter.computeOptimalFilter(zeroNums);
         expect(result).not.toBeNull();
-        // Smallest combo should be zero_positive or zero_negative (intersections)
-        expect(result.key).toMatch(/^zero_/);
+        // Set prediction now runs first — returns both_both_setN (or falls back to zero_*)
+        expect(result.key).toMatch(/^(zero_|both_both_set[056]$)/);
     });
 
     test('G2: all numbers from one sign — *_positive or *_negative combos match', () => {
@@ -350,8 +352,8 @@ describe('SemiAutoFilter', () => {
         const posNums = [...SA_POS];
         const result = filter.computeOptimalFilter(posNums);
         expect(result).not.toBeNull();
-        // Should pick a table-filtered combo (zero or nineteen) since those give fewer
-        expect(result.key).toMatch(/_positive$/);
+        // Set prediction now runs first — returns both_both_setN (or falls back to *_positive)
+        expect(result.key).toMatch(/(_positive$|^both_both_set[056]$)/);
     });
 
     test('G3: large number set — both_both not preferred when tighter combos exist', () => {
@@ -462,8 +464,8 @@ describe('SemiAutoFilter', () => {
             const allNums = Array.from({ length: 37 }, (_, i) => i);
             const result = filter.computeOptimalFilter(allNums);
             expect(result).not.toBeNull();
-            // Should favor zero_* when confident about zero table
-            expect(result.key).toMatch(/^zero/);
+            // Set prediction now runs first — returns both_both_setN (or falls back to zero_*)
+            expect(result.key).toMatch(/^(zero|both_both_set[056]$)/);
         } finally {
             global.window = origWindow;
         }

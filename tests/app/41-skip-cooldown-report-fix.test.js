@@ -235,7 +235,7 @@ describe('A: Force-bet fix — maxConsecutiveSkips is absolute limit', () => {
         engine._getComputeFlashTargets = () => new Set(['0:prev:pair']);
         engine._getAIDataV6 = () => ({
             table3NextProjections: {
-                prev: { numbers: Array.from({length: 20}, (_, i) => i) }
+                prev: { anchors: [0, 5, 10, 15], neighbors: [1, 6, 11, 16], numbers: Array.from({length: 20}, (_, i) => i) }
             }
         });
 

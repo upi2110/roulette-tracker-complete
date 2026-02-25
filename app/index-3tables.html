@@ -21,7 +21,7 @@
     
     <!-- TABLE 1: 10 Position Codes -->
     <div class="table-section">
-        <h2 class="table-title">TABLE 1 - Basic Projections (10 codes) — <span style="font-size:10px; color:#0369a1;">Click pair headers to select</span></h2>
+        <h2 class="table-title">TABLE 1 - Basic Projections (10 codes) — <span style="font-size:10px; color:#0369a1;">Click pair headers to select</span> <button class="btn-table-toggle" id="toggleTable1" title="Collapse/Expand Table 1">−</button></h2>
         <div class="grid-wrapper" id="gridWrapper1">
             <table id="table1" class="pair-clickable">
                 <thead>
@@ -110,7 +110,7 @@
 
     <!-- TABLE 2: 18 Position Codes -->
     <div class="table-section">
-        <h2 class="table-title">TABLE 2 - Extended Projections (18 codes) — <span style="font-size:10px; color:#0369a1;">Click pair headers to select</span></h2>
+        <h2 class="table-title">TABLE 2 - Extended Projections (18 codes) — <span style="font-size:10px; color:#0369a1;">Click pair headers to select</span> <button class="btn-table-toggle" id="toggleTable2" title="Collapse/Expand Table 2">−</button></h2>
         <div class="grid-wrapper" id="gridWrapper2">
             <table id="table2" class="pair-clickable">
                 <thead>
@@ -174,7 +174,7 @@
 
     <!-- TABLE 3: Current Anchor System -->
     <div class="table-section">
-        <h2 class="table-title">TABLE 3 - Anchor Projections (Current System) — <span style="font-size:10px; color:#0369a1;">Click pair headers to select</span></h2>
+        <h2 class="table-title">TABLE 3 - Anchor Projections (Current System) — <span style="font-size:10px; color:#0369a1;">Click pair headers to select</span> <button class="btn-table-toggle" id="toggleTable3" title="Collapse/Expand Table 3">−</button></h2>
         <div class="grid-wrapper" id="gridWrapper3">
             <table id="table3">
                 <thead>
@@ -225,10 +225,16 @@
 
     <!-- ===== PREDICTION RESULTS (full width below) ===== -->
     <div class="prediction-results-container" id="predictionResultsContainer">
-        <!-- Prediction results appended here by ai-prediction-panel.js -->
+        <div class="prediction-results-header">
+            <span>Prediction Results</span>
+            <button class="btn-table-toggle" id="togglePredResults" title="Collapse/Expand Prediction Results">−</button>
+        </div>
+        <div id="predictionResultsContent">
+            <!-- Prediction results appended here by ai-prediction-panel.js -->
 
-        <!-- Auto Test panel lives inside the AI prediction area -->
-        <div id="autoTestContainer" style="margin: 20px 0 0 0;"></div>
+            <!-- Auto Test panel lives inside the AI prediction area -->
+            <div id="autoTestContainer" style="margin: 20px 0 0 0;"></div>
+        </div>
     </div>
 
     <!-- Input Section - FIXED AT BOTTOM -->

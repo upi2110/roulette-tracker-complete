@@ -535,7 +535,7 @@ describe('45 — UI Sync Integration', () => {
             expect(html).toContain('>32<');
         });
 
-        test('C4: 13 Opp line respects active filters', () => {
+        test('C4: 13 Opp row removed from wheel display', () => {
             if (!RouletteWheel) return;
             const wheel = new RouletteWheel();
 
@@ -551,11 +551,8 @@ describe('45 — UI Sync Integration', () => {
             wheel.updateHighlights([], allNums, [], [], prediction);
 
             const html = document.getElementById('wheelNumberLists')?.innerHTML || '';
-            // D13[7]=4, D13[12]=2, D13[35]=25
-            // All should appear in 13 Opp when all filters on
-            if (html.includes('13 Opp')) {
-                expect(html).toContain('13 Opp');
-            }
+            // 13 Opp row was removed — should not appear
+            expect(html).not.toContain('13 Opp');
         });
 
         test('C5: filter to 0 table + set0 only = narrow subset', () => {
@@ -583,8 +580,8 @@ describe('45 — UI Sync Integration', () => {
             // Non-passing numbers should NOT appear in Loose section
             const excluded = allNums.filter(n => !ZERO_TABLE.has(n) || !SET_0.has(n));
             excluded.forEach(n => {
-                // Check it's not in the main prediction display (might be in 13 Opp though)
-                const looseSection = html.split('Loose')[1]?.split('13 Opp')[0] || '';
+                // Check it's not in the main prediction display
+                const looseSection = html.split('Loose')[1]?.split('Grey')[0] || '';
                 // Numbers from 19 table or set 5/6 shouldn't be in Loose
                 if (!ZERO_TABLE.has(n) || (!SET_0.has(n))) {
                     // This number was filtered out
