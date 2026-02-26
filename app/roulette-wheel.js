@@ -19,6 +19,14 @@ const SET_0_NUMS = new Set([0, 26, 19, 2, 34, 13, 30, 10, 16, 20, 9, 29, 12]); /
 const SET_5_NUMS = new Set([32, 15, 25, 17, 36, 11, 5, 24, 14, 31, 7, 28]);   // 5 Set: 12 numbers
 const SET_6_NUMS = new Set([4, 21, 6, 27, 8, 23, 33, 1, 22, 18, 35, 3]);      // 6 Set: 12 numbers
 
+// Regular Opposites: 180° across the wheel (from renderer-3tables.js, with inline fallback)
+const WHEEL_REGULAR_OPPOSITES = (typeof REGULAR_OPPOSITES !== 'undefined') ? REGULAR_OPPOSITES : {
+    0:10, 1:21, 2:20, 3:23, 4:33, 5:32, 6:22, 7:36, 8:35, 9:34,
+    10:26, 11:28, 12:30, 13:29, 14:25, 15:24, 16:19, 17:31, 18:27,
+    19:16, 20:2, 21:1, 22:6, 23:3, 24:15, 25:14, 26:10, 27:18,
+    28:11, 29:13, 30:12, 31:17, 32:5, 33:4, 34:9, 35:8, 36:7
+};
+
 // D13 Opposites: use existing global from renderer-3tables.js, fallback to inline definition
 // (renderer-3tables.js loads before roulette-wheel.js so DIGIT_13_OPPOSITES is already available)
 const WHEEL_D13_OPPOSITES = (typeof DIGIT_13_OPPOSITES !== 'undefined') ? DIGIT_13_OPPOSITES : {
@@ -534,81 +542,124 @@ class RouletteWheel {
         return groups;
     }
 
+    /**
+     * Pair numbers by regular opposites.
+     * Returns: { pairs: [[a, b], ...], unpaired: [c, ...] }
+     * Each pair [a, b] where REGULAR_OPPOSITES[a] === b, both present in nums.
+     */
+    _pairByOpposites(nums) {
+        const numSet = new Set(nums);
+        const used = new Set();
+        const pairs = [];
+        const unpaired = [];
+
+        for (const n of nums) {
+            if (used.has(n)) continue;
+            const opp = WHEEL_REGULAR_OPPOSITES[n];
+            // Special: 0 and 26 share opposite 10. Check both mappings.
+            if (opp !== undefined && numSet.has(opp) && !used.has(opp) && opp !== n) {
+                pairs.push([n, opp]);
+                used.add(n);
+                used.add(opp);
+            } else {
+                unpaired.push(n);
+                used.add(n);
+            }
+        }
+        return { pairs, unpaired };
+    }
+
     _updateNumberLists() {
         const el = document.getElementById('wheelNumberLists');
         if (!el) return;
 
-        const anchors1 = [];
-        const anchors2 = [];
-        this.anchorGroups.forEach(ag => {
-            if (ag.type === '±2') anchors2.push(ag);
-            else anchors1.push(ag);
-        });
-
-        const greyAnchors1 = [];
-        const greyAnchors2 = [];
-        this.extraAnchorGroups.forEach(ag => {
-            if (ag.type === '±2') greyAnchors2.push(ag);
-            else greyAnchors1.push(ag);
-        });
-
         const wSort = (arr) => arr.slice().sort((a, b) => (this.wheelPos[a] ?? 99) - (this.wheelPos[b] ?? 99));
-        const looseList = wSort(this.looseNumbers);
-        const greyLooseList = wSort(this.extraLoose);
 
-        // Badge: larger font for readability
-        const badge = (n, bgOverride) => {
-            const isPos = this.POSITIVE.has(n);
-            const bg = bgOverride || (isPos ? '#22c55e' : '#1e293b');
-            return `<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${bg};color:#fff;font-weight:700;font-size:13px;margin:1px;">${n}</span>`;
+        // ── Split anchor groups by type ────────────────────
+        const pm2Anchors = this.anchorGroups.filter(ag => ag.type === '±2');
+        const pm1Anchors = this.anchorGroups.filter(ag => ag.type === '±1');
+        const pm2Nums = wSort(pm2Anchors.map(ag => ag.anchor));
+        const pm1Nums = wSort(pm1Anchors.map(ag => ag.anchor));
+        const looseNums = wSort([...this.looseNumbers]);
+
+        // Grey split
+        const greyPm2 = this.extraAnchorGroups.filter(ag => ag.type === '±2');
+        const greyPm1 = this.extraAnchorGroups.filter(ag => ag.type === '±1');
+        const greyPm2Nums = wSort(greyPm2.map(ag => ag.anchor));
+        const greyPm1Nums = wSort(greyPm1.map(ag => ag.anchor));
+        const greyLooseNums = wSort([...this.extraLoose]);
+
+        // ── Anchor info lookup ─────────────────────────────
+        const anchorInfo = {};
+        this.anchorGroups.forEach(ag => { anchorInfo[ag.anchor] = ag; });
+        const greyAnchorInfo = {};
+        this.extraAnchorGroups.forEach(ag => { greyAnchorInfo[ag.anchor] = ag; });
+
+        // ── Number badge — outlined, light tint + colored border ─
+        const numBadge = (n, aInfo, isGrey) => {
+            const ai = aInfo ? aInfo[n] : null;
+            const label = ai ? `<sup style="font-size:8px;font-weight:700;margin-left:1px;">${ai.type}</sup>` : '';
+            let border, bg, color;
+            if (isGrey) {
+                border = '#9ca3af'; bg = '#f9fafb'; color = '#6b7280';
+            } else if (this.POSITIVE.has(n)) {
+                border = '#16a34a'; bg = '#f0fdf4'; color = '#15803d';
+            } else {
+                border = '#334155'; bg = '#f1f5f9'; color = '#1e293b';
+            }
+            return `<span style="display:inline-block;padding:1px 5px;border-radius:3px;border:2px solid ${border};background:${bg};color:${color};font-weight:700;font-size:12px;">${n}${label}</span>`;
         };
-        const greyBadge = (n) => badge(n, '#9ca3af');
 
-        // Render grouped badges — adjacent numbers wrapped in a black-bordered box
-        const renderGrouped = (nums, badgeFn) => {
-            const groups = this._groupAdjacent(nums);
-            return groups.map(group => {
-                if (group.length > 1) {
-                    // Adjacent group: wrap in black square box
-                    return `<span style="display:inline-flex;gap:1px;border:2px solid #000;border-radius:4px;padding:1px 2px;margin:2px 3px;background:rgba(0,0,0,0.05);">${group.map(n => badgeFn(n)).join('')}</span>`;
+        // ── Build a clean boxed section ────────────────────
+        const renderBox = (title, accent, nums, aInfo, isGrey) => {
+            if (nums.length === 0) return '';
+            const { pairs, unpaired } = this._pairByOpposites(nums);
+
+            let content = '';
+
+            // Opposite pairs — clean row, ↔ marks the pair
+            for (const [a, b] of pairs) {
+                const posA = this.wheelPos[a] ?? -1;
+                const posB = this.wheelPos[b] ?? -1;
+                const adj = Math.abs(posA - posB) === 1 || (posA === 0 && posB === 36) || (posA === 36 && posB === 0);
+                if (adj) {
+                    const sorted = posA < posB ? [a, b] : [b, a];
+                    content += `<div style="padding:2px 5px;"><span style="display:inline-flex;gap:1px;border:2px solid #000;border-radius:4px;padding:1px 2px;">${sorted.map(n => numBadge(n, aInfo, isGrey)).join('')}</span> <span style="font-size:9px;color:#64748b;">↔</span></div>`;
+                } else {
+                    content += `<div style="padding:2px 5px;">${numBadge(a, aInfo, isGrey)} <span style="font-size:10px;color:#64748b;">↔</span> ${numBadge(b, aInfo, isGrey)}</div>`;
                 }
-                // Single number: no box
-                return `<span style="margin:2px 1px;">${badgeFn(group[0])}</span>`;
-            }).join('');
+            }
+
+            // Unpaired — group wheel-adjacent in black border box
+            const sortedUnpaired = wSort(unpaired);
+            if (sortedUnpaired.length > 0) {
+                const groups = this._groupAdjacent(sortedUnpaired);
+                let line = '';
+                for (const group of groups) {
+                    if (group.length > 1) {
+                        line += `<span style="display:inline-flex;gap:1px;border:2px solid #000;border-radius:4px;padding:1px 2px;margin:1px;">${group.map(n => numBadge(n, aInfo, isGrey)).join('')}</span>`;
+                    } else {
+                        line += `<span style="margin:1px;">${numBadge(group[0], aInfo, isGrey)}</span>`;
+                    }
+                }
+                content += `<div style="padding:2px 5px;">${line}</div>`;
+            }
+
+            return `<div style="min-width:0;border:1px solid ${accent};border-radius:4px;margin-bottom:3px;"><div style="padding:1px 6px;font-size:10px;font-weight:700;color:${accent};border-bottom:1px solid ${accent}25;">${title} (${nums.length})</div>${content}</div>`;
         };
+
+        // ── Collect sections — subtle accent per type ──────
+        const sections = [];
+        if (pm2Nums.length > 0) sections.push(renderBox('±2 Anchors', '#7c3aed', pm2Nums, anchorInfo, false));
+        if (pm1Nums.length > 0) sections.push(renderBox('±1 Anchors', '#2563eb', pm1Nums, anchorInfo, false));
+        if (looseNums.length > 0) sections.push(renderBox('Loose', '#475569', looseNums, anchorInfo, false));
+        if (greyPm2Nums.length > 0) sections.push(renderBox('Grey ±2', '#a8a29e', greyPm2Nums, greyAnchorInfo, true));
+        if (greyPm1Nums.length > 0) sections.push(renderBox('Grey ±1', '#a8a29e', greyPm1Nums, greyAnchorInfo, true));
+        if (greyLooseNums.length > 0) sections.push(renderBox('Grey Loose', '#a8a29e', greyLooseNums, greyAnchorInfo, true));
 
         let html = '';
-
-        // ±2 Anchors FIRST
-        if (anchors2.length > 0) {
-            const nums = wSort(anchors2.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:4px;"><strong style="color:#334155;font-size:12px;">±2 Anchors (${nums.length}):</strong> ${renderGrouped(nums, badge)}</div>`;
-        }
-
-        // ±1 Anchors NEXT
-        if (anchors1.length > 0) {
-            const nums = wSort(anchors1.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:4px;"><strong style="color:#334155;font-size:12px;">±1 Anchors (${nums.length}):</strong> ${renderGrouped(nums, badge)}</div>`;
-        }
-
-        // Loose
-        if (looseList.length > 0) {
-            html += `<div style="margin-bottom:4px;"><strong style="color:#334155;font-size:12px;">Loose (${looseList.length}):</strong> ${renderGrouped(looseList, badge)}</div>`;
-        }
-
-        // Grey: ±2 first, then ±1, then loose
-        if (greyAnchors2.length > 0) {
-            const nums = wSort(greyAnchors2.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;font-size:11px;">Grey ±2 (${nums.length}):</strong> ${renderGrouped(nums, greyBadge)}</div>`;
-        }
-
-        if (greyAnchors1.length > 0) {
-            const nums = wSort(greyAnchors1.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;font-size:11px;">Grey ±1 (${nums.length}):</strong> ${renderGrouped(nums, greyBadge)}</div>`;
-        }
-
-        if (greyLooseList.length > 0) {
-            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;font-size:11px;">Grey Loose (${greyLooseList.length}):</strong> ${renderGrouped(greyLooseList, greyBadge)}</div>`;
+        if (sections.length > 0) {
+            html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 4px;align-items:start;">${sections.join('')}</div>`;
         }
 
         if (!html) {

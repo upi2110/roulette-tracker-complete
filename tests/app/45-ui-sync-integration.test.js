@@ -508,6 +508,7 @@ describe('45 — UI Sync Integration', () => {
             const html = document.getElementById('wheelNumberLists')?.innerHTML || '';
             // Count filtered: 0, 32, 21, 2, 25, 13 = 6 numbers pass 0-table filter
             const filtered = allNums.filter(n => ZERO_TABLE.has(n));
+            // Separate section: "Loose (N)" for loose numbers
             expect(html).toContain(`Loose (${filtered.length})`);
         });
 
@@ -604,14 +605,15 @@ describe('45 — UI Sync Integration', () => {
             wheel.updateHighlights([], allNums, [], [], prediction);
 
             let html = document.getElementById('wheelNumberLists')?.innerHTML || '';
-            expect(html).toContain(`Loose (6)`);
+            // Separate section: "Loose (6)" for all loose numbers
+            expect(html).toContain('Loose (6)');
 
             // Turn off set 6 → removes 4, 21
             wheel.filters.set6 = false;
             wheel._applyFilters();
 
             html = document.getElementById('wheelNumberLists')?.innerHTML || '';
-            expect(html).toContain(`Loose (4)`);
+            expect(html).toContain('Loose (4)');
             expect(html).not.toContain('>4<');
             expect(html).not.toContain('>21<');
         });
