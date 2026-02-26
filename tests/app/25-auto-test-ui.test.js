@@ -1014,6 +1014,8 @@ describe('Test Suite 25: AutoTestUI', () => {
         test('L2: shows error when ExcelJS not available', async () => {
             ui = new AutoTestUI();
             ui.result = createMockResult();
+            // Mock _getExcelJS to return null (exceljs may be installed in test env)
+            ui._getExcelJS = () => null;
 
             await ui.exportExcel();
 

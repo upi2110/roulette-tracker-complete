@@ -168,13 +168,13 @@ describe('A. DataLoader → Engine Training Pipeline', () => {
         });
     });
 
-    test('A4: DataLoader reverses to chronological order', () => {
+    test('A4: DataLoader preserves chronological order from file', () => {
         const loader = new AIDataLoader();
         const text = '36\n11\n30\n8\n23';
         const result = loader.parseTextContent(text, 'test.txt');
-        // File assumed newest-first, so reversed to oldest-first
-        expect(result.spins[0]).toBe(23);
-        expect(result.spins[4]).toBe(36);
+        // Data stays in file order (top=oldest, bottom=newest)
+        expect(result.spins[0]).toBe(36);
+        expect(result.spins[4]).toBe(23);
     });
 });
 
@@ -711,7 +711,7 @@ describe('J. Defensive coding — mismatched state', () => {
         const loader = new AIDataLoader();
         const text = '15\nhello\n19\n-1\n4\n37\n21';
         const result = loader.parseTextContent(text, 'mixed.txt');
-        // 4 valid numbers: 15, 19, 4, 21 (reversed to chronological)
+        // 4 valid numbers: 15, 19, 4, 21 (kept in file order)
         expect(result.spins.length).toBe(4);
     });
 

@@ -1,8 +1,8 @@
 /**
  * AI Data Loader — Parse historical spin text files for training
  *
- * File format: One number per line (0-36), newest result on top.
- * The loader reverses to chronological order (oldest first) to match window.spins format.
+ * File format: One number per line (0-36), oldest result on top, newest at bottom.
+ * Data is already in chronological order — no reversal needed.
  */
 
 class AIDataLoader {
@@ -14,7 +14,7 @@ class AIDataLoader {
     /**
      * Parse raw text content from a spin data file.
      * Validates each line is an integer 0-36.
-     * Reverses order from newest-first to oldest-first (chronological).
+     * Data is already chronological (oldest on top, newest at bottom).
      *
      * @param {string} text - Raw text content, one number per line
      * @param {string} [filename='unknown'] - Source filename
@@ -46,13 +46,11 @@ class AIDataLoader {
             throw new Error(`No valid spin numbers found in file: ${filename}. Errors: ${errors.join('; ')}`);
         }
 
-        // Reverse to chronological order (oldest first)
-        const chronological = numbers.reverse();
-
+        // Data is already chronological (top = oldest, bottom = newest)
         return {
             filename,
-            spins: chronological,
-            length: chronological.length
+            spins: numbers,
+            length: numbers.length
         };
     }
 

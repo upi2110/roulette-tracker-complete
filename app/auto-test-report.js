@@ -38,21 +38,30 @@ class AutoTestReport {
         // Sheet 1: Overview
         this._createOverviewSheet(workbook, result);
 
-        // Sheet 2-4: One per strategy
-        for (const strategyNum of [1, 2, 3]) {
-            const data = result.strategies[strategyNum];
-            if (data && data.sessions.length > 0) {
-                this._createStrategySheet(workbook, strategyNum, data);
-            }
-        }
-
-        // Sheet 5+: Session detail sheets (top 3 best + top 3 worst per strategy)
+        // Build map of ALL detail sheet names (for hyperlinks in strategy sheets)
+        const detailSheetMap = {};
         for (const strategyNum of [1, 2, 3]) {
             const data = result.strategies[strategyNum];
             if (!data || data.sessions.length === 0) continue;
+            for (const session of data.sessions) {
+                const sheetName = `S${strategyNum}-Start${session.startIdx}`.substring(0, 31);
+                detailSheetMap[`${strategyNum}-${session.startIdx}`] = sheetName;
+            }
+        }
 
-            const topSessions = this._getTopSessions(data.sessions, 3);
-            for (const session of topSessions) {
+        // Sheet 2-4: One per strategy (with hyperlinks to detail tabs)
+        for (const strategyNum of [1, 2, 3]) {
+            const data = result.strategies[strategyNum];
+            if (data && data.sessions.length > 0) {
+                this._createStrategySheet(workbook, strategyNum, data, detailSheetMap);
+            }
+        }
+
+        // Sheet 5+: Session detail sheets for EVERY session (in order)
+        for (const strategyNum of [1, 2, 3]) {
+            const data = result.strategies[strategyNum];
+            if (!data || data.sessions.length === 0) continue;
+            for (const session of data.sessions) {
                 this._createSessionSheet(workbook, session, strategyNum);
             }
         }
@@ -165,14 +174,16 @@ class AutoTestReport {
     }
 
     /**
-     * Create a strategy sheet with all sessions.
+     * Create a strategy sheet with all sessions + clickable links to detail tabs.
+     *
+     * @param {Object} detailSheetMap - Map of "strategyNum-startIdx" → sheet name
      */
-    _createStrategySheet(workbook, strategyNum, data) {
+    _createStrategySheet(workbook, strategyNum, data, detailSheetMap) {
         const sheetName = STRATEGY_LABELS[strategyNum];
         const sheet = workbook.addWorksheet(sheetName);
 
-        // Headers
-        const headers = ['#', 'Start Idx', 'Outcome', 'Spins', 'Bets', 'Wins', 'Losses', 'Win Rate', 'Profit', 'Max Drawdown'];
+        // Headers (11 columns — added "Details" link column)
+        const headers = ['#', 'Start Idx', 'Outcome', 'Spins', 'Bets', 'Wins', 'Losses', 'Win Rate', 'Profit', 'Max Drawdown', 'Details'];
         const headerRow = sheet.getRow(1);
         headers.forEach((h, i) => {
             const cell = headerRow.getCell(i + 1);
@@ -227,19 +238,38 @@ class AutoTestReport {
                 outcomeCell.font = { color: { argb: 'FF6C757D' } };
                 outcomeCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9ECEF' } };
             }
+
+            // Details column — clickable hyperlink to session detail tab
+            const detailCell = row.getCell(11);
+            const detailKey = `${strategyNum}-${session.startIdx}`;
+            if (detailSheetMap && detailSheetMap[detailKey]) {
+                const targetSheet = detailSheetMap[detailKey];
+                detailCell.value = { text: '→ View', hyperlink: `#'${targetSheet}'!A1` };
+                detailCell.font = { color: { argb: 'FF0563C1' }, underline: true };
+            } else {
+                detailCell.value = '--';
+                detailCell.font = { color: { argb: 'FF999999' } };
+            }
+            detailCell.alignment = { horizontal: 'center' };
+            detailCell.border = {
+                top: { style: 'thin' },
+                bottom: { style: 'thin' },
+                left: { style: 'thin' },
+                right: { style: 'thin' }
+            };
         });
 
-        // Column widths
+        // Column widths (11 columns)
         sheet.columns = [
             { width: 6 }, { width: 10 }, { width: 12 }, { width: 8 },
             { width: 8 }, { width: 8 }, { width: 8 }, { width: 10 },
-            { width: 12 }, { width: 14 }
+            { width: 12 }, { width: 14 }, { width: 10 }
         ];
 
         // Auto-filter
         sheet.autoFilter = {
             from: { row: 1, column: 1 },
-            to: { row: data.sessions.length + 1, column: 10 }
+            to: { row: data.sessions.length + 1, column: 11 }
         };
 
         // Freeze header row
@@ -263,6 +293,13 @@ class AutoTestReport {
         summaryCell.value = `Strategy ${strategyNum} | Start: ${session.startIdx} | Outcome: ${session.outcome} | Profit: $${session.finalProfit.toFixed(2)}`;
         summaryCell.font = { bold: true, size: 12 };
 
+        // ← Back link to strategy tab (column L, same row as summary)
+        const backCell = sheet.getRow(1).getCell(12);
+        const strategySheetName = STRATEGY_LABELS[strategyNum];
+        backCell.value = { text: '← Back', hyperlink: `#'${strategySheetName}'!A1` };
+        backCell.font = { color: { argb: 'FF0563C1' }, underline: true, size: 10 };
+        backCell.alignment = { horizontal: 'center' };
+
         // Headers (row 3)
         const headers = ['Step', 'Spin#', 'Next#', 'Action', 'Pair', 'Filter', 'Numbers', 'Conf%', 'Bet/Num', 'Hit', 'P&L', 'Bankroll'];
         const headerRow = sheet.getRow(3);
@@ -280,13 +317,13 @@ class AutoTestReport {
             const values = [
                 idx + 1,
                 step.spinNumber,
-                step.nextNumber !== undefined ? step.nextNumber : '',
-                step.action,
-                step.selectedPair || '--',
-                step.selectedFilter || '--',
-                step.numbersCount,
-                step.confidence,
-                `$${step.betPerNumber}`,
+                step.nextNumber !== undefined && step.nextNumber !== null ? step.nextNumber : '',
+                step.action === 'WATCH' ? 'WATCH' : step.action,
+                step.action === 'WATCH' ? 'Watching for pattern' : (step.selectedPair || '--'),
+                step.action === 'WATCH' ? '--' : (step.selectedFilter || '--'),
+                step.action === 'WATCH' ? '--' : step.numbersCount,
+                step.action === 'WATCH' ? '--' : step.confidence,
+                step.action === 'WATCH' ? '--' : `$${step.betPerNumber}`,
                 step.action === 'BET' ? (step.hit ? 'YES' : 'NO') : '--',
                 step.pnl !== 0 ? `$${step.pnl}` : '--',
                 `$${step.bankroll.toLocaleString()}`
@@ -296,6 +333,15 @@ class AutoTestReport {
                 cell.value = v;
                 cell.alignment = { horizontal: 'center' };
             });
+
+            // WATCH rows — light blue background, italic font
+            if (step.action === 'WATCH') {
+                for (let c = 1; c <= 12; c++) {
+                    const cell = row.getCell(c);
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } };
+                    cell.font = { italic: true, color: { argb: 'FF4472C4' } };
+                }
+            }
 
             // Color the P&L cell
             const pnlCell = row.getCell(11);

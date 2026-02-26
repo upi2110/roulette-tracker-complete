@@ -454,16 +454,22 @@ describe('AutoTestRunner', () => {
             }
         });
 
-        test('steps track BET and SKIP actions', () => {
+        test('steps track WATCH, BET and SKIP actions', () => {
             const testSpins = generateTestSpins(20);
             const result = runner._runSession(testSpins, 0, 1);
             for (const step of result.steps) {
-                expect(['BET', 'SKIP']).toContain(step.action);
+                expect(['BET', 'SKIP', 'WATCH']).toContain(step.action);
                 expect(step).toHaveProperty('spinIdx');
                 expect(step).toHaveProperty('spinNumber');
                 expect(step).toHaveProperty('bankroll');
                 expect(step).toHaveProperty('cumulativeProfit');
             }
+            // First 3 steps should be WATCH
+            const watchSteps = result.steps.filter(s => s.action === 'WATCH');
+            expect(watchSteps.length).toBe(3);
+            expect(result.steps[0].action).toBe('WATCH');
+            expect(result.steps[1].action).toBe('WATCH');
+            expect(result.steps[2].action).toBe('WATCH');
         });
 
         test('BET steps have predicted numbers and hit result', () => {

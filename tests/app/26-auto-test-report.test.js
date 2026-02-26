@@ -233,11 +233,20 @@ describe('AutoTestReport', () => {
             expect(sheetNames).not.toContain('Strategy 3 - Cautious');
         });
 
-        test('creates session detail sheets', () => {
+        test('creates session detail sheets for ALL sessions in order', () => {
             const result = createMockResult();
             const workbook = report.generate(result);
-            const detailSheets = workbook.worksheets.filter(s => s.name.startsWith('S'));
-            expect(detailSheets.length).toBeGreaterThan(0);
+            const detailSheets = workbook.worksheets.filter(s => /^S\d+-Start/.test(s.name));
+
+            // Strategy 1 has 3 sessions + Strategy 2 has 2 = 5 detail sheets
+            expect(detailSheets.length).toBe(5);
+
+            // Tabs should be in sequential order: S1-Start0, S1-Start1, S1-Start2, S2-Start0, S2-Start1
+            expect(detailSheets[0].name).toBe('S1-Start0');
+            expect(detailSheets[1].name).toBe('S1-Start1');
+            expect(detailSheets[2].name).toBe('S1-Start2');
+            expect(detailSheets[3].name).toBe('S2-Start0');
+            expect(detailSheets[4].name).toBe('S2-Start1');
         });
 
         test('handles empty result', () => {
@@ -389,6 +398,7 @@ describe('AutoTestReport', () => {
             expect(headerRow.getCell(1).value).toBe('#');
             expect(headerRow.getCell(3).value).toBe('Outcome');
             expect(headerRow.getCell(9).value).toBe('Profit');
+            expect(headerRow.getCell(11).value).toBe('Details');
         });
 
         test('lists all sessions', () => {
@@ -436,12 +446,13 @@ describe('AutoTestReport', () => {
             expect(outcomeCell.font.color.argb).toBe('FF6C757D');
         });
 
-        test('sets auto-filter', () => {
+        test('sets auto-filter covering 11 columns', () => {
             const result = createMockResult();
             const workbook = new MockWorkbook();
             const sheet = report._createStrategySheet(workbook, 1, result.strategies[1]);
             expect(sheet.autoFilter).toBeDefined();
             expect(sheet.autoFilter.from.row).toBe(1);
+            expect(sheet.autoFilter.to.column).toBe(11);
         });
 
         test('freezes header row', () => {
@@ -451,6 +462,39 @@ describe('AutoTestReport', () => {
             expect(sheet.views.length).toBe(1);
             expect(sheet.views[0].state).toBe('frozen');
             expect(sheet.views[0].ySplit).toBe(1);
+        });
+
+        test('Details column has hyperlinks when detailSheetMap provided', () => {
+            const result = createMockResult();
+            const workbook = new MockWorkbook();
+            const detailSheetMap = {
+                '1-0': 'S1-Start0',
+                '1-1': 'S1-Start1',
+                '1-2': 'S1-Start2'
+            };
+            const sheet = report._createStrategySheet(workbook, 1, result.strategies[1], detailSheetMap);
+
+            // Row 2 = first session (startIdx 0)
+            const detailCell = sheet.getRow(2).getCell(11);
+            expect(detailCell.value).toEqual({ text: '→ View', hyperlink: "#'S1-Start0'!A1" });
+            expect(detailCell.font.underline).toBe(true);
+            expect(detailCell.font.color.argb).toBe('FF0563C1');
+        });
+
+        test('Details column shows -- when no detailSheetMap', () => {
+            const result = createMockResult();
+            const workbook = new MockWorkbook();
+            const sheet = report._createStrategySheet(workbook, 1, result.strategies[1]);
+
+            const detailCell = sheet.getRow(2).getCell(11);
+            expect(detailCell.value).toBe('--');
+        });
+
+        test('has 11 column widths', () => {
+            const result = createMockResult();
+            const workbook = new MockWorkbook();
+            const sheet = report._createStrategySheet(workbook, 1, result.strategies[1]);
+            expect(sheet.columns.length).toBe(11);
         });
     });
 
@@ -562,6 +606,18 @@ describe('AutoTestReport', () => {
             expect(row5.getCell(6).value).toBe('--');
             expect(row5.getCell(10).value).toBe('--');
         });
+
+        test('has ← Back hyperlink to strategy sheet', () => {
+            const session = createMockSession(0, 2, 'WIN', 100, 20);
+            const workbook = new MockWorkbook();
+            const sheet = report._createSessionSheet(workbook, session, 2);
+
+            // Back link is in column 12 (L), row 1
+            const backCell = sheet.getRow(1).getCell(12);
+            expect(backCell.value).toEqual({ text: '← Back', hyperlink: "#'Strategy 2 - Conservative'!A1" });
+            expect(backCell.font.underline).toBe(true);
+            expect(backCell.font.color.argb).toBe('FF0563C1');
+        });
     });
 
     // ═══════════════════════════════════════════════════════════
@@ -644,11 +700,11 @@ describe('AutoTestReport', () => {
             const result = createMockResult();
             const workbook = report.generate(result);
 
-            // Overview + Strategy 1 + Strategy 2 + session details
+            // Overview(1) + Strategy 1(1) + Strategy 2(1) = 3 summary sheets
+            // + 3 detail tabs for Strategy 1 sessions + 2 detail tabs for Strategy 2 = 5
+            // Total = 8 sheets
             // Strategy 3 has no sessions, so no sheet
-            // Session detail sheets: Strategy 1 has 3 sessions → top 3 best + worst (deduped)
-            // Strategy 2 has 2 sessions → top 2 + worst 2 (deduped)
-            expect(workbook.worksheets.length).toBeGreaterThanOrEqual(3);
+            expect(workbook.worksheets.length).toBe(8);
             expect(workbook.worksheets[0].name).toBe('Overview');
         });
 

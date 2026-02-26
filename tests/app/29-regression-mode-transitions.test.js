@@ -583,12 +583,12 @@ describe('G. Data Loader — Full Pipeline', () => {
     test('G4: getAllSpins returns combined chronological spins', () => {
         const loader = new AIDataLoader();
         loader.loadMultiple([
-            { filename: 'a.txt', content: '10\n5\n0' },    // Reversed: [0, 5, 10]
-            { filename: 'b.txt', content: '36\n19\n4' }    // Reversed: [4, 19, 36]
+            { filename: 'a.txt', content: '10\n5\n0' },    // Kept: [10, 5, 0]
+            { filename: 'b.txt', content: '36\n19\n4' }    // Kept: [36, 19, 4]
         ]);
 
         const all = loader.getAllSpins();
-        expect(all).toEqual([0, 5, 10, 4, 19, 36]);
+        expect(all).toEqual([10, 5, 0, 36, 19, 4]);
     });
 });
 

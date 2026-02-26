@@ -2,7 +2,7 @@
  * Test Suite 21: AI Data Loader — 100% Coverage
  *
  * Tests the AIDataLoader class which parses historical spin text files,
- * validates data, reverses to chronological order, and converts to spin format.
+ * validates data (already in chronological order), and converts to spin format.
  */
 
 const { AIDataLoader } = require('../../app/ai-data-loader');
@@ -36,8 +36,8 @@ describe('AIDataLoader', () => {
         test('parses valid file with numbers 0-36', () => {
             const text = '17\n28\n31\n25\n7';
             const result = loader.parseTextContent(text, 'test.txt');
-            // Input is newest-first, so reverse → oldest first: [7, 25, 31, 28, 17]
-            expect(result.spins).toEqual([7, 25, 31, 28, 17]);
+            // Data is already chronological (top=oldest, bottom=newest)
+            expect(result.spins).toEqual([17, 28, 31, 25, 7]);
             expect(result.length).toBe(5);
             expect(result.filename).toBe('test.txt');
         });
@@ -45,7 +45,7 @@ describe('AIDataLoader', () => {
         test('handles CRLF line endings', () => {
             const text = '10\r\n20\r\n30';
             const result = loader.parseTextContent(text, 'crlf.txt');
-            expect(result.spins).toEqual([30, 20, 10]);
+            expect(result.spins).toEqual([10, 20, 30]);
             expect(result.length).toBe(3);
         });
 
@@ -56,52 +56,52 @@ describe('AIDataLoader', () => {
             // Wait - the code does: line = lines[i].trim(), then String(num) !== line
             // "5  ".trim() = "5" -> parseInt("5") = 5 -> String(5) = "5" === "5" ✓
             const result = loader.parseTextContent(text, 'ws.txt');
-            expect(result.spins).toEqual([15, 10, 5]);
+            expect(result.spins).toEqual([5, 10, 15]);
         });
 
         test('skips blank lines', () => {
             const text = '5\n\n10\n\n15\n';
             const result = loader.parseTextContent(text, 'blanks.txt');
-            expect(result.spins).toEqual([15, 10, 5]);
+            expect(result.spins).toEqual([5, 10, 15]);
             expect(result.length).toBe(3);
         });
 
         test('includes zero (0) as a valid number', () => {
             const text = '0\n36\n18';
             const result = loader.parseTextContent(text, 'zero.txt');
-            expect(result.spins).toEqual([18, 36, 0]);
+            expect(result.spins).toEqual([0, 36, 18]);
         });
 
         test('includes 36 as valid boundary', () => {
             const text = '36\n0';
             const result = loader.parseTextContent(text, 'boundary.txt');
-            expect(result.spins).toEqual([0, 36]);
+            expect(result.spins).toEqual([36, 0]);
         });
 
         test('skips out-of-range values (negative)', () => {
             const text = '-1\n5\n10';
             const result = loader.parseTextContent(text, 'neg.txt');
-            expect(result.spins).toEqual([10, 5]);
+            expect(result.spins).toEqual([5, 10]);
             expect(result.length).toBe(2);
         });
 
         test('skips out-of-range values (> 36)', () => {
             const text = '37\n5\n100\n10';
             const result = loader.parseTextContent(text, 'high.txt');
-            expect(result.spins).toEqual([10, 5]);
+            expect(result.spins).toEqual([5, 10]);
         });
 
         test('skips non-numeric lines', () => {
             const text = 'abc\n5\nhello\n10';
             const result = loader.parseTextContent(text, 'nonnumeric.txt');
-            expect(result.spins).toEqual([10, 5]);
+            expect(result.spins).toEqual([5, 10]);
         });
 
         test('skips float values', () => {
             const text = '5.5\n10\n3.14\n20';
             // "5.5" -> parseInt = 5, String(5) = "5" !== "5.5" → skip
             const result = loader.parseTextContent(text, 'float.txt');
-            expect(result.spins).toEqual([20, 10]);
+            expect(result.spins).toEqual([10, 20]);
         });
 
         test('handles single number file', () => {
@@ -153,7 +153,7 @@ describe('AIDataLoader', () => {
         test('handles mixed valid and invalid lines', () => {
             const text = '17\nabc\n28\n-3\n31\n50\n25';
             const result = loader.parseTextContent(text, 'mixed.txt');
-            expect(result.spins).toEqual([25, 31, 28, 17]);
+            expect(result.spins).toEqual([17, 28, 31, 25]);
             expect(result.length).toBe(4);
         });
 
@@ -162,7 +162,7 @@ describe('AIDataLoader', () => {
             // "05" -> parseInt = 5, String(5) = "5" !== "05" → skip
             // "0" -> parseInt = 0, String(0) = "0" === "0" ✓
             const result = loader.parseTextContent(text, 'leadzero.txt');
-            expect(result.spins).toEqual([10, 0]);
+            expect(result.spins).toEqual([0, 10]);
         });
     });
 
@@ -310,8 +310,8 @@ describe('AIDataLoader', () => {
                 { filename: 'f2.txt', content: '6\n5\n4' }
             ]);
             const all = loader.getAllSpins();
-            // f1 reversed: [1, 2, 3]; f2 reversed: [4, 5, 6]
-            expect(all).toEqual([1, 2, 3, 4, 5, 6]);
+            // No reversal — data is already chronological (top=oldest)
+            expect(all).toEqual([3, 2, 1, 6, 5, 4]);
         });
 
         test('returns empty array when no sessions loaded', () => {
@@ -320,7 +320,7 @@ describe('AIDataLoader', () => {
 
         test('returns single session spins', () => {
             loader.loadMultiple([{ filename: 'f1.txt', content: '10\n5' }]);
-            expect(loader.getAllSpins()).toEqual([5, 10]);
+            expect(loader.getAllSpins()).toEqual([10, 5]);
         });
     });
 
@@ -367,11 +367,12 @@ describe('AIDataLoader', () => {
             expect(result.totalSpins).toBe(5);
 
             const allSpins = loader.getAllSpins();
-            expect(allSpins).toEqual([31, 28, 17, 10, 5]);
+            // No reversal — data stays in file order (top=oldest)
+            expect(allSpins).toEqual([17, 28, 31, 5, 10]);
 
             const spinFormat = loader.toSpinFormat(allSpins);
             expect(spinFormat.length).toBe(5);
-            expect(spinFormat[0]).toEqual({ direction: 'C', actual: 31 });
+            expect(spinFormat[0]).toEqual({ direction: 'C', actual: 17 });
             expect(spinFormat[1]).toEqual({ direction: 'AC', actual: 28 });
         });
 
@@ -385,7 +386,7 @@ describe('AIDataLoader', () => {
             loader.loadMultiple([{ filename: 'f2.txt', content: '3\n4\n5' }]);
             expect(loader.isLoaded).toBe(true);
             expect(loader.sessions.length).toBe(1);
-            expect(loader.getAllSpins()).toEqual([5, 4, 3]);
+            expect(loader.getAllSpins()).toEqual([3, 4, 5]);
         });
     });
 });

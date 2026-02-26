@@ -174,6 +174,27 @@ class AutoTestRunner {
 
         const steps = [];
 
+        // First 3 spins are "watching for pattern" — AI observes before betting
+        for (let w = 0; w < 3 && (startIdx + w) < testSpins.length; w++) {
+            const wi = startIdx + w;
+            steps.push({
+                spinIdx: wi,
+                spinNumber: testSpins[wi],
+                nextNumber: (wi + 1 < testSpins.length) ? testSpins[wi + 1] : null,
+                action: 'WATCH',
+                selectedPair: null,
+                selectedFilter: null,
+                predictedNumbers: [],
+                confidence: 0,
+                betPerNumber: sessionState.betPerNumber,
+                numbersCount: 0,
+                hit: false,
+                pnl: 0,
+                bankroll: sessionState.bankroll,
+                cumulativeProfit: sessionState.profit
+            });
+        }
+
         // Need at least idx and idx+1, and idx needs 3 prior spins for flash detection
         // So effective start for decisions is startIdx + 3, checking spins[i+1] exists
         for (let i = startIdx + 3; i < testSpins.length - 1; i++) {
@@ -276,13 +297,14 @@ class AutoTestRunner {
      * Build a SessionResult object from session state.
      */
     _buildSessionResult(startIdx, strategy, outcome, state, steps) {
+        const watchCount = steps.filter(s => s.action === 'WATCH').length;
         return {
             startIdx,
             strategy,
             outcome,
             finalBankroll: state.bankroll,
             finalProfit: state.profit,
-            totalSpins: steps.length,
+            totalSpins: steps.length - watchCount,
             totalBets: state.totalBets,
             totalSkips: state.totalSkips,
             wins: state.wins,

@@ -785,7 +785,7 @@ describe('L: Strategy sheet formatting', () => {
         report = new AutoTestReport(MockExcelJS);
     });
 
-    test('L1: Auto-filter covers all rows', () => {
+    test('L1: Auto-filter covers all rows and 11 columns', () => {
         const data = {
             sessions: Array(5).fill(null).map((_, i) => ({
                 startIdx: i, strategy: 1, outcome: 'WIN', finalProfit: 100,
@@ -797,7 +797,7 @@ describe('L: Strategy sheet formatting', () => {
         const workbook = new MockWorkbook();
         const sheet = report._createStrategySheet(workbook, 1, data);
         expect(sheet.autoFilter.to.row).toBe(6); // 1 header + 5 data
-        expect(sheet.autoFilter.to.column).toBe(10);
+        expect(sheet.autoFilter.to.column).toBe(11); // 11 columns including Details
     });
 
     test('L2: Frozen header in strategy sheet', () => {
@@ -811,14 +811,14 @@ describe('L: Strategy sheet formatting', () => {
         expect(sheet.views[0].ySplit).toBe(1);
     });
 
-    test('L3: Column widths are set (10 columns)', () => {
+    test('L3: Column widths are set (11 columns including Details)', () => {
         const data = {
             sessions: [{ startIdx: 0, strategy: 1, outcome: 'WIN', finalProfit: 100, totalSpins: 20, totalBets: 15, totalSkips: 5, wins: 10, losses: 5, winRate: 0.67, maxDrawdown: 30, peakProfit: 120 }],
             summary: { totalSessions: 1, wins: 1, busts: 0, incomplete: 0, winRate: 1.0, avgSpinsToWin: 20, avgSpinsToBust: 0, avgProfit: 100, maxDrawdown: 30, bestSession: { startIdx: 0, finalProfit: 100 }, worstSession: { startIdx: 0, finalProfit: 100 } }
         };
         const workbook = new MockWorkbook();
         const sheet = report._createStrategySheet(workbook, 1, data);
-        expect(sheet.columns.length).toBe(10);
+        expect(sheet.columns.length).toBe(11);
     });
 });
 
@@ -855,7 +855,7 @@ describe('M: Runner → Report pipeline', () => {
         expect(spinsCell.value).toContain('20');
     });
 
-    test('M3: Report creates session detail sheets from runner sessions', async () => {
+    test('M3: Report creates session detail sheets for ALL runner sessions', async () => {
         const engine = createTrainedEngine();
         const runner = new AutoTestRunner(engine);
         const testResult = await runner.runAll(generateTestSpins(15), { batchSize: 100 });
@@ -863,10 +863,22 @@ describe('M: Runner → Report pipeline', () => {
         const report = new AutoTestReport(MockExcelJS);
         const workbook = report.generate(testResult);
 
-        // Should have detail sheets if any sessions exist
-        const detailSheets = workbook.worksheets.filter(ws => ws.name.startsWith('S'));
-        if (testResult.strategies[1].sessions.length > 0) {
-            expect(detailSheets.length).toBeGreaterThan(0);
+        // Every session from every strategy should have its own detail tab
+        const detailSheets = workbook.worksheets.filter(ws => /^S\d+-Start/.test(ws.name));
+        const totalSessions = [1, 2, 3].reduce((sum, s) => sum + testResult.strategies[s].sessions.length, 0);
+        expect(detailSheets.length).toBe(totalSessions);
+
+        // Detail sheets should be in sequential order (S1 first, then S2, then S3)
+        if (detailSheets.length > 1) {
+            const s1Sheets = detailSheets.filter(ws => ws.name.startsWith('S1-'));
+            const s2Sheets = detailSheets.filter(ws => ws.name.startsWith('S2-'));
+            const s3Sheets = detailSheets.filter(ws => ws.name.startsWith('S3-'));
+            // S1 sheets come before S2 which come before S3
+            if (s1Sheets.length > 0 && s2Sheets.length > 0) {
+                const lastS1Idx = detailSheets.indexOf(s1Sheets[s1Sheets.length - 1]);
+                const firstS2Idx = detailSheets.indexOf(s2Sheets[0]);
+                expect(lastS1Idx).toBeLessThan(firstS2Idx);
+            }
         }
     });
 });

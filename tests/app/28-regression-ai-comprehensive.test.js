@@ -944,7 +944,7 @@ describe('K. Cross-Component — Full Pipeline', () => {
         expect(result.sessions).toHaveLength(1);
 
         const model = new AISequenceModel({ minSamples: 1 });
-        // Note: loader reverses to chronological, but we pass the spins directly
+        // Loader keeps data in file order (already chronological), pass spins directly
         model.train([result.sessions[0].spins]);
         expect(model.isTrained).toBe(true);
         expect(model.baseline.total).toBeGreaterThan(0);
@@ -1350,9 +1350,9 @@ describe('N. Edge Cases', () => {
         const loader = new AIDataLoader();
         const result = loader.parseTextContent('4\r\n19\r\n32\r\n15', 'test.txt');
         expect(result.spins).toHaveLength(4);
-        // Reversed to chronological: [15, 32, 19, 4]
-        expect(result.spins[0]).toBe(15);
-        expect(result.spins[3]).toBe(4);
+        // Data stays in file order (top=oldest, bottom=newest)
+        expect(result.spins[0]).toBe(4);
+        expect(result.spins[3]).toBe(15);
     });
 
     test('N15: DataLoader parseTextContent with blank lines', () => {
@@ -1689,12 +1689,12 @@ describe('Q. Data Loader Regression', () => {
         expect(loader.isLoaded).toBe(false);
     });
 
-    test('Q7: parseTextContent reverses to chronological order', () => {
+    test('Q7: parseTextContent preserves chronological order', () => {
         const loader = new AIDataLoader();
-        // Input: newest first → 32, 19, 4
+        // Input: already chronological (top=oldest, bottom=newest)
         const result = loader.parseTextContent('32\n19\n4', 'test.txt');
-        // Output: oldest first → 4, 19, 32
-        expect(result.spins).toEqual([4, 19, 32]);
+        // Output: same order as file — no reversal
+        expect(result.spins).toEqual([32, 19, 4]);
     });
 
     test('Q8: loadMultiple handles mixed valid/invalid files', () => {

@@ -647,8 +647,8 @@ describe('I. Data Loader With Various Input Formats', () => {
         const text = '15\n19\n4\n21\n2';
         const result = loader.parseTextContent(text, 'test.txt');
         expect(result.spins.length).toBe(5);
-        // parseTextContent reverses to chronological order (oldest first)
-        expect(result.spins).toEqual([2, 21, 4, 19, 15]);
+        // Data stays in file order (top=oldest, bottom=newest)
+        expect(result.spins).toEqual([15, 19, 4, 21, 2]);
     });
 
     test('I3: toSpinFormat converts numbers to spin objects', () => {

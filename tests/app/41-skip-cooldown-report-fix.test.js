@@ -532,19 +532,22 @@ describe('E: Session simulation correctness', () => {
         expect(result.totalSkips).toBe(skipSteps.length);
     });
 
-    test('E4: totalSpins = steps.length', () => {
+    test('E4: totalSpins = steps.length minus WATCH steps', () => {
         const testSpins = generateTestSpins(30);
         const result = runner._runSession(testSpins, 0, 1);
-        expect(result.totalSpins).toBe(result.steps.length);
+        const watchCount = result.steps.filter(s => s.action === 'WATCH').length;
+        expect(result.totalSpins).toBe(result.steps.length - watchCount);
     });
 
-    test('E5: BET and SKIP counts sum to total steps', () => {
+    test('E5: BET, SKIP and WATCH counts sum to total steps', () => {
         const testSpins = generateTestSpins(50);
         const result = runner._runSession(testSpins, 0, 1);
 
         const betCount = result.steps.filter(s => s.action === 'BET').length;
         const skipCount = result.steps.filter(s => s.action === 'SKIP').length;
-        expect(betCount + skipCount).toBe(result.steps.length);
+        const watchCount = result.steps.filter(s => s.action === 'WATCH').length;
+        expect(betCount + skipCount + watchCount).toBe(result.steps.length);
+        expect(watchCount).toBe(3);
     });
 
     test('E6: cumulative profit matches final profit', () => {
@@ -669,7 +672,7 @@ describe('F: Consecutive skip limit enforcement in sessions', () => {
         const result = runner._runSession(testSpins, 0, 1);
 
         // With force-bet, there should be at least some bets
-        // (unless every spin has no flashing pairs)
+        // totalSpins excludes WATCH steps
         expect(result.totalBets + result.totalSkips).toBe(result.totalSpins);
     });
 

@@ -47,7 +47,7 @@ class AutoTestUI {
                     <div id="autoTestFileInfo" style="font-size:11px;color:#94a3b8;margin-bottom:4px;">No test data loaded</div>
                     <details style="color:#94a3b8;font-size:10px;">
                         <summary style="cursor:pointer;">Or paste numbers manually</summary>
-                        <textarea id="autoTestManualInput" placeholder="Paste spin numbers (one per line, newest first)" style="width:100%;height:60px;margin-top:4px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:4px;font-size:10px;padding:4px;resize:vertical;"></textarea>
+                        <textarea id="autoTestManualInput" placeholder="Paste spin numbers (one per line, oldest first)" style="width:100%;height:60px;margin-top:4px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:4px;font-size:10px;padding:4px;resize:vertical;"></textarea>
                         <button id="autoTestParseBtn" style="margin-top:4px;padding:4px 10px;font-size:10px;border:1px solid #64748b;border-radius:3px;cursor:pointer;background:#334155;color:#e2e8f0;">Parse Input</button>
                     </details>
                 </div>
