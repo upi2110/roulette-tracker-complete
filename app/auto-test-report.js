@@ -314,17 +314,43 @@ class AutoTestReport {
         // Data rows
         session.steps.forEach((step, idx) => {
             const row = sheet.getRow(idx + 4);
+
+            // Determine display values based on action type
+            let actionLabel = step.action;
+            let pairLabel = step.selectedPair || '--';
+            let filterLabel = step.selectedFilter || '--';
+            let numsLabel = step.numbersCount;
+            let confLabel = step.confidence;
+            let betLabel = `$${step.betPerNumber}`;
+            let hitLabel = step.action === 'BET' ? (step.hit ? 'YES' : 'NO') : '--';
+
+            if (step.action === 'WATCH') {
+                pairLabel = 'Watching for pattern';
+                filterLabel = '--';
+                numsLabel = '--';
+                confLabel = '--';
+                betLabel = '--';
+            } else if (step.action === 'REANALYZE') {
+                actionLabel = 'BET RESET';
+                pairLabel = 'Loss streak — bet reset to $2';
+                filterLabel = step.selectedFilter || '--';
+                numsLabel = '--';
+                confLabel = '--';
+                betLabel = '$2';
+                hitLabel = '--';
+            }
+
             const values = [
                 idx + 1,
                 step.spinNumber,
                 step.nextNumber !== undefined && step.nextNumber !== null ? step.nextNumber : '',
-                step.action === 'WATCH' ? 'WATCH' : step.action,
-                step.action === 'WATCH' ? 'Watching for pattern' : (step.selectedPair || '--'),
-                step.action === 'WATCH' ? '--' : (step.selectedFilter || '--'),
-                step.action === 'WATCH' ? '--' : step.numbersCount,
-                step.action === 'WATCH' ? '--' : step.confidence,
-                step.action === 'WATCH' ? '--' : `$${step.betPerNumber}`,
-                step.action === 'BET' ? (step.hit ? 'YES' : 'NO') : '--',
+                actionLabel,
+                pairLabel,
+                filterLabel,
+                numsLabel,
+                confLabel,
+                betLabel,
+                hitLabel,
                 step.pnl !== 0 ? `$${step.pnl}` : '--',
                 `$${step.bankroll.toLocaleString()}`
             ];
@@ -340,6 +366,15 @@ class AutoTestReport {
                     const cell = row.getCell(c);
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } };
                     cell.font = { italic: true, color: { argb: 'FF4472C4' } };
+                }
+            }
+
+            // REANALYZE/BET RESET rows — bold red background
+            if (step.action === 'REANALYZE') {
+                for (let c = 1; c <= 12; c++) {
+                    const cell = row.getCell(c);
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8D7DA' } };
+                    cell.font = { bold: true, color: { argb: 'FF721C24' } };
                 }
             }
 

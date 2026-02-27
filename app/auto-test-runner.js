@@ -45,7 +45,7 @@ class AutoTestRunner {
     /**
      * @param {AIAutoEngine} engine - A TRAINED AIAutoEngine instance
      */
-    constructor(engine) {
+    constructor(engine, sessionConfig) {
         if (!engine) {
             throw new Error('AutoTestRunner requires an AIAutoEngine instance');
         }
@@ -53,6 +53,26 @@ class AutoTestRunner {
             throw new Error('Engine must be trained before running tests');
         }
         this.engine = engine;
+
+        // Session parameters — tunable via constructor or setSessionConfig()
+        // Defaults: $10 bet cap, reset after 5 consecutive losses (benchmarked optimal)
+        this._sessionConfig = Object.assign({
+            STARTING_BANKROLL: 4000,
+            TARGET_PROFIT: 100,
+            MIN_BET: 2,
+            MAX_BET: 10,
+            LOSS_STREAK_RESET: 5,
+            MAX_RESETS: 5,
+            STOP_LOSS: 0            // 0 = use bankroll <= 0 as bust condition
+        }, sessionConfig || {});
+    }
+
+    /**
+     * Update session configuration for benchmarking.
+     * @param {Object} config - Partial config to merge
+     */
+    setSessionConfig(config) {
+        Object.assign(this._sessionConfig, config);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -95,9 +115,8 @@ class AutoTestRunner {
         const totalWork = (maxStart + 1) * 3;
         let completed = 0;
 
-        // Disable live retrain during batch testing — retrain is designed for
-        // real-time play (1 bet/min), not batch simulation (thousands/sec).
-        // Without this guard the runner hangs during losing streaks.
+        // Disable retrain during batch testing — training data is sufficient.
+        // Risk management (bet cap + loss-streak reset) handles bust prevention.
         const savedRetrainInterval = this.engine._retrainInterval;
         const savedRetrainLossStreak = this.engine._retrainLossStreak;
         this.engine._retrainInterval = Infinity;
@@ -154,9 +173,7 @@ class AutoTestRunner {
      * @returns {SessionResult}
      */
     _runSession(testSpins, startIdx, strategy) {
-        const STARTING_BANKROLL = 4000;
-        const TARGET_PROFIT = 100;
-        const MIN_BET = 2;
+        const { STARTING_BANKROLL, TARGET_PROFIT, MIN_BET, MAX_BET, LOSS_STREAK_RESET, MAX_RESETS, STOP_LOSS } = this._sessionConfig;
 
         const sessionState = {
             bankroll: STARTING_BANKROLL,
@@ -169,12 +186,13 @@ class AutoTestRunner {
             consecutiveLosses: 0,
             consecutiveWins: 0,
             maxDrawdown: 0,
-            peakProfit: 0
+            peakProfit: 0,
+            reanalyzeCount: 0
         };
 
         const steps = [];
 
-        // First 3 spins are "watching for pattern" — AI observes before betting
+        // ── PHASE 1: WATCH (3 spins — observe only) ──
         for (let w = 0; w < 3 && (startIdx + w) < testSpins.length; w++) {
             const wi = startIdx + w;
             steps.push({
@@ -195,8 +213,7 @@ class AutoTestRunner {
             });
         }
 
-        // Need at least idx and idx+1, and idx needs 3 prior spins for flash detection
-        // So effective start for decisions is startIdx + 3, checking spins[i+1] exists
+        // ── PHASE 2: LIVE — bet with risk management ──
         for (let i = startIdx + 3; i < testSpins.length - 1; i++) {
             const decision = this._simulateDecision(testSpins, i);
 
@@ -230,8 +247,11 @@ class AutoTestRunner {
                     sessionState.maxDrawdown = drawdown;
                 }
 
-                // Apply strategy for next bet
-                sessionState.betPerNumber = this._applyStrategy(strategy, hit, sessionState);
+                // Apply strategy for next bet, then enforce MAX_BET cap
+                sessionState.betPerNumber = Math.min(
+                    this._applyStrategy(strategy, hit, sessionState),
+                    MAX_BET
+                );
 
                 // Record result for engine session adaptation
                 const refKey = decision.selectedPair
@@ -261,9 +281,36 @@ class AutoTestRunner {
                     return this._buildSessionResult(startIdx, strategy, 'WIN', sessionState, steps);
                 }
 
-                // Check BUST
-                if (sessionState.bankroll <= 0) {
+                // Check BUST (bankroll depleted or stop-loss hit)
+                const bustThreshold = STOP_LOSS > 0 ? (STARTING_BANKROLL - STOP_LOSS) : 0;
+                if (sessionState.bankroll <= bustThreshold) {
                     return this._buildSessionResult(startIdx, strategy, 'BUST', sessionState, steps);
+                }
+
+                // ── LOSS STREAK PROTECTION: reset bet to stop escalation ──
+                if (sessionState.consecutiveLosses >= LOSS_STREAK_RESET && sessionState.reanalyzeCount < MAX_RESETS) {
+                    sessionState.reanalyzeCount++;
+
+                    // Reset bet to minimum — stops escalation death spiral
+                    sessionState.betPerNumber = MIN_BET;
+                    sessionState.consecutiveLosses = 0;
+
+                    steps.push({
+                        spinIdx: i,
+                        spinNumber: testSpins[i],
+                        nextNumber: null,
+                        action: 'REANALYZE',
+                        selectedPair: decision.selectedPair,
+                        selectedFilter: decision.selectedFilter,
+                        predictedNumbers: [],
+                        confidence: 0,
+                        betPerNumber: MIN_BET,
+                        numbersCount: 0,
+                        hit: false,
+                        pnl: 0,
+                        bankroll: sessionState.bankroll,
+                        cumulativeProfit: sessionState.profit
+                    });
                 }
             } else {
                 // SKIP
@@ -297,14 +344,14 @@ class AutoTestRunner {
      * Build a SessionResult object from session state.
      */
     _buildSessionResult(startIdx, strategy, outcome, state, steps) {
-        const watchCount = steps.filter(s => s.action === 'WATCH').length;
+        const nonBetActions = steps.filter(s => s.action === 'WATCH' || s.action === 'REANALYZE').length;
         return {
             startIdx,
             strategy,
             outcome,
             finalBankroll: state.bankroll,
             finalProfit: state.profit,
-            totalSpins: steps.length - watchCount,
+            totalSpins: steps.length - nonBetActions,
             totalBets: state.totalBets,
             totalSkips: state.totalSkips,
             wins: state.wins,
@@ -312,6 +359,7 @@ class AutoTestRunner {
             winRate: state.totalBets > 0 ? state.wins / state.totalBets : 0,
             maxDrawdown: state.maxDrawdown,
             peakProfit: state.peakProfit,
+            reanalyzeCount: state.reanalyzeCount || 0,
             steps
         };
     }
@@ -392,15 +440,16 @@ class AutoTestRunner {
 
     /**
      * Simulate a decision at spin index idx using engine internals.
-     * NEW: Combines T3 flash + T2 flash + Set prediction pipeline.
+     * Combines T3 flash + T2 flash + Set prediction pipeline.
      * Mirrors engine.decide() but works on plain number arrays.
      *
      * @param {number[]} testSpins - Full test data
      * @param {number} idx - Current index to make decision at
+     * @param {Set} [blacklistedPairs] - Pairs to skip (failed in this session)
      * @returns {{ action: string, selectedPair: string|null, selectedFilter: string|null,
      *             numbers: number[], confidence: number, reason: string }}
      */
-    _simulateDecision(testSpins, idx) {
+    _simulateDecision(testSpins, idx, blacklistedPairs) {
         const skipResult = (reason) => ({
             action: 'SKIP',
             selectedPair: null,
@@ -420,9 +469,12 @@ class AutoTestRunner {
         if (flashingPairs.size > 0) {
             const t3Candidates = [];
             for (const [refKey, flashInfo] of flashingPairs) {
+                // Skip blacklisted pairs
+                const pairName = TEST_REFKEY_TO_PAIR_NAME[refKey] || refKey;
+                if (blacklistedPairs && blacklistedPairs.has(pairName)) continue;
+
                 const projection = this.engine._computeProjectionForPair(testSpins, idx, refKey);
                 if (projection && projection.numbers.length > 0) {
-                    const pairName = TEST_REFKEY_TO_PAIR_NAME[refKey] || refKey;
                     t3Candidates.push({ refKey, pairName, numbers: projection.numbers, data: projection });
                 }
             }

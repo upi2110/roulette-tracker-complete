@@ -454,11 +454,11 @@ describe('AutoTestRunner', () => {
             }
         });
 
-        test('steps track WATCH, BET and SKIP actions', () => {
+        test('steps track WATCH, BET, SKIP and REANALYZE actions', () => {
             const testSpins = generateTestSpins(20);
             const result = runner._runSession(testSpins, 0, 1);
             for (const step of result.steps) {
-                expect(['BET', 'SKIP', 'WATCH']).toContain(step.action);
+                expect(['BET', 'SKIP', 'WATCH', 'REANALYZE']).toContain(step.action);
                 expect(step).toHaveProperty('spinIdx');
                 expect(step).toHaveProperty('spinNumber');
                 expect(step).toHaveProperty('bankroll');

@@ -532,21 +532,24 @@ describe('E: Session simulation correctness', () => {
         expect(result.totalSkips).toBe(skipSteps.length);
     });
 
-    test('E4: totalSpins = steps.length minus WATCH steps', () => {
+    test('E4: totalSpins = steps.length minus non-bet actions', () => {
         const testSpins = generateTestSpins(30);
         const result = runner._runSession(testSpins, 0, 1);
-        const watchCount = result.steps.filter(s => s.action === 'WATCH').length;
-        expect(result.totalSpins).toBe(result.steps.length - watchCount);
+        const nonBetActions = result.steps.filter(s =>
+            s.action === 'WATCH' || s.action === 'REANALYZE'
+        ).length;
+        expect(result.totalSpins).toBe(result.steps.length - nonBetActions);
     });
 
-    test('E5: BET, SKIP and WATCH counts sum to total steps', () => {
+    test('E5: all action types sum to total steps', () => {
         const testSpins = generateTestSpins(50);
         const result = runner._runSession(testSpins, 0, 1);
 
         const betCount = result.steps.filter(s => s.action === 'BET').length;
         const skipCount = result.steps.filter(s => s.action === 'SKIP').length;
         const watchCount = result.steps.filter(s => s.action === 'WATCH').length;
-        expect(betCount + skipCount + watchCount).toBe(result.steps.length);
+        const reanalyzeCount = result.steps.filter(s => s.action === 'REANALYZE').length;
+        expect(betCount + skipCount + watchCount + reanalyzeCount).toBe(result.steps.length);
         expect(watchCount).toBe(3);
     });
 
@@ -672,7 +675,7 @@ describe('F: Consecutive skip limit enforcement in sessions', () => {
         const result = runner._runSession(testSpins, 0, 1);
 
         // With force-bet, there should be at least some bets
-        // totalSpins excludes WATCH steps
+        // totalSpins excludes WATCH and REANALYZE steps
         expect(result.totalBets + result.totalSkips).toBe(result.totalSpins);
     });
 

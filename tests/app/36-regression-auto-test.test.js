@@ -312,7 +312,7 @@ describe('C: Retrain guard logic', () => {
         expect(engine._retrainLossStreak).toBe(originalStreak);
     });
 
-    test('C2: Retrain settings temporarily set to Infinity during test', async () => {
+    test('C2: Retrain settings during batch — interval disabled, loss-streak enabled', async () => {
         const engine = createTrainedEngine();
         const runner = new AutoTestRunner(engine);
 
@@ -330,6 +330,7 @@ describe('C: Retrain guard logic', () => {
         await runner.runAll(generateTestSpins(12), { batchSize: 100 });
 
         expect(capturedInterval).toBe(Infinity);
+        // Retrain disabled during batch — training data is sufficient
         expect(capturedStreak).toBe(Infinity);
     });
 });
