@@ -635,8 +635,16 @@ class AutoTestRunner {
             ? busts.reduce((sum, s) => sum + s.totalSpins, 0) / busts.length
             : 0;
 
-        // Average profit (across all sessions)
-        const avgProfit = sessions.reduce((sum, s) => sum + s.finalProfit, 0) / sessions.length;
+        // Average profit per WIN session (excludes incomplete/bust)
+        const avgWinProfit = wins.length > 0
+            ? wins.reduce((sum, s) => sum + s.finalProfit, 0) / wins.length
+            : 0;
+
+        // Total profit (across all sessions)
+        const totalProfit = sessions.reduce((sum, s) => sum + s.finalProfit, 0);
+
+        // Average profit (across all sessions — includes incomplete losses)
+        const avgProfit = totalProfit / sessions.length;
 
         // Max drawdown across all sessions
         const maxDrawdown = Math.max(0, ...sessions.map(s => s.maxDrawdown));
@@ -658,10 +666,12 @@ class AutoTestRunner {
             wins: wins.length,
             busts: busts.length,
             incomplete: incomplete.length,
-            winRate: decidedSessions > 0 ? wins.length / decidedSessions : 0,
+            winRate: sessions.length > 0 ? wins.length / sessions.length : 0,
             avgSpinsToWin: Math.round(avgSpinsToWin * 10) / 10,
             avgSpinsToBust: Math.round(avgSpinsToBust * 10) / 10,
+            totalProfit: Math.round(totalProfit * 100) / 100,
             avgProfit: Math.round(avgProfit * 100) / 100,
+            avgWinProfit: Math.round(avgWinProfit * 100) / 100,
             maxDrawdown: Math.round(maxDrawdown * 100) / 100,
             bestSession,
             worstSession
@@ -680,7 +690,9 @@ class AutoTestRunner {
             winRate: 0,
             avgSpinsToWin: 0,
             avgSpinsToBust: 0,
+            totalProfit: 0,
             avgProfit: 0,
+            avgWinProfit: 0,
             maxDrawdown: 0,
             bestSession: { startIdx: 0, finalProfit: 0 },
             worstSession: { startIdx: 0, finalProfit: 0 }

@@ -366,14 +366,14 @@ describe('AutoTestReport', () => {
             const result = createMockResult();
             const workbook = new MockWorkbook();
             const sheet = report._createOverviewSheet(workbook, result);
-            expect(sheet.columns.length).toBe(9);
+            expect(sheet.columns.length).toBe(11);
         });
 
         test('merges title cells', () => {
             const result = createMockResult();
             const workbook = new MockWorkbook();
             const sheet = report._createOverviewSheet(workbook, result);
-            expect(sheet.mergedCells).toContain('A1:I1');
+            expect(sheet.mergedCells).toContain('A1:K1');
         });
     });
 

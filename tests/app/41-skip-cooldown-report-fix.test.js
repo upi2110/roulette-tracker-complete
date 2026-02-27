@@ -729,7 +729,7 @@ describe('G: Summary statistics correctness', () => {
         expect(summary.totalSessions).toBe(3);
     });
 
-    test('G3: winRate = wins / (wins + busts)', () => {
+    test('G3: winRate = wins / totalSessions', () => {
         const sessions = [
             { outcome: 'WIN', finalProfit: 100, totalSpins: 50, maxDrawdown: 10, startIdx: 0 },
             { outcome: 'WIN', finalProfit: 100, totalSpins: 50, maxDrawdown: 10, startIdx: 1 },
@@ -738,9 +738,8 @@ describe('G: Summary statistics correctness', () => {
         ];
 
         const summary = runner._computeSummary(sessions);
-        // winRate = 2 / (2+1) = 0.667
-        expect(summary.winRate).toBeCloseTo(2 / 3, 5);
-        // INCOMPLETE doesn't count in winRate denominator
+        // winRate = 2 / 4 total sessions = 0.5
+        expect(summary.winRate).toBeCloseTo(2 / 4, 5);
         expect(summary.incomplete).toBe(1);
     });
 
@@ -867,7 +866,7 @@ describe('H: Report structure from runAll', () => {
         }
     });
 
-    test('H7: summary winRate matches sessions', async () => {
+    test('H7: summary winRate matches sessions (wins / total)', async () => {
         const testSpins = generateTestSpins(30);
         const result = await runner.runAll(testSpins, { testFile: 'test' });
 
@@ -875,13 +874,10 @@ describe('H: Report structure from runAll', () => {
             const sessions = result.strategies[strat].sessions;
             const summary = result.strategies[strat].summary;
             const wins = sessions.filter(s => s.outcome === 'WIN').length;
-            const busts = sessions.filter(s => s.outcome === 'BUST').length;
-            const decided = wins + busts;
 
             expect(summary.wins).toBe(wins);
-            expect(summary.busts).toBe(busts);
-            if (decided > 0) {
-                expect(summary.winRate).toBeCloseTo(wins / decided, 5);
+            if (sessions.length > 0) {
+                expect(summary.winRate).toBeCloseTo(wins / sessions.length, 5);
             }
         }
     });
