@@ -96,7 +96,7 @@ class AutoTestReport {
         const sheet = workbook.addWorksheet('Overview');
 
         // Title
-        sheet.mergeCells('A1:K1');
+        sheet.mergeCells('A1:J1');
         const titleCell = sheet.getCell('A1');
         titleCell.value = 'Auto Test Report';
         titleCell.font = { size: 16, bold: true, color: { argb: 'FF333333' } };
@@ -109,7 +109,7 @@ class AutoTestReport {
         sheet.getCell('A3').font = { size: 10, color: { argb: 'FF666666' } };
 
         // Headers (row 5)
-        const headers = ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Total Profit', 'Avg Profit (Win)', 'Avg Profit (All)', 'Avg Spins (Win)', 'Max Drawdown'];
+        const headers = ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Total Profit', 'Avg Profit', 'Avg Spins', 'Max Drawdown'];
         const headerRow = sheet.getRow(5);
         headers.forEach((h, i) => {
             const cell = headerRow.getCell(i + 1);
@@ -137,7 +137,6 @@ class AutoTestReport {
                 summary.incomplete,
                 `${(summary.winRate * 100).toFixed(1)}%`,
                 `$${(summary.totalProfit || 0).toLocaleString()}`,
-                `$${(summary.avgWinProfit || 0).toFixed(2)}`,
                 `$${summary.avgProfit.toFixed(2)}`,
                 summary.avgSpinsToWin,
                 `$${summary.maxDrawdown.toFixed(2)}`
@@ -169,7 +168,7 @@ class AutoTestReport {
         // Column widths
         sheet.columns = [
             { width: 28 }, { width: 10 }, { width: 8 }, { width: 8 },
-            { width: 12 }, { width: 10 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 14 }
+            { width: 12 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }
         ];
 
         return sheet;

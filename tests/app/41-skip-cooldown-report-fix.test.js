@@ -743,14 +743,16 @@ describe('G: Summary statistics correctness', () => {
         expect(summary.incomplete).toBe(1);
     });
 
-    test('G4: avgProfit across all sessions', () => {
+    test('G4: avgProfit from WIN sessions only', () => {
         const sessions = [
             { outcome: 'WIN', finalProfit: 100, totalSpins: 50, maxDrawdown: 10, startIdx: 0 },
-            { outcome: 'BUST', finalProfit: -200, totalSpins: 80, maxDrawdown: 200, startIdx: 1 }
+            { outcome: 'WIN', finalProfit: 200, totalSpins: 30, maxDrawdown: 5, startIdx: 1 },
+            { outcome: 'BUST', finalProfit: -4000, totalSpins: 80, maxDrawdown: 4000, startIdx: 2 }
         ];
 
         const summary = runner._computeSummary(sessions);
-        expect(summary.avgProfit).toBe(-50); // (100 + -200) / 2
+        // avgProfit = (100 + 200) / 2 wins = 150
+        expect(summary.avgProfit).toBe(150);
     });
 
     test('G5: maxDrawdown is maximum across all sessions', () => {

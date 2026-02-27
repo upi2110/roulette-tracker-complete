@@ -666,13 +666,15 @@ describe('AutoTestRunner', () => {
             expect(summary.worstSession.finalProfit).toBe(-4000);
         });
 
-        test('avgProfit calculated correctly', () => {
+        test('avgProfit calculated from WIN sessions only', () => {
             const sessions = [
                 { outcome: 'WIN', finalProfit: 100, totalSpins: 20, maxDrawdown: 10, startIdx: 0 },
-                { outcome: 'BUST', finalProfit: -200, totalSpins: 50, maxDrawdown: 200, startIdx: 1 },
+                { outcome: 'WIN', finalProfit: 150, totalSpins: 30, maxDrawdown: 20, startIdx: 1 },
+                { outcome: 'BUST', finalProfit: -200, totalSpins: 50, maxDrawdown: 200, startIdx: 2 },
             ];
             const summary = runner._computeSummary(sessions);
-            expect(summary.avgProfit).toBe(-50);
+            // avgProfit = (100 + 150) / 2 wins = 125
+            expect(summary.avgProfit).toBe(125);
         });
 
         test('avgSpinsToWin is 0 when no wins', () => {

@@ -466,15 +466,15 @@ describe('F: Summary statistics edge cases', () => {
         expect(summary.worstSession.startIdx).toBe(5);
     });
 
-    test('F5: avgProfit correctly handles mixed positive/negative', () => {
+    test('F5: avgProfit only counts WIN sessions', () => {
         const sessions = [
             { outcome: 'WIN', finalProfit: 200, totalSpins: 20, maxDrawdown: 10, startIdx: 0 },
             { outcome: 'BUST', finalProfit: -100, totalSpins: 50, maxDrawdown: 100, startIdx: 1 },
             { outcome: 'INCOMPLETE', finalProfit: 0, totalSpins: 100, maxDrawdown: 20, startIdx: 2 },
         ];
         const summary = runner._computeSummary(sessions);
-        // (200 + (-100) + 0) / 3 = 33.33
-        expect(summary.avgProfit).toBeCloseTo(33.33, 1);
+        // avgProfit = 200 / 1 win = 200 (busts and incomplete excluded)
+        expect(summary.avgProfit).toBe(200);
     });
 
     test('F6: maxDrawdown is 0 when all sessions have 0 drawdown', () => {

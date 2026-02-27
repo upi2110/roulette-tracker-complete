@@ -640,11 +640,11 @@ class AutoTestRunner {
             ? wins.reduce((sum, s) => sum + s.finalProfit, 0) / wins.length
             : 0;
 
-        // Total profit (across all sessions)
-        const totalProfit = sessions.reduce((sum, s) => sum + s.finalProfit, 0);
+        // Total profit from WIN sessions only (excludes incomplete losses)
+        const totalProfit = wins.reduce((sum, s) => sum + s.finalProfit, 0);
 
-        // Average profit (across all sessions — includes incomplete losses)
-        const avgProfit = totalProfit / sessions.length;
+        // Average profit from WIN sessions only
+        const avgProfit = wins.length > 0 ? totalProfit / wins.length : 0;
 
         // Max drawdown across all sessions
         const maxDrawdown = Math.max(0, ...sessions.map(s => s.maxDrawdown));
