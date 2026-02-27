@@ -24,16 +24,6 @@ const TEST_REFKEY_TO_PAIR_NAME = {
     'prev_prev': 'prevPrev'
 };
 
-// Table 2 pair key → refNum calculator (same as T2_PAIR_REFNUM in ai-auto-engine.js)
-const TEST_T2_PAIR_REFNUM = {
-    ref0:       (lastSpin) => 0,
-    ref19:      (lastSpin) => 19,
-    prev:       (lastSpin) => lastSpin,
-    prevPlus1:  (lastSpin) => Math.min(lastSpin + 1, 36),
-    prevMinus1: (lastSpin) => Math.max(lastSpin - 1, 0),
-    prevPlus2:  (lastSpin) => Math.min(lastSpin + 2, 36),
-    prevMinus2: (lastSpin) => Math.max(lastSpin - 2, 0),
-};
 
 const STRATEGY_NAMES = {
     1: 'Aggressive',
@@ -365,75 +355,8 @@ class AutoTestRunner {
         };
     }
 
-    // ═══════════════════════════════════════════════════════════
-    //  T2 FLASH SIMULATION
-    // ═══════════════════════════════════════════════════════════
-
-    /**
-     * Simulate T2 flash detection and NEXT row number extraction for backtesting.
-     * Mirrors engine._getT2FlashingPairsAndNumbers() but works on plain number arrays.
-     *
-     * @param {number[]} testSpins - Full test data (plain numbers)
-     * @param {number} idx - Current index
-     * @returns {{ dataPair: string, anchorCount: number, targets: number[], numbers: number[], score: number } | null}
-     */
-    _simulateT2FlashAndNumbers(testSpins, idx) {
-        if (idx < 4) return null;
-
-        // Build spin objects for _computeT2FlashTargets (needs {actual} format)
-        const spinObjs = testSpins.slice(0, idx + 1).map(n => ({ actual: n }));
-        const startIdx = Math.max(0, spinObjs.length - 8);
-        const visibleCount = spinObjs.length - startIdx;
-
-        const t2Targets = this.engine._getComputeT2FlashTargets(spinObjs, startIdx, visibleCount);
-        if (t2Targets.size === 0) return null;
-
-        // Parse to { dataPair → Set<anchorIdx> }
-        const pairAnchors = {};
-        for (const target of t2Targets) {
-            const parts = target.split(':');
-            if (parts.length >= 3) {
-                const dataPair = parts[1];
-                const anchorIdx = parseInt(parts[2], 10);
-                if (!pairAnchors[dataPair]) pairAnchors[dataPair] = new Set();
-                pairAnchors[dataPair].add(anchorIdx);
-            }
-        }
-
-        if (Object.keys(pairAnchors).length === 0) return null;
-
-        // Score each pair, get NEXT row numbers
-        const lastSpin = testSpins[idx - 1]; // "last spin" for NEXT row
-        const scored = [];
-
-        for (const [dataPair, anchors] of Object.entries(pairAnchors)) {
-            const getRefNum = TEST_T2_PAIR_REFNUM[dataPair];
-            if (!getRefNum) continue;
-            const refNum = getRefNum(lastSpin);
-            const lookupRow = this.engine._getLookupRow(refNum);
-            if (!lookupRow) continue;
-
-            const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
-            const flashingTargets = [];
-            for (const ai of anchors) {
-                if (targets[ai] !== undefined) flashingTargets.push(targets[ai]);
-            }
-            if (flashingTargets.length === 0) continue;
-
-            const numbers = this.engine._getExpandTargetsToBetNumbers(flashingTargets, 2);
-            scored.push({
-                dataPair,
-                anchorCount: anchors.size,
-                targets: flashingTargets,
-                numbers,
-                score: anchors.size * 0.5 + numbers.length * 0.01
-            });
-        }
-
-        if (scored.length === 0) return null;
-        scored.sort((a, b) => b.score - a.score);
-        return scored[0];
-    }
+    // T2 Flash Simulation — delegates to engine.simulateT2FlashAndNumbers()
+    // (shared implementation ensures Auto mode and Test mode produce identical predictions)
 
     // ═══════════════════════════════════════════════════════════
     //  DECISION SIMULATION
@@ -451,16 +374,23 @@ class AutoTestRunner {
      *             numbers: number[], confidence: number, reason: string }}
      */
     _simulateDecision(testSpins, idx, blacklistedPairs) {
-        const skipResult = (reason) => ({
-            action: 'SKIP',
-            selectedPair: null,
-            selectedFilter: null,
-            numbers: [],
-            confidence: 0,
-            reason
-        });
+        const skipResult = (reason) => {
+            this.engine._currentDecisionSpins = null; // Clean up on skip
+            return {
+                action: 'SKIP',
+                selectedPair: null,
+                selectedFilter: null,
+                numbers: [],
+                confidence: 0,
+                reason
+            };
+        };
 
         if (idx < 3) return skipResult('Insufficient history');
+
+        // Set current decision spins on engine so inner methods (_scorePair, _selectBestFilter)
+        // use the correct spins instead of _getWindowSpins() (which may differ in test context)
+        this.engine._currentDecisionSpins = testSpins.slice(0, idx + 1);
 
         // ── Step 1: T3 Flash Detection + Pair Selection (existing) ──
         const flashingPairs = this.engine._getFlashingPairsFromHistory(testSpins, idx);
@@ -488,7 +418,7 @@ class AutoTestRunner {
         }
 
         // ── Step 2: T2 Flash Detection + NEXT Row Numbers ──
-        const t2Data = this._simulateT2FlashAndNumbers(testSpins, idx);
+        const t2Data = this.engine.simulateT2FlashAndNumbers(testSpins, idx);
         const t2Numbers = t2Data ? t2Data.numbers : [];
 
         // ── Must have at least one source ──
@@ -513,6 +443,9 @@ class AutoTestRunner {
 
         const effectiveThreshold = this.engine.confidenceThreshold;
         const forcebet = this.engine.session.consecutiveSkips >= this.engine.maxConsecutiveSkips;
+
+        // Clean up decision spins context
+        this.engine._currentDecisionSpins = null;
 
         if (confidence >= effectiveThreshold || forcebet) {
             const pairName = t3BestPair ? t3BestPair.pairName : (t2Data ? t2Data.dataPair : 'unknown');
@@ -635,6 +568,11 @@ class AutoTestRunner {
             ? busts.reduce((sum, s) => sum + s.totalSpins, 0) / busts.length
             : 0;
 
+        // Max spins to win (worst winning session)
+        const maxSpinsToWin = wins.length > 0
+            ? Math.max(...wins.map(s => s.totalSpins))
+            : 0;
+
         // Decided sessions = wins + busts (skip incomplete only)
         const decided = [...wins, ...busts];
 
@@ -666,6 +604,7 @@ class AutoTestRunner {
             incomplete: incomplete.length,
             winRate: decidedSessions > 0 ? wins.length / decidedSessions : 0,
             avgSpinsToWin: Math.round(avgSpinsToWin * 10) / 10,
+            maxSpinsToWin,
             avgSpinsToBust: Math.round(avgSpinsToBust * 10) / 10,
             totalProfit: Math.round(totalProfit * 100) / 100,
             avgProfit: Math.round(avgProfit * 100) / 100,
@@ -686,6 +625,7 @@ class AutoTestRunner {
             incomplete: 0,
             winRate: 0,
             avgSpinsToWin: 0,
+            maxSpinsToWin: 0,
             avgSpinsToBust: 0,
             totalProfit: 0,
             avgProfit: 0,

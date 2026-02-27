@@ -114,6 +114,7 @@ class AIAutoEngine {
         // Session adaptation
         this.session = this._createSessionTracker();
         this.lastDecision = null;  // Stored by orchestrator for feedback loop
+        this._currentDecisionSpins = null;  // Set by decide()/_simulateDecision for inner methods
 
         // Configuration
         this.confidenceThreshold = options.confidenceThreshold ?? 65;
@@ -547,6 +548,72 @@ class AIAutoEngine {
         return scored[0];
     }
 
+    /**
+     * Simulate T2 flash detection on plain number arrays.
+     * Shared by both decide() (Auto mode) and _simulateDecision() (Test mode).
+     *
+     * @param {number[]} spins - Plain number array of spins
+     * @param {number} idx - Current index
+     * @returns {{ dataPair: string, anchorCount: number, targets: number[], numbers: number[], score: number } | null}
+     */
+    simulateT2FlashAndNumbers(spins, idx) {
+        if (idx < 4) return null;
+
+        // Build spin objects for _computeT2FlashTargets (needs {actual} format)
+        const spinObjs = spins.slice(0, idx + 1).map(n => ({ actual: n }));
+        const startIdx = Math.max(0, spinObjs.length - 8);
+        const visibleCount = spinObjs.length - startIdx;
+
+        const t2Targets = this._getComputeT2FlashTargets(spinObjs, startIdx, visibleCount);
+        if (t2Targets.size === 0) return null;
+
+        // Parse to { dataPair → Set<anchorIdx> }
+        const pairAnchors = {};
+        for (const target of t2Targets) {
+            const parts = target.split(':');
+            if (parts.length >= 3) {
+                const dataPair = parts[1];
+                const anchorIdx = parseInt(parts[2], 10);
+                if (!pairAnchors[dataPair]) pairAnchors[dataPair] = new Set();
+                pairAnchors[dataPair].add(anchorIdx);
+            }
+        }
+
+        if (Object.keys(pairAnchors).length === 0) return null;
+
+        // Score each pair, get NEXT row numbers
+        const lastSpin = spins[idx - 1];
+        const scored = [];
+
+        for (const [dataPair, anchors] of Object.entries(pairAnchors)) {
+            const getRefNum = T2_PAIR_REFNUM[dataPair];
+            if (!getRefNum) continue;
+            const refNum = getRefNum(lastSpin);
+            const lookupRow = this._getLookupRow(refNum);
+            if (!lookupRow) continue;
+
+            const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
+            const flashingTargets = [];
+            for (const ai of anchors) {
+                if (targets[ai] !== undefined) flashingTargets.push(targets[ai]);
+            }
+            if (flashingTargets.length === 0) continue;
+
+            const numbers = this._getExpandTargetsToBetNumbers(flashingTargets, 2);
+            scored.push({
+                dataPair,
+                anchorCount: anchors.size,
+                targets: flashingTargets,
+                numbers,
+                score: anchors.size * 0.5 + numbers.length * 0.01
+            });
+        }
+
+        if (scored.length === 0) return null;
+        scored.sort((a, b) => b.score - a.score);
+        return scored[0];
+    }
+
     // ═══════════════════════════════════════════════════════════
     //  SET PREDICTION
     // ═══════════════════════════════════════════════════════════
@@ -698,18 +765,21 @@ class AIAutoEngine {
      *             anchorGroups: Array, confidence: number, reason: string, debug: Object }}
      */
     decide() {
-        const skipResult = (reason) => ({
-            action: 'SKIP',
-            selectedPair: null,
-            selectedFilter: null,
-            numbers: [],
-            anchors: [],
-            loose: [],
-            anchorGroups: [],
-            confidence: 0,
-            reason,
-            debug: {}
-        });
+        const skipResult = (reason) => {
+            this._currentDecisionSpins = null; // Clean up on skip
+            return {
+                action: 'SKIP',
+                selectedPair: null,
+                selectedFilter: null,
+                numbers: [],
+                anchors: [],
+                loose: [],
+                anchorGroups: [],
+                confidence: 0,
+                reason,
+                debug: {}
+            };
+        };
 
         if (!this.isTrained) return skipResult('Engine not trained');
         if (!this.isEnabled) return skipResult('Engine not enabled');
@@ -717,26 +787,29 @@ class AIAutoEngine {
         const currentSpins = this._getWindowSpins();
         if (!currentSpins || currentSpins.length < 4) return skipResult('Not enough spins');
 
-        // ── Step 1: T3 Flash Detection + Pair Selection ──
-        const flashTargets = this._getComputeFlashTargets(currentSpins, 0, currentSpins.length);
-        const flashingRefKeys = new Set();
-        for (const target of flashTargets) {
-            const parts = target.split(':');
-            if (parts.length >= 2) flashingRefKeys.add(parts[1]);
-        }
+        // Convert to plain number array — same format as _simulateDecision uses
+        const plainSpins = currentSpins.map(s => typeof s === 'number' ? s : s.actual);
+        const idx = plainSpins.length - 1;
 
+        if (idx < 3) return skipResult('Insufficient history');
+
+        // Set current decision spins for inner methods (_scorePair, _selectBestFilter)
+        // This ensures they use the correct spins instead of _getWindowSpins()
+        this._currentDecisionSpins = plainSpins;
+
+        // ── Step 1: T3 Flash Detection + Pair Selection ──
+        // Uses same engine internals as _simulateDecision (not renderer/DOM)
+        const flashingPairs = this._getFlashingPairsFromHistory(plainSpins, idx);
         let t3Numbers = [];
         let t3BestPair = null;
 
-        if (flashingRefKeys.size > 0) {
-            const tableData = this._getAIDataV6();
-            const nextProjections = tableData ? (tableData.table3NextProjections || {}) : {};
+        if (flashingPairs.size > 0) {
             const t3Candidates = [];
-            for (const refKey of flashingRefKeys) {
-                const pairName = REFKEY_TO_PAIR_NAME[refKey];
-                const projData = nextProjections[pairName];
-                if (projData && projData.numbers && projData.numbers.length > 0) {
-                    t3Candidates.push({ refKey, pairName, numbers: projData.numbers, data: projData });
+            for (const [refKey, flashInfo] of flashingPairs) {
+                const pairName = REFKEY_TO_PAIR_NAME[refKey] || refKey;
+                const projection = this._computeProjectionForPair(plainSpins, idx, refKey);
+                if (projection && projection.numbers.length > 0) {
+                    t3Candidates.push({ refKey, pairName, numbers: projection.numbers, data: projection });
                 }
             }
             if (t3Candidates.length > 0) {
@@ -748,7 +821,8 @@ class AIAutoEngine {
         }
 
         // ── Step 2: T2 Flash Detection + NEXT Row Numbers ──
-        const t2Data = this._getT2FlashingPairsAndNumbers(currentSpins);
+        // Uses same shared method as _simulateDecision
+        const t2Data = this.simulateT2FlashAndNumbers(plainSpins, idx);
         const t2Numbers = t2Data ? t2Data.numbers : [];
 
         // ── Must have at least one source ──
@@ -760,8 +834,8 @@ class AIAutoEngine {
         const combinedSet = new Set([...t3Numbers, ...t2Numbers]);
         const combinedNumbers = Array.from(combinedSet);
 
-        // ── Step 4: Predict Best Set (replaces _selectBestFilter) ──
-        const recentSpins = currentSpins.slice(-10).map(s => s.actual);
+        // ── Step 4: Predict Best Set ──
+        const recentSpins = plainSpins.slice(Math.max(0, idx - 10), idx);
         const setPrediction = this._predictBestSet(combinedNumbers, recentSpins);
 
         // ── Step 5: Apply both_both_setN Filter ──
@@ -791,6 +865,9 @@ class AIAutoEngine {
             reason = `Low confidence ${confidence}% < ${effectiveThreshold}% threshold (skip ${this.session.consecutiveSkips + 1}/${this.maxConsecutiveSkips})`;
         }
 
+        // Clean up decision spins context
+        this._currentDecisionSpins = null;
+
         return {
             action,
             selectedPair: t3BestPair ? t3BestPair.pairName : (t2Data ? t2Data.dataPair : null),
@@ -798,7 +875,7 @@ class AIAutoEngine {
             numbers: filteredNumbers,
             anchors, loose, anchorGroups, confidence, reason,
             debug: {
-                t3FlashingRefKeys: Array.from(flashingRefKeys),
+                t3FlashingRefKeys: Array.from(flashingPairs.keys()),
                 t2FlashPair: t2Data ? t2Data.dataPair : null,
                 t2AnchorCount: t2Data ? t2Data.anchorCount : 0,
                 t3NumberCount: t3Numbers.length,
@@ -883,9 +960,12 @@ class AIAutoEngine {
 
         // v2: Sequence model alignment — does this pair's projection match predicted pattern?
         if (this.learningVersion === 'v2' && this.sequenceModel && this.sequenceModel.isTrained) {
-            const recentSpins = this._getWindowSpins();
-            if (recentSpins && recentSpins.length >= 1) {
-                const prediction = this.sequenceModel.predict(recentSpins);
+            // Use _currentDecisionSpins (set by decide/_simulateDecision) — avoids hidden _getWindowSpins dependency.
+            // Convert to plain numbers since sequence model's classify() expects numbers, not objects.
+            const rawSpins = this._currentDecisionSpins || this._getWindowSpins() || [];
+            const plainForSeq = rawSpins.map(s => typeof s === 'number' ? s : s.actual);
+            if (plainForSeq.length >= 1) {
+                const prediction = this.sequenceModel.predict(plainForSeq);
                 const projNumbers = pairData && pairData.numbers ? pairData.numbers : [];
                 if (projNumbers.length > 0 && prediction) {
                     const alignment = this._computeSequenceAlignment(projNumbers, prediction);
@@ -958,9 +1038,12 @@ class AIAutoEngine {
         // Cache sequence model scores (computed once, used per filter)
         let sequenceFilterScores = null;
         if (this.sequenceModel && this.sequenceModel.isTrained) {
-            const recentSpins = this._getWindowSpins();
-            if (recentSpins && recentSpins.length >= 1) {
-                const seqResult = this.sequenceModel.scoreFilterCombos(recentSpins);
+            // Use _currentDecisionSpins (set by decide/_simulateDecision) — avoids hidden _getWindowSpins dependency.
+            // Convert to plain numbers since sequence model's classify() expects numbers, not objects.
+            const rawSpins = this._currentDecisionSpins || this._getWindowSpins() || [];
+            const plainForSeq = rawSpins.map(s => typeof s === 'number' ? s : s.actual);
+            if (plainForSeq.length >= 1) {
+                const seqResult = this.sequenceModel.scoreFilterCombos(plainForSeq);
                 sequenceFilterScores = seqResult.scores;
                 sequenceFilterScores._confident = seqResult.confident;
             }
@@ -1401,6 +1484,7 @@ class AIAutoEngine {
     resetSession() {
         this.session = this._createSessionTracker();
         this.lastDecision = null;
+        this._currentDecisionSpins = null;
         this.liveSpins = [];
         this._lastRetrainBetCount = 0;
     }
@@ -1414,6 +1498,7 @@ class AIAutoEngine {
         this._totalBayesianDecisions = 0;
         this.posCodePerformance = {};
         this.session = this._createSessionTracker();
+        this._currentDecisionSpins = null;
         this.liveSpins = [];
         this._originalTrainingData = null;
         this._lastRetrainBetCount = 0;

@@ -682,7 +682,8 @@ describe('AIAutoEngine', () => {
             engine._getWindowSpins = () => [
                 { actual: 0 }, { actual: 32 }, { actual: 15 }, { actual: 19 }
             ];
-            engine._getComputeFlashTargets = () => new Set();
+            engine._getFlashingPairsFromHistory = () => new Map();
+            engine.simulateT2FlashAndNumbers = () => null;
 
             const result = engine.decide();
             expect(result.action).toBe('SKIP');
@@ -697,8 +698,12 @@ describe('AIAutoEngine', () => {
             engine._getWindowSpins = () => [
                 { actual: 0 }, { actual: 32 }, { actual: 15 }, { actual: 19 }
             ];
-            engine._getComputeFlashTargets = () => new Set(['0:prev:pair', '0:prev_plus_1:pair']);
-            engine._getAIDataV6 = () => null;
+            engine._getFlashingPairsFromHistory = () => new Map([
+                ['prev', { currDist: 1, prevDist: 1 }],
+                ['prev_plus_1', { currDist: 1, prevDist: 1 }]
+            ]);
+            engine._computeProjectionForPair = () => null;
+            engine.simulateT2FlashAndNumbers = () => null;
 
             const result = engine.decide();
             expect(result.action).toBe('SKIP');
@@ -713,12 +718,9 @@ describe('AIAutoEngine', () => {
             engine._getWindowSpins = () => [
                 { actual: 0 }, { actual: 32 }, { actual: 15 }, { actual: 19 }
             ];
-            engine._getComputeFlashTargets = () => new Set(['0:prev:pair']);
-            engine._getAIDataV6 = () => ({
-                table3NextProjections: {
-                    prev: { anchors: [], neighbors: [], numbers: [] } // Empty projection
-                }
-            });
+            engine._getFlashingPairsFromHistory = () => new Map([['prev', { currDist: 1, prevDist: 1 }]]);
+            engine._computeProjectionForPair = () => ({ anchors: [], neighbors: [], numbers: [] });
+            engine.simulateT2FlashAndNumbers = () => null;
 
             const result = engine.decide();
             expect(result.action).toBe('SKIP');
@@ -734,13 +736,18 @@ describe('AIAutoEngine', () => {
             engine._getWindowSpins = () => [
                 { actual: 0 }, { actual: 32 }, { actual: 15 }, { actual: 19 }
             ];
-            engine._getComputeFlashTargets = () => new Set(['0:prev:pair', '0:prev_plus_1:pair13Opp']);
-            engine._getAIDataV6 = () => ({
-                table3NextProjections: {
+            engine._getFlashingPairsFromHistory = () => new Map([
+                ['prev', { currDist: 1, prevDist: 1 }],
+                ['prev_plus_1', { currDist: 1, prevDist: 1 }]
+            ]);
+            engine._computeProjectionForPair = (spins, idx, refKey) => {
+                const projections = {
                     prev: { anchors: [21, 25, 34], neighbors: [4, 2, 6], numbers: [4, 21, 2, 25, 17, 34, 6, 27] },
-                    prevPlus1: { anchors: [19, 4], neighbors: [15], numbers: [15, 19, 4, 21] }
-                }
-            });
+                    prev_plus_1: { anchors: [19, 4], neighbors: [15], numbers: [15, 19, 4, 21] }
+                };
+                return projections[refKey] || null;
+            };
+            engine.simulateT2FlashAndNumbers = () => null;
 
             const result = engine.decide();
             expect(result.action).toBe('BET');
@@ -765,12 +772,11 @@ describe('AIAutoEngine', () => {
             engine._getWindowSpins = () => [
                 { actual: 0 }, { actual: 32 }, { actual: 15 }, { actual: 19 }
             ];
-            engine._getComputeFlashTargets = () => new Set(['0:prev:pair']);
-            engine._getAIDataV6 = () => ({
-                table3NextProjections: {
-                    prev: { anchors: [0, 5, 10], neighbors: [3, 8, 15], numbers: Array.from({length: 20}, (_, i) => i) } // Many numbers → penalty
-                }
+            engine._getFlashingPairsFromHistory = () => new Map([['prev', { currDist: 1, prevDist: 1 }]]);
+            engine._computeProjectionForPair = () => ({
+                anchors: [0, 5, 10], neighbors: [3, 8, 15], numbers: Array.from({length: 20}, (_, i) => i)
             });
+            engine.simulateT2FlashAndNumbers = () => null;
 
             const result = engine.decide();
             expect(result.action).toBe('SKIP');
@@ -793,12 +799,11 @@ describe('AIAutoEngine', () => {
             engine._getWindowSpins = () => [
                 { actual: 0 }, { actual: 32 }, { actual: 15 }, { actual: 19 }
             ];
-            engine._getComputeFlashTargets = () => new Set(['0:prev:pair']);
-            engine._getAIDataV6 = () => ({
-                table3NextProjections: {
-                    prev: { anchors: [0, 5, 10], neighbors: [3, 8, 15], numbers: Array.from({length: 20}, (_, i) => i) }
-                }
+            engine._getFlashingPairsFromHistory = () => new Map([['prev', { currDist: 1, prevDist: 1 }]]);
+            engine._computeProjectionForPair = () => ({
+                anchors: [0, 5, 10], neighbors: [3, 8, 15], numbers: Array.from({length: 20}, (_, i) => i)
             });
+            engine.simulateT2FlashAndNumbers = () => null;
 
             const result = engine.decide();
             expect(result.action).toBe('BET');
@@ -1953,60 +1958,76 @@ describe('AIAutoEngine', () => {
             engine.isEnabled = true;
             engine.confidenceThreshold = 0; // Allow any BET
             engine._getWindowSpins = () => mockSpins;
-            engine._getAIDataV6 = () => ({ table3NextProjections: fullProjections });
+            // Mock projection computation: refKey → projection data
+            engine._computeProjectionForPair = (spins, idx, refKey) => {
+                const refKeyToProjection = {
+                    prev: fullProjections.prev,
+                    prev_plus_1: fullProjections.prevPlus1,
+                    prev_minus_1: fullProjections.prevMinus1,
+                    prev_plus_2: fullProjections.prevPlus2,
+                    prev_minus_2: fullProjections.prevMinus2,
+                    prev_prev: fullProjections.prevPrev
+                };
+                return refKeyToProjection[refKey] || null;
+            };
+            // Disable T2 so we test T3 flash logic only
+            engine.simulateT2FlashAndNumbers = () => null;
         });
 
         test('V1: BET only when flash targets exist (not empty set)', () => {
-            engine._getComputeFlashTargets = () => new Set();
+            engine._getFlashingPairsFromHistory = () => new Map();
             const result = engine.decide();
             expect(result.action).toBe('SKIP');
             expect(result.reason).toContain('No T2 or T3 flash data available');
         });
 
         test('V2: when only prev flashes, selectedPair must be prev', () => {
-            engine._getComputeFlashTargets = () => new Set(['4:prev:pair']);
+            engine._getFlashingPairsFromHistory = () => new Map([['prev', { currDist: 1, prevDist: 1 }]]);
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(result.selectedPair).toBe('prev');
         });
 
         test('V3: when only prevPlus1 flashes, selectedPair must be prevPlus1', () => {
-            engine._getComputeFlashTargets = () => new Set(['4:prev_plus_1:pair13Opp']);
+            engine._getFlashingPairsFromHistory = () => new Map([['prev_plus_1', { currDist: 1, prevDist: 1 }]]);
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(result.selectedPair).toBe('prevPlus1');
         });
 
         test('V4: when only prevMinus1 flashes, selectedPair must be prevMinus1', () => {
-            engine._getComputeFlashTargets = () => new Set(['4:prev_minus_1:pair']);
+            engine._getFlashingPairsFromHistory = () => new Map([['prev_minus_1', { currDist: 1, prevDist: 1 }]]);
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(result.selectedPair).toBe('prevMinus1');
         });
 
         test('V5: when only prevPlus2 flashes, selectedPair must be prevPlus2', () => {
-            engine._getComputeFlashTargets = () => new Set(['4:prev_plus_2:pair']);
+            engine._getFlashingPairsFromHistory = () => new Map([['prev_plus_2', { currDist: 1, prevDist: 1 }]]);
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(result.selectedPair).toBe('prevPlus2');
         });
 
         test('V6: when only prevMinus2 flashes, selectedPair must be prevMinus2', () => {
-            engine._getComputeFlashTargets = () => new Set(['4:prev_minus_2:pair13Opp']);
+            engine._getFlashingPairsFromHistory = () => new Map([['prev_minus_2', { currDist: 1, prevDist: 1 }]]);
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(result.selectedPair).toBe('prevMinus2');
         });
 
         test('V7: when only prevPrev flashes, selectedPair must be prevPrev', () => {
-            engine._getComputeFlashTargets = () => new Set(['4:prev_prev:pair']);
+            engine._getFlashingPairsFromHistory = () => new Map([['prev_prev', { currDist: 1, prevDist: 1 }]]);
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(result.selectedPair).toBe('prevPrev');
         });
 
         test('V8: when prev and prevPlus1 flash, selected must be one of them', () => {
-            engine._getComputeFlashTargets = () => new Set(['4:prev:pair', '4:prev_plus_1:pair']);
+            engine._getFlashingPairsFromHistory = () => new Map([
+                ['prev', { currDist: 1, prevDist: 1 }],
+                ['prev_plus_1', { currDist: 1, prevDist: 1 }]
+            ]);
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(['prev', 'prevPlus1']).toContain(result.selectedPair);
@@ -2014,7 +2035,10 @@ describe('AIAutoEngine', () => {
 
         test('V9: NON-flashing pair is NEVER selected (prev_plus_2 not in flash set)', () => {
             // Only prev and prevMinus1 flash — prevPlus2 does NOT flash
-            engine._getComputeFlashTargets = () => new Set(['4:prev:pair', '4:prev_minus_1:pair13Opp']);
+            engine._getFlashingPairsFromHistory = () => new Map([
+                ['prev', { currDist: 1, prevDist: 1 }],
+                ['prev_minus_1', { currDist: 1, prevDist: 1 }]
+            ]);
             const result = engine.decide();
             if (result.action === 'BET') {
                 expect(['prev', 'prevMinus1']).toContain(result.selectedPair);
@@ -2028,27 +2052,26 @@ describe('AIAutoEngine', () => {
 
         test('V10: NON-flashing pair excluded even if it has highest projection count', () => {
             // Only prevPrev flashes, but prevPlus1 has more numbers (should NOT be picked)
-            engine._getComputeFlashTargets = () => new Set(['4:prev_prev:pair']);
-            engine._getAIDataV6 = () => ({
-                table3NextProjections: {
-                    prevPrev: { anchors: [12, 35], neighbors: [28], numbers: [28, 12, 35] }, // small set
-                    prevPlus1: { anchors: [1, 5, 10], neighbors: [3, 8], numbers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14] } // large set - tempting
-                }
-            });
+            engine._getFlashingPairsFromHistory = () => new Map([['prev_prev', { currDist: 1, prevDist: 1 }]]);
+            engine._computeProjectionForPair = (spins, idx, refKey) => {
+                const projections = {
+                    prev_prev: { anchors: [12, 35], neighbors: [28], numbers: [28, 12, 35] }, // small set
+                    prev_plus_1: { anchors: [1, 5, 10], neighbors: [3, 8], numbers: [1,2,3,4,5,6,7,8,9,10,11,12,13,14] } // large set - tempting
+                };
+                return projections[refKey] || null;
+            };
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(result.selectedPair).toBe('prevPrev');
         });
 
-        test('V11: flash target parsing extracts refKey correctly from format "relIdx:refKey:cellType"', () => {
-            // Various flash target formats
-            const targets = new Set([
-                '5:prev:pair',
-                '5:prev:pair13Opp',
-                '4:prev_plus_1:pair',
-                '4:prev_minus_2:pair13Opp'
+        test('V11: flash detection returns Map with valid refKeys (unified engine internals)', () => {
+            // Multiple pairs flash — result should be from the flashing set
+            engine._getFlashingPairsFromHistory = () => new Map([
+                ['prev', { currDist: 1, prevDist: 1 }],
+                ['prev_plus_1', { currDist: 1, prevDist: 1 }],
+                ['prev_minus_2', { currDist: 1, prevDist: 1 }]
             ]);
-            engine._getComputeFlashTargets = () => targets;
 
             const result = engine.decide();
             if (result.action === 'BET') {
@@ -2057,32 +2080,26 @@ describe('AIAutoEngine', () => {
             }
         });
 
-        test('V12: duplicate refKey in flash targets (pair + pair13Opp) still yields one candidate', () => {
-            // prev appears twice (once for pair, once for pair13Opp) — should only create one candidate
-            engine._getComputeFlashTargets = () => new Set([
-                '4:prev:pair',
-                '5:prev:pair13Opp'
-            ]);
+        test('V12: single refKey in flash Map yields exactly one candidate', () => {
+            // prev appears once in the Map — should create one candidate
+            engine._getFlashingPairsFromHistory = () => new Map([['prev', { currDist: 1, prevDist: 1 }]]);
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(result.selectedPair).toBe('prev');
         });
 
-        test('V13: malformed flash target strings are ignored (no crash)', () => {
-            engine._getComputeFlashTargets = () => new Set([
-                'bad-format',
-                '',
-                '4:prev:pair' // one valid entry
-            ]);
+        test('V13: flash Map with only valid refKeys (no malformed entries)', () => {
+            // _getFlashingPairsFromHistory only ever returns valid PAIR_REFKEYS
+            engine._getFlashingPairsFromHistory = () => new Map([['prev', { currDist: 1, prevDist: 1 }]]);
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(result.selectedPair).toBe('prev');
         });
 
-        test('V14: flash target with unknown refKey is safely ignored', () => {
-            engine._getComputeFlashTargets = () => new Set([
-                '4:unknown_pair:pair',  // not a real refKey
-                '4:prev:pair'           // valid
+        test('V14: unknown refKey in flash Map is safely ignored (no projection)', () => {
+            engine._getFlashingPairsFromHistory = () => new Map([
+                ['unknown_pair', { currDist: 1, prevDist: 1 }],
+                ['prev', { currDist: 1, prevDist: 1 }]
             ]);
             const result = engine.decide();
             expect(result.action).toBe('BET');
@@ -2090,18 +2107,23 @@ describe('AIAutoEngine', () => {
         });
 
         test('V15: all 6 pairs flash but only 3 have projections — selected from those 3', () => {
-            engine._getComputeFlashTargets = () => new Set([
-                '4:prev:pair', '4:prev_plus_1:pair', '4:prev_minus_1:pair',
-                '4:prev_plus_2:pair', '4:prev_minus_2:pair', '4:prev_prev:pair'
+            engine._getFlashingPairsFromHistory = () => new Map([
+                ['prev', { currDist: 1, prevDist: 1 }],
+                ['prev_plus_1', { currDist: 1, prevDist: 1 }],
+                ['prev_minus_1', { currDist: 1, prevDist: 1 }],
+                ['prev_plus_2', { currDist: 1, prevDist: 1 }],
+                ['prev_minus_2', { currDist: 1, prevDist: 1 }],
+                ['prev_prev', { currDist: 1, prevDist: 1 }]
             ]);
-            engine._getAIDataV6 = () => ({
-                table3NextProjections: {
+            engine._computeProjectionForPair = (spins, idx, refKey) => {
+                const projections = {
                     prev: { anchors: [32], neighbors: [15], numbers: [0, 32, 15] },
-                    prevMinus1: { anchors: [30, 23], neighbors: [11, 8], numbers: [11, 30, 8, 23] },
-                    prevPrev: { anchors: [12, 3], neighbors: [35, 26], numbers: [28, 12, 35, 3, 26] }
-                    // prevPlus1, prevPlus2, prevMinus2 have NO projections
-                }
-            });
+                    prev_minus_1: { anchors: [30, 23], neighbors: [11, 8], numbers: [11, 30, 8, 23] },
+                    prev_prev: { anchors: [12, 3], neighbors: [35, 26], numbers: [28, 12, 35, 3, 26] }
+                    // prev_plus_1, prev_plus_2, prev_minus_2 have NO projections
+                };
+                return projections[refKey] || null;
+            };
             const result = engine.decide();
             expect(result.action).toBe('BET');
             expect(['prev', 'prevMinus1', 'prevPrev']).toContain(result.selectedPair);

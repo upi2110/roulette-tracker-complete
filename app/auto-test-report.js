@@ -109,7 +109,7 @@ class AutoTestReport {
         sheet.getCell('A3').font = { size: 10, color: { argb: 'FF666666' } };
 
         // Headers (row 5)
-        const headers = ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Total Profit', 'Avg Profit', 'Avg Spins', 'Max Drawdown'];
+        const headers = ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Total Profit', 'Avg Profit', 'Avg Spins', 'Max Spins', 'Max Drawdown'];
         const headerRow = sheet.getRow(5);
         headers.forEach((h, i) => {
             const cell = headerRow.getCell(i + 1);
@@ -139,6 +139,7 @@ class AutoTestReport {
                 `$${(summary.totalProfit || 0).toLocaleString()}`,
                 `$${summary.avgProfit.toFixed(2)}`,
                 summary.avgSpinsToWin,
+                summary.maxSpinsToWin || '--',
                 `$${summary.maxDrawdown.toFixed(2)}`
             ];
             values.forEach((v, i) => {

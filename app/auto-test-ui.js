@@ -379,6 +379,7 @@ class AutoTestUI {
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Win%</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Avg P&L</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Avg Spins</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;">Max Spins</th>
                     </tr>
                 </thead>
                 <tbody>`;
@@ -396,6 +397,7 @@ class AutoTestUI {
                     <td style="padding:6px;text-align:center;border:1px solid #334155;font-weight:700;">${(s.winRate * 100).toFixed(1)}%</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;color:${s.avgProfit >= 0 ? '#22c55e' : '#ef4444'};">$${s.avgProfit.toFixed(0)}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;">${s.avgSpinsToWin || '--'}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:${(s.maxSpinsToWin || 0) > 50 ? '#f59e0b' : '#94a3b8'};">${s.maxSpinsToWin || '--'}</td>
                 </tr>`;
         }
 
