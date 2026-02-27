@@ -729,7 +729,7 @@ describe('G: Summary statistics correctness', () => {
         expect(summary.totalSessions).toBe(3);
     });
 
-    test('G3: winRate = wins / totalSessions', () => {
+    test('G3: winRate = wins / (wins + busts), skip incomplete', () => {
         const sessions = [
             { outcome: 'WIN', finalProfit: 100, totalSpins: 50, maxDrawdown: 10, startIdx: 0 },
             { outcome: 'WIN', finalProfit: 100, totalSpins: 50, maxDrawdown: 10, startIdx: 1 },
@@ -738,12 +738,12 @@ describe('G: Summary statistics correctness', () => {
         ];
 
         const summary = runner._computeSummary(sessions);
-        // winRate = 2 / 4 total sessions = 0.5
-        expect(summary.winRate).toBeCloseTo(2 / 4, 5);
+        // winRate = 2 / (2+1) = 0.667, incomplete skipped
+        expect(summary.winRate).toBeCloseTo(2 / 3, 5);
         expect(summary.incomplete).toBe(1);
     });
 
-    test('G4: avgProfit from WIN sessions only', () => {
+    test('G4: avgProfit from decided sessions (skip incomplete)', () => {
         const sessions = [
             { outcome: 'WIN', finalProfit: 100, totalSpins: 50, maxDrawdown: 10, startIdx: 0 },
             { outcome: 'WIN', finalProfit: 200, totalSpins: 30, maxDrawdown: 5, startIdx: 1 },
@@ -751,8 +751,8 @@ describe('G: Summary statistics correctness', () => {
         ];
 
         const summary = runner._computeSummary(sessions);
-        // avgProfit = (100 + 200) / 2 wins = 150
-        expect(summary.avgProfit).toBe(150);
+        // avgProfit = (100 + 200 + -4000) / 3 decided = -1233.33
+        expect(summary.avgProfit).toBeCloseTo(-1233.33, 1);
     });
 
     test('G5: maxDrawdown is maximum across all sessions', () => {
@@ -868,7 +868,7 @@ describe('H: Report structure from runAll', () => {
         }
     });
 
-    test('H7: summary winRate matches sessions (wins / total)', async () => {
+    test('H7: summary winRate matches sessions (wins / decided, skip incomplete)', async () => {
         const testSpins = generateTestSpins(30);
         const result = await runner.runAll(testSpins, { testFile: 'test' });
 
@@ -876,10 +876,13 @@ describe('H: Report structure from runAll', () => {
             const sessions = result.strategies[strat].sessions;
             const summary = result.strategies[strat].summary;
             const wins = sessions.filter(s => s.outcome === 'WIN').length;
+            const busts = sessions.filter(s => s.outcome === 'BUST').length;
+            const decided = wins + busts;
 
             expect(summary.wins).toBe(wins);
-            if (sessions.length > 0) {
-                expect(summary.winRate).toBeCloseTo(wins / sessions.length, 5);
+            expect(summary.busts).toBe(busts);
+            if (decided > 0) {
+                expect(summary.winRate).toBeCloseTo(wins / decided, 5);
             }
         }
     });
