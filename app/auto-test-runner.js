@@ -221,7 +221,8 @@ class AutoTestRunner {
                 const nextActual = testSpins[i + 1];
                 const hit = decision.numbers.includes(nextActual);
                 const numbersCount = decision.numbers.length;
-                const pnl = this._calculatePnL(sessionState.betPerNumber, numbersCount, hit);
+                const betUsed = sessionState.betPerNumber; // save BEFORE strategy adjusts it
+                const pnl = this._calculatePnL(betUsed, numbersCount, hit);
 
                 // Update bankroll
                 sessionState.bankroll += pnl;
@@ -268,7 +269,7 @@ class AutoTestRunner {
                     selectedFilter: decision.selectedFilter,
                     predictedNumbers: decision.numbers,
                     confidence: decision.confidence,
-                    betPerNumber: sessionState.betPerNumber,
+                    betPerNumber: betUsed, // actual bet used for THIS row's P&L
                     numbersCount,
                     hit,
                     pnl,
