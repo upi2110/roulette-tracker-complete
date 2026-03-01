@@ -100,7 +100,28 @@ echo "  Close the app window or press Ctrl+C to stop everything"
 echo ""
 
 cd "$PROJECT_DIR"
-npm start
+
+# ── Check Electron availability ──
+ELECTRON_CMD=""
+if command -v electron &>/dev/null; then
+    ELECTRON_CMD="electron"
+    echo "  Using: electron (global)"
+elif npx electron --version &>/dev/null 2>&1; then
+    ELECTRON_CMD="npx electron"
+    echo "  Using: npx electron (local)"
+elif [ -f "$PROJECT_DIR/node_modules/.bin/electron" ]; then
+    ELECTRON_CMD="$PROJECT_DIR/node_modules/.bin/electron"
+    echo "  Using: node_modules/.bin/electron (local)"
+else
+    echo "  ERROR: electron not found!"
+    echo "  Fix:   npm install electron --save-dev"
+    echo "         (or)  npm install -g electron"
+    kill "$BACKEND_PID" 2>/dev/null
+    exit 1
+fi
+echo ""
+
+$ELECTRON_CMD app/main.js
 
 # ═══════════════════════════════════════════════════════════════
 #  CLEANUP — frontend closed, stop backend too
