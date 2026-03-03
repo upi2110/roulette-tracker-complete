@@ -1046,7 +1046,8 @@ describe('L. Orchestrator — SKIP Clears UI State', () => {
 
     beforeEach(() => {
         global.window = global.window || {};
-        global.window.spins = [];
+        // Need 4+ spins to pass WATCH phase guard (first 3 spins are observe-only)
+        global.window.spins = [{ actual: 5 }, { actual: 12 }, { actual: 22 }, { actual: 7 }];
         AutoUpdateOrchestrator = loadOrchestratorClass();
         orchestrator = new AutoUpdateOrchestrator();
     });
@@ -1804,7 +1805,7 @@ describe('R. Advanced Engine Integration', () => {
     test('R7: Engine constructor defaults match expected values', () => {
         const engine = new AIAutoEngine();
         expect(engine.confidenceThreshold).toBe(65);
-        expect(engine.maxConsecutiveSkips).toBe(5);
+        expect(engine.maxConsecutiveSkips).toBe(Infinity);
         expect(engine.sessionAdaptationStart).toBe(10);
         expect(engine.historicalWeight).toBe(0.7);
     });
@@ -2011,13 +2012,13 @@ describe('U. Money Management Integration', () => {
         ]);
     });
 
-    test('U4: Win calculation: 35:1 payout minus total bet', () => {
+    test('U4: Win calculation: 35:1 payout + original bet returned minus total bet', () => {
         const betPerNumber = 2;
         const numbersCount = 12;
         const totalBet = betPerNumber * numbersCount; // $24
-        const winAmount = betPerNumber * 35; // $70
-        const netChange = winAmount - totalBet; // $46
-        expect(netChange).toBe(46);
+        const winAmount = betPerNumber * 36; // $72 (35:1 + original bet returned)
+        const netChange = winAmount - totalBet; // $48
+        expect(netChange).toBe(48);
     });
 
     test('U5: Loss calculation: negative total bet', () => {

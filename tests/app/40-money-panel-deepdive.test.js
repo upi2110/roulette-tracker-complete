@@ -464,12 +464,12 @@ describe('I: recordBetResult', () => {
         expect(mp.sessionData.totalLosses).toBe(1);
     });
 
-    test('I3: Win: payout = bet * 35 - totalBet', async () => {
+    test('I3: Win: payout = bet * 36 - totalBet (35:1 payout + original bet returned)', async () => {
         const betPer = 2;
         const numCount = 12;
         const initialBankroll = mp.sessionData.currentBankroll;
         await mp.recordBetResult(betPer, numCount, true, 5);
-        const expectedNet = betPer * 35 - betPer * numCount; // 70 - 24 = 46
+        const expectedNet = betPer * 36 - betPer * numCount; // 72 - 24 = 48
         expect(mp.sessionData.currentBankroll).toBe(initialBankroll + expectedNet);
     });
 

@@ -57,6 +57,18 @@ contextBridge.exposeInMainWorld('aiAPI', {
     },
 
     /**
+     * Append content to a session log file in app/logs/ folder
+     */
+    async appendSessionLog(filename, content) {
+        try {
+            return await ipcRenderer.invoke('append-session-log', { filename, content });
+        } catch (e) {
+            console.warn('Session log append failed:', e.message);
+            return { success: false, error: e.message };
+        }
+    },
+
+    /**
      * Test connection to AI server
      */
     async testConnection() {

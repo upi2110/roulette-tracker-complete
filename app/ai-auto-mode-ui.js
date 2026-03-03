@@ -73,6 +73,18 @@ class AIAutoModeUI {
                 <div id="currentDecision" style="font-size:11px;color:#e2e8f0;font-weight:600;margin-bottom:2px;">--</div>
                 <div id="skipCounter" style="font-size:10px;color:#94a3b8;">Skips: 0/5</div>
             </div>
+            <div id="sessionControls" style="margin-top:6px;padding-top:6px;border-top:1px solid #475569;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <button id="downloadSessionBtn" disabled style="
+                    padding:4px 10px;font-size:10px;font-weight:700;
+                    border:1px solid #64748b;border-radius:4px;cursor:pointer;
+                    background:#334155;color:#94a3b8;
+                ">Download Session</button>
+                <label style="font-size:10px;color:#94a3b8;cursor:pointer;user-select:none;display:flex;align-items:center;gap:3px;">
+                    <input type="checkbox" id="verboseToggle" style="margin:0;">
+                    Verbose Logs
+                </label>
+                <span id="sessionRecordingStatus" style="font-size:10px;color:#888;margin-left:auto;">Not recording</span>
+            </div>
         `;
 
         // Insert at the top of panel content
@@ -118,6 +130,25 @@ class AIAutoModeUI {
                 }
             });
         }
+
+        // ── Session controls ──
+        const downloadBtn = document.getElementById('downloadSessionBtn');
+        if (downloadBtn) {
+            downloadBtn.addEventListener('click', () => this._downloadSession());
+        }
+
+        const verboseToggle = document.getElementById('verboseToggle');
+        if (verboseToggle) {
+            verboseToggle.addEventListener('change', (e) => {
+                if (window.verboseLogger) {
+                    window.verboseLogger.enabled = e.target.checked;
+                    if (e.target.checked && !window.verboseLogger._sessionActive) {
+                        window.verboseLogger.startSession();
+                    }
+                    console.log(`[UI] Verbose logging ${e.target.checked ? 'ENABLED' : 'DISABLED'}`);
+                }
+            });
+        }
     }
 
     /**
@@ -148,6 +179,9 @@ class AIAutoModeUI {
                 window.autoUpdateOrchestrator.setAutoMode(true);
             }
 
+            // Auto-start session recording
+            this._autoStartRecording('auto');
+
         } else if (mode === 'semi') {
             // Switching to SEMI-AUTO — user picks pair, system picks filter
             this.currentMode = 'semi';
@@ -159,6 +193,9 @@ class AIAutoModeUI {
             if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
                 window.autoUpdateOrchestrator.setAutoMode(false);
             }
+
+            // Auto-start session recording
+            this._autoStartRecording('semi');
 
         } else {
             // Switching to MANUAL
@@ -396,6 +433,43 @@ class AIAutoModeUI {
         const bar = document.getElementById('trainingStatusBar');
         if (bar) {
             bar.style.display = visible ? 'block' : 'none';
+        }
+    }
+
+    /**
+     * Auto-start session recording when switching to auto/semi mode.
+     */
+    _autoStartRecording(mode) {
+        if (window.sessionRecorder && !window.sessionRecorder.isActive) {
+            const bankroll = window.moneyPanel ? window.moneyPanel.sessionData.currentBankroll : 4000;
+            const target = window.moneyPanel ? window.moneyPanel.sessionData.sessionTarget : 100;
+            const strategy = window.moneyPanel ? window.moneyPanel.sessionData.bettingStrategy : 1;
+            window.sessionRecorder.startSession(bankroll, target, strategy, mode);
+
+            // Also start verbose logger session if enabled
+            if (window.verboseLogger && window.verboseLogger.enabled && !window.verboseLogger._sessionActive) {
+                window.verboseLogger.startSession();
+            }
+        }
+    }
+
+    /**
+     * Download recorded session as Excel file (same format as test report).
+     */
+    _downloadSession() {
+        if (!window.sessionRecorder || window.sessionRecorder.stepCount === 0) {
+            console.warn('No session data to download');
+            return;
+        }
+
+        const result = window.sessionRecorder.getSessionResult();
+
+        // Use LiveSessionExport if available
+        if (typeof LiveSessionExport !== 'undefined') {
+            const exporter = new LiveSessionExport();
+            exporter.generateAndDownload(result);
+        } else {
+            console.error('LiveSessionExport not loaded');
         }
     }
 

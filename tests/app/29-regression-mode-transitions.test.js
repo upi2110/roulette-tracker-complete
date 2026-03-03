@@ -739,13 +739,13 @@ describe('I. Engine Scoring — Pair and Filter Models', () => {
         expect(engine._computeConfidence(0.0, 0.0, Array(20).fill(1))).toBeLessThanOrEqual(100);
     });
 
-    test('I5: _computeConfidence increases with skip count', () => {
+    test('I5: _computeConfidence unchanged by skip count (skip pressure removed)', () => {
         const engine = new AIAutoEngine();
         engine.session.consecutiveSkips = 0;
         const conf0 = engine._computeConfidence(0.5, 0.1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
         engine.session.consecutiveSkips = 3;
         const conf3 = engine._computeConfidence(0.5, 0.1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-        expect(conf3).toBeGreaterThan(conf0);
+        expect(conf3).toBe(conf0); // Skip pressure removed — no difference
     });
 
     test('I6: _testAllFilters returns boolean for each filter combo', () => {

@@ -96,7 +96,7 @@ class AutoTestReport {
         const sheet = workbook.addWorksheet('Overview');
 
         // Title
-        sheet.mergeCells('A1:J1');
+        sheet.mergeCells('A1:O1');
         const titleCell = sheet.getCell('A1');
         titleCell.value = 'Auto Test Report';
         titleCell.font = { size: 16, bold: true, color: { argb: 'FF333333' } };
@@ -109,7 +109,7 @@ class AutoTestReport {
         sheet.getCell('A3').font = { size: 10, color: { argb: 'FF666666' } };
 
         // Headers (row 5)
-        const headers = ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Total Profit', 'Avg Profit', 'Avg Spins', 'Max Spins', 'Max Drawdown'];
+        const headers = ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Win Profit', 'Incomplete Loss', 'Overall P&L', 'Avg Win Profit', 'Avg Inc Loss', 'Overall Avg P&L', 'Avg Spins', 'Max Spins', 'Max Drawdown'];
         const headerRow = sheet.getRow(5);
         headers.forEach((h, i) => {
             const cell = headerRow.getCell(i + 1);
@@ -137,7 +137,11 @@ class AutoTestReport {
                 summary.incomplete,
                 `${(summary.winRate * 100).toFixed(1)}%`,
                 `$${(summary.totalProfit || 0).toLocaleString()}`,
+                `$${(summary.incompleteLoss || 0).toLocaleString()}`,
+                `$${(summary.realTotalPnL || 0).toLocaleString()}`,
                 `$${summary.avgProfit.toFixed(2)}`,
+                `$${(summary.avgIncompleteLoss || 0).toFixed(2)}`,
+                `$${(summary.realAvgPnL || 0).toFixed(2)}`,
                 summary.avgSpinsToWin,
                 summary.maxSpinsToWin || '--',
                 `$${summary.maxDrawdown.toFixed(2)}`
@@ -164,12 +168,30 @@ class AutoTestReport {
             } else {
                 nameCell.font = { bold: true, color: { argb: 'FF6F42C1' } };
             }
+
+            // Color Incomplete Loss (col 8) — always red (it's a loss)
+            const incLossCell = row.getCell(8);
+            if ((summary.incompleteLoss || 0) < 0) {
+                incLossCell.font = { bold: true, color: { argb: 'FFDC3545' } };
+            }
+
+            // Color Real Total P&L (col 9) — green if positive, red if negative
+            const realPnlCell = row.getCell(9);
+            const realPnl = summary.realTotalPnL || 0;
+            realPnlCell.font = { bold: true, color: { argb: realPnl >= 0 ? 'FF28A745' : 'FFDC3545' } };
+
+            // Color Real Avg P&L (col 12) — green if positive, red if negative
+            const realAvgCell = row.getCell(12);
+            const realAvg = summary.realAvgPnL || 0;
+            realAvgCell.font = { bold: true, color: { argb: realAvg >= 0 ? 'FF28A745' : 'FFDC3545' } };
         }
 
-        // Column widths
+        // Column widths (15 columns)
         sheet.columns = [
             { width: 28 }, { width: 10 }, { width: 8 }, { width: 8 },
-            { width: 12 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }
+            { width: 12 }, { width: 10 }, { width: 14 }, { width: 16 },
+            { width: 16 }, { width: 14 }, { width: 18 }, { width: 14 },
+            { width: 10 }, { width: 10 }, { width: 14 }
         ];
 
         return sheet;
@@ -260,6 +282,73 @@ class AutoTestReport {
                 right: { style: 'thin' }
             };
         });
+
+        // Summary totals row (after all sessions)
+        const summaryRowNum = data.sessions.length + 3; // +2 for header + 1 gap
+        const summaryRow = sheet.getRow(summaryRowNum);
+        const summary = data.summary;
+        const winSessions = data.sessions.filter(s => s.outcome === 'WIN');
+        const incompleteSessions = data.sessions.filter(s => s.outcome === 'INCOMPLETE');
+        const winProfit = winSessions.reduce((sum, s) => sum + s.finalProfit, 0);
+        const incLoss = incompleteSessions.reduce((sum, s) => sum + s.finalProfit, 0);
+        const realTotal = data.sessions.reduce((sum, s) => sum + s.finalProfit, 0);
+
+        const summaryValues = [
+            'TOTALS',
+            '',
+            `W:${summary.wins} I:${summary.incomplete} B:${summary.busts}`,
+            '',
+            summary.wins + summary.busts + summary.incomplete,
+            summary.wins,
+            summary.busts + summary.incomplete,
+            `${(summary.winRate * 100).toFixed(1)}%`,
+            `$${realTotal.toFixed(2)}`,
+            `$${summary.maxDrawdown.toFixed(2)}`,
+            ''
+        ];
+        summaryValues.forEach((v, i) => {
+            const cell = summaryRow.getCell(i + 1);
+            cell.value = v;
+            cell.alignment = { horizontal: 'center' };
+            cell.font = { bold: true };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+            cell.border = {
+                top: { style: 'medium' },
+                bottom: { style: 'medium' },
+                left: { style: 'thin' },
+                right: { style: 'thin' }
+            };
+        });
+        // Label cell
+        summaryRow.getCell(1).alignment = { horizontal: 'left' };
+        summaryRow.getCell(1).font = { bold: true, size: 11 };
+        // Color the real total P&L
+        const realPnlSumCell = summaryRow.getCell(9);
+        realPnlSumCell.font = { bold: true, color: { argb: realTotal >= 0 ? 'FF28A745' : 'FFDC3545' } };
+
+        // Breakdown row
+        const breakdownRow = sheet.getRow(summaryRowNum + 1);
+        const breakdownValues = [
+            '',
+            '',
+            '',
+            '',
+            '',
+            `Win P&L: $${winProfit.toFixed(0)}`,
+            '',
+            '',
+            `Inc Loss: $${incLoss.toFixed(0)}`,
+            '',
+            ''
+        ];
+        breakdownValues.forEach((v, i) => {
+            const cell = breakdownRow.getCell(i + 1);
+            cell.value = v;
+            cell.alignment = { horizontal: 'center' };
+            cell.font = { italic: true, size: 10, color: { argb: 'FF666666' } };
+        });
+        breakdownRow.getCell(6).font = { italic: true, size: 10, color: { argb: 'FF28A745' } };
+        breakdownRow.getCell(9).font = { italic: true, size: 10, color: { argb: 'FFDC3545' } };
 
         // Column widths (11 columns)
         sheet.columns = [

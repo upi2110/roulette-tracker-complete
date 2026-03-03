@@ -10,6 +10,8 @@ class AutoUpdateOrchestrator {
         this.lastSpinCount = 0;
         this.isEnabled = true;
         this.sessionStarted = false;
+        this._sessionStarting = false; // guard against multiple startSessionFirst() calls
+        this._engineResetDone = false;  // tracks if engine.resetSession() was called for this session
         this.autoMode = false;  // NEW: auto mode flag
 
         console.log('🔧 Auto-Update Orchestrator initialized');
@@ -23,12 +25,28 @@ class AutoUpdateOrchestrator {
             const currentCount = window.spins ? window.spins.length : 0;
 
             if (currentCount > this.lastSpinCount) {
+                const latestSpin = window.spins ? window.spins[window.spins.length - 1] : null;
+                const latestVal = latestSpin ? (typeof latestSpin === 'number' ? latestSpin : latestSpin.actual) : '?';
+                console.log(`[ORCH-LOG] New spin detected! Count: ${currentCount} | latest: ${latestVal} | prev: ${this.lastSpinCount}`);
                 console.log(`🔄 New spin detected! Count: ${currentCount}`);
 
-                // Start session if needed
-                if (!this.sessionStarted) {
+                // Start session if needed (guard prevents multiple concurrent calls)
+                if (!this.sessionStarted && !this._sessionStarting) {
+                    console.log('[ORCH-LOG] Session not started yet — starting first...');
                     console.log('🚀 Starting session FIRST...');
+                    this._sessionStarting = true;
                     this.startSessionFirst();
+                }
+
+                // CRITICAL: Reset engine session SYNCHRONOUSLY on first spin detection.
+                // startSessionFirst() is async (IPC call) — its resetSession() fires late.
+                // Without this, decide() runs with stale session state (non-zero
+                // consecutiveSkips, wrong trendState), causing BET/SKIP divergence
+                // from the test runner which resets synchronously.
+                if (!this._engineResetDone && window.aiAutoEngine && typeof window.aiAutoEngine.resetSession === 'function') {
+                    window.aiAutoEngine.resetSession();
+                    this._engineResetDone = true;
+                    console.log('[ORCH-LOG] Engine session reset SYNCHRONOUSLY (matches test runner)');
                 }
 
                 if (this.autoMode && window.aiAutoEngine && window.aiAutoEngine.isEnabled) {
@@ -61,6 +79,37 @@ class AutoUpdateOrchestrator {
      * Called when a new spin is detected and auto mode is enabled.
      */
     async handleAutoMode() {
+        const spinCount = window.spins ? window.spins.length : 0;
+        const spinsArr = window.spins ? window.spins.map(s => typeof s === 'number' ? s : s.actual) : [];
+        console.log(`[ORCH-LOG] handleAutoMode() | spinCount=${spinCount} | spins=[${spinsArr.join(',')}]`);
+
+        // ── WATCH PHASE: Need at least 4 spins before making decisions ──
+        // Matches test runner behavior: first 3 spins are WATCH (observe-only),
+        // first real decision happens at spin index 3 (4th spin).
+        // Without this guard, recordSkip() was called for "not enough spins" skips,
+        // inflating consecutiveSkips/sessionSpinCount and causing prediction offset.
+        if (spinCount < 4) {
+            console.log(`[ORCH-LOG] WATCH phase: ${spinCount}/4 spins — observing only (no decide/recordSkip)`);
+
+            // ── Session Recorder: WATCH step ──
+            if (window.sessionRecorder && window.sessionRecorder.isActive) {
+                const spinVal = spinsArr[spinsArr.length - 1];
+                const bankroll = window.moneyPanel ? window.moneyPanel.sessionData.currentBankroll : 4000;
+                window.sessionRecorder.recordWatch(spinVal, null, bankroll);
+            }
+            // ── Verbose Logger: WATCH ──
+            if (window.verboseLogger && window.verboseLogger.enabled) {
+                window.verboseLogger.log('ORCH', 'INFO', `WATCH phase: spin #${spinCount}/4`, {
+                    spinValue: spinsArr[spinsArr.length - 1],
+                    allSpins: spinsArr
+                });
+            }
+
+            // Still load pairs so table display updates
+            this.loadPairsForManualSelection();
+            return;
+        }
+
         console.log('🤖 AUTO MODE: Processing new spin...');
 
         // 1. Load pairs (populates getAIDataV6)
@@ -70,8 +119,39 @@ class AutoUpdateOrchestrator {
         await new Promise(r => setTimeout(r, 150));
 
         // 2. Get engine decision
+        console.log(`[ORCH-LOG] Calling decide() with window.spins.length=${window.spins ? window.spins.length : 0}`);
         const decision = window.aiAutoEngine.decide();
+        console.log(`[ORCH-LOG] Decision result: action=${decision.action} | pair=${decision.selectedPair} | filter=${decision.selectedFilter} | conf=${decision.confidence}% | numbers=[${decision.numbers ? decision.numbers.join(',') : ''}]`);
         console.log('🤖 AUTO DECISION:', decision);
+
+        // ── Session Recorder: BET/SKIP decision ──
+        if (window.sessionRecorder && window.sessionRecorder.isActive) {
+            const betPerNum = window.moneyPanel ? window.moneyPanel.sessionData.currentBetPerNumber : 2;
+            const bankroll = window.moneyPanel ? window.moneyPanel.sessionData.currentBankroll : 4000;
+            window.sessionRecorder.recordDecision(spinsArr[spinsArr.length - 1], decision, betPerNum, bankroll);
+        }
+        // ── Verbose Logger: Decision details ──
+        if (window.verboseLogger && window.verboseLogger.enabled) {
+            const engine = window.aiAutoEngine;
+            window.verboseLogger.log('ORCH', 'DECISION', `decide() → ${decision.action}`, {
+                action: decision.action,
+                pair: decision.selectedPair,
+                filter: decision.selectedFilter,
+                confidence: decision.confidence,
+                numbersCount: decision.numbers ? decision.numbers.length : 0,
+                numbers: decision.numbers ? decision.numbers.sort((a, b) => a - b) : [],
+                reason: decision.reason,
+                debug: decision.debug || {},
+                engineSession: engine ? {
+                    trendState: engine.session.trendState,
+                    totalBets: engine.session.totalBets,
+                    consecutiveSkips: engine.session.consecutiveSkips,
+                    consecutiveLosses: engine.session.consecutiveLosses,
+                    wins: engine.session.wins,
+                    losses: engine.session.losses
+                } : null
+            });
+        }
 
         // 3. Store decision on engine for feedback loop
         // money-management-panel reads this after bet resolves to call engine.recordResult()
@@ -191,15 +271,23 @@ class AutoUpdateOrchestrator {
 
             if (!integration) {
                 console.error('❌ AI Integration not found!');
+                this._sessionStarting = false;
                 return;
             }
 
             const result = await integration.startSession(4000, 100);
             console.log('✅ Session started:', result);
             this.sessionStarted = true;
+            this._sessionStarting = false;
+
+            // Engine resetSession() is now called SYNCHRONOUSLY in setupListeners
+            // when the first spin is detected (via _engineResetDone flag).
+            // No need to call it again here — it was already done before decide() runs.
+            console.log('✅ Backend session started (engine already reset synchronously)');
 
         } catch (error) {
             console.error('❌ Failed to start session:', error);
+            this._sessionStarting = false;
         }
     }
 
@@ -216,6 +304,8 @@ class AutoUpdateOrchestrator {
     reset() {
         this.lastSpinCount = 0;
         this.sessionStarted = false;
+        this._sessionStarting = false;
+        this._engineResetDone = false;
         this.autoMode = false;
         console.log('🔄 Auto-update orchestrator reset');
     }

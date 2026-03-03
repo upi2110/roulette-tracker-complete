@@ -72,6 +72,20 @@ function createWindow() {
         }
     });
 
+    // IPC handler: append verbose session log to app/logs/ folder
+    ipcMain.handle('append-session-log', async (event, { filename, content }) => {
+        try {
+            const logsDir = path.join(__dirname, 'logs');
+            if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+            const logPath = path.join(logsDir, filename);
+            fs.appendFileSync(logPath, content, 'utf-8');
+            return { success: true, path: logPath };
+        } catch (error) {
+            console.error('❌ Failed to append session log:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // IPC handler: save Excel report
     ipcMain.handle('save-xlsx', async (event, buffer) => {
         try {

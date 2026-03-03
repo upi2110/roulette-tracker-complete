@@ -233,20 +233,24 @@ describe('True Learning AI — v2 Adaptive System', () => {
             expect(trainedEngine._totalBayesianDecisions).toBe(0);
         });
 
-        test('B5: hit increases alpha by 1', () => {
+        test('B5: hit increases alpha (with Bayesian forgetting decay)', () => {
             const refKey = PAIR_REFKEYS.find(k => trainedEngine.pairBayesian[k]);
             if (!refKey) return; // Skip if no Bayesian data
             const alphaBefore = trainedEngine.pairBayesian[refKey].alpha;
+            const lambda = trainedEngine.bayesianForgetting; // 0.995
             trainedEngine.recordResult(refKey, 'zero_positive', true, 0);
-            expect(trainedEngine.pairBayesian[refKey].alpha).toBe(alphaBefore + 1);
+            // With forgetting: alpha = alphaBefore * λ + 1
+            expect(trainedEngine.pairBayesian[refKey].alpha).toBeCloseTo(alphaBefore * lambda + 1, 2);
         });
 
-        test('B6: miss increases beta by 1', () => {
+        test('B6: miss increases beta (with Bayesian forgetting decay)', () => {
             const refKey = PAIR_REFKEYS.find(k => trainedEngine.pairBayesian[k]);
             if (!refKey) return;
             const betaBefore = trainedEngine.pairBayesian[refKey].beta;
+            const lambda = trainedEngine.bayesianForgetting; // 0.995
             trainedEngine.recordResult(refKey, 'zero_positive', false, 17);
-            expect(trainedEngine.pairBayesian[refKey].beta).toBe(betaBefore + 1);
+            // With forgetting: beta = betaBefore * λ + 1
+            expect(trainedEngine.pairBayesian[refKey].beta).toBeCloseTo(betaBefore * lambda + 1, 2);
         });
 
         test('B7: totalBayesianDecisions increments on recordResult', () => {
@@ -1032,11 +1036,11 @@ describe('True Learning AI — v2 Adaptive System', () => {
             expect(conf).toBeLessThan(65);
         });
 
-        test('L8: multiplicative penalty survives skip pressure', () => {
+        test('L8: multiplicative penalty still effective (skip pressure removed)', () => {
             const spins = generateTestSpins(100);
             engine.train([spins]);
 
-            // Simulate 3 consecutive skips → +9 skip pressure
+            // Skip pressure removed — skips no longer add to confidence
             engine.recordSkip();
             engine.recordSkip();
             engine.recordSkip();
@@ -1044,8 +1048,8 @@ describe('True Learning AI — v2 Adaptive System', () => {
             const allPositive = [0, 32, 15, 19, 4, 27, 13, 36, 1, 20];
             const conf = engine._computeConfidence(0.7, 0.15, allPositive);
 
-            // pairScore 70 + (8-10 size)*2=-4 + filter(5) + skip(9) = 80
-            // ×0.55 = 44
+            // pairScore 70 + (8-10 size)*2=-4 + filter(5) = 71
+            // ×0.55 = 39
             expect(conf).toBeLessThan(55);
         });
 
@@ -1315,8 +1319,8 @@ describe('True Learning AI — v2 Adaptive System', () => {
             const spins = generateTestSpins(100);
             engine.train([spins]);
 
-            // Balanced projection (7 pos + 7 neg)
-            const balanced = [0, 32, 15, 19, 4, 27, 13, 21, 2, 25, 17, 34, 6, 23];
+            // Balanced projection (6 pos + 6 neg), respects K_MAX=12
+            const balanced = [0, 32, 15, 19, 4, 27, 21, 2, 25, 17, 34, 6];
             const conf = engine._computeConfidence(0.85, 0.15, balanced);
 
             // Should be above threshold — balanced projections are confident
@@ -1686,7 +1690,8 @@ describe('True Learning AI — v2 Adaptive System', () => {
         });
 
         test('R2: system gives balanced projection confidence above 65%', () => {
-            const balanced = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 23];
+            // K_MAX=12, so use 12 balanced numbers (6 pos + 6 neg)
+            const balanced = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27];
             // With decent pairScore, balanced should be above threshold
             const conf = engine._computeConfidence(0.80, 0.15, balanced);
             expect(conf).toBeGreaterThanOrEqual(65);
@@ -1723,11 +1728,11 @@ describe('True Learning AI — v2 Adaptive System', () => {
             expect(conf).toBeLessThan(65);
         });
 
-        test('R5: skip pressure does not override sign penalty for all-positive', () => {
+        test('R5: sign penalty still applies without skip pressure for all-positive', () => {
             const spins = generateTestSpins(100);
             engine.train([spins]);
 
-            // Simulate 4 consecutive skips (12 points of skip pressure)
+            // Skip pressure removed — skips don't add to confidence
             for (let i = 0; i < 4; i++) {
                 engine.recordSkip();
             }
@@ -1735,7 +1740,9 @@ describe('True Learning AI — v2 Adaptive System', () => {
             const allPos = [0, 32, 15, 19, 4, 27, 13, 36, 1, 20, 14, 31];
             const conf = engine._computeConfidence(0.75, 0.15, allPos);
 
-            // 75 - (12-14)*2=4 + filter(5) + skip(12) = 96 → ×0.55 = 53
+            // 75 + (8-12 adj)*2=-8? no, 12 nums, 14 threshold → (12-14)*2=+4
+            // wait: count>14? no count=12. count<8? no. So no K adj.
+            // 75 + filter(5) = 80 → ×0.55 = 44
             expect(conf).toBeLessThan(65);
         });
     });

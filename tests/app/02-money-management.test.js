@@ -444,7 +444,7 @@ describe('Strategy Toggle', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('Bankroll Calculations', () => {
-    test('WIN: net = betPerNumber*35 - totalBet', async () => {
+    test('WIN: net = betPerNumber*36 - totalBet (35:1 + original bet returned)', async () => {
         const mp = createPanel();
         mp.sessionData.currentBankroll = 4000;
         const betPerNumber = 2;
@@ -453,9 +453,9 @@ describe('Bankroll Calculations', () => {
 
         await mp.recordBetResult(betPerNumber, numbersCount, true, 15);
 
-        // Win: 2*35 = 70, net = 70 - 20 = +50
-        expect(mp.sessionData.currentBankroll).toBe(4050);
-        expect(mp.sessionData.sessionProfit).toBe(50);
+        // Win: 2*36 = 72, net = 72 - 20 = +52
+        expect(mp.sessionData.currentBankroll).toBe(4052);
+        expect(mp.sessionData.sessionProfit).toBe(52);
     });
 
     test('LOSS: net = -totalBet', async () => {

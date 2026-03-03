@@ -403,8 +403,8 @@ class MoneyManagementPanel {
         let netChange = 0;
 
         if (hit) {
-            // Win: 35:1 on one number, lose the rest
-            const winAmount = betPerNumber * 35;
+            // Win: 35:1 payout + original bet returned = 36× the winning bet
+            const winAmount = betPerNumber * 36;
             netChange = winAmount - totalBet;
             
             this.sessionData.currentBankroll += netChange;
@@ -516,6 +516,36 @@ class MoneyManagementPanel {
 
         console.log(`💵 Next bet amount: $${this.sessionData.currentBetPerNumber}/number`);
 
+        // ── Session Recorder: update last BET with result ──
+        if (window.sessionRecorder && window.sessionRecorder.isActive) {
+            window.sessionRecorder.updateLastBetResult(
+                actualNumber,
+                hit,
+                netChange,
+                this.sessionData.currentBankroll,
+                this.sessionData.sessionProfit
+            );
+        }
+        // ── Verbose Logger: bet result ──
+        if (window.verboseLogger && window.verboseLogger.enabled) {
+            window.verboseLogger.log('MONEY', 'RESULT', `Bet resolved: ${hit ? 'HIT' : 'MISS'} #${actualNumber}`, {
+                actualNumber,
+                hit,
+                betPerNumber,
+                numbersCount,
+                totalBet,
+                netChange,
+                bankroll: this.sessionData.currentBankroll,
+                profit: this.sessionData.sessionProfit,
+                consecutiveLosses: this.sessionData.consecutiveLosses,
+                consecutiveWins: this.sessionData.consecutiveWins,
+                nextBetPerNumber: this.sessionData.currentBetPerNumber,
+                strategy: this.sessionData.bettingStrategy,
+                totalBets: this.sessionData.totalBets,
+                wins: this.sessionData.totalWins,
+                losses: this.sessionData.totalLosses
+            });
+        }
 
         // Add to history
         this.betHistory.unshift({
@@ -535,11 +565,85 @@ class MoneyManagementPanel {
 
         this.render();
 
-        // Check if target reached
+        // Check for session-ending conditions: TARGET or BUST
         if (this.sessionData.sessionProfit >= this.sessionData.sessionTarget) {
-            setTimeout(() => {
-                alert(`🎉 TARGET REACHED! Session Profit: $${this.sessionData.sessionProfit}`);
-            }, 500);
+            this._handleSessionComplete('WIN');
+        } else if (this.sessionData.currentBankroll <= 0) {
+            this._handleSessionComplete('BUST');
+        }
+    }
+
+    /**
+     * Handle session completion (WIN or BUST).
+     * Auto-stops betting, ends session recorder, shows persistent notification.
+     */
+    _handleSessionComplete(outcome) {
+        const isWin = outcome === 'WIN';
+
+        // 1. Stop betting
+        this.sessionData.isBettingEnabled = false;
+        console.log(`🏁 Session complete: ${outcome} | profit=$${this.sessionData.sessionProfit} | bankroll=$${this.sessionData.currentBankroll}`);
+
+        // 2. End session recorder
+        if (typeof window !== 'undefined') {
+            if (window.sessionRecorder && window.sessionRecorder.isActive) {
+                window.sessionRecorder.endSession(outcome);
+                console.log('✅ Session recorder ended automatically');
+            }
+            // End verbose logger session
+            if (window.verboseLogger && window.verboseLogger.enabled && window.verboseLogger._sessionActive) {
+                window.verboseLogger.log('MONEY', 'INFO', `Session ${outcome}`, {
+                    profit: this.sessionData.sessionProfit,
+                    bankroll: this.sessionData.currentBankroll,
+                    totalBets: this.sessionData.totalBets,
+                    wins: this.sessionData.totalWins,
+                    losses: this.sessionData.totalLosses
+                });
+                window.verboseLogger.endSession({
+                    outcome,
+                    profit: this.sessionData.sessionProfit,
+                    totalBets: this.sessionData.totalBets
+                });
+            }
+
+            // 3. Enable download button
+            const downloadBtn = document.getElementById('downloadSessionBtn');
+            if (downloadBtn) {
+                downloadBtn.disabled = false;
+                downloadBtn.style.background = isWin ? '#22c55e' : '#ef4444';
+                downloadBtn.style.color = '#fff';
+                downloadBtn.style.borderColor = isWin ? '#22c55e' : '#ef4444';
+                downloadBtn.textContent = `📥 Download ${outcome} Report`;
+            }
+
+            // 4. Update betting button UI to show session is over
+            const bettingBtn = document.getElementById('toggleBettingBtn');
+            if (bettingBtn) {
+                bettingBtn.textContent = isWin ? '🎉 TARGET REACHED' : '💥 BUSTED';
+                bettingBtn.style.backgroundColor = isWin ? '#22c55e' : '#ef4444';
+                bettingBtn.disabled = true;
+            }
+
+            // 5. Show persistent notification banner
+            const bettingStatus = document.getElementById('bettingStatus');
+            if (bettingStatus) {
+                if (isWin) {
+                    bettingStatus.textContent = `🎉 TARGET REACHED! Profit: $${this.sessionData.sessionProfit} | Click "Download" to save report, then "Reset All" to start fresh.`;
+                    bettingStatus.style.backgroundColor = '#d4edda';
+                    bettingStatus.style.color = '#155724';
+                } else {
+                    bettingStatus.textContent = `💥 BUSTED! Loss: $${Math.abs(this.sessionData.sessionProfit)} | Click "Download" to save report, then "Reset All" to start fresh.`;
+                    bettingStatus.style.backgroundColor = '#f8d7da';
+                    bettingStatus.style.color = '#721c24';
+                }
+            }
+
+            // 6. Update recording status
+            const recStatus = document.getElementById('sessionRecordingStatus');
+            if (recStatus) {
+                recStatus.textContent = `Session ${outcome} — Download available`;
+                recStatus.style.color = isWin ? '#22c55e' : '#ef4444';
+            }
         }
     }
 

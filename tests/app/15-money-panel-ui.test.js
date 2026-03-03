@@ -1423,8 +1423,8 @@ describe('recordBetResult() - bet history tracking', () => {
         const mp = getPanel();
         await mp.recordBetResult(2, 10, true, 15);
 
-        // Win: 2*35 - 2*10 = 70 - 20 = 50
-        expect(mp.betHistory[0].netChange).toBe(50);
+        // Win: 2*36 - 2*10 = 72 - 20 = 52 (35:1 payout + original bet returned)
+        expect(mp.betHistory[0].netChange).toBe(52);
     });
 
     test('bet history entry has correct netChange for loss', async () => {
@@ -1522,9 +1522,9 @@ describe('recordBetResult() - bet history tracking', () => {
 
         await mp.recordBetResult(2, 10, true, 15);
 
-        // Win: 2*35=70, total bet=20, net=+50
-        expect(mp.sessionData.currentBankroll).toBe(4050);
-        expect(mp.sessionData.sessionProfit).toBe(50);
+        // Win: 2*36=72, total bet=20, net=+52 (35:1 payout + original bet returned)
+        expect(mp.sessionData.currentBankroll).toBe(4052);
+        expect(mp.sessionData.sessionProfit).toBe(52);
         expect(mp.sessionData.totalWins).toBe(1);
         expect(mp.sessionData.consecutiveLosses).toBe(0);
     });
@@ -1579,7 +1579,7 @@ describe('render() integration after recordBetResult', () => {
         await mp.recordBetResult(2, 10, true, 15);
 
         const profitEl = document.getElementById('profitValue');
-        expect(profitEl.textContent).toBe('+$50');
+        expect(profitEl.textContent).toBe('+$52');
         expect(profitEl.classList.contains('profit')).toBe(true);
     });
 
@@ -1807,8 +1807,8 @@ describe('recordBetResult() - AI engine feedback loop', () => {
 
         await mp.recordBetResult(2, 10, true, 15);
 
-        // P&L still calculated: 2*35 - 2*10 = 50
-        expect(mp.sessionData.sessionProfit).toBe(50);
+        // P&L still calculated: 2*36 - 2*10 = 52 (35:1 payout + original bet returned)
+        expect(mp.sessionData.sessionProfit).toBe(52);
         expect(mp.sessionData.totalWins).toBe(1);
         expect(mp.sessionData.totalBets).toBe(1);
     });

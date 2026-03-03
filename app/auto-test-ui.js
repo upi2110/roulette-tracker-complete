@@ -217,6 +217,10 @@ class AutoTestUI {
             if (!RunnerClass) throw new Error('AutoTestRunner not available');
 
             const runner = new RunnerClass(engine);
+            // Enable verbose logging if verbose toggle is checked
+            if (window.verboseLogger && window.verboseLogger.enabled) {
+                runner._enableLogging = true;
+            }
             this.result = await runner.runAll(
                 this.testSpins,
                 { testFile: this.testFileName || 'manual', batchSize: 20 },
@@ -376,8 +380,11 @@ class AutoTestUI {
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Sessions</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Wins</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Busts</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;">Incomplete</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Win%</th>
-                        <th style="padding:6px;text-align:center;border:1px solid #334155;">Avg P&L</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;">Win P&L</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;">Inc Loss</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;color:#f59e0b;font-weight:700;">Real P&L</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Avg Spins</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Max Spins</th>
                     </tr>
@@ -388,14 +395,19 @@ class AutoTestUI {
             const s = result.strategies[num].summary;
             const isBest = num === bestStrategy && bestWinRate > 0;
             const rowBg = isBest ? 'rgba(34,197,94,0.1)' : 'transparent';
+            const realPnl = s.realTotalPnL || 0;
+            const incLoss = s.incompleteLoss || 0;
             html += `
                 <tr style="background:${rowBg};">
                     <td style="padding:6px;border:1px solid #334155;color:${colors[num]};font-weight:700;">${strategyNames[num]}${isBest ? ' ⭐' : ''}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;">${s.totalSessions}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;color:#22c55e;">${s.wins}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;color:#ef4444;">${s.busts}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:#64748b;">${s.incomplete}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;font-weight:700;">${(s.winRate * 100).toFixed(1)}%</td>
-                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:${s.avgProfit >= 0 ? '#22c55e' : '#ef4444'};">$${s.avgProfit.toFixed(0)}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:#22c55e;">$${(s.totalProfit || 0).toLocaleString()}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:#ef4444;">$${incLoss.toLocaleString()}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;font-weight:700;color:${realPnl >= 0 ? '#22c55e' : '#ef4444'};">$${realPnl.toLocaleString()}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;">${s.avgSpinsToWin || '--'}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;color:${(s.maxSpinsToWin || 0) > 50 ? '#f59e0b' : '#94a3b8'};">${s.maxSpinsToWin || '--'}</td>
                 </tr>`;

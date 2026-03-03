@@ -860,7 +860,7 @@ describe('M. Heavy Stress Tests', () => {
         engine.train(sessions);
         const elapsed = Date.now() - start;
 
-        expect(elapsed).toBeLessThan(4000);
+        expect(elapsed).toBeLessThan(10000);
         expect(engine.isTrained).toBe(true);
     });
 

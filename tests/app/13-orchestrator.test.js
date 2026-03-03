@@ -72,6 +72,14 @@ describe('AutoUpdateOrchestrator - Constructor', () => {
         expect(orchestrator.sessionStarted).toBe(false);
     });
 
+    test('initializes _sessionStarting to false', () => {
+        expect(orchestrator._sessionStarting).toBe(false);
+    });
+
+    test('initializes _engineResetDone to false', () => {
+        expect(orchestrator._engineResetDone).toBe(false);
+    });
+
     test('logs initialization message', () => {
         const spy = jest.spyOn(console, 'log').mockImplementation();
         const inst = new AutoUpdateOrchestrator();
@@ -126,6 +134,18 @@ describe('AutoUpdateOrchestrator - reset()', () => {
         orchestrator.sessionStarted = true;
         orchestrator.reset();
         expect(orchestrator.sessionStarted).toBe(false);
+    });
+
+    test('resets _sessionStarting to false', () => {
+        orchestrator._sessionStarting = true;
+        orchestrator.reset();
+        expect(orchestrator._sessionStarting).toBe(false);
+    });
+
+    test('resets _engineResetDone to false', () => {
+        orchestrator._engineResetDone = true;
+        orchestrator.reset();
+        expect(orchestrator._engineResetDone).toBe(false);
     });
 
     test('logs reset message', () => {
@@ -477,6 +497,9 @@ describe('AutoUpdateOrchestrator - handleAutoMode() lastDecision', () => {
         `;
         const Cls = eval(wrappedCode);
         orchestrator = new Cls();
+
+        // Need 4+ spins to pass WATCH phase guard (first 3 spins are observe-only)
+        global.window.spins = [{ actual: 5 }, { actual: 12 }, { actual: 22 }, { actual: 7 }];
     });
 
     test('sets engine.lastDecision to decision fields on BET', async () => {

@@ -95,6 +95,9 @@ const NEAR_CODES = ['SL+1', 'SR+1', 'OL+1', 'OR+1'];
 // European roulette wheel order (clockwise from 0)
 const EUROPEAN_WHEEL = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
 
+// Step 6: Maximum number of positions to bet on. K > K_MAX → guaranteed SKIP.
+const K_MAX = 15;
+
 class AIAutoEngine {
     /**
      * @param {Object} [options]
@@ -118,7 +121,7 @@ class AIAutoEngine {
 
         // Configuration
         this.confidenceThreshold = options.confidenceThreshold ?? 65;
-        this.maxConsecutiveSkips = options.maxConsecutiveSkips ?? 5;
+        this.maxConsecutiveSkips = options.maxConsecutiveSkips ?? Infinity;
         this.sessionAdaptationStart = options.sessionAdaptationStart ?? 10;
         this.historicalWeight = options.historicalWeight ?? 0.7;
 
@@ -140,6 +143,10 @@ class AIAutoEngine {
         // EMA live learning (v2)
         this.emaDecay = options.emaDecay ?? 0.05;
 
+        // Bayesian forgetting — disabled (Step 7 reverted: UCB exploration bonus
+        // becomes noisier with smaller effective sample, worsening metrics)
+        this.bayesianForgetting = options.bayesianForgetting ?? 1.0; // 1.0 = no decay
+
         // Position code performance (v2)
         this.posCodePerformance = {};     // { "S+0": { attempts, hits, hitRate } }
 
@@ -149,6 +156,10 @@ class AIAutoEngine {
         this._retrainInterval = options.retrainInterval ?? 10;
         this._retrainLossStreak = options.retrainLossStreak ?? 3;
         this._lastRetrainBetCount = 0;
+
+        // Shadow tracking (deferred resolution — resolves on next decide() call)
+        this._pendingShadowProjections = null;  // { [refKey]: number[] }
+        this._pendingShadowIdx = -1;            // next-spin index for resolution
     }
 
     _createSessionTracker() {
@@ -166,7 +177,18 @@ class AIAutoEngine {
             pairFilterCross: {},     // v2: { "prev|zero_positive": { attempts, hits } }
             sessionWinRate: 0,
             recentDecisions: [],     // last 10 { refKey, filterKey, hit, nearMiss }
-            adaptationWeight: 0.0
+            adaptationWeight: 0.0,
+            sessionSpinCount: 0,     // Total decision spins (BET + SKIP) in this session
+            shadowPerformance: {},   // { [refKey]: { attempts, hits, recentHits: bool[] } }
+            setActualHistory: [],    // Last 10 set keys ('set0'/'set5'/'set6') of actual results
+            // ── Trend State Machine ──
+            trendState: 'NORMAL',          // 'NORMAL' | 'RECOVERY'
+            overallConsecutiveLosses: 0,   // ALL losses in a row (not just per-pair)
+            pairBlacklist: {},             // { [pairName]: expiresAtBet } — pairs that failed 2x consecutively
+            lastBetPair: null,             // last pair we bet on (for consecutive same-pair loss detection)
+            lastBetPairLosses: 0,          // consecutive losses on the same pair
+            recoveryEntryBet: 0,           // bet# when we entered recovery
+            filterDamageTracker: {}        // { [filterKey]: { attempts, damage, damageRate } }
         };
     }
 
@@ -207,7 +229,9 @@ class AIAutoEngine {
                 hits: 0,
                 hitRate: 0,
                 totalFilteredCount: 0,
-                avgFilteredCount: 0
+                avgFilteredCount: 0,
+                damageCount: 0,       // Times filter removed the winning number
+                damageRate: 0         // damageCount / totalTrials
             };
         });
 
@@ -240,6 +264,7 @@ class AIAutoEngine {
             if (m.totalTrials > 0) {
                 m.hitRate = m.hits / m.totalTrials;
                 m.avgFilteredCount = m.totalFilteredCount / m.totalTrials;
+                m.damageRate = m.damageCount / m.totalTrials;
             }
         });
 
@@ -355,6 +380,10 @@ class AIAutoEngine {
                     fm.totalFilteredCount += filtered.length;
                     if (filtered.includes(nextActual)) {
                         fm.hits++;
+                    }
+                    // Track filter damage: winner was in projection but removed by filter
+                    if (projection.numbers.includes(nextActual) && !filtered.includes(nextActual)) {
+                        fm.damageCount++;
                     }
                 });
             }
@@ -557,7 +586,7 @@ class AIAutoEngine {
      * @returns {{ dataPair: string, anchorCount: number, targets: number[], numbers: number[], score: number } | null}
      */
     simulateT2FlashAndNumbers(spins, idx) {
-        if (idx < 4) return null;
+        if (idx < 3) return null;  // Need at least 4 spins (idx=3) — matches T3 minimum
 
         // Build spin objects for _computeT2FlashTargets (needs {actual} format)
         const spinObjs = spins.slice(0, idx + 1).map(n => ({ actual: n }));
@@ -660,6 +689,14 @@ class AIAutoEngine {
                 score += 0.10;
             }
 
+            // Set momentum tiebreaker: if we have shadow data, small boost for the hot set
+            const setActuals = this.session.setActualHistory || [];
+            if (setActuals.length >= 5) {
+                const last5 = setActuals.slice(-5);
+                const countInThisSet = last5.filter(sk => sk === s.key).length;
+                score += (countInThisSet / last5.length) * 0.05; // Small tiebreaker
+            }
+
             // Factor 4 (15%): Historical filter model performance
             const fm = this.filterModels[s.filterKey];
             if (fm && fm.totalTrials > 0) {
@@ -678,6 +715,35 @@ class AIAutoEngine {
                 bestSet = s;
             }
         }
+
+        // ── Filter Qualification Gate (Score Margin) ──
+        // When the engine can't clearly distinguish which set will contain the
+        // winner, store the margin so _computeConfidence can penalize uncertain
+        // decisions (causing them to become SKIPs). This keeps K at ~11 while
+        // reducing bet count on uncertain set predictions, lowering filter damage
+        // on the remaining bets.
+        const allScores = sets.map(s => {
+            let sc = 0;
+            const ov = combinedNumbers.filter(n => s.nums.has(n)).length;
+            sc += (ov / Math.max(combinedNumbers.length, 1)) * 0.40;
+            const recent = recentSpins || [];
+            const recentInSet = recent.filter(n => s.nums.has(n)).length;
+            sc += (recent.length > 0 ? recentInSet / recent.length : s.nums.size / 37) * 0.30;
+            const last3 = recent.slice(-3);
+            if (last3.filter(n => s.nums.has(n)).length === 0 && recent.length >= 3) sc += 0.10;
+            const fm = this.filterModels[s.filterKey];
+            if (fm && fm.totalTrials > 0) sc += fm.hitRate * 0.15;
+            return sc;
+        }).sort((a, b) => b - a);
+
+        const scoreMargin = allScores.length >= 2 ? allScores[0] - allScores[1] : 1;
+
+        // Store margin for _computeConfidence to apply penalty
+        this._currentSetMargin = scoreMargin;
+
+        // Also check session-level filter damage (runtime) — store flag for confidence
+        const sessionFt = this.session.filterDamageTracker[bestSet.filterKey];
+        this._currentSessionDamageHigh = sessionFt && sessionFt.attempts >= 10 && sessionFt.damageRate > 0.60;
 
         return { setKey: bestSet.key, filterKey: bestSet.filterKey, score: bestScore };
     }
@@ -767,6 +833,7 @@ class AIAutoEngine {
     decide() {
         const skipResult = (reason) => {
             this._currentDecisionSpins = null; // Clean up on skip
+            console.log(`[AI-LOG] decide() → SKIP: ${reason}`);
             return {
                 action: 'SKIP',
                 selectedPair: null,
@@ -784,12 +851,35 @@ class AIAutoEngine {
         if (!this.isTrained) return skipResult('Engine not trained');
         if (!this.isEnabled) return skipResult('Engine not enabled');
 
+        // Verbose logger reference (only when enabled — avoids cost when off)
+        const vlog = (typeof window !== 'undefined' && window.verboseLogger && window.verboseLogger.enabled) ? window.verboseLogger : null;
+
+        // Engine state snapshot — log once per session on first decision
+        if (vlog && this.session.totalBets === 0 && this.session.sessionSpinCount === 0) {
+            vlog.log('ENGINE', 'INFO', 'Engine State Snapshot (session start)', {
+                isTrained: this.isTrained,
+                learningVersion: this.learningVersion,
+                totalBayesianDecisions: this._totalBayesianDecisions,
+                pairBayesianSnapshot: this.pairBayesian ? Object.fromEntries(
+                    Object.entries(this.pairBayesian).map(([k, v]) => [k, { alpha: v.alpha, beta: v.beta, mean: +(v.alpha / (v.alpha + v.beta)).toFixed(4) }])
+                ) : null,
+                pairModelHitRates: this.pairModels ? Object.fromEntries(
+                    Object.entries(this.pairModels).map(([k, v]) => [k, { hitRate: +(v.hitRate || 0).toFixed(4), covEff: +(v.coverageEfficiency || 0).toFixed(4), totalFlashes: v.totalFlashes }])
+                ) : null,
+                filterModelHitRates: this.filterModels ? Object.fromEntries(
+                    Object.entries(this.filterModels).map(([k, v]) => [k, { hitRate: +(v.hitRate || 0).toFixed(4), totalTrials: v.totalTrials }])
+                ) : null
+            });
+        }
+
         const currentSpins = this._getWindowSpins();
-        if (!currentSpins || currentSpins.length < 4) return skipResult('Not enough spins');
+        if (!currentSpins || currentSpins.length < 4) return skipResult(`Not enough spins (have ${currentSpins ? currentSpins.length : 0})`);
 
         // Convert to plain number array — same format as _simulateDecision uses
         const plainSpins = currentSpins.map(s => typeof s === 'number' ? s : s.actual);
         const idx = plainSpins.length - 1;
+
+        console.log(`[AI-LOG] decide() called | spinCount=${plainSpins.length} | idx=${idx} | spins=[${plainSpins.join(',')}] | trendState=${this.session.trendState} | totalBets=${this.session.totalBets}`);
 
         if (idx < 3) return skipResult('Insufficient history');
 
@@ -797,14 +887,18 @@ class AIAutoEngine {
         // This ensures they use the correct spins instead of _getWindowSpins()
         this._currentDecisionSpins = plainSpins;
 
+        // ── Resolve previous shadow tracking ──
+        this._resolvePendingShadow(plainSpins, idx);
+
         // ── Step 1: T3 Flash Detection + Pair Selection ──
         // Uses same engine internals as _simulateDecision (not renderer/DOM)
         const flashingPairs = this._getFlashingPairsFromHistory(plainSpins, idx);
         let t3Numbers = [];
         let t3BestPair = null;
+        let t3Candidates = [];
+        let t3Scored = null;
 
         if (flashingPairs.size > 0) {
-            const t3Candidates = [];
             for (const [refKey, flashInfo] of flashingPairs) {
                 const pairName = REFKEY_TO_PAIR_NAME[refKey] || refKey;
                 const projection = this._computeProjectionForPair(plainSpins, idx, refKey);
@@ -813,33 +907,115 @@ class AIAutoEngine {
                 }
             }
             if (t3Candidates.length > 0) {
-                const scored = t3Candidates.map(c => ({ ...c, score: this._scorePair(c.refKey, c) }));
-                scored.sort((a, b) => b.score - a.score);
-                t3BestPair = scored[0];
+                t3Scored = t3Candidates.map(c => ({ ...c, score: this._scorePair(c.refKey, c) }));
+                t3Scored.sort((a, b) => b.score - a.score);
+                t3BestPair = t3Scored[0];
                 t3Numbers = t3BestPair.numbers;
             }
+        }
+        console.log(`[AI-LOG] Step1 T3: flashingPairs=${flashingPairs.size} | bestPair=${t3BestPair ? t3BestPair.pairName : 'none'} | t3Numbers=[${t3Numbers.join(',')}]`);
+        if (vlog) vlog.log('ENGINE', 'DEBUG', 'Step1 T3 Flash Detection', {
+            flashingPairsCount: flashingPairs.size,
+            flashingKeys: Array.from(flashingPairs.keys()),
+            candidates: flashingPairs.size > 0 ? Array.from(flashingPairs.entries()).map(([k, v]) => ({ refKey: k, ...v })) : [],
+            bestPair: t3BestPair ? { name: t3BestPair.pairName, refKey: t3BestPair.refKey, score: t3BestPair.score, numbersCount: t3Numbers.length } : null,
+            t3Numbers: [...t3Numbers].sort((a, b) => a - b),
+            spinsUsed: { idx, 'idx-1': plainSpins[idx - 1], 'idx-2': plainSpins[idx - 2], 'idx-3': idx >= 3 ? plainSpins[idx - 3] : null }
+        });
+        // Detailed candidate scoring breakdown with Bayesian state
+        if (vlog && t3Candidates.length > 0) {
+            const scoredDetails = (t3Scored || t3Candidates).map(c => {
+                const bay = this.pairBayesian ? this.pairBayesian[c.refKey] : null;
+                const model = this.pairModels ? this.pairModels[c.refKey] : null;
+                const sp = this.session.pairPerformance[c.refKey];
+                return {
+                    pair: c.pairName, refKey: c.refKey, finalScore: +(c.score || 0).toFixed(4),
+                    bayesian: bay ? { alpha: bay.alpha, beta: bay.beta, mean: +(bay.alpha / (bay.alpha + bay.beta)).toFixed(4) } : null,
+                    totalBayesianDecisions: this._totalBayesianDecisions,
+                    modelHitRate: model ? +(model.hitRate || 0).toFixed(4) : null,
+                    modelCoverageEff: model ? +(model.coverageEfficiency || 0).toFixed(4) : null,
+                    sessionPerf: sp ? { attempts: sp.attempts, hits: sp.hits } : null,
+                    adaptationWeight: this.session.adaptationWeight,
+                    numbersCount: c.numbers ? c.numbers.length : 0
+                };
+            });
+            vlog.log('ENGINE', 'DEBUG', 'Step1 Candidate Bayesian Scores', { scoredDetails });
         }
 
         // ── Step 2: T2 Flash Detection + NEXT Row Numbers ──
         // Uses same shared method as _simulateDecision
         const t2Data = this.simulateT2FlashAndNumbers(plainSpins, idx);
         const t2Numbers = t2Data ? t2Data.numbers : [];
+        console.log(`[AI-LOG] Step2 T2: dataPair=${t2Data ? t2Data.dataPair : 'none'} | anchorCount=${t2Data ? t2Data.anchorCount : 0} | t2Numbers=[${t2Numbers.join(',')}]`);
+        if (vlog) vlog.log('ENGINE', 'DEBUG', 'Step2 T2 Flash Detection', {
+            dataPair: t2Data ? t2Data.dataPair : null,
+            anchorCount: t2Data ? t2Data.anchorCount : 0,
+            t2Numbers: t2Numbers.sort((a, b) => a - b),
+            t2NumbersCount: t2Numbers.length,
+            t2Full: t2Data ? { lookupRow: t2Data.lookupRow, anchors: t2Data.anchors } : null
+        });
 
         // ── Must have at least one source ──
         if (t3Numbers.length === 0 && t2Numbers.length === 0) {
             return skipResult('No T2 or T3 flash data available');
         }
 
-        // ── Step 3: Combine T2 + T3 Numbers ──
-        const combinedSet = new Set([...t3Numbers, ...t2Numbers]);
-        const combinedNumbers = Array.from(combinedSet);
+        // ── Step 3: Combine T2 + T3 Numbers (with Step 8 overlap handling) ──
+        const overlapRatio = this._computeOverlapRatio(t3Numbers, t2Numbers);
+        this._currentOverlapRatio = overlapRatio;
+
+        let combinedNumbers;
+        if (overlapRatio > 0.80 && t3Numbers.length >= 8) {
+            // High overlap: T2 adds no independent signal, use T3-only
+            combinedNumbers = [...t3Numbers];
+        } else {
+            const combinedSet = new Set([...t3Numbers, ...t2Numbers]);
+            combinedNumbers = Array.from(combinedSet);
+        }
+        console.log(`[AI-LOG] Step3 Combined: ${combinedNumbers.length} numbers [${combinedNumbers.sort((a,b)=>a-b).join(',')}]`);
+        if (vlog) vlog.log('ENGINE', 'DEBUG', 'Step3 Combine T2+T3', {
+            t3Count: t3Numbers.length,
+            t2Count: t2Numbers.length,
+            combinedCount: combinedNumbers.length,
+            combined: [...combinedNumbers].sort((a, b) => a - b),
+            overlap: t3Numbers.filter(n => t2Numbers.includes(n))
+        });
 
         // ── Step 4: Predict Best Set ──
         const recentSpins = plainSpins.slice(Math.max(0, idx - 10), idx);
         const setPrediction = this._predictBestSet(combinedNumbers, recentSpins);
+        console.log(`[AI-LOG] Step4 SetPrediction: filterKey=${setPrediction.filterKey} | setKey=${setPrediction.setKey} | score=${setPrediction.score}`);
+        if (vlog) vlog.log('ENGINE', 'DEBUG', 'Step4 Predict Best Set', {
+            filterKey: setPrediction.filterKey,
+            setKey: setPrediction.setKey,
+            score: setPrediction.score,
+            recentSpins: recentSpins,
+            recentSpinsRange: `idx[${Math.max(0, idx - 10)}-${idx}]`
+        });
 
-        // ── Step 5: Apply both_both_setN Filter ──
-        const filteredNumbers = this._applyFilterToNumbers(combinedNumbers, setPrediction.filterKey);
+        // ── Step 5: Apply Filter (RECOVERY → adaptive look-back filter) ──
+        let filterKey = setPrediction.filterKey;
+        if (this.session.trendState === 'RECOVERY') {
+            // Check if recovery filter (zero_both) has acceptable damage rate
+            const recoveryFm = this.filterModels['zero_both'];
+            const recoveryDamage = recoveryFm && recoveryFm.totalTrials > 0 ? recoveryFm.damageRate : 0;
+            if (recoveryDamage <= 0.55) {
+                filterKey = this._pickRecoveryFilter(recentSpins, combinedNumbers);
+            }
+            // else: keep setPrediction.filterKey (recovery filter too harmful)
+            console.log(`[AI-LOG] Step5 RECOVERY filter override: ${setPrediction.filterKey} → ${filterKey}`);
+        }
+        const filteredNumbers = this._applyFilterToNumbers(combinedNumbers, filterKey);
+        console.log(`[AI-LOG] Step5 Filter: ${filterKey} → ${filteredNumbers.length} numbers [${filteredNumbers.sort((a,b)=>a-b).join(',')}]`);
+        if (vlog) vlog.log('ENGINE', 'DEBUG', 'Step5 Apply Filter', {
+            originalFilter: setPrediction.filterKey,
+            appliedFilter: filterKey,
+            recoveryOverride: this.session.trendState === 'RECOVERY',
+            trendState: this.session.trendState,
+            inputCount: combinedNumbers.length,
+            outputCount: filteredNumbers.length,
+            filtered: [...filteredNumbers].sort((a, b) => a - b)
+        });
 
         // ── Step 6: Confidence + BET/SKIP ──
         const pairScore = t3BestPair ? this._scorePair(t3BestPair.refKey, t3BestPair) : 0.5;
@@ -850,7 +1026,7 @@ class AIAutoEngine {
 
         const confidence = this._computeConfidence(pairScore, setPrediction.score, filteredNumbers);
 
-        const effectiveThreshold = this.confidenceThreshold;
+        const effectiveThreshold = this._getEffectiveThreshold();
         const forcebet = this.session.consecutiveSkips >= this.maxConsecutiveSkips;
         let action, reason;
 
@@ -859,11 +1035,30 @@ class AIAutoEngine {
             const pairName = t3BestPair ? t3BestPair.pairName : (t2Data ? t2Data.dataPair : 'unknown');
             reason = forcebet && confidence < effectiveThreshold
                 ? `Forced bet after ${this.session.consecutiveSkips} skips (conf: ${confidence}%)`
-                : `T2:${t2Data ? t2Data.dataPair : 'none'}+T3:${t3BestPair ? t3BestPair.pairName : 'none'} → ${setPrediction.filterKey} (conf: ${confidence}%)`;
+                : `T2:${t2Data ? t2Data.dataPair : 'none'}+T3:${t3BestPair ? t3BestPair.pairName : 'none'} → ${filterKey} (conf: ${confidence}%)`;
         } else {
             action = 'SKIP';
             reason = `Low confidence ${confidence}% < ${effectiveThreshold}% threshold (skip ${this.session.consecutiveSkips + 1}/${this.maxConsecutiveSkips})`;
         }
+        console.log(`[AI-LOG] Step6 Decision: action=${action} | conf=${confidence}% | threshold=${effectiveThreshold}% | forcebet=${forcebet} | consecutiveSkips=${this.session.consecutiveSkips} | pair=${t3BestPair ? t3BestPair.pairName : (t2Data ? t2Data.dataPair : 'none')} | filter=${filterKey}`);
+        if (vlog) vlog.log('ENGINE', 'DECISION', `Step6 Final: ${action}`, {
+            action,
+            confidence,
+            effectiveThreshold,
+            forcebet,
+            reason,
+            pairScore,
+            setScore: setPrediction.score,
+            numbersCount: filteredNumbers.length,
+            consecutiveSkips: this.session.consecutiveSkips,
+            maxConsecutiveSkips: this.maxConsecutiveSkips,
+            totalBets: this.session.totalBets,
+            sessionWins: this.session.wins,
+            sessionLosses: this.session.losses
+        });
+
+        // ── Store shadow projections for deferred resolution ──
+        this._storeShadowProjections(plainSpins, idx, flashingPairs, t2Data);
 
         // Clean up decision spins context
         this._currentDecisionSpins = null;
@@ -871,8 +1066,9 @@ class AIAutoEngine {
         return {
             action,
             selectedPair: t3BestPair ? t3BestPair.pairName : (t2Data ? t2Data.dataPair : null),
-            selectedFilter: setPrediction.filterKey,
+            selectedFilter: filterKey,
             numbers: filteredNumbers,
+            preFilterNumbers: [...combinedNumbers],  // Pre-filter projection for damage tracking
             anchors, loose, anchorGroups, confidence, reason,
             debug: {
                 t3FlashingRefKeys: Array.from(flashingPairs.keys()),
@@ -886,6 +1082,17 @@ class AIAutoEngine {
                 setScore: setPrediction.score
             }
         };
+    }
+
+    /**
+     * Step 8: Compute overlap ratio between T3 and T2 projections.
+     * High overlap means T2 adds little independent signal.
+     */
+    _computeOverlapRatio(t3Numbers, t2Numbers) {
+        if (!t3Numbers.length || !t2Numbers.length) return 0;
+        const t3Set = new Set(t3Numbers);
+        const overlapCount = t2Numbers.filter(n => t3Set.has(n)).length;
+        return overlapCount / Math.min(t3Numbers.length, t2Numbers.length);
     }
 
     /**
@@ -983,6 +1190,27 @@ class AIAutoEngine {
         const recentCredit = recentFullHits + recentNearMisses * 0.5;
         if (recentCredit > 0) {
             composite += 0.05 * recentCredit;
+        }
+
+        // Shadow performance: boost hot pairs based on shadow tracking data
+        // Uses deferred resolution — every decision, ALL flashing pairs are tracked
+        const shadow = this.session.shadowPerformance[refKey];
+        if (shadow && shadow.attempts >= 5) {
+            const shadowRate = shadow.hits / shadow.attempts;
+            // Boost pairs clearly above random baseline (~30% for 11/37 numbers)
+            // In RECOVERY: 3x stronger to drive rotation toward hot pairs
+            if (shadowRate > 0.35) {
+                const weight = this.session.trendState === 'RECOVERY' ? 0.30 : 0.10;
+                composite += (shadowRate - 0.35) * weight;
+            }
+        }
+
+        // During recovery: soft penalty for the pair that just lost (encourage rotation)
+        if (this.session.trendState === 'RECOVERY') {
+            const pairNameForCheck = REFKEY_TO_PAIR_NAME[refKey] || refKey;
+            if (pairNameForCheck === this.session.lastBetPair) {
+                composite -= 0.05;
+            }
         }
 
         // Penalties
@@ -1154,6 +1382,9 @@ class AIAutoEngine {
      * Compute final confidence score (0-100).
      */
     _computeConfidence(pairScore, filterScore, finalNumbers) {
+        // Step 6: K ceiling — never bet on more than K_MAX numbers
+        if (finalNumbers.length > K_MAX) return 0;
+
         let confidence = pairScore * 100;
 
         // Projection size adjustment
@@ -1169,6 +1400,26 @@ class AIAutoEngine {
             confidence += 5;
         }
 
+        // Set prediction uncertainty penalty (from filter qualification gate)
+        const setMargin = this._currentSetMargin ?? 1;
+        if (setMargin < 0.02) {
+            confidence -= 15;  // Very uncertain about which set — likely to SKIP
+        } else if (setMargin < 0.04) {
+            confidence -= 8;   // Somewhat uncertain — moderate penalty
+        }
+        if (this._currentSessionDamageHigh) {
+            confidence -= 10;  // Session filter is actively damaging — penalize
+        }
+        this._currentSetMargin = undefined;
+        this._currentSessionDamageHigh = false;
+
+        // Step 8: Cross-pair overlap penalty
+        const overlap = this._currentOverlapRatio || 0;
+        if (overlap > 0.70) {
+            confidence -= Math.round((overlap - 0.70) * 30); // 0-9% penalty
+        }
+        this._currentOverlapRatio = 0;
+
         // Session momentum
         if (this.session.totalBets >= 5) {
             if (this.session.sessionWinRate > 0.35) {
@@ -1178,10 +1429,9 @@ class AIAutoEngine {
             }
         }
 
-        // Consecutive skip pressure (makes us more willing to bet)
-        if (this.session.consecutiveSkips > 0) {
-            confidence += this.session.consecutiveSkips * 3;
-        }
+        // Skip pressure removed (Step 5 — selectivity fix):
+        // Previously added +5% per consecutive skip, forcing bets after long skip
+        // streaks. This inflated bet rate to 97% and diluted bet quality.
 
         // Sign balance penalty — MULTIPLICATIVE, applied LAST after all bonuses.
         // When projection is heavily one-sided (all positive or all negative),
@@ -1210,6 +1460,114 @@ class AIAutoEngine {
     }
 
     // ═══════════════════════════════════════════════════════════
+    //  SESSION URGENCY — graduated confidence threshold
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Returns the effective confidence threshold based on session progress.
+     * As the session gets longer, the threshold drops so the AI bets more
+     * aggressively, reducing SKIPs and shortening sessions.
+     *
+     * @returns {number} Current effective confidence threshold
+     */
+    _getEffectiveThreshold() {
+        const spins = this.session.sessionSpinCount; // BET + SKIP decisions
+        let threshold;
+        // Step 5 — Flattened threshold: only 2 tiers (65% → 55% after 40 spins)
+        // Previously decayed from 65 → 55 → 45 → 35, forcing bets on weak signals
+        if (spins <= 40) threshold = this.confidenceThreshold;            // 65% — normal play
+        else threshold = this.confidenceThreshold - 10;                   // 55% — mild urgency only
+
+        // In RECOVERY (3+ consecutive losses): don't bet on weak signals
+        // Floor raised to 55% (from 45%) — stronger protection during losing streaks
+        if (this.session.trendState === 'RECOVERY') {
+            threshold = Math.max(threshold, 55);
+        }
+
+        return threshold;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  SHADOW TRACKING — deferred resolution for pair/set monitoring
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Resolve pending shadow projections from the previous decision.
+     * Called at the START of each decide()/_simulateDecision() call.
+     * By this point, the actual result for the previous prediction is known
+     * as the latest spin added to the array.
+     *
+     * @param {number[]} spins - Current plain spins array
+     * @param {number} currentIdx - Current index (last element)
+     */
+    _resolvePendingShadow(spins, currentIdx) {
+        if (!this._pendingShadowProjections || this._pendingShadowIdx < 0 || currentIdx < this._pendingShadowIdx) {
+            return;
+        }
+        const actual = spins[this._pendingShadowIdx];
+        if (typeof actual !== 'number') {
+            this._pendingShadowProjections = null;
+            this._pendingShadowIdx = -1;
+            return;
+        }
+
+        // Update shadow performance for each pair's projection
+        for (const [refKey, numbers] of Object.entries(this._pendingShadowProjections)) {
+            if (!this.session.shadowPerformance[refKey]) {
+                this.session.shadowPerformance[refKey] = { attempts: 0, hits: 0, recentHits: [] };
+            }
+            const sp = this.session.shadowPerformance[refKey];
+            sp.attempts++;
+            const wouldHit = numbers.includes(actual);
+            if (wouldHit) sp.hits++;
+            sp.recentHits.push(wouldHit);
+            if (sp.recentHits.length > 5) sp.recentHits.shift();
+        }
+
+        // Track which set the actual result landed in
+        const set0 = this._getSet0Nums();
+        const set5 = this._getSet5Nums();
+        const set6 = this._getSet6Nums();
+        let setKey = null;
+        if (set0.has(actual)) setKey = 'set0';
+        else if (set5.has(actual)) setKey = 'set5';
+        else if (set6.has(actual)) setKey = 'set6';
+        if (setKey) {
+            this.session.setActualHistory.push(setKey);
+            if (this.session.setActualHistory.length > 10) this.session.setActualHistory.shift();
+        }
+
+        this._pendingShadowProjections = null;
+        this._pendingShadowIdx = -1;
+    }
+
+    /**
+     * Store ALL flashing pair projections for deferred resolution.
+     * Called at the END of each decide()/_simulateDecision() call.
+     *
+     * @param {number[]} spins - Current plain spins array
+     * @param {number} idx - Current spin index
+     * @param {Map} flashingPairs - T3 flashing pairs map
+     * @param {Object|null} t2Data - T2 flash data
+     */
+    _storeShadowProjections(spins, idx, flashingPairs, t2Data) {
+        const allProjections = {};
+        if (flashingPairs && flashingPairs.size > 0) {
+            for (const [refKey] of flashingPairs) {
+                const proj = this._computeProjectionForPair(spins, idx, refKey);
+                if (proj && proj.numbers.length > 0) {
+                    allProjections[refKey] = proj.numbers;
+                }
+            }
+        }
+        if (t2Data && t2Data.numbers && t2Data.numbers.length > 0) {
+            allProjections['_t2_' + (t2Data.dataPair || 'unknown')] = t2Data.numbers;
+        }
+        this._pendingShadowProjections = Object.keys(allProjections).length > 0 ? allProjections : null;
+        this._pendingShadowIdx = idx + 1;
+    }
+
+    // ═══════════════════════════════════════════════════════════
     //  SESSION ADAPTATION
     // ═══════════════════════════════════════════════════════════
 
@@ -1222,7 +1580,7 @@ class AIAutoEngine {
      * @param {number} actual - The actual roulette number that appeared
      * @param {number[]} [predictedNumbers=[]] - Numbers that were bet on (for near-miss detection)
      */
-    recordResult(pairKey, filterKey, hit, actual, predictedNumbers = []) {
+    recordResult(pairKey, filterKey, hit, actual, predictedNumbers = [], preFilterNumbers = []) {
         // Convert pairName to refKey if needed
         const refKey = PAIR_NAME_TO_REFKEY[pairKey] || pairKey;
 
@@ -1232,6 +1590,7 @@ class AIAutoEngine {
         }
 
         this.session.totalBets++;
+        this.session.sessionSpinCount++;
         if (hit) {
             this.session.wins++;
             this.session.consecutiveLosses = 0;
@@ -1265,6 +1624,19 @@ class AIAutoEngine {
         this.session.filterPerformance[filterKey].attempts++;
         if (hit) this.session.filterPerformance[filterKey].hits++;
 
+        // Track filter damage at session level (for qualification gate)
+        if (preFilterNumbers.length > 0) {
+            if (!this.session.filterDamageTracker[filterKey]) {
+                this.session.filterDamageTracker[filterKey] = { attempts: 0, damage: 0, damageRate: 0 };
+            }
+            const ft = this.session.filterDamageTracker[filterKey];
+            ft.attempts++;
+            if (preFilterNumbers.includes(actual) && !predictedNumbers.includes(actual)) {
+                ft.damage++;
+            }
+            ft.damageRate = ft.attempts > 0 ? ft.damage / ft.attempts : 0;
+        }
+
         // Update session win rate
         this.session.sessionWinRate = this.session.wins / this.session.totalBets;
 
@@ -1282,12 +1654,65 @@ class AIAutoEngine {
             );
         }
 
+        // ── Trend State Machine ──
+        if (hit) {
+            this.session.overallConsecutiveLosses = 0;
+            if (this.session.trendState === 'RECOVERY') {
+                this.session.trendState = 'NORMAL';  // Recovery success → back to normal
+            }
+            // Clear same-pair loss tracker
+            this.session.lastBetPairLosses = 0;
+        } else {
+            this.session.overallConsecutiveLosses++;
+
+            // Same-pair consecutive loss detection → blacklist after 2
+            const betPairName = REFKEY_TO_PAIR_NAME[refKey] || pairKey;
+            if (betPairName === this.session.lastBetPair) {
+                this.session.lastBetPairLosses++;
+                if (this.session.lastBetPairLosses >= 2) {
+                    // Blacklist this pair for next 3 bets
+                    this.session.pairBlacklist[betPairName] = this.session.totalBets + 3;
+                    this.session.lastBetPairLosses = 0;
+                }
+            } else {
+                this.session.lastBetPairLosses = 1;
+            }
+
+            // Enter RECOVERY after 3 overall consecutive losses
+            if (this.session.overallConsecutiveLosses >= 3 && this.session.trendState === 'NORMAL') {
+                this.session.trendState = 'RECOVERY';
+                this.session.recoveryEntryBet = this.session.totalBets;
+            }
+        }
+        this.session.lastBetPair = REFKEY_TO_PAIR_NAME[refKey] || pairKey;
+
+        // Clean expired blacklist entries
+        for (const [pk, expiry] of Object.entries(this.session.pairBlacklist)) {
+            if (this.session.totalBets >= expiry) delete this.session.pairBlacklist[pk];
+        }
+
         // v2 learning updates
         if (this.learningVersion === 'v2') {
-            // Bayesian: update alpha/beta for the pair
+            // Bayesian: update alpha/beta for the pair (Step 7: with forgetting)
             if (this.pairBayesian && this.pairBayesian[refKey]) {
-                if (hit) this.pairBayesian[refKey].alpha++;
-                else this.pairBayesian[refKey].beta++;
+                const bay = this.pairBayesian[refKey];
+                const lambda = this.bayesianForgetting;
+
+                // Apply exponential decay to existing priors
+                bay.alpha *= lambda;
+                bay.beta *= lambda;
+
+                // Floor: prevent prior collapse (min effective sample = 2)
+                if (bay.alpha + bay.beta < 2) {
+                    const scale = 2 / (bay.alpha + bay.beta);
+                    bay.alpha *= scale;
+                    bay.beta *= scale;
+                }
+
+                // Add new observation
+                if (hit) bay.alpha += 1;
+                else bay.beta += 1;
+
                 this._totalBayesianDecisions++;
             }
 
@@ -1381,6 +1806,7 @@ class AIAutoEngine {
      */
     recordSkip() {
         this.session.consecutiveSkips++;
+        this.session.sessionSpinCount++;
         // Push a skip marker — refKey: null means no pair gets the consecutive bonus
         this.session.recentDecisions.push({ refKey: null, filterKey: null, hit: false, nearMiss: false, skipped: true });
         if (this.session.recentDecisions.length > 10) {
@@ -1453,6 +1879,25 @@ class AIAutoEngine {
     }
 
     // ═══════════════════════════════════════════════════════════
+    //  RECOVERY FILTER SELECTION
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Pick the best filter for recovery mode.
+     * Data-driven conclusion: static zero_both (44.5% hit rate) is optimal.
+     * Tested 12 adaptive strategies (trend-following, counter-trend, retro-hit,
+     * shadow-guided, alternating, etc.) — all performed worse.
+     * zero_both: 35 incomplete; next best (counter_table): 40 incomplete.
+     *
+     * @param {number[]} recentSpins - Last 10 actual spins
+     * @param {number[]} combinedNumbers - Predicted numbers to filter
+     * @returns {string} filterKey to use
+     */
+    _pickRecoveryFilter(recentSpins, combinedNumbers) {
+        return 'zero_both';
+    }
+
+    // ═══════════════════════════════════════════════════════════
     //  MODE CONTROL
     // ═══════════════════════════════════════════════════════════
 
@@ -1487,6 +1932,8 @@ class AIAutoEngine {
         this._currentDecisionSpins = null;
         this.liveSpins = [];
         this._lastRetrainBetCount = 0;
+        this._pendingShadowProjections = null;
+        this._pendingShadowIdx = -1;
     }
 
     fullReset() {
@@ -1502,6 +1949,8 @@ class AIAutoEngine {
         this.liveSpins = [];
         this._originalTrainingData = null;
         this._lastRetrainBetCount = 0;
+        this._pendingShadowProjections = null;
+        this._pendingShadowIdx = -1;
         if (this.sequenceModel) this.sequenceModel.reset();
     }
 

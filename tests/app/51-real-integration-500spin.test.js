@@ -704,8 +704,8 @@ describe('H. Money Management Real Session', () => {
         // Simulate a WIN — API: recordBetResult(betPerNumber, numbersCount, hit, actualNumber)
         moneyPanel.recordBetResult(betPerNum, numCount, true, 5);
 
-        // Win: payout = 35 * betPerNum (35:1), cost = totalBet, net = 35*2 - 20 = 50
-        const expectedWin = (35 * betPerNum) - totalBet;
+        // Win: payout = 36 * betPerNum (35:1 + original bet returned), cost = totalBet, net = 36*2 - 20 = 52
+        const expectedWin = (36 * betPerNum) - totalBet;
         expect(moneyPanel.sessionData.currentBankroll).toBe(initialBankroll + expectedWin);
 
         // Now simulate a LOSS

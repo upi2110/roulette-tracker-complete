@@ -42,8 +42,12 @@ class AIPredictionPanel {
         this.table1SelectedPairs = new Set();  // For table column highlighting
         this.table2SelectedPairs = new Set();  // For table column highlighting
 
+        this._isInverted = false;
+        this._originalPrediction = null; // Stores pre-invert prediction for restore
+
         this.createPanel();
         this.setupToggle();
+        this._setupInvertButton();
 
         console.log('✅ AI Prediction Panel initialized with MULTI-TABLE PAIR SELECTION');
     }
@@ -111,6 +115,20 @@ class AIPredictionPanel {
                         text-align: center;
                         margin-bottom: 0;
                     ">SELECT PAIRS</div>
+                    <button id="invertPredictionBtn" disabled style="
+                        margin-top: 6px;
+                        width: 100%;
+                        padding: 10px 24px;
+                        border-radius: 8px;
+                        background: #6366f1;
+                        color: white;
+                        font-weight: bold;
+                        font-size: 14px;
+                        border: 2px solid #4f46e5;
+                        cursor: pointer;
+                        display: none;
+                        transition: background 0.2s, border-color 0.2s;
+                    ">🔄 INVERT</button>
                 </div>
             </div>
         `;
@@ -160,6 +178,130 @@ class AIPredictionPanel {
                 toggleBtn.textContent = this.isExpanded ? '−' : '+';
                 panel.className = this.isExpanded ? 'ai-selection-panel expanded' : 'ai-selection-panel collapsed';
             });
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  INVERT PREDICTION
+    // ═══════════════════════════════════════════════════════
+
+    _setupInvertButton() {
+        const invertBtn = document.getElementById('invertPredictionBtn');
+        if (invertBtn) {
+            invertBtn.addEventListener('click', () => this.invertPrediction());
+        }
+    }
+
+    /**
+     * Toggle between original and inverted prediction.
+     * Inverted = all 37 numbers (0-36) minus the current predicted numbers.
+     * Works in Manual, Semi, and Auto modes.
+     */
+    invertPrediction() {
+        if (!this.currentPrediction || !this.currentPrediction.numbers || this.currentPrediction.numbers.length === 0) {
+            console.warn('[INVERT] No prediction to invert');
+            return;
+        }
+
+        if (this._isInverted && this._originalPrediction) {
+            // RESTORE: Go back to original prediction
+            this._isInverted = false;
+            const restored = this._originalPrediction;
+            this._originalPrediction = null;
+
+            this.updatePrediction(restored);
+
+            if (window.rouletteWheel) {
+                window.rouletteWheel.updateHighlights(
+                    restored.anchors || [], restored.loose || [],
+                    restored.anchor_groups || [], restored.extraNumbers || [],
+                    restored
+                );
+            }
+            console.log(`[INVERT] Restored original prediction (${restored.numbers.length} numbers)`);
+            return;
+        }
+
+        // INVERT: Compute complement set
+        const ALL_NUMS = Array.from({ length: 37 }, (_, i) => i); // 0-36
+        const currentNums = new Set(this.currentPrediction.numbers);
+        const invertedNums = ALL_NUMS.filter(n => !currentNums.has(n));
+
+        if (invertedNums.length === 0) {
+            console.warn('[INVERT] Inversion would produce empty set');
+            return;
+        }
+
+        // Recompute anchors/loose for the inverted set
+        let anchors = [], loose = [], anchorGroups = [];
+        if (typeof window.calculateWheelAnchors === 'function') {
+            try {
+                const result = window.calculateWheelAnchors(invertedNums);
+                anchors = result.anchors || [];
+                loose = result.loose || [];
+                anchorGroups = result.anchorGroups || [];
+            } catch (e) {
+                console.warn('[INVERT] calculateWheelAnchors failed, using fallback:', e.message);
+                loose = invertedNums.slice();
+            }
+        } else {
+            loose = invertedNums.slice();
+        }
+
+        // Save original prediction for restore
+        this._originalPrediction = { ...this.currentPrediction };
+        this._isInverted = true;
+
+        // Build inverted prediction object (preserve reasoning/debug from original)
+        const invertedPrediction = {
+            ...this.currentPrediction,
+            numbers: invertedNums,
+            anchors,
+            loose,
+            anchor_groups: anchorGroups,
+            extraNumbers: [],
+            signal: `INVERTED (${invertedNums.length} numbers)`,
+            _isInverted: true,
+            _originalNumbers: [...this.currentPrediction.numbers]
+        };
+
+        // Update display through the standard path
+        this.updatePrediction(invertedPrediction);
+
+        // Update wheel + money panel through the standard path
+        if (window.rouletteWheel) {
+            window.rouletteWheel.updateHighlights(anchors, loose, anchorGroups, [], invertedPrediction);
+        }
+
+        console.log(`[INVERT] Inverted prediction: ${this.currentPrediction.numbers.length} → ${invertedNums.length} numbers`);
+    }
+
+    /**
+     * Update the Invert button's visibility, text, and color.
+     * Called by updatePrediction() and updateFilteredDisplay().
+     */
+    _updateInvertButton(prediction, numCount) {
+        const invertBtn = document.getElementById('invertPredictionBtn');
+        if (!invertBtn) return;
+
+        if (numCount > 0) {
+            invertBtn.style.display = 'block';
+            invertBtn.disabled = false;
+
+            if (this._isInverted) {
+                const origCount = prediction._originalNumbers ? prediction._originalNumbers.length : '?';
+                invertBtn.textContent = `↩️ RESTORE ORIGINAL (${origCount} numbers)`;
+                invertBtn.style.background = '#f59e0b';
+                invertBtn.style.borderColor = '#d97706';
+            } else {
+                const invertCount = 37 - numCount;
+                invertBtn.textContent = `🔄 INVERT (${invertCount} numbers)`;
+                invertBtn.style.background = '#6366f1';
+                invertBtn.style.borderColor = '#4f46e5';
+            }
+        } else {
+            invertBtn.style.display = 'none';
+            invertBtn.disabled = true;
         }
     }
 
@@ -525,6 +667,10 @@ class AIPredictionPanel {
         this.table1SelectedPairs.clear();
         this.table2SelectedPairs.clear();
         this._extraRefs = {};
+
+        // Reset invert state
+        this._isInverted = false;
+        this._originalPrediction = null;
 
         this._updateCounts();
         this.renderAllCheckboxes();
@@ -1000,10 +1146,24 @@ class AIPredictionPanel {
         // 1. UPDATE SIGNAL
         const signalIndicator = document.getElementById('signalIndicator');
         if (signalIndicator) {
-            const extraText = extraNumbers.length > 0 ? ` + ${extraNumbers.length} EXTRA` : '';
-            signalIndicator.textContent = `✅ ${allNumbers.length} COMMON${extraText}`;
-            signalIndicator.style.backgroundColor = '#22c55e';
+            if (prediction._isInverted) {
+                signalIndicator.textContent = `🔄 ${allNumbers.length} INVERTED`;
+                signalIndicator.style.backgroundColor = '#6366f1'; // Purple for inverted
+            } else {
+                const extraText = extraNumbers.length > 0 ? ` + ${extraNumbers.length} EXTRA` : '';
+                signalIndicator.textContent = `✅ ${allNumbers.length} COMMON${extraText}`;
+                signalIndicator.style.backgroundColor = '#22c55e';
+            }
             signalIndicator.style.color = 'white';
+        }
+
+        // 1b. UPDATE INVERT BUTTON
+        this._updateInvertButton(prediction, allNumbers.length);
+
+        // Reset _isInverted if this is a fresh (non-inverted) prediction
+        if (!prediction._isInverted) {
+            this._isInverted = false;
+            this._originalPrediction = null;
         }
 
         // 2. UPDATE NUMBERS — color-coded anchor groups + loose
@@ -1514,11 +1674,19 @@ class AIPredictionPanel {
         // 1. UPDATE SIGNAL
         const signalIndicator = document.getElementById('signalIndicator');
         if (signalIndicator) {
-            const extraText = extraNumbers.length > 0 ? ` + ${extraNumbers.length} EXTRA` : '';
-            signalIndicator.textContent = `✅ ${allNumbers.length} COMMON${extraText}`;
-            signalIndicator.style.backgroundColor = allNumbers.length > 0 ? '#22c55e' : '#f59e0b';
+            if (this._isInverted) {
+                signalIndicator.textContent = `🔄 ${allNumbers.length} INVERTED`;
+                signalIndicator.style.backgroundColor = '#6366f1'; // Purple for inverted
+            } else {
+                const extraText = extraNumbers.length > 0 ? ` + ${extraNumbers.length} EXTRA` : '';
+                signalIndicator.textContent = `✅ ${allNumbers.length} COMMON${extraText}`;
+                signalIndicator.style.backgroundColor = allNumbers.length > 0 ? '#22c55e' : '#f59e0b';
+            }
             signalIndicator.style.color = 'white';
         }
+
+        // 1b. UPDATE INVERT BUTTON
+        this._updateInvertButton(mergedPrediction, allNumbers.length);
 
         // 2. UPDATE NUMBERS DISPLAY
         const numbersDiv = document.querySelector('#aiResultsPanel .prediction-numbers');
@@ -1780,6 +1948,13 @@ class AIPredictionPanel {
         if (signalIndicator) {
             signalIndicator.textContent = 'SELECT PAIRS';
             signalIndicator.style.backgroundColor = '#64748b';
+        }
+
+        // Hide invert button
+        const invertBtn = document.getElementById('invertPredictionBtn');
+        if (invertBtn) {
+            invertBtn.style.display = 'none';
+            invertBtn.disabled = true;
         }
 
         const numbersDiv = document.querySelector('#aiResultsPanel .prediction-numbers');

@@ -43,6 +43,9 @@ class AutoTestRunner {
             throw new Error('Engine must be trained before running tests');
         }
         this.engine = engine;
+        this._enableLogging = false; // Set to true for detailed decision logs
+        this._logBuffer = [];        // Verbose log buffer (flushed per session)
+        this._logFilename = null;    // Current log filename
 
         // Session parameters — tunable via constructor or setSessionConfig()
         // Defaults: $10 bet cap, reset after 5 consecutive losses (benchmarked optimal)
@@ -53,8 +56,31 @@ class AutoTestRunner {
             MAX_BET: 10,
             LOSS_STREAK_RESET: 5,
             MAX_RESETS: 5,
-            STOP_LOSS: 0            // 0 = use bankroll <= 0 as bust condition
+            STOP_LOSS: 0,           // 0 = use bankroll <= 0 as bust condition
+            MAX_SESSION_SPINS: 60   // Safety net: cap total spins per session
         }, sessionConfig || {});
+    }
+
+    /**
+     * Write a verbose log line to the buffer (flushed to file per session via IPC).
+     */
+    _vlog(source, level, message, data) {
+        if (!this._enableLogging) return;
+        const ts = new Date().toISOString().slice(11, 23);
+        const line = `[${ts}] [${source}] [${level}] ${message}` + (data ? ` | ${JSON.stringify(data)}` : '') + '\n';
+        this._logBuffer.push(line);
+    }
+
+    /**
+     * Flush log buffer to file via IPC (if available).
+     */
+    async _flushLog() {
+        if (this._logBuffer.length === 0 || !this._logFilename) return;
+        const content = this._logBuffer.join('');
+        this._logBuffer = [];
+        if (typeof window !== 'undefined' && window.aiAPI && window.aiAPI.appendSessionLog) {
+            await window.aiAPI.appendSessionLog(this._logFilename, content);
+        }
     }
 
     /**
@@ -112,10 +138,42 @@ class AutoTestRunner {
         this.engine._retrainInterval = Infinity;
         this.engine._retrainLossStreak = Infinity;
 
+        // Snapshot engine learning state BEFORE test loop.
+        // recordResult() mutates pairBayesian, pairModels.hitRate, filterModels.hitRate
+        // across sessions. Restore pristine state before each session so every session
+        // sees the same engine state as a fresh live session would.
+        const savedBayesian = JSON.parse(JSON.stringify(this.engine.pairBayesian || {}));
+        const savedBayesianCount = this.engine._totalBayesianDecisions || 0;
+        const savedPairModels = JSON.parse(JSON.stringify(this.engine.pairModels || {}));
+        const savedFilterModels = JSON.parse(JSON.stringify(this.engine.filterModels || {}));
+
+        // Verbose: start log file and snapshot engine state
+        if (this._enableLogging) {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            this._logFilename = `test-runner-${ts}.log`;
+            this._logBuffer = [];
+            this._vlog('RUNNER', 'INFO', 'Test run started', { testFile, totalSpins: testSpins.length, maxStart, totalWork });
+            this._vlog('RUNNER', 'INFO', 'Engine State Snapshot (pre-test)', {
+                isTrained: this.engine.isTrained,
+                learningVersion: this.engine.learningVersion,
+                totalBayesianDecisions: savedBayesianCount,
+                pairBayesianSnapshot: Object.fromEntries(
+                    Object.entries(savedBayesian).map(([k, v]) => [k, { alpha: v.alpha, beta: v.beta, mean: +(v.alpha / (v.alpha + v.beta)).toFixed(4) }])
+                ),
+                pairModelHitRates: Object.fromEntries(
+                    Object.entries(savedPairModels).map(([k, v]) => [k, { hitRate: +(v.hitRate || 0).toFixed(4), covEff: +(v.coverageEfficiency || 0).toFixed(4), totalFlashes: v.totalFlashes }])
+                )
+            });
+        }
+
         for (let startIdx = 0; startIdx <= maxStart; startIdx++) {
             for (const strategy of [1, 2, 3]) {
-                // Reset engine session between simulations
+                // Reset engine session AND restore pristine learning state
                 this.engine.resetSession();
+                this.engine.pairBayesian = JSON.parse(JSON.stringify(savedBayesian));
+                this.engine._totalBayesianDecisions = savedBayesianCount;
+                this.engine.pairModels = JSON.parse(JSON.stringify(savedPairModels));
+                this.engine.filterModels = JSON.parse(JSON.stringify(savedFilterModels));
 
                 const result = this._runSession(testSpins, startIdx, strategy);
                 allSessions[strategy].push(result);
@@ -128,8 +186,25 @@ class AutoTestRunner {
 
                 // Yield after every session — runs like live, one at a time
                 await new Promise(r => setTimeout(r, 0));
+
+                // Flush verbose logs every 50 sessions to avoid huge buffer
+                if (this._enableLogging && completed % 50 === 0) {
+                    await this._flushLog();
+                }
             }
         }
+
+        // Flush remaining verbose logs
+        if (this._enableLogging) {
+            this._vlog('RUNNER', 'INFO', 'Test run complete', { completed, totalWork });
+            await this._flushLog();
+        }
+
+        // Restore original engine learning state (undo any mutations from last session)
+        this.engine.pairBayesian = savedBayesian;
+        this.engine._totalBayesianDecisions = savedBayesianCount;
+        this.engine.pairModels = savedPairModels;
+        this.engine.filterModels = savedFilterModels;
 
         // Restore live retrain settings
         this.engine._retrainInterval = savedRetrainInterval;
@@ -163,7 +238,7 @@ class AutoTestRunner {
      * @returns {SessionResult}
      */
     _runSession(testSpins, startIdx, strategy) {
-        const { STARTING_BANKROLL, TARGET_PROFIT, MIN_BET, MAX_BET, LOSS_STREAK_RESET, MAX_RESETS, STOP_LOSS } = this._sessionConfig;
+        const { STARTING_BANKROLL, TARGET_PROFIT, MIN_BET, MAX_BET, LOSS_STREAK_RESET, MAX_RESETS, STOP_LOSS, MAX_SESSION_SPINS } = this._sessionConfig;
 
         const sessionState = {
             bankroll: STARTING_BANKROLL,
@@ -205,7 +280,10 @@ class AutoTestRunner {
 
         // ── PHASE 2: LIVE — bet with risk management ──
         for (let i = startIdx + 3; i < testSpins.length - 1; i++) {
-            const decision = this._simulateDecision(testSpins, i);
+            // Session-scoped spins: only pass spins from startIdx onwards.
+            // This matches live mode where decide() only has window.spins (what user entered).
+            const sessionSpins = testSpins.slice(startIdx, i + 1);
+            const decision = this._simulateDecision(sessionSpins, sessionSpins.length - 1);
 
             if (decision.action === 'BET') {
                 const nextActual = testSpins[i + 1];
@@ -245,6 +323,7 @@ class AutoTestRunner {
                 );
 
                 // Record result for engine session adaptation
+                // (must happen before recovery bet cap so trend state is updated)
                 const refKey = decision.selectedPair
                     ? (Object.entries(TEST_REFKEY_TO_PAIR_NAME).find(([k, v]) => v === decision.selectedPair) || [decision.selectedPair])[0]
                     : 'unknown';
@@ -325,6 +404,11 @@ class AutoTestRunner {
                     cumulativeProfit: sessionState.profit
                 });
             }
+
+            // Safety net: cap session at MAX_SESSION_SPINS total steps
+            if (MAX_SESSION_SPINS > 0 && steps.length >= MAX_SESSION_SPINS) {
+                return this._buildSessionResult(startIdx, strategy, 'INCOMPLETE', sessionState, steps);
+            }
         }
 
         // Ran out of spins
@@ -376,6 +460,7 @@ class AutoTestRunner {
     _simulateDecision(testSpins, idx, blacklistedPairs) {
         const skipResult = (reason) => {
             this.engine._currentDecisionSpins = null; // Clean up on skip
+            if (this._enableLogging) console.log(`[TEST-LOG] _simulateDecision() → SKIP: ${reason}`);
             return {
                 action: 'SKIP',
                 selectedPair: null,
@@ -388,19 +473,26 @@ class AutoTestRunner {
 
         if (idx < 3) return skipResult('Insufficient history');
 
+        const decisionSpins = testSpins.slice(0, idx + 1);
+        if (this._enableLogging) console.log(`[TEST-LOG] _simulateDecision() | spinCount=${decisionSpins.length} | idx=${idx} | spins=[${decisionSpins.join(',')}] | trendState=${this.engine.session.trendState} | totalBets=${this.engine.session.totalBets}`);
+
         // Set current decision spins on engine so inner methods (_scorePair, _selectBestFilter)
         // use the correct spins instead of _getWindowSpins() (which may differ in test context)
-        this.engine._currentDecisionSpins = testSpins.slice(0, idx + 1);
+        this.engine._currentDecisionSpins = decisionSpins;
+
+        // ── Resolve previous shadow tracking ──
+        this.engine._resolvePendingShadow(testSpins, idx);
 
         // ── Step 1: T3 Flash Detection + Pair Selection (existing) ──
         const flashingPairs = this.engine._getFlashingPairsFromHistory(testSpins, idx);
         let t3Numbers = [];
         let t3BestPair = null;
+        let t3Candidates = [];
+        let t3Scored = null;
 
         if (flashingPairs.size > 0) {
-            const t3Candidates = [];
             for (const [refKey, flashInfo] of flashingPairs) {
-                // Skip blacklisted pairs
+                // Skip blacklisted pairs (explicit param)
                 const pairName = TEST_REFKEY_TO_PAIR_NAME[refKey] || refKey;
                 if (blacklistedPairs && blacklistedPairs.has(pairName)) continue;
 
@@ -410,16 +502,36 @@ class AutoTestRunner {
                 }
             }
             if (t3Candidates.length > 0) {
-                const scored = t3Candidates.map(c => ({ ...c, score: this.engine._scorePair(c.refKey, c) }));
-                scored.sort((a, b) => b.score - a.score);
-                t3BestPair = scored[0];
+                t3Scored = t3Candidates.map(c => ({ ...c, score: this.engine._scorePair(c.refKey, c) }));
+                t3Scored.sort((a, b) => b.score - a.score);
+                t3BestPair = t3Scored[0];
                 t3Numbers = t3BestPair.numbers;
             }
+        }
+        if (this._enableLogging) console.log(`[TEST-LOG] Step1 T3: flashingPairs=${flashingPairs.size} | bestPair=${t3BestPair ? t3BestPair.pairName : 'none'} | t3Numbers=[${t3Numbers.join(',')}]`);
+
+        // Verbose: Bayesian breakdown for each candidate
+        if (this._enableLogging && t3Candidates.length > 0) {
+            const scoredRef = t3Scored || t3Candidates;
+            const scoredDetails = scoredRef.map(c => {
+                const bay = this.engine.pairBayesian ? this.engine.pairBayesian[c.refKey] : null;
+                const model = this.engine.pairModels ? this.engine.pairModels[c.refKey] : null;
+                return {
+                    pair: c.pairName, refKey: c.refKey, finalScore: +(c.score || 0).toFixed(4),
+                    bayesian: bay ? { alpha: bay.alpha, beta: bay.beta, mean: +(bay.alpha / (bay.alpha + bay.beta)).toFixed(4) } : null,
+                    totalBayesianDecisions: this.engine._totalBayesianDecisions,
+                    modelHitRate: model ? +(model.hitRate || 0).toFixed(4) : null,
+                    modelCoverageEff: model ? +(model.coverageEfficiency || 0).toFixed(4) : null
+                };
+            });
+            this._vlog('RUNNER', 'DEBUG', 'Step1 Candidate Bayesian Scores', { scoredDetails });
+            console.log(`[TEST-LOG] Step1 Bayesian:`, JSON.stringify(scoredDetails));
         }
 
         // ── Step 2: T2 Flash Detection + NEXT Row Numbers ──
         const t2Data = this.engine.simulateT2FlashAndNumbers(testSpins, idx);
         const t2Numbers = t2Data ? t2Data.numbers : [];
+        if (this._enableLogging) console.log(`[TEST-LOG] Step2 T2: dataPair=${t2Data ? t2Data.dataPair : 'none'} | anchorCount=${t2Data ? t2Data.anchorCount : 0} | t2Numbers=[${t2Numbers.join(',')}]`);
 
         // ── Must have at least one source ──
         if (t3Numbers.length === 0 && t2Numbers.length === 0) {
@@ -429,38 +541,67 @@ class AutoTestRunner {
         // ── Step 3: Combine T2 + T3 Numbers ──
         const combinedSet = new Set([...t3Numbers, ...t2Numbers]);
         const combinedNumbers = Array.from(combinedSet);
+        if (this._enableLogging) console.log(`[TEST-LOG] Step3 Combined: ${combinedNumbers.length} numbers [${[...combinedNumbers].sort((a,b)=>a-b).join(',')}]`);
 
         // ── Step 4: Predict Best Set ──
         const recentSpins = testSpins.slice(Math.max(0, idx - 10), idx);
         const setPrediction = this.engine._predictBestSet(combinedNumbers, recentSpins);
+        if (this._enableLogging) console.log(`[TEST-LOG] Step4 SetPrediction: filterKey=${setPrediction.filterKey} | setKey=${setPrediction.setKey} | score=${setPrediction.score}`);
 
-        // ── Step 5: Apply both_both_setN Filter ──
-        const filteredNumbers = this.engine._applyFilterToNumbers(combinedNumbers, setPrediction.filterKey);
+        // ── Step 5: Apply Filter (RECOVERY → adaptive look-back filter) ──
+        let filterKey = setPrediction.filterKey;
+        if (this.engine.session.trendState === 'RECOVERY') {
+            filterKey = this.engine._pickRecoveryFilter(recentSpins, combinedNumbers);
+            if (this._enableLogging) console.log(`[TEST-LOG] Step5 RECOVERY filter override: ${setPrediction.filterKey} → ${filterKey}`);
+        }
+        const filteredNumbers = this.engine._applyFilterToNumbers(combinedNumbers, filterKey);
+        if (this._enableLogging) console.log(`[TEST-LOG] Step5 Filter: ${filterKey} → ${filteredNumbers.length} numbers [${[...filteredNumbers].sort((a,b)=>a-b).join(',')}]`);
 
         // ── Step 6: Confidence + BET/SKIP ──
         const pairScore = t3BestPair ? this.engine._scorePair(t3BestPair.refKey, t3BestPair) : 0.5;
         const confidence = this.engine._computeConfidence(pairScore, setPrediction.score, filteredNumbers);
 
-        const effectiveThreshold = this.engine.confidenceThreshold;
+        const effectiveThreshold = this.engine._getEffectiveThreshold();
         const forcebet = this.engine.session.consecutiveSkips >= this.engine.maxConsecutiveSkips;
+
+        // ── Store shadow projections for deferred resolution ──
+        this.engine._storeShadowProjections(testSpins, idx, flashingPairs, t2Data);
 
         // Clean up decision spins context
         this.engine._currentDecisionSpins = null;
 
+        // Verbose: full decision summary to file
+        if (this._enableLogging) {
+            this._vlog('RUNNER', 'DECISION', `Step6 | spins=[${decisionSpins.join(',')}]`, {
+                action: (confidence >= effectiveThreshold || forcebet) ? 'BET' : 'SKIP',
+                pair: t3BestPair ? t3BestPair.pairName : (t2Data ? t2Data.dataPair : null),
+                filter: filterKey, confidence, effectiveThreshold, pairScore: +pairScore.toFixed(4),
+                setScore: setPrediction.score, forcebet,
+                flashingKeys: Array.from(flashingPairs.keys()),
+                t3Numbers: [...t3Numbers].sort((a, b) => a - b),
+                t2Numbers: [...t2Numbers].sort((a, b) => a - b),
+                filteredNumbers: [...filteredNumbers].sort((a, b) => a - b),
+                trendState: this.engine.session.trendState,
+                totalBets: this.engine.session.totalBets
+            });
+        }
+
         if (confidence >= effectiveThreshold || forcebet) {
             const pairName = t3BestPair ? t3BestPair.pairName : (t2Data ? t2Data.dataPair : 'unknown');
+            if (this._enableLogging) console.log(`[TEST-LOG] Step6 Decision: action=BET | conf=${confidence}% | threshold=${effectiveThreshold}% | forcebet=${forcebet} | pair=${pairName} | filter=${filterKey}`);
             return {
                 action: 'BET',
                 selectedPair: pairName,
-                selectedFilter: setPrediction.filterKey,
+                selectedFilter: filterKey,
                 numbers: filteredNumbers,
                 confidence,
                 reason: forcebet && confidence < effectiveThreshold
                     ? `Forced bet after ${this.engine.session.consecutiveSkips} skips`
-                    : `T2:${t2Data ? t2Data.dataPair : 'none'}+T3:${t3BestPair ? t3BestPair.pairName : 'none'} → ${setPrediction.filterKey} (conf: ${confidence}%)`
+                    : `T2:${t2Data ? t2Data.dataPair : 'none'}+T3:${t3BestPair ? t3BestPair.pairName : 'none'} → ${filterKey} (conf: ${confidence}%)`
             };
         }
 
+        if (this._enableLogging) console.log(`[TEST-LOG] Step6 Decision: action=SKIP | conf=${confidence}% | threshold=${effectiveThreshold}% | consecutiveSkips=${this.engine.session.consecutiveSkips}`);
         return skipResult(`Low confidence ${confidence}% < ${effectiveThreshold}%`);
     }
 
@@ -582,6 +723,14 @@ class AutoTestRunner {
         // Average profit from decided sessions (excludes incomplete)
         const avgProfit = decided.length > 0 ? totalProfit / decided.length : 0;
 
+        // Incomplete session losses (real losses from sessions that didn't finish)
+        const incompleteLoss = incomplete.reduce((sum, s) => sum + s.finalProfit, 0);
+        const avgIncompleteLoss = incomplete.length > 0 ? incompleteLoss / incomplete.length : 0;
+
+        // Real total P&L — includes ALL sessions (wins, busts, AND incomplete)
+        const realTotalPnL = sessions.reduce((sum, s) => sum + s.finalProfit, 0);
+        const realAvgPnL = sessions.length > 0 ? realTotalPnL / sessions.length : 0;
+
         // Max drawdown across all sessions
         const maxDrawdown = Math.max(0, ...sessions.map(s => s.maxDrawdown));
 
@@ -608,6 +757,10 @@ class AutoTestRunner {
             avgSpinsToBust: Math.round(avgSpinsToBust * 10) / 10,
             totalProfit: Math.round(totalProfit * 100) / 100,
             avgProfit: Math.round(avgProfit * 100) / 100,
+            incompleteLoss: Math.round(incompleteLoss * 100) / 100,
+            avgIncompleteLoss: Math.round(avgIncompleteLoss * 100) / 100,
+            realTotalPnL: Math.round(realTotalPnL * 100) / 100,
+            realAvgPnL: Math.round(realAvgPnL * 100) / 100,
             maxDrawdown: Math.round(maxDrawdown * 100) / 100,
             bestSession,
             worstSession
@@ -629,6 +782,10 @@ class AutoTestRunner {
             avgSpinsToBust: 0,
             totalProfit: 0,
             avgProfit: 0,
+            incompleteLoss: 0,
+            avgIncompleteLoss: 0,
+            realTotalPnL: 0,
+            realAvgPnL: 0,
             maxDrawdown: 0,
             bestSession: { startIdx: 0, finalProfit: 0 },
             worstSession: { startIdx: 0, finalProfit: 0 }

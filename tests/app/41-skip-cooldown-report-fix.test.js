@@ -144,6 +144,7 @@ describe('A: Force-bet fix — maxConsecutiveSkips is absolute limit', () => {
 
     test('A1: forcebet triggers at maxConsecutiveSkips without cooldown', () => {
         const testSpins = generateTestSpins(30);
+        engine.maxConsecutiveSkips = 4; // Explicitly set (default is now Infinity)
         engine.session.consecutiveSkips = engine.maxConsecutiveSkips;
         engine.session.cooldownActive = false;
         engine.confidenceThreshold = 100; // Impossible threshold
@@ -158,6 +159,7 @@ describe('A: Force-bet fix — maxConsecutiveSkips is absolute limit', () => {
 
     test('A2: forcebet triggers at maxConsecutiveSkips WITH cooldown active', () => {
         const testSpins = generateTestSpins(30);
+        engine.maxConsecutiveSkips = 4; // Explicitly set (default is now Infinity)
         engine.session.consecutiveSkips = engine.maxConsecutiveSkips;
         engine.session.cooldownActive = true;
         engine.session.cooldownThreshold = 99;
@@ -173,6 +175,7 @@ describe('A: Force-bet fix — maxConsecutiveSkips is absolute limit', () => {
 
     test('A3: forcebet triggers beyond maxConsecutiveSkips during cooldown', () => {
         const testSpins = generateTestSpins(30);
+        engine.maxConsecutiveSkips = 4; // Explicitly set (default is now Infinity)
         engine.session.consecutiveSkips = engine.maxConsecutiveSkips + 10;
         engine.session.cooldownActive = true;
         engine.session.cooldownThreshold = 95;
@@ -187,6 +190,7 @@ describe('A: Force-bet fix — maxConsecutiveSkips is absolute limit', () => {
 
     test('A4: no force-bet below maxConsecutiveSkips', () => {
         const testSpins = generateTestSpins(30);
+        engine.maxConsecutiveSkips = 4; // Explicitly set (default is now Infinity)
         engine.session.consecutiveSkips = engine.maxConsecutiveSkips - 1;
         engine.session.cooldownActive = false;
         engine.confidenceThreshold = 100; // Impossible
@@ -199,8 +203,8 @@ describe('A: Force-bet fix — maxConsecutiveSkips is absolute limit', () => {
         }
     });
 
-    test('A5: maxConsecutiveSkips default is 5', () => {
-        expect(engine.maxConsecutiveSkips).toBe(5);
+    test('A5: maxConsecutiveSkips default is Infinity', () => {
+        expect(engine.maxConsecutiveSkips).toBe(Infinity);
     });
 
     test('A6: custom maxConsecutiveSkips is respected', () => {
@@ -224,6 +228,7 @@ describe('A: Force-bet fix — maxConsecutiveSkips is absolute limit', () => {
         engine.train([session]);
         engine.isEnabled = true;
         engine.confidenceThreshold = 100;
+        engine.maxConsecutiveSkips = 4; // Explicitly set (default is now Infinity)
         engine.session.consecutiveSkips = 5;
         engine.session.cooldownActive = true;  // This was the bug — cooldown used to block force-bet
         engine.session.cooldownThreshold = 100;
@@ -967,38 +972,38 @@ describe('J: Constants and mappings', () => {
 //  K: CONFIDENCE COMPUTATION WITH SKIP PRESSURE
 // ═══════════════════════════════════════════════════════════
 
-describe('K: Confidence computation with skip pressure', () => {
+describe('K: Confidence computation (skip pressure removed)', () => {
     let engine;
 
     beforeEach(() => {
         engine = createTrainedEngine();
     });
 
-    test('K1: skip pressure adds +3 per consecutive skip', () => {
+    test('K1: skip pressure removed — consecutive skips do not change confidence', () => {
         const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // 10 numbers
         engine.session.consecutiveSkips = 0;
         const base = engine._computeConfidence(0.5, 0, nums);
 
         engine.session.consecutiveSkips = 3;
-        const withPressure = engine._computeConfidence(0.5, 0, nums);
+        const withSkips = engine._computeConfidence(0.5, 0, nums);
 
-        expect(withPressure).toBe(base + 9); // 3 * 3
+        expect(withSkips).toBe(base); // No skip pressure
     });
 
-    test('K2: 5 skips gives +15 confidence (helps reach 65 threshold)', () => {
+    test('K2: 5 skips still gives base confidence (no pressure)', () => {
         const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         engine.session.consecutiveSkips = 5;
         const conf = engine._computeConfidence(0.5, 0, nums);
 
-        // Base 50 + skip pressure 15 = 65
-        expect(conf).toBe(65);
+        // Base 50 only — skip pressure removed
+        expect(conf).toBe(50);
     });
 
     test('K3: confidence capped at 100', () => {
         const nums = [1, 2, 3, 4, 5];
-        engine.session.consecutiveSkips = 10;
         engine.session.totalBets = 10;
         engine.session.sessionWinRate = 0.50;
+        // pairScore=1.0 → base 100, filter bonus +5, focus bonus (8-5)*2=6 → 111 capped at 100
         const conf = engine._computeConfidence(1.0, 0.5, nums);
 
         expect(conf).toBe(100);

@@ -388,18 +388,18 @@ describe('E. Money Panel State Edge Cases', () => {
         const panel = createMoneyPanel();
         panel.sessionData.isSessionActive = true;
         panel.sessionData.bettingStrategy = 1;
-        // Win on a single number: 35×bet - bet = 34×bet
+        // Win on a single number: 36×bet - bet = 35×bet (35:1 payout + original bet returned)
         await panel.recordBetResult(5, 1, true, 15);
-        expect(panel.sessionData.sessionProfit).toBe(5 * 35 - 5); // 170
+        expect(panel.sessionData.sessionProfit).toBe(5 * 36 - 5); // 175
     });
 
     test('E3: Win with 18 number bet', async () => {
         const panel = createMoneyPanel();
         panel.sessionData.isSessionActive = true;
         panel.sessionData.bettingStrategy = 1;
-        // Win: 35×bet - 18×bet = 17×bet
+        // Win: 36×bet - 18×bet = 18×bet (35:1 payout + original bet returned)
         await panel.recordBetResult(5, 18, true, 15);
-        expect(panel.sessionData.sessionProfit).toBe(5 * 35 - 5 * 18); // 85
+        expect(panel.sessionData.sessionProfit).toBe(5 * 36 - 5 * 18); // 90
     });
 
     test('E4: Loss with maximum bet numbers', async () => {

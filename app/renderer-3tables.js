@@ -883,16 +883,35 @@ function resetAll() {
             });
         }
 
+        // Reset frontend AI engine session — match test runner behavior
+        if (window.aiAutoEngine && typeof window.aiAutoEngine.resetSession === 'function') {
+            window.aiAutoEngine.resetSession();
+            console.log('✅ AI engine session reset (clean slate)');
+        }
+
         // Reset orchestrator
         try {
             if (window.autoUpdateOrchestrator) {
                 window.autoUpdateOrchestrator.lastSpinCount = 0;
+                window.autoUpdateOrchestrator.sessionStarted = false;
                 console.log('✅ Orchestrator reset');
             }
         } catch (e) {
             console.warn('⚠️ Orchestrator reset failed:', e.message);
         }
         
+        // Reset session recorder
+        if (window.sessionRecorder && typeof window.sessionRecorder.reset === 'function') {
+            window.sessionRecorder.reset();
+            console.log('✅ Session recorder reset');
+        }
+
+        // Reset verbose logger
+        if (window.verboseLogger && typeof window.verboseLogger.reset === 'function') {
+            window.verboseLogger.reset();
+            console.log('✅ Verbose logger reset');
+        }
+
         render();
         console.log('🔄 Full reset complete');
     }

@@ -925,12 +925,12 @@ describe('Q. Bankroll and Win/Loss Accounting', () => {
         panel.sessionData.bettingStrategy = 1;
     });
 
-    test('Q1: Win calculation: 35:1 payout minus total bet', async () => {
+    test('Q1: Win calculation: 35:1 payout + original bet returned minus total bet', async () => {
         const betPerNum = 5;
         const numbersCount = 12;
         const totalBet = betPerNum * numbersCount; // 60
-        const winAmount = betPerNum * 35; // 175
-        const expectedNet = winAmount - totalBet; // 115
+        const winAmount = betPerNum * 36; // 180 (35:1 + original bet returned)
+        const expectedNet = winAmount - totalBet; // 120
 
         await panel.recordBetResult(betPerNum, numbersCount, true, 15);
         expect(panel.sessionData.sessionProfit).toBe(expectedNet);

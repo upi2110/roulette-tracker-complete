@@ -203,8 +203,8 @@ describe('AIAutoEngine', () => {
             expect(engine.confidenceThreshold).toBe(65);
         });
 
-        test('default maxConsecutiveSkips is 5', () => {
-            expect(engine.maxConsecutiveSkips).toBe(5);
+        test('default maxConsecutiveSkips is Infinity', () => {
+            expect(engine.maxConsecutiveSkips).toBe(Infinity);
         });
 
         test('default sessionAdaptationStart is 10', () => {
@@ -255,6 +255,15 @@ describe('AIAutoEngine', () => {
             expect(tracker.sessionWinRate).toBe(0);
             expect(tracker.recentDecisions).toEqual([]);
             expect(tracker.adaptationWeight).toBe(0.0);
+            expect(tracker.shadowPerformance).toEqual({});
+            expect(tracker.setActualHistory).toEqual([]);
+            // Trend state machine fields
+            expect(tracker.trendState).toBe('NORMAL');
+            expect(tracker.overallConsecutiveLosses).toBe(0);
+            expect(tracker.pairBlacklist).toEqual({});
+            expect(tracker.lastBetPair).toBeNull();
+            expect(tracker.lastBetPairLosses).toBe(0);
+            expect(tracker.recoveryEntryBet).toBe(0);
         });
     });
 
@@ -788,6 +797,7 @@ describe('AIAutoEngine', () => {
             engine.train([session]);
             engine.isEnabled = true;
             engine.confidenceThreshold = 100; // Impossible threshold
+            engine.maxConsecutiveSkips = 4; // Explicitly set (default is now Infinity)
             engine.session.consecutiveSkips = 5; // At max
 
             // Make pair models very weak
@@ -1044,11 +1054,11 @@ describe('AIAutoEngine', () => {
             expect(conf).toBe(50);
         });
 
-        test('penalizes when too many numbers (> 14)', () => {
+        test('K ceiling: returns 0 when more than K_MAX numbers (Step 6)', () => {
             const manyNums = Array.from({ length: 18 }, (_, i) => i);
             const conf = engine._computeConfidence(0.5, 0, manyNums);
-            // penalty = (18-14)*2 = 8; base=50; 50-8 = 42
-            expect(conf).toBe(42);
+            // K=18 > K_MAX=12 → guaranteed SKIP
+            expect(conf).toBe(0);
         });
 
         test('bonus for focused (< 8 numbers)', () => {
@@ -1089,11 +1099,11 @@ describe('AIAutoEngine', () => {
             expect(conf).toBe(50); // No adjustment
         });
 
-        test('consecutive skip pressure adds confidence', () => {
+        test('skip pressure removed — consecutive skips do not add confidence', () => {
             engine.session.consecutiveSkips = 3;
             const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
             const conf = engine._computeConfidence(0.5, 0, nums);
-            expect(conf).toBe(59); // 50 + 3*3 = 59
+            expect(conf).toBe(50); // No skip pressure: just base 50
         });
 
         test('caps confidence at 0 minimum', () => {
@@ -1655,6 +1665,178 @@ describe('AIAutoEngine', () => {
             // A win during cooldown should clear it
             engine.recordResult('prev', 'both_both', true, 5, [5, 10]);
             expect(engine.session.cooldownActive).toBe(false);
+        });
+    });
+
+    // ─── Q+. Trend State Machine ───
+    describe('Q+. Trend State Machine', () => {
+        test('Q+1: session starts in NORMAL state', () => {
+            expect(engine.session.trendState).toBe('NORMAL');
+            expect(engine.session.overallConsecutiveLosses).toBe(0);
+            expect(engine.session.pairBlacklist).toEqual({});
+            expect(engine.session.lastBetPair).toBeNull();
+            expect(engine.session.lastBetPairLosses).toBe(0);
+            expect(engine.session.recoveryEntryBet).toBe(0);
+        });
+
+        test('Q+2: enters RECOVERY after 3 consecutive losses', () => {
+            engine.recordResult('prev', 'both_both', false, 5);
+            expect(engine.session.trendState).toBe('NORMAL');
+            expect(engine.session.overallConsecutiveLosses).toBe(1);
+
+            engine.recordResult('prevPlus1', 'both_both', false, 10);
+            expect(engine.session.trendState).toBe('NORMAL');
+            expect(engine.session.overallConsecutiveLosses).toBe(2);
+
+            engine.recordResult('prevMinus1', 'both_both', false, 15);
+            expect(engine.session.trendState).toBe('RECOVERY');
+            expect(engine.session.overallConsecutiveLosses).toBe(3);
+            expect(engine.session.recoveryEntryBet).toBe(3);
+        });
+
+        test('Q+3: does NOT enter RECOVERY after only 2 losses', () => {
+            engine.recordResult('prev', 'both_both', false, 5);
+            engine.recordResult('prev', 'both_both', false, 10);
+            expect(engine.session.trendState).toBe('NORMAL');
+        });
+
+        test('Q+4: exits RECOVERY on any hit', () => {
+            // Enter RECOVERY
+            for (let i = 0; i < 3; i++) {
+                engine.recordResult('prev', 'both_both', false, i);
+            }
+            expect(engine.session.trendState).toBe('RECOVERY');
+
+            // Hit exits recovery
+            engine.recordResult('prev', 'both_both', true, 20);
+            expect(engine.session.trendState).toBe('NORMAL');
+            expect(engine.session.overallConsecutiveLosses).toBe(0);
+        });
+
+        test('Q+5: win before 3 losses keeps NORMAL', () => {
+            engine.recordResult('prev', 'both_both', false, 5);
+            engine.recordResult('prev', 'both_both', false, 10);
+            engine.recordResult('prev', 'both_both', true, 15);
+            expect(engine.session.trendState).toBe('NORMAL');
+            expect(engine.session.overallConsecutiveLosses).toBe(0);
+        });
+
+        test('Q+6: stays in RECOVERY during continued losses', () => {
+            // Enter RECOVERY
+            for (let i = 0; i < 3; i++) {
+                engine.recordResult('prev', 'both_both', false, i);
+            }
+            expect(engine.session.trendState).toBe('RECOVERY');
+
+            // Additional losses keep us in RECOVERY (not re-enter)
+            engine.recordResult('prev', 'both_both', false, 20);
+            expect(engine.session.trendState).toBe('RECOVERY');
+            expect(engine.session.overallConsecutiveLosses).toBe(4);
+        });
+
+        test('Q+7: pair blacklisted after 2 consecutive losses on same pair', () => {
+            engine.recordResult('prev', 'both_both', false, 5);
+            expect(engine.session.lastBetPair).toBe('prev');
+            expect(engine.session.lastBetPairLosses).toBe(1);
+            expect(Object.keys(engine.session.pairBlacklist)).toHaveLength(0);
+
+            engine.recordResult('prev', 'both_both', false, 10);
+            // After 2 consecutive same-pair losses, pair is blacklisted
+            expect(engine.session.pairBlacklist).toHaveProperty('prev');
+            expect(engine.session.pairBlacklist['prev']).toBe(engine.session.totalBets + 3);
+        });
+
+        test('Q+8: pair NOT blacklisted if different pairs lose', () => {
+            engine.recordResult('prev', 'both_both', false, 5);
+            engine.recordResult('prevPlus1', 'both_both', false, 10);
+            expect(Object.keys(engine.session.pairBlacklist)).toHaveLength(0);
+            expect(engine.session.lastBetPair).toBe('prevPlus1');
+            expect(engine.session.lastBetPairLosses).toBe(1);
+        });
+
+        test('Q+9: blacklist expires after 3 bets', () => {
+            // Blacklist prev
+            engine.recordResult('prev', 'both_both', false, 5);
+            engine.recordResult('prev', 'both_both', false, 10);
+            expect(engine.session.pairBlacklist).toHaveProperty('prev');
+            const expiryBet = engine.session.pairBlacklist['prev'];
+
+            // Make 3 more bets (different pair)
+            engine.recordResult('prevPlus1', 'both_both', true, 15);
+            engine.recordResult('prevPlus1', 'both_both', true, 20);
+            engine.recordResult('prevPlus1', 'both_both', true, 25);
+
+            // Blacklist should be cleaned up (totalBets = 5, expiry was 5)
+            expect(engine.session.totalBets).toBe(5);
+            expect(engine.session.totalBets).toBeGreaterThanOrEqual(expiryBet);
+            expect(engine.session.pairBlacklist).not.toHaveProperty('prev');
+        });
+
+        test('Q+10: same-pair loss counter resets on hit', () => {
+            engine.recordResult('prev', 'both_both', false, 5);
+            expect(engine.session.lastBetPairLosses).toBe(1);
+
+            engine.recordResult('prev', 'both_both', true, 10);
+            expect(engine.session.lastBetPairLosses).toBe(0);
+        });
+
+        test('Q+11: resetSession clears all trend state', () => {
+            // Build up some state
+            for (let i = 0; i < 3; i++) {
+                engine.recordResult('prev', 'both_both', false, i);
+            }
+            expect(engine.session.trendState).toBe('RECOVERY');
+            expect(Object.keys(engine.session.pairBlacklist).length).toBeGreaterThan(0);
+
+            engine.resetSession();
+            expect(engine.session.trendState).toBe('NORMAL');
+            expect(engine.session.overallConsecutiveLosses).toBe(0);
+            expect(engine.session.pairBlacklist).toEqual({});
+            expect(engine.session.lastBetPair).toBeNull();
+            expect(engine.session.lastBetPairLosses).toBe(0);
+            expect(engine.session.recoveryEntryBet).toBe(0);
+        });
+
+        test('Q+12: fullReset clears all trend state', () => {
+            for (let i = 0; i < 3; i++) {
+                engine.recordResult('prev', 'both_both', false, i);
+            }
+            engine.fullReset();
+            expect(engine.session.trendState).toBe('NORMAL');
+            expect(engine.session.overallConsecutiveLosses).toBe(0);
+            expect(engine.session.pairBlacklist).toEqual({});
+        });
+
+        test('Q+13: multiple cycles NORMAL → RECOVERY → NORMAL → RECOVERY', () => {
+            // Cycle 1: enter recovery
+            for (let i = 0; i < 3; i++) {
+                engine.recordResult('prev', 'both_both', false, i);
+            }
+            expect(engine.session.trendState).toBe('RECOVERY');
+
+            // Cycle 1: exit recovery
+            engine.recordResult('prev', 'both_both', true, 20);
+            expect(engine.session.trendState).toBe('NORMAL');
+
+            // Cycle 2: enter recovery again
+            for (let i = 0; i < 3; i++) {
+                engine.recordResult('prevPlus1', 'both_both', false, i + 10);
+            }
+            expect(engine.session.trendState).toBe('RECOVERY');
+            expect(engine.session.recoveryEntryBet).toBe(7);
+        });
+
+        test('Q+14: pair blacklist can hold multiple pairs', () => {
+            // Blacklist prev
+            engine.recordResult('prev', 'both_both', false, 5);
+            engine.recordResult('prev', 'both_both', false, 10);
+            expect(engine.session.pairBlacklist).toHaveProperty('prev');
+
+            // Blacklist prevPlus1
+            engine.recordResult('prevPlus1', 'both_both', false, 15);
+            engine.recordResult('prevPlus1', 'both_both', false, 20);
+            expect(engine.session.pairBlacklist).toHaveProperty('prev');
+            expect(engine.session.pairBlacklist).toHaveProperty('prevPlus1');
         });
     });
 
@@ -2448,6 +2630,49 @@ describe('AIAutoEngine', () => {
             expect(zeroNums.has(26)).toBe(true);
             expect(posNums.has(0)).toBe(true);
             expect(posNums.has(26)).toBe(true);
+        });
+    });
+
+    // ─── S. Recovery Filter Selection ───
+    describe('S. Recovery filter selection (_pickRecoveryFilter)', () => {
+        test('S1: _pickRecoveryFilter always returns zero_both', () => {
+            const result = engine._pickRecoveryFilter([5, 10, 15], [1, 2, 3, 4, 5]);
+            expect(result).toBe('zero_both');
+        });
+
+        test('S2: _pickRecoveryFilter returns zero_both even with empty inputs', () => {
+            expect(engine._pickRecoveryFilter([], [])).toBe('zero_both');
+            expect(engine._pickRecoveryFilter([], [1, 2, 3])).toBe('zero_both');
+            expect(engine._pickRecoveryFilter([5, 10], [])).toBe('zero_both');
+        });
+
+        test('S3: _pickRecoveryFilter returns zero_both regardless of spin pattern', () => {
+            // All nineteen table numbers
+            expect(engine._pickRecoveryFilter([15, 19, 4], [1, 2, 3])).toBe('zero_both');
+            // All zero table numbers
+            expect(engine._pickRecoveryFilter([3, 26, 0], [1, 2, 3])).toBe('zero_both');
+            // Mixed
+            expect(engine._pickRecoveryFilter([3, 15, 0, 19], [1, 2, 3])).toBe('zero_both');
+        });
+
+        test('S4: decide() uses zero_both filter in RECOVERY mode', () => {
+            // Set up engine in recovery mode
+            engine.session.trendState = 'RECOVERY';
+            engine.session.overallConsecutiveLosses = 3;
+
+            // The filter selection during recovery should always be zero_both
+            const filter = engine._pickRecoveryFilter([5, 10, 15], [1, 2, 3, 5, 10, 15, 20, 25, 30]);
+            expect(filter).toBe('zero_both');
+        });
+
+        test('S5: decide() uses normal filter in NORMAL mode', () => {
+            // Ensure we're in normal mode
+            engine.session.trendState = 'NORMAL';
+            engine.session.overallConsecutiveLosses = 0;
+
+            // In normal mode, _pickRecoveryFilter is not called
+            // The engine uses _predictBestSet().filterKey instead
+            expect(engine.session.trendState).toBe('NORMAL');
         });
     });
 });
