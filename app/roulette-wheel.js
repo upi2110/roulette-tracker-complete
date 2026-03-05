@@ -14,6 +14,28 @@ const NINETEEN_TABLE_NUMS = new Set([15, 19, 4, 17, 34, 6, 11, 30, 8, 24, 16, 33
 const POSITIVE_NUMS = new Set([3, 26, 0, 32, 15, 19, 4, 27, 13, 36, 11, 30, 8, 1, 20, 14, 31, 9, 22]);
 const NEGATIVE_NUMS = new Set([21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35]);
 
+// Number Set Filters (3 sets covering all 37 numbers, based on wheel position patterns)
+const SET_0_NUMS = new Set([0, 26, 19, 2, 34, 13, 30, 10, 16, 20, 9, 29, 12]); // 0 Set: 13 numbers (0/26 same pocket)
+const SET_5_NUMS = new Set([32, 15, 25, 17, 36, 11, 5, 24, 14, 31, 7, 28]);   // 5 Set: 12 numbers
+const SET_6_NUMS = new Set([4, 21, 6, 27, 8, 23, 33, 1, 22, 18, 35, 3]);      // 6 Set: 12 numbers
+
+// Regular Opposites: 180° across the wheel (from renderer-3tables.js, with inline fallback)
+const WHEEL_REGULAR_OPPOSITES = (typeof REGULAR_OPPOSITES !== 'undefined') ? REGULAR_OPPOSITES : {
+    0:10, 1:21, 2:20, 3:23, 4:33, 5:32, 6:22, 7:36, 8:35, 9:34,
+    10:26, 11:28, 12:30, 13:29, 14:25, 15:24, 16:19, 17:31, 18:27,
+    19:16, 20:2, 21:1, 22:6, 23:3, 24:15, 25:14, 26:10, 27:18,
+    28:11, 29:13, 30:12, 31:17, 32:5, 33:4, 34:9, 35:8, 36:7
+};
+
+// D13 Opposites: use existing global from renderer-3tables.js, fallback to inline definition
+// (renderer-3tables.js loads before roulette-wheel.js so DIGIT_13_OPPOSITES is already available)
+const WHEEL_D13_OPPOSITES = (typeof DIGIT_13_OPPOSITES !== 'undefined') ? DIGIT_13_OPPOSITES : {
+    0:34, 1:28, 2:30, 3:17, 4:36, 5:22, 6:5, 7:4, 8:14, 9:26,
+    10:9, 11:1, 12:2, 13:16, 14:35, 15:27, 16:29, 17:23, 18:15,
+    19:13, 20:12, 21:11, 22:32, 23:31, 24:18, 25:8, 26:34, 27:24,
+    28:21, 29:19, 30:20, 31:3, 32:6, 33:7, 34:10, 35:25, 36:33
+};
+
 class RouletteWheel {
     constructor() {
         this.wheelOrder = [
@@ -41,8 +63,9 @@ class RouletteWheel {
         // Map: number -> { isAnchor, type } for drawing labels
         this.numberInfo = {};
 
-        // Filter state — default: 0 Table ON, 19 Table OFF, Positive ON, Negative ON
-        this.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: true };
+        // Filter state — default: 0 Table ON, 19 Table OFF, Positive ON, Negative ON, All sets ON
+        this.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: true,
+                         set0: true, set5: true, set6: true };
 
         // Store the raw/unfiltered prediction for re-filtering
         this._rawPrediction = null;
@@ -63,6 +86,7 @@ class RouletteWheel {
         panel.innerHTML = `
             <div class="panel-header">
                 <h3>European Wheel</h3>
+                <button class="btn-toggle" id="toggleWheelPanel">−</button>
             </div>
             <div class="panel-content">
                 <div id="wheelFilters" style="display:flex; flex-direction:column; gap:4px; padding:6px 8px; background:#f1f5f9; border-radius:6px; margin-bottom:4px;">
@@ -91,6 +115,18 @@ class RouletteWheel {
                             <input type="radio" name="signFilter" id="filterBothSigns" value="both" checked style="accent-color:#3b82f6;"> Both
                         </label>
                     </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:10px;font-weight:700;color:#475569;min-width:40px;">Set:</span>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#d97706;">
+                            <input type="checkbox" id="filterSet0" checked class="set-cb" style="accent-color:#d97706;"> 0
+                        </label>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#059669;">
+                            <input type="checkbox" id="filterSet5" checked class="set-cb" style="accent-color:#059669;"> 5
+                        </label>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#7c3aed;">
+                            <input type="checkbox" id="filterSet6" checked class="set-cb" style="accent-color:#7c3aed;"> 6
+                        </label>
+                    </div>
                 </div>
                 <div id="wheelNumberLists" style="font-size:11px; padding:4px 8px; line-height:1.6;"></div>
                 <div class="wheel-container" id="wheelContainer" style="position: relative; width: 400px; height: 420px; margin: 0 auto;">
@@ -115,7 +151,25 @@ class RouletteWheel {
             if (rb) rb.addEventListener('change', () => this._onFilterChange());
         });
 
+        // Attach set checkbox listeners
+        document.querySelectorAll('.set-cb').forEach(cb => {
+            cb.addEventListener('change', () => this._onFilterChange());
+        });
+
         this.drawWheel();
+
+        // Wheel panel collapse/expand toggle
+        const wheelToggleBtn = document.getElementById('toggleWheelPanel');
+        const wheelPanelContent = panel.querySelector('.panel-content');
+        if (wheelToggleBtn && wheelPanelContent) {
+            wheelToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isVisible = wheelPanelContent.style.display !== 'none';
+                wheelPanelContent.style.display = isVisible ? 'none' : 'block';
+                wheelToggleBtn.textContent = isVisible ? '+' : '−';
+            });
+        }
+
         console.log('✅ Wheel visualization initialized (LEFT position)');
     }
 
@@ -159,6 +213,14 @@ class RouletteWheel {
             this.filters.negative = true;
         }
 
+        // Read set checkboxes
+        const s0 = document.getElementById('filterSet0');
+        const s5 = document.getElementById('filterSet5');
+        const s6 = document.getElementById('filterSet6');
+        this.filters.set0 = s0 ? s0.checked : true;
+        this.filters.set5 = s5 ? s5.checked : true;
+        this.filters.set6 = s6 ? s6.checked : true;
+
         console.log('🔄 Filters changed:', this.filters);
 
         if (this._rawPrediction) {
@@ -179,6 +241,15 @@ class RouletteWheel {
         const colorPass = (this.filters.positive && isPos) || (this.filters.negative && isNeg);
         if (!colorPass) return false;
 
+        // Set filter: number must be in at least one CHECKED set
+        const allSetsOn = this.filters.set0 && this.filters.set5 && this.filters.set6;
+        if (!allSetsOn) {
+            const setPass = (this.filters.set0 && SET_0_NUMS.has(num)) ||
+                            (this.filters.set5 && SET_5_NUMS.has(num)) ||
+                            (this.filters.set6 && SET_6_NUMS.has(num));
+            if (!setPass) return false;
+        }
+
         return true;
     }
 
@@ -187,14 +258,16 @@ class RouletteWheel {
         if (!raw) return;
 
         const allOn = this.filters.zeroTable && this.filters.nineteenTable &&
-                      this.filters.positive && this.filters.negative;
+                      this.filters.positive && this.filters.negative &&
+                      this.filters.set0 && this.filters.set5 && this.filters.set6;
 
         if (allOn) {
             // No filtering needed — show everything
-            this._updateFromRaw(raw.anchors, raw.loose, raw.anchorGroups, raw.extraNumbers);
-            this._updateFilteredCount(null);
+            // Sync money panel FIRST so _updateNumberLists reads current data
             this._syncMoneyPanel(raw.prediction);
             this._syncAIPanel(raw.prediction);
+            this._updateFromRaw(raw.anchors, raw.loose, raw.anchorGroups, raw.extraNumbers);
+            this._updateFilteredCount(null);
             return;
         }
 
@@ -204,17 +277,22 @@ class RouletteWheel {
 
         // Recalculate anchors from filtered primary
         let filteredAnchors = [], filteredLoose = [], filteredAnchorGroups = [];
-        if (filteredPrimary.length > 0 && typeof window.calculateWheelAnchors === 'function') {
-            const result = window.calculateWheelAnchors(filteredPrimary);
-            filteredAnchors = result.anchors;
-            filteredLoose = result.loose;
-            filteredAnchorGroups = result.anchorGroups;
+        try {
+            if (filteredPrimary.length > 0 && typeof window.calculateWheelAnchors === 'function') {
+                const result = window.calculateWheelAnchors(filteredPrimary);
+                filteredAnchors = result.anchors || [];
+                filteredLoose = result.loose || [];
+                filteredAnchorGroups = result.anchorGroups || [];
+            } else if (filteredPrimary.length > 0) {
+                // Fallback: treat all filtered numbers as loose
+                filteredLoose = filteredPrimary.slice();
+            }
+        } catch (e) {
+            console.error('⚠️ calculateWheelAnchors error, using fallback:', e.message);
+            filteredLoose = filteredPrimary.slice();
         }
 
-        this._updateFromRaw(filteredAnchors, filteredLoose, filteredAnchorGroups, filteredExtra);
-        this._updateFilteredCount(filteredPrimary.length + filteredExtra.length);
-
-        // Sync money panel with filtered numbers
+        // Build filtered prediction and sync ALL panels
         const filteredPrediction = {
             ...raw.prediction,
             numbers: filteredPrimary,
@@ -223,8 +301,14 @@ class RouletteWheel {
             loose: filteredLoose,
             anchor_groups: filteredAnchorGroups
         };
+
+        // Sync money panel FIRST so _updateNumberLists reads current bet data
         this._syncMoneyPanel(filteredPrediction);
+        // Sync AI panel — updates signal count + number display
         this._syncAIPanel(filteredPrediction);
+
+        this._updateFromRaw(filteredAnchors, filteredLoose, filteredAnchorGroups, filteredExtra);
+        this._updateFilteredCount(filteredPrimary.length);
     }
 
     _updateFilteredCount(count) {
@@ -239,16 +323,24 @@ class RouletteWheel {
     }
 
     _syncMoneyPanel(prediction) {
-        if (window.moneyPanel && typeof window.moneyPanel.setPrediction === 'function') {
-            window.moneyPanel.setPrediction(prediction);
-            console.log(`✅ Money panel synced with ${prediction.numbers.length} filtered numbers`);
+        try {
+            if (window.moneyPanel && typeof window.moneyPanel.setPrediction === 'function') {
+                window.moneyPanel.setPrediction(prediction);
+                console.log(`✅ Money panel synced with ${prediction.numbers.length} filtered numbers`);
+            }
+        } catch (e) {
+            console.warn('⚠️ Money panel sync failed:', e.message);
         }
     }
 
     _syncAIPanel(filteredPrediction) {
-        if (window.aiPanel && typeof window.aiPanel.updateFilteredDisplay === 'function') {
-            window.aiPanel.updateFilteredDisplay(filteredPrediction);
-            console.log(`✅ AI panel synced with ${filteredPrediction.numbers.length} filtered numbers`);
+        try {
+            if (window.aiPanel && typeof window.aiPanel.updateFilteredDisplay === 'function') {
+                window.aiPanel.updateFilteredDisplay(filteredPrediction);
+                console.log(`✅ AI panel synced with ${filteredPrediction.numbers.length} filtered numbers`);
+            }
+        } catch (e) {
+            console.warn('⚠️ AI panel sync failed:', e.message);
         }
     }
 
@@ -345,6 +437,7 @@ class RouletteWheel {
     }
 
     drawWheel() {
+        if (!this.ctx) return;
         const ctx = this.ctx;
         const centerX = 200;
         const centerY = 210;
@@ -414,70 +507,178 @@ class RouletteWheel {
         }
     }
 
+    /**
+     * Group an array of numbers into clusters of wheel-adjacent numbers.
+     * Returns array of arrays — each sub-array is a contiguous group on the wheel.
+     */
+    _groupAdjacent(nums) {
+        if (nums.length === 0) return [];
+        const sorted = nums.slice().sort((a, b) => (this.wheelPos[a] ?? 99) - (this.wheelPos[b] ?? 99));
+        const groups = [];
+        let current = [sorted[0]];
+        for (let i = 1; i < sorted.length; i++) {
+            const prevPos = this.wheelPos[sorted[i - 1]] ?? 99;
+            const currPos = this.wheelPos[sorted[i]] ?? 99;
+            if (currPos === prevPos + 1) {
+                current.push(sorted[i]);
+            } else {
+                groups.push(current);
+                current = [sorted[i]];
+            }
+        }
+        groups.push(current);
+        // Also check wrap-around: if last group ends at position 36 and first starts at 0
+        if (groups.length > 1) {
+            const lastGroup = groups[groups.length - 1];
+            const firstGroup = groups[0];
+            const lastPos = this.wheelPos[lastGroup[lastGroup.length - 1]] ?? -1;
+            const firstPos = this.wheelPos[firstGroup[0]] ?? 99;
+            if (lastPos === 36 && firstPos === 0) {
+                // Merge: last group wraps around to first
+                groups[0] = lastGroup.concat(firstGroup);
+                groups.pop();
+            }
+        }
+        return groups;
+    }
+
+    /**
+     * Pair numbers by regular opposites.
+     * Returns: { pairs: [[a, b], ...], unpaired: [c, ...] }
+     * Each pair [a, b] where REGULAR_OPPOSITES[a] === b, both present in nums.
+     */
+    _pairByOpposites(nums) {
+        const numSet = new Set(nums);
+        const used = new Set();
+        const pairs = [];
+        const unpaired = [];
+
+        for (const n of nums) {
+            if (used.has(n)) continue;
+            const opp = WHEEL_REGULAR_OPPOSITES[n];
+            // Special: 0 and 26 share opposite 10. Check both mappings.
+            if (opp !== undefined && numSet.has(opp) && !used.has(opp) && opp !== n) {
+                pairs.push([n, opp]);
+                used.add(n);
+                used.add(opp);
+            } else {
+                unpaired.push(n);
+                used.add(n);
+            }
+        }
+        return { pairs, unpaired };
+    }
+
     _updateNumberLists() {
         const el = document.getElementById('wheelNumberLists');
         if (!el) return;
 
-        const anchors1 = [];
-        const anchors2 = [];
-        this.anchorGroups.forEach(ag => {
-            if (ag.type === '±2') anchors2.push(ag);
-            else anchors1.push(ag);
-        });
-
-        const greyAnchors1 = [];
-        const greyAnchors2 = [];
-        this.extraAnchorGroups.forEach(ag => {
-            if (ag.type === '±2') greyAnchors2.push(ag);
-            else greyAnchors1.push(ag);
-        });
-
         const wSort = (arr) => arr.slice().sort((a, b) => (this.wheelPos[a] ?? 99) - (this.wheelPos[b] ?? 99));
-        const looseList = wSort(this.looseNumbers);
-        const greyLooseList = wSort(this.extraLoose);
 
-        const badge = (n, bgOverride) => {
-            const isPos = this.POSITIVE.has(n);
-            const bg = bgOverride || (isPos ? '#22c55e' : '#1e293b');
-            return `<span style="display:inline-block;padding:1px 5px;border-radius:4px;background:${bg};color:#fff;font-weight:700;font-size:10px;margin:1px;">${n}</span>`;
+        // ── Split anchor groups by type ────────────────────
+        const pm2Anchors = this.anchorGroups.filter(ag => ag.type === '±2');
+        const pm1Anchors = this.anchorGroups.filter(ag => ag.type === '±1');
+        const pm2Nums = wSort(pm2Anchors.map(ag => ag.anchor));
+        const pm1Nums = wSort(pm1Anchors.map(ag => ag.anchor));
+        const looseNums = wSort([...this.looseNumbers]);
+
+        // Grey split
+        const greyPm2 = this.extraAnchorGroups.filter(ag => ag.type === '±2');
+        const greyPm1 = this.extraAnchorGroups.filter(ag => ag.type === '±1');
+        const greyPm2Nums = wSort(greyPm2.map(ag => ag.anchor));
+        const greyPm1Nums = wSort(greyPm1.map(ag => ag.anchor));
+        const greyLooseNums = wSort([...this.extraLoose]);
+
+        // ── Anchor info lookup ─────────────────────────────
+        const anchorInfo = {};
+        this.anchorGroups.forEach(ag => { anchorInfo[ag.anchor] = ag; });
+        const greyAnchorInfo = {};
+        this.extraAnchorGroups.forEach(ag => { greyAnchorInfo[ag.anchor] = ag; });
+
+        // ── Number badge — outlined, light tint + colored border ─
+        const numBadge = (n, aInfo, isGrey) => {
+            const ai = aInfo ? aInfo[n] : null;
+            const label = ai ? `<sup style="font-size:8px;font-weight:700;margin-left:1px;">${ai.type}</sup>` : '';
+            let border, bg, color;
+            if (isGrey) {
+                border = '#9ca3af'; bg = '#f9fafb'; color = '#6b7280';
+            } else if (this.POSITIVE.has(n)) {
+                border = '#16a34a'; bg = '#f0fdf4'; color = '#15803d';
+            } else {
+                border = '#334155'; bg = '#f1f5f9'; color = '#1e293b';
+            }
+            return `<span style="display:inline-block;padding:1px 5px;border-radius:3px;border:2px solid ${border};background:${bg};color:${color};font-weight:700;font-size:12px;">${n}${label}</span>`;
         };
-        const greyBadge = (n) => badge(n, '#9ca3af');
+
+        // ── Build a clean boxed section ────────────────────
+        const renderBox = (title, accent, nums, aInfo, isGrey) => {
+            if (nums.length === 0) return '';
+            const { pairs, unpaired } = this._pairByOpposites(nums);
+
+            let content = '';
+
+            // Opposite pairs — clean row, ↔ marks the pair
+            for (const [a, b] of pairs) {
+                const posA = this.wheelPos[a] ?? -1;
+                const posB = this.wheelPos[b] ?? -1;
+                const adj = Math.abs(posA - posB) === 1 || (posA === 0 && posB === 36) || (posA === 36 && posB === 0);
+                if (adj) {
+                    const sorted = posA < posB ? [a, b] : [b, a];
+                    content += `<div style="padding:2px 5px;"><span style="display:inline-flex;gap:1px;border:2px solid #000;border-radius:4px;padding:1px 2px;">${sorted.map(n => numBadge(n, aInfo, isGrey)).join('')}</span> <span style="font-size:9px;color:#64748b;">↔</span></div>`;
+                } else {
+                    content += `<div style="padding:2px 5px;">${numBadge(a, aInfo, isGrey)} <span style="font-size:10px;color:#64748b;">↔</span> ${numBadge(b, aInfo, isGrey)}</div>`;
+                }
+            }
+
+            // Unpaired — group wheel-adjacent in black border box
+            const sortedUnpaired = wSort(unpaired);
+            if (sortedUnpaired.length > 0) {
+                const groups = this._groupAdjacent(sortedUnpaired);
+                let line = '';
+                for (const group of groups) {
+                    if (group.length > 1) {
+                        line += `<span style="display:inline-flex;gap:1px;border:2px solid #000;border-radius:4px;padding:1px 2px;margin:1px;">${group.map(n => numBadge(n, aInfo, isGrey)).join('')}</span>`;
+                    } else {
+                        line += `<span style="margin:1px;">${numBadge(group[0], aInfo, isGrey)}</span>`;
+                    }
+                }
+                content += `<div style="padding:2px 5px;">${line}</div>`;
+            }
+
+            return `<div style="min-width:0;border:1px solid ${accent};border-radius:4px;margin-bottom:3px;"><div style="padding:1px 6px;font-size:10px;font-weight:700;color:${accent};border-bottom:1px solid ${accent}25;">${title} (${nums.length})</div>${content}</div>`;
+        };
+
+        // ── Collect sections — subtle accent per type ──────
+        const sections = [];
+        if (pm2Nums.length > 0) sections.push(renderBox('±2 Anchors', '#7c3aed', pm2Nums, anchorInfo, false));
+        if (pm1Nums.length > 0) sections.push(renderBox('±1 Anchors', '#2563eb', pm1Nums, anchorInfo, false));
+        if (looseNums.length > 0) sections.push(renderBox('Loose', '#475569', looseNums, anchorInfo, false));
+        if (greyPm2Nums.length > 0) sections.push(renderBox('Grey ±2', '#a8a29e', greyPm2Nums, greyAnchorInfo, true));
+        if (greyPm1Nums.length > 0) sections.push(renderBox('Grey ±1', '#a8a29e', greyPm1Nums, greyAnchorInfo, true));
+        if (greyLooseNums.length > 0) sections.push(renderBox('Grey Loose', '#a8a29e', greyLooseNums, greyAnchorInfo, true));
 
         let html = '';
-
-        if (anchors1.length > 0) {
-            const nums = wSort(anchors1.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:3px;"><strong style="color:#334155;">±1 Anchors (${nums.length}):</strong> ${nums.map(n => badge(n)).join('')}</div>`;
-        }
-
-        if (anchors2.length > 0) {
-            const nums = wSort(anchors2.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:3px;"><strong style="color:#334155;">±2 Anchors (${nums.length}):</strong> ${nums.map(n => badge(n)).join('')}</div>`;
-        }
-
-        if (looseList.length > 0) {
-            html += `<div style="margin-bottom:3px;"><strong style="color:#334155;">Loose (${looseList.length}):</strong> ${looseList.map(n => badge(n)).join('')}</div>`;
-        }
-
-        if (greyAnchors1.length > 0) {
-            const nums = wSort(greyAnchors1.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;">Grey ±1 (${nums.length}):</strong> ${nums.map(n => greyBadge(n)).join('')}</div>`;
-        }
-
-        if (greyAnchors2.length > 0) {
-            const nums = wSort(greyAnchors2.map(ag => ag.anchor));
-            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;">Grey ±2 (${nums.length}):</strong> ${nums.map(n => greyBadge(n)).join('')}</div>`;
-        }
-
-        if (greyLooseList.length > 0) {
-            html += `<div style="margin-bottom:3px;"><strong style="color:#6b7280;">Grey Loose (${greyLooseList.length}):</strong> ${greyLooseList.map(n => greyBadge(n)).join('')}</div>`;
+        if (sections.length > 0) {
+            html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 4px;align-items:start;">${sections.join('')}</div>`;
         }
 
         if (!html) {
             html = '<div style="color:#aaa; text-align:center;">Select pairs to see predictions</div>';
         }
 
-        el.innerHTML = html;
+        // Bet amount info from money panel
+        let betInfoHTML = '';
+        if (typeof window !== 'undefined' && window.moneyPanel && window.moneyPanel.sessionData) {
+            const sd = window.moneyPanel.sessionData;
+            if (sd.isSessionActive && sd.lastBetAmount > 0) {
+                const betPerNum = sd.currentBetPerNumber || sd.lastBetAmount;
+                const numCount = sd.lastBetNumbers || 0;
+                const total = betPerNum * numCount;
+                betInfoHTML = `<div style="margin-bottom:4px;padding:4px 8px;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:5px;font-size:11px;font-weight:700;color:#92400e;">💰 Next Bet: $${betPerNum}/num × ${numCount} nums = $${total} total</div>`;
+            }
+        }
+
+        el.innerHTML = betInfoHTML + html;
     }
 
     _getHighlightPos(num) {
@@ -509,7 +710,7 @@ class RouletteWheel {
             if (info.category === 'primary') {
                 const isPositive = this.POSITIVE.has(num);
                 const fillColor = isPositive ? '#22c55e' : '#1e293b';
-                const radius = info.isAnchor ? 12 : 10;
+                const radius = info.isAnchor ? 14 : 11;
 
                 ctx.beginPath();
                 ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
@@ -518,13 +719,13 @@ class RouletteWheel {
 
                 if (info.isAnchor && info.type) {
                     ctx.fillStyle = '#fff';
-                    ctx.font = 'bold 9px Arial';
+                    ctx.font = 'bold 11px Arial';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.fillText(info.type, pos.x, pos.y);
                 }
             } else {
-                const radius = info.isAnchor ? 10 : 8;
+                const radius = info.isAnchor ? 12 : 9;
 
                 ctx.beginPath();
                 ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
@@ -533,7 +734,7 @@ class RouletteWheel {
 
                 if (info.isAnchor && info.type) {
                     ctx.fillStyle = '#fff';
-                    ctx.font = 'bold 8px Arial';
+                    ctx.font = 'bold 10px Arial';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.fillText(info.type, pos.x, pos.y);
@@ -556,7 +757,7 @@ class RouletteWheel {
 
         this._updateFilteredCount(null);
 
-        this.drawWheel();
+        if (this.ctx) this.drawWheel();
         console.log('🎡 Wheel highlights cleared');
     }
 }

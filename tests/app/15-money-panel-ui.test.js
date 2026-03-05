@@ -869,11 +869,21 @@ describe('toggleBetting() - DOM updates', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('toggleStrategy() - DOM updates', () => {
+    test('strategy 3 -> 1 updates button to Aggressive with green gradient', () => {
+        const mp = getPanel();
+        expect(mp.sessionData.bettingStrategy).toBe(3);
+
+        mp.toggleStrategy(); // 3 -> 1
+        const btn = document.getElementById('toggleStrategyBtn');
+        expect(btn.textContent).toContain('Strategy 1: Aggressive');
+        expect(btn.style.background).toContain('#28a745');
+    });
+
     test('strategy 1 -> 2 updates button to Conservative with blue gradient', () => {
         const mp = getPanel();
-        expect(mp.sessionData.bettingStrategy).toBe(1);
-
+        mp.toggleStrategy(); // 3 -> 1
         mp.toggleStrategy(); // 1 -> 2
+
         const btn = document.getElementById('toggleStrategyBtn');
         expect(btn.textContent).toContain('Strategy 2: Conservative');
         expect(btn.style.background).toContain('#007bff');
@@ -881,23 +891,13 @@ describe('toggleStrategy() - DOM updates', () => {
 
     test('strategy 2 -> 3 updates button to Cautious with purple gradient', () => {
         const mp = getPanel();
+        mp.toggleStrategy(); // 3 -> 1
         mp.toggleStrategy(); // 1 -> 2
         mp.toggleStrategy(); // 2 -> 3
 
         const btn = document.getElementById('toggleStrategyBtn');
         expect(btn.textContent).toContain('Strategy 3: Cautious');
         expect(btn.style.background).toContain('#6f42c1');
-    });
-
-    test('strategy 3 -> 1 updates button to Aggressive with green gradient', () => {
-        const mp = getPanel();
-        mp.toggleStrategy(); // 1 -> 2
-        mp.toggleStrategy(); // 2 -> 3
-        mp.toggleStrategy(); // 3 -> 1
-
-        const btn = document.getElementById('toggleStrategyBtn');
-        expect(btn.textContent).toContain('Strategy 1: Aggressive');
-        expect(btn.style.background).toContain('#28a745');
     });
 
     test('toggleStrategy resets consecutiveWins to 0', () => {
@@ -1555,6 +1555,7 @@ describe('recordBetResult() - bet history tracking', () => {
 
     test('consecutive wins increment on win, reset on loss', async () => {
         const mp = getPanel();
+        mp.sessionData.bettingStrategy = 1; // Use Aggressive (no counter reset)
 
         await mp.recordBetResult(2, 10, true, 1);
         await mp.recordBetResult(2, 10, true, 2);
@@ -1682,11 +1683,208 @@ describe('setupBettingControl() - button listeners', () => {
 
     test('strategy button click cycles strategy', () => {
         const mp = getPanel();
-        expect(mp.sessionData.bettingStrategy).toBe(1);
+        expect(mp.sessionData.bettingStrategy).toBe(3);
 
         const btn = document.getElementById('toggleStrategyBtn');
         btn.click();
 
-        expect(mp.sessionData.bettingStrategy).toBe(2);
+        expect(mp.sessionData.bettingStrategy).toBe(1);
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// recordBetResult() — AI engine feedback loop
+// ═══════════════════════════════════════════════════════
+
+describe('recordBetResult() - AI engine feedback loop', () => {
+    test('calls engine.recordResult() when engine is available and enabled', async () => {
+        const mp = getPanel();
+        const mockRecordResult = jest.fn();
+        global.window.aiAutoEngine = {
+            isTrained: true,
+            isEnabled: true,
+            lastDecision: {
+                selectedPair: 'prev',
+                selectedFilter: 'zero_positive',
+                numbers: [5, 10, 15]
+            },
+            recordResult: mockRecordResult
+        };
+
+        await mp.recordBetResult(2, 10, true, 15);
+
+        expect(mockRecordResult).toHaveBeenCalledWith(
+            'prev', 'zero_positive', true, 15, [5, 10, 15]
+        );
+    });
+
+    test('passes correct pairKey, filterKey, hit, actual, and numbers', async () => {
+        const mp = getPanel();
+        const mockRecordResult = jest.fn();
+        global.window.aiAutoEngine = {
+            isTrained: true,
+            isEnabled: true,
+            lastDecision: {
+                selectedPair: 'prevPlus1',
+                selectedFilter: 'nineteen_negative',
+                numbers: [1, 2, 3, 4]
+            },
+            recordResult: mockRecordResult
+        };
+
+        await mp.recordBetResult(3, 8, false, 7);
+
+        expect(mockRecordResult).toHaveBeenCalledWith(
+            'prevPlus1', 'nineteen_negative', false, 7, [1, 2, 3, 4]
+        );
+    });
+
+    test('does NOT call engine when engine is null', async () => {
+        const mp = getPanel();
+        global.window.aiAutoEngine = null;
+
+        // Should not throw
+        await expect(mp.recordBetResult(2, 10, true, 15)).resolves.toBeUndefined();
+    });
+
+    test('does NOT call engine when engine.isEnabled is false', async () => {
+        const mp = getPanel();
+        const mockRecordResult = jest.fn();
+        global.window.aiAutoEngine = {
+            isTrained: true,
+            isEnabled: false,
+            lastDecision: {
+                selectedPair: 'prev',
+                selectedFilter: 'both_both',
+                numbers: [5, 10]
+            },
+            recordResult: mockRecordResult
+        };
+
+        await mp.recordBetResult(2, 10, true, 15);
+
+        expect(mockRecordResult).not.toHaveBeenCalled();
+    });
+
+    test('does NOT call engine when lastDecision is null', async () => {
+        const mp = getPanel();
+        const mockRecordResult = jest.fn();
+        global.window.aiAutoEngine = {
+            isTrained: true,
+            isEnabled: true,
+            lastDecision: null,
+            recordResult: mockRecordResult
+        };
+
+        await mp.recordBetResult(2, 10, false, 7);
+
+        expect(mockRecordResult).not.toHaveBeenCalled();
+    });
+
+    test('clears lastDecision after consuming it', async () => {
+        const mp = getPanel();
+        const engine = {
+            isTrained: true,
+            isEnabled: true,
+            lastDecision: {
+                selectedPair: 'prevMinus1',
+                selectedFilter: 'zero_negative',
+                numbers: [8, 9, 10]
+            },
+            recordResult: jest.fn()
+        };
+        global.window.aiAutoEngine = engine;
+
+        await mp.recordBetResult(2, 10, true, 10);
+
+        expect(engine.lastDecision).toBeNull();
+    });
+
+    test('still works normally without engine (backward compatible)', async () => {
+        const mp = getPanel();
+        global.window.aiAutoEngine = undefined;
+        mp.sessionData.currentBankroll = 4000;
+
+        await mp.recordBetResult(2, 10, true, 15);
+
+        // P&L still calculated: 2*35 - 2*10 = 50
+        expect(mp.sessionData.sessionProfit).toBe(50);
+        expect(mp.sessionData.totalWins).toBe(1);
+        expect(mp.sessionData.totalBets).toBe(1);
+    });
+
+    test('handles engine.recordResult throwing (catches error)', async () => {
+        const mp = getPanel();
+        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+        global.window.aiAutoEngine = {
+            isTrained: true,
+            isEnabled: true,
+            lastDecision: {
+                selectedPair: 'prev',
+                selectedFilter: 'both_both',
+                numbers: [5]
+            },
+            recordResult: jest.fn().mockImplementation(() => { throw new Error('engine boom'); })
+        };
+        mp.sessionData.currentBankroll = 4000;
+
+        await mp.recordBetResult(2, 10, false, 7);
+
+        // Should not throw — error caught internally
+        expect(mp.sessionData.totalLosses).toBe(1);
+        expect(consoleSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Failed to update AI engine'),
+            expect.anything()
+        );
+        consoleSpy.mockRestore();
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// setPrediction() — AI AUTO SKIP guard
+// ═══════════════════════════════════════════════════════
+
+describe('setPrediction() - AI AUTO SKIP guard', () => {
+    test('returns early when AI engine is enabled and lastDecision is null (SKIP)', () => {
+        const mp = getPanel();
+        mp.sessionData.isBettingEnabled = true;
+        mp.sessionData.isSessionActive = true;
+        global.window.aiAutoEngine = { isEnabled: true, lastDecision: null };
+
+        mp.setPrediction({ numbers: [1, 5, 10, 15, 20], signal: 'BET', confidence: 90 });
+        expect(mp.pendingBet).toBeNull();
+    });
+
+    test('creates pendingBet when engine is enabled and lastDecision has value (BET)', () => {
+        const mp = getPanel();
+        mp.sessionData.isBettingEnabled = true;
+        mp.sessionData.isSessionActive = true;
+        global.window.aiAutoEngine = {
+            isEnabled: true,
+            lastDecision: { selectedPair: 'prev', selectedFilter: 'zero_positive', numbers: [1, 5, 10] }
+        };
+
+        mp.setPrediction({ numbers: [1, 5, 10], signal: 'BET', confidence: 90 });
+        expect(mp.pendingBet).not.toBeNull();
+    });
+
+    test('creates pendingBet normally when engine is not enabled (manual mode)', () => {
+        const mp = getPanel();
+        mp.sessionData.isBettingEnabled = true;
+        mp.sessionData.isSessionActive = true;
+        global.window.aiAutoEngine = { isEnabled: false, lastDecision: null };
+
+        mp.setPrediction({ numbers: [1, 5, 10], signal: 'BET', confidence: 80 });
+        expect(mp.pendingBet).not.toBeNull();
+    });
+
+    test('creates pendingBet normally when no AI engine exists', () => {
+        const mp = getPanel();
+        mp.sessionData.isBettingEnabled = true;
+        mp.sessionData.isSessionActive = true;
+        global.window.aiAutoEngine = undefined;
+
+        mp.setPrediction({ numbers: [1, 5, 10], signal: 'BET', confidence: 80 });
+        expect(mp.pendingBet).not.toBeNull();
     });
 });

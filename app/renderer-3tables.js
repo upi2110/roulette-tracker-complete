@@ -743,27 +743,35 @@ async function undoLast() {
     }
 
     // ── CLEAR VISUALS ──
-    if (window.rouletteWheel) {
-        window.rouletteWheel.clearHighlights();
+    try {
+        if (window.rouletteWheel) {
+            window.rouletteWheel.clearHighlights();
+        }
+    } catch (e) {
+        console.warn('⚠️ Wheel clear on undo failed:', e.message);
     }
 
     // Re-render tables — re-triggers predictions if 3+ spins
     render();
 
     // ── CLEAR STALE UI WHEN < 3 SPINS ──
-    if (spins.length < 3) {
-        if (window.aiPanel) {
-            if (window.aiPanel._predictionDebounce) {
-                clearTimeout(window.aiPanel._predictionDebounce);
+    try {
+        if (spins.length < 3) {
+            if (window.aiPanel) {
+                if (window.aiPanel._predictionDebounce) {
+                    clearTimeout(window.aiPanel._predictionDebounce);
+                }
+                window.aiPanel.clearSelections();  // Clears all 3 tables + displays
+                window.aiPanel.table3Pairs = [];
+                window.aiPanel.table1Pairs = [];
+                window.aiPanel.table2Pairs = [];
+                window.aiPanel.availablePairs = [];
+                window.aiPanel.renderAllCheckboxes();
             }
-            window.aiPanel.clearSelections();  // Clears all 3 tables + displays
-            window.aiPanel.table3Pairs = [];
-            window.aiPanel.table1Pairs = [];
-            window.aiPanel.table2Pairs = [];
-            window.aiPanel.availablePairs = [];
-            window.aiPanel.renderAllCheckboxes();
+            window.table3DisplayProjections = {};
         }
-        window.table3DisplayProjections = {};
+    } catch (e) {
+        console.warn('⚠️ AI panel clear on undo failed:', e.message);
     }
 }
 
@@ -788,71 +796,83 @@ function resetAll() {
         });
 
         // Reset Money Management Panel
-        if (window.moneyPanel) {
-            // Preserve current strategy selection across reset
-            const currentStrategy = window.moneyPanel.sessionData.bettingStrategy || 1;
-            window.moneyPanel.sessionData = {
-                startingBankroll: 4000,
-                currentBankroll: 4000,
-                sessionProfit: 0,
-                sessionTarget: 100,
-                totalBets: 0,
-                totalWins: 0,
-                totalLosses: 0,
-                consecutiveLosses: 0,
-                consecutiveWins: 0,
-                lastBetAmount: 0,
-                lastBetNumbers: 12,
-                isSessionActive: false,
-                isBettingEnabled: false,
-                bettingStrategy: currentStrategy,
-                currentBetPerNumber: 2,
-                spinsWithBets: []
-            };
-            window.moneyPanel.betHistory = [];
-            window.moneyPanel.pendingBet = null;
-            window.moneyPanel.lastSpinCount = 0;
+        try {
+            if (window.moneyPanel) {
+                // Preserve current strategy selection across reset
+                const currentStrategy = window.moneyPanel.sessionData.bettingStrategy || 3;
+                window.moneyPanel.sessionData = {
+                    startingBankroll: 4000,
+                    currentBankroll: 4000,
+                    sessionProfit: 0,
+                    sessionTarget: 100,
+                    totalBets: 0,
+                    totalWins: 0,
+                    totalLosses: 0,
+                    consecutiveLosses: 0,
+                    consecutiveWins: 0,
+                    lastBetAmount: 0,
+                    lastBetNumbers: 12,
+                    isSessionActive: false,
+                    isBettingEnabled: false,
+                    bettingStrategy: currentStrategy,
+                    currentBetPerNumber: 2,
+                    spinsWithBets: []
+                };
+                window.moneyPanel.betHistory = [];
+                window.moneyPanel.pendingBet = null;
+                window.moneyPanel.lastSpinCount = 0;
 
-            // Reset betting button to PAUSED state
-            const bettingBtn = document.getElementById('toggleBettingBtn');
-            if (bettingBtn) {
-                bettingBtn.textContent = '▶️ START BETTING';
-                bettingBtn.style.backgroundColor = '#28a745';
-            }
-            const bettingStatus = document.getElementById('bettingStatus');
-            if (bettingStatus) {
-                bettingStatus.textContent = '⏸️ Betting PAUSED - Click START to begin';
-                bettingStatus.style.backgroundColor = '#f8d7da';
-                bettingStatus.style.color = '#721c24';
-            }
+                // Reset betting button to PAUSED state
+                const bettingBtn = document.getElementById('toggleBettingBtn');
+                if (bettingBtn) {
+                    bettingBtn.textContent = '▶️ START BETTING';
+                    bettingBtn.style.backgroundColor = '#28a745';
+                }
+                const bettingStatus = document.getElementById('bettingStatus');
+                if (bettingStatus) {
+                    bettingStatus.textContent = '⏸️ Betting PAUSED - Click START to begin';
+                    bettingStatus.style.backgroundColor = '#f8d7da';
+                    bettingStatus.style.color = '#721c24';
+                }
 
-            window.moneyPanel.render();
-            console.log(`✅ Money panel reset (strategy ${currentStrategy} preserved)`);
+                window.moneyPanel.render();
+                console.log(`✅ Money panel reset (strategy ${currentStrategy} preserved)`);
+            }
+        } catch (e) {
+            console.warn('⚠️ Money panel reset failed:', e.message);
         }
-        
+
         // Reset AI Prediction Panel (clear selections, predictions, display)
-        if (window.aiPanel) {
-            if (window.aiPanel._predictionDebounce) {
-                clearTimeout(window.aiPanel._predictionDebounce);
+        try {
+            if (window.aiPanel) {
+                if (window.aiPanel._predictionDebounce) {
+                    clearTimeout(window.aiPanel._predictionDebounce);
+                }
+                window.aiPanel.clearSelections();  // Clears all 3 tables + displays
+                window.aiPanel.table3Pairs = [];
+                window.aiPanel.table1Pairs = [];
+                window.aiPanel.table2Pairs = [];
+                window.aiPanel.availablePairs = [];
+                window.aiPanel.renderAllCheckboxes();
+                console.log('✅ AI panel reset');
             }
-            window.aiPanel.clearSelections();  // Clears all 3 tables + displays
-            window.aiPanel.table3Pairs = [];
-            window.aiPanel.table1Pairs = [];
-            window.aiPanel.table2Pairs = [];
-            window.aiPanel.availablePairs = [];
-            window.aiPanel.renderAllCheckboxes();
-            console.log('✅ AI panel reset');
+        } catch (e) {
+            console.warn('⚠️ AI panel reset failed:', e.message);
         }
-        
+
         // Clear table3 display projections
         window.table3DisplayProjections = {};
 
         // Clear Wheel highlights
-        if (window.rouletteWheel) {
-            window.rouletteWheel.clearHighlights();
-            console.log('✅ Wheel reset');
+        try {
+            if (window.rouletteWheel) {
+                window.rouletteWheel.clearHighlights();
+                console.log('✅ Wheel reset');
+            }
+        } catch (e) {
+            console.warn('⚠️ Wheel reset failed:', e.message);
         }
-        
+
         // Reset backend session
         const aiInt = window.aiIntegrationV6 || window.aiIntegration;
         if (aiInt && typeof aiInt.resetSession === 'function') {
@@ -864,9 +884,13 @@ function resetAll() {
         }
 
         // Reset orchestrator
-        if (window.autoUpdateOrchestrator) {
-            window.autoUpdateOrchestrator.lastSpinCount = 0;
-            console.log('✅ Orchestrator reset');
+        try {
+            if (window.autoUpdateOrchestrator) {
+                window.autoUpdateOrchestrator.lastSpinCount = 0;
+                console.log('✅ Orchestrator reset');
+            }
+        } catch (e) {
+            console.warn('⚠️ Orchestrator reset failed:', e.message);
         }
         
         render();
@@ -894,6 +918,13 @@ function renderTable1() {
 
     const startIdx = Math.max(0, spins.length - 8);
     const visibleSpins = spins.slice(startIdx);
+
+    // ── T1 Anchor Flash Computation ──
+    const t1FlashTargets = _computeT1FlashTargets(spins, startIdx, visibleSpins.length);
+    if (window._t1PulseInterval) {
+        clearInterval(window._t1PulseInterval);
+        window._t1PulseInterval = null;
+    }
 
     visibleSpins.forEach((spin, relIdx) => {
         const idx = startIdx + relIdx;
@@ -954,7 +985,7 @@ function renderTable1() {
 
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
 
-            targets.forEach((target) => {
+            targets.forEach((target, anchorIdx) => {
                 const code = calculatePositionCode(target, spin.actual);
                 const isValid = isValidCode(code);
                 const displayCode = isValid ? code : 'XX';
@@ -963,8 +994,14 @@ function renderTable1() {
                 const numClass = is13Opp ? 'opp13-cell' : '';
                 const codeClass = codeClassBase + (is13Opp ? ' opp13-cell' : '');
 
-                html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
+                const flashKey = `${relIdx}:${dataPair}:${anchorIdx}`;
+                if (t1FlashTargets.has(flashKey)) {
+                    html.push(`<td class="t1-flash ${numClass}"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${target}</td>`);
+                    html.push(`<td class="t1-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
+                } else {
+                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
+                    html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
+                }
             });
         };
 
@@ -1051,6 +1088,31 @@ function renderTable1() {
         nextRow.innerHTML = html.join('');
         tbody.appendChild(nextRow);
     }
+
+    // ── T1 Anchor Flash Pulse Animation ──
+    if (t1FlashTargets.size > 0) {
+        let bright = false;
+        window._t1PulseInterval = setInterval(() => {
+            bright = !bright;
+            const bg = bright ? '#fbbf24' : '#fef3c7';
+            const shadow = bright
+                ? '0 0 16px rgba(245, 158, 11, 1)'
+                : '0 0 8px rgba(245, 158, 11, 0.6)';
+            const cells = document.querySelectorAll('#table1 .t1-flash');
+            if (cells.length === 0) {
+                clearInterval(window._t1PulseInterval);
+                window._t1PulseInterval = null;
+                return;
+            }
+            cells.forEach(cell => {
+                cell.style.setProperty('background', bg, 'important');
+                cell.style.setProperty('box-shadow', shadow, 'important');
+                const s = cell.querySelector('span');
+                if (s) s.style.setProperty('background', bg, 'important');
+            });
+        }, 600);
+        console.log(`⚡ T1 flash pulse started for ${t1FlashTargets.size} cells`);
+    }
 }
 
 // TABLE 2 - UNCHANGED
@@ -1061,6 +1123,13 @@ function renderTable2() {
 
     const startIdx = Math.max(0, spins.length - 8);
     const visibleSpins = spins.slice(startIdx);
+
+    // ── T2 Anchor Flash Computation ──
+    const t2FlashTargets = _computeT2FlashTargets(spins, startIdx, visibleSpins.length);
+    if (window._t2PulseInterval) {
+        clearInterval(window._t2PulseInterval);
+        window._t2PulseInterval = null;
+    }
 
     visibleSpins.forEach((spin, relIdx) => {
         const idx = startIdx + relIdx;
@@ -1115,7 +1184,7 @@ function renderTable2() {
 
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
 
-            targets.forEach((target) => {
+            targets.forEach((target, anchorIdx) => {
                 const code = calculatePositionCode(target, spin.actual);
                 const isValid = isValidCode(code);
                 const displayCode = isValid ? code : 'XX';
@@ -1124,8 +1193,14 @@ function renderTable2() {
                 const numClass = is13Opp ? 'opp13-cell' : '';
                 const codeClass = codeClassBase + (is13Opp ? ' opp13-cell' : '');
 
-                html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
+                const flashKey = `${relIdx}:${dataPair}:${anchorIdx}`;
+                if (t2FlashTargets.has(flashKey)) {
+                    html.push(`<td class="t2-flash ${numClass}"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${target}</td>`);
+                    html.push(`<td class="t2-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
+                } else {
+                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
+                    html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
+                }
             });
         };
 
@@ -1201,6 +1276,31 @@ function renderTable2() {
         nextRow.className = 'next-row';
         nextRow.innerHTML = html.join('');
         tbody.appendChild(nextRow);
+    }
+
+    // ── T2 Anchor Flash Pulse Animation ──
+    if (t2FlashTargets.size > 0) {
+        let bright = false;
+        window._t2PulseInterval = setInterval(() => {
+            bright = !bright;
+            const bg = bright ? '#fbbf24' : '#fef3c7';
+            const shadow = bright
+                ? '0 0 16px rgba(245, 158, 11, 1)'
+                : '0 0 8px rgba(245, 158, 11, 0.6)';
+            const cells = document.querySelectorAll('#table2 .t2-flash');
+            if (cells.length === 0) {
+                clearInterval(window._t2PulseInterval);
+                window._t2PulseInterval = null;
+                return;
+            }
+            cells.forEach(cell => {
+                cell.style.setProperty('background', bg, 'important');
+                cell.style.setProperty('box-shadow', shadow, 'important');
+                const s = cell.querySelector('span');
+                if (s) s.style.setProperty('background', bg, 'important');
+            });
+        }, 600);
+        console.log(`⚡ T2 flash pulse started for ${t2FlashTargets.size} cells`);
     }
 }
 
@@ -1405,6 +1505,132 @@ function _writeFlashDiagnostics(lines) {
     }
 }
 
+// ── Table 1 & Table 2 Anchor Column Flash ───────────────────────
+// For each pair's 3 anchor columns (1st, 2nd, 3rd from lookup table),
+// check last 3 rows. If any TWO of the 3 anchor columns collectively
+// have "hits" covering all 3 rows → flash those columns.
+// Table 1 hit = position code distance ≤ 1 (valid codes: S+0,SL+1,SR+1,O+0,OL+1,OR+1)
+// Table 2 hit = position code distance ≤ 2 (adds SL+2,SR+2,OL+2,OR+2)
+
+const _T1_VALID_CODES = new Set(['S+0', 'SL+1', 'SR+1', 'O+0', 'OL+1', 'OR+1']);
+const _T2_VALID_CODES = new Set(['S+0', 'SL+1', 'SR+1', 'SL+2', 'SR+2', 'O+0', 'OL+1', 'OR+1', 'OL+2', 'OR+2']);
+
+const _T1_PAIR_DEFS = [
+    { dataPair: 'ref0', getRefNum: () => 0 },
+    { dataPair: 'ref19', getRefNum: () => 19 },
+    { dataPair: 'prev', getRefNum: (prev) => prev },
+    { dataPair: 'prev_13opp', getRefNum: (prev) => DIGIT_13_OPPOSITES[prev] },
+    { dataPair: 'prevPlus1', getRefNum: (prev) => Math.min(prev + 1, 36) },
+    { dataPair: 'prevPlus1_13opp', getRefNum: (prev) => DIGIT_13_OPPOSITES[Math.min(prev + 1, 36)] },
+    { dataPair: 'prevMinus1', getRefNum: (prev) => Math.max(prev - 1, 0) },
+    { dataPair: 'prevMinus1_13opp', getRefNum: (prev) => DIGIT_13_OPPOSITES[Math.max(prev - 1, 0)] },
+    { dataPair: 'prevPlus2', getRefNum: (prev) => Math.min(prev + 2, 36) },
+    { dataPair: 'prevPlus2_13opp', getRefNum: (prev) => DIGIT_13_OPPOSITES[Math.min(prev + 2, 36)] },
+    { dataPair: 'prevMinus2', getRefNum: (prev) => Math.max(prev - 2, 0) },
+    { dataPair: 'prevMinus2_13opp', getRefNum: (prev) => DIGIT_13_OPPOSITES[Math.max(prev - 2, 0)] },
+];
+
+const _T2_PAIR_DEFS = [
+    { dataPair: 'ref0', getRefNum: () => 0 },
+    { dataPair: 'ref19', getRefNum: () => 19 },
+    { dataPair: 'prev', getRefNum: (prev) => prev },
+    { dataPair: 'prevPlus1', getRefNum: (prev) => Math.min(prev + 1, 36) },
+    { dataPair: 'prevMinus1', getRefNum: (prev) => Math.max(prev - 1, 0) },
+    { dataPair: 'prevPlus2', getRefNum: (prev) => Math.min(prev + 2, 36) },
+    { dataPair: 'prevMinus2', getRefNum: (prev) => Math.max(prev - 2, 0) },
+];
+
+/**
+ * Core flash computation for Tables 1 & 2.
+ * @param {Array} allSpins - full spins array
+ * @param {number} startIdx - first visible spin index
+ * @param {number} visibleCount - number of visible rows
+ * @param {Array} pairDefs - pair definitions [{dataPair, getRefNum}]
+ * @param {Set} validCodes - set of valid position codes
+ * @returns {Set<string>} flash targets as "relIdx:dataPair:anchorIdx"
+ */
+function _computeAnchorFlashTargets(allSpins, startIdx, visibleCount, pairDefs, validCodes) {
+    const result = new Set();
+
+    if (allSpins.length < 4 || visibleCount < 3) return result;
+
+    // Build row info: for each eligible row, which anchor indices are hits per pair
+    const rowInfos = [];
+    for (let r = 0; r < visibleCount; r++) {
+        const spinIdx = startIdx + r;
+        if (spinIdx === 0) continue;  // idx 0 is the empty header row
+
+        const prev = allSpins[spinIdx - 1].actual;
+        const actual = allSpins[spinIdx].actual;
+
+        const pairHits = {};  // { dataPair: Set<anchorIdx> }
+
+        pairDefs.forEach(({ dataPair, getRefNum }) => {
+            const refNum = getRefNum(prev);
+            const lookupRow = getLookupRow(refNum);
+            if (!lookupRow) {
+                pairHits[dataPair] = new Set();
+                return;
+            }
+            const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
+            const hits = new Set();
+            targets.forEach((target, anchorIdx) => {
+                const code = calculatePositionCode(target, actual);
+                if (validCodes.has(code)) {
+                    hits.add(anchorIdx);
+                }
+            });
+            pairHits[dataPair] = hits;
+        });
+
+        rowInfos.push({ relIdx: r, spinIdx, pairHits });
+    }
+
+    if (rowInfos.length < 3) return result;
+
+    // Take the last 3 eligible rows
+    const last3 = rowInfos.slice(-3);
+
+    // For each pair, check if any 2 anchor columns cover all 3 rows
+    const combos = [[0, 1], [0, 2], [1, 2]];
+
+    pairDefs.forEach(({ dataPair }) => {
+        for (const [a, b] of combos) {
+            let allCovered = true;
+            for (const row of last3) {
+                const hits = row.pairHits[dataPair];
+                if (!hits.has(a) && !hits.has(b)) {
+                    allCovered = false;
+                    break;
+                }
+            }
+            if (allCovered) {
+                // Flash these 2 anchor columns for all 3 rows (only where they actually hit)
+                for (const row of last3) {
+                    const hits = row.pairHits[dataPair];
+                    if (hits.has(a)) result.add(`${row.relIdx}:${dataPair}:${a}`);
+                    if (hits.has(b)) result.add(`${row.relIdx}:${dataPair}:${b}`);
+                }
+                break;  // first matching combo wins for this pair
+            }
+        }
+    });
+
+    if (result.size > 0) {
+        console.log(`⚡ Anchor flash targets: ${result.size} cells`);
+    }
+
+    return result;
+}
+
+function _computeT1FlashTargets(allSpins, startIdx, visibleCount) {
+    return _computeAnchorFlashTargets(allSpins, startIdx, visibleCount, _T1_PAIR_DEFS, _T1_VALID_CODES);
+}
+
+function _computeT2FlashTargets(allSpins, startIdx, visibleCount) {
+    return _computeAnchorFlashTargets(allSpins, startIdx, visibleCount, _T2_PAIR_DEFS, _T2_VALID_CODES);
+}
+
 /**
  * LEGACY: After all data rows are rendered, scan ALL consecutive row pairs.
  * NOTE: This function is kept for backward compatibility with existing tests.
@@ -1599,6 +1825,10 @@ function renderTable3() {
     // avoiding all CSS specificity battles with .pos-s/.pos-o/.pos-xx.
     const flashTargets = _computeFlashTargets(spins, startIdx, visibleSpins.length);
 
+    // Positive / negative number sets for actual-number color coding
+    const _T3_POS = new Set([3, 26, 0, 32, 15, 19, 4, 27, 13, 36, 11, 30, 8, 1, 20, 14, 31, 9, 22]);
+    const _T3_NEG = new Set([21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35]);
+
     visibleSpins.forEach((spin, relIdx) => {
         const idx = startIdx + relIdx;
         const prev = idx > 0 ? spins[idx - 1].actual : null;
@@ -1616,9 +1846,10 @@ function renderTable3() {
                     emptyCells.push('<td></td>');
                 }
             }
+            const _actColor1 = _T3_POS.has(spin.actual) ? '#22c55e' : _T3_NEG.has(spin.actual) ? '#ef4444' : '#94a3b8';
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
-                <td><strong>${spin.actual}</strong></td>
+                <td style="color:${_actColor1}"><strong>${spin.actual}</strong></td>
                 ${emptyCells.join('')}
             `;
         } else {
@@ -1695,9 +1926,10 @@ function renderTable3() {
                 return `<td class="${cls}" data-pair="${dataPairAttr}">${formatPos(posCode)}</td>`;
             };
 
+            const _actColor2 = _T3_POS.has(spin.actual) ? '#22c55e' : _T3_NEG.has(spin.actual) ? '#ef4444' : '#94a3b8';
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
-                <td><strong>${spin.actual}</strong></td>
+                <td style="color:${_actColor2}"><strong>${spin.actual}</strong></td>
                 <td class="${cellClass('prev', 'pair', true)}" data-pair="prev">${data.prev.ref}</td>
                 ${posCell('prev', 'pair')}
                 <td class="${cellClass('prev', 'pair13Opp')}" data-pair="prev">${data.prev.ref13Opp}</td>
@@ -1854,7 +2086,33 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('addBtn').addEventListener('click', addSpin);
     document.getElementById('undoBtn').addEventListener('click', undoLast);
     document.getElementById('resetBtn').addEventListener('click', resetAll);
-    
+
+    // Table collapse/expand toggles
+    ['1', '2', '3'].forEach(n => {
+        const btn = document.getElementById('toggleTable' + n);
+        const wrapper = document.getElementById('gridWrapper' + n);
+        if (btn && wrapper) {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isVisible = wrapper.style.display !== 'none';
+                wrapper.style.display = isVisible ? 'none' : 'block';
+                btn.textContent = isVisible ? '+' : '−';
+            });
+        }
+    });
+
+    // Prediction results collapse/expand
+    const predToggle = document.getElementById('togglePredResults');
+    const predContent = document.getElementById('predictionResultsContent');
+    if (predToggle && predContent) {
+        predToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isVisible = predContent.style.display !== 'none';
+            predContent.style.display = isVisible ? 'none' : 'block';
+            predToggle.textContent = isVisible ? '+' : '−';
+        });
+    }
+
     render();
 });
 
@@ -2195,5 +2453,7 @@ window.calculateWheelAnchors = calculateWheelAnchors;
 window.getTable1NextProjections = getTable1NextProjections;
 window.getTable2NextProjections = getTable2NextProjections;
 window.expandTargetsToBetNumbers = expandTargetsToBetNumbers;
+window._computeT2FlashTargets = _computeT2FlashTargets;
+window._computeT1FlashTargets = _computeT1FlashTargets;
 
 console.log('✅ NEXT Row Projections Module loaded (V6 + Multi-Table)');

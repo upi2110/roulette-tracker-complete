@@ -59,8 +59,21 @@ function setupDOM() {
                     <input type="radio" name="signFilter" id="filterPositive" value="positive" />
                     <input type="radio" name="signFilter" id="filterNegative" value="negative" />
                     <input type="radio" name="signFilter" id="filterBothSigns" value="both" checked />
+                    <input type="checkbox" id="filterSet0" checked />
+                    <input type="checkbox" id="filterSet5" checked />
+                    <input type="checkbox" id="filterSet6" checked />
                 </div>
             </div>
+
+            <!-- Auto Mode -->
+            <div id="aiSelectionPanel">
+                <div id="aiPanelContent">
+                    <div class="table-selection-section" data-table="3"></div>
+                    <div class="table-selection-section" data-table="2"></div>
+                    <div class="table-selection-section" data-table="1"></div>
+                </div>
+            </div>
+            <div id="predictionResultsContainer"></div>
 
             <!-- Money Panel -->
             <div class="info-panels-container-bottom"></div>
@@ -77,7 +90,23 @@ function setupDOM() {
             <div id="betHistoryList"></div>
             <div id="toggleBettingBtn">▶️ START BETTING</div>
             <div id="bettingStatus">⏸️ Betting PAUSED</div>
-            <div id="toggleStrategyBtn">🟢 Strategy 1: Aggressive</div>
+            <div id="toggleStrategyBtn">🟣 Strategy 3: Cautious</div>
+
+            <!-- Auto Test Panel -->
+            <div id="autoTestContainer">
+                <div id="autoTestHeader"></div>
+                <div id="autoTestProgress" style="display:none;">
+                    <div id="autoTestProgressBar" style="width:0%"></div>
+                    <div id="autoTestProgressText">0%</div>
+                </div>
+                <div id="autoTestTabs"></div>
+                <div id="autoTestContent"></div>
+                <div id="autoTestFileInfo"></div>
+                <button id="autoTestLoadBtn">📂 Load</button>
+                <button id="autoTestRunBtn">▶ Run</button>
+                <button id="autoTestExportBtn">📊 Export</button>
+                <textarea id="autoTestManualInput"></textarea>
+            </div>
         </div>
     `;
 }
@@ -171,6 +200,15 @@ function loadRendererFunctions() {
             exports._flashPairCell = typeof _flashPairCell !== 'undefined' ? _flashPairCell : null;
             exports._computeFlashTargets = typeof _computeFlashTargets !== 'undefined' ? _computeFlashTargets : null;
             exports.formatPosFlash = typeof formatPosFlash !== 'undefined' ? formatPosFlash : null;
+
+            // T1/T2 anchor flash functions
+            exports._computeT1FlashTargets = typeof _computeT1FlashTargets !== 'undefined' ? _computeT1FlashTargets : null;
+            exports._computeT2FlashTargets = typeof _computeT2FlashTargets !== 'undefined' ? _computeT2FlashTargets : null;
+            exports._computeAnchorFlashTargets = typeof _computeAnchorFlashTargets !== 'undefined' ? _computeAnchorFlashTargets : null;
+            exports._T1_VALID_CODES = typeof _T1_VALID_CODES !== 'undefined' ? _T1_VALID_CODES : null;
+            exports._T2_VALID_CODES = typeof _T2_VALID_CODES !== 'undefined' ? _T2_VALID_CODES : null;
+            exports._T1_PAIR_DEFS = typeof _T1_PAIR_DEFS !== 'undefined' ? _T1_PAIR_DEFS : null;
+            exports._T2_PAIR_DEFS = typeof _T2_PAIR_DEFS !== 'undefined' ? _T2_PAIR_DEFS : null;
 
             // AI data export
             exports.analyzeTable1Hits = typeof analyzeTable1Hits !== 'undefined' ? analyzeTable1Hits : null;

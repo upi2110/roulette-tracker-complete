@@ -19,7 +19,7 @@ class MoneyManagementPanel {
             isSessionActive: false,
             spinsWithBets: [],
             isBettingEnabled: false,  // NEW: User control for betting
-            bettingStrategy: 1,  // 1=Aggressive, 2=Conservative, 3=Cautious
+            bettingStrategy: 3,  // 1=Aggressive, 2=Conservative, 3=Cautious (default: Cautious)
             consecutiveWins: 0,  // Track consecutive wins for strategies 2 & 3
             currentBetPerNumber: 2  // Track current bet amount (overrides backend)
         };
@@ -86,11 +86,11 @@ class MoneyManagementPanel {
                         border: none;
                         border-radius: 4px;
                         cursor: pointer;
-                        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+                        background: linear-gradient(135deg, #6f42c1 0%, #9b59b6 100%);
                         color: white;
                         margin-top: 8px;
                         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    ">🟢 Strategy 1: Aggressive</button>
+                    ">🟣 Strategy 3: Cautious</button>
             </div>
 
             <div class="panel-content" id="moneyPanelContent" style="display: block;">
@@ -176,8 +176,12 @@ class MoneyManagementPanel {
             // CRITICAL: Get fresh prediction immediately when starting
             if (window.aiPanel && window.aiPanel.getPredictions) {
                 setTimeout(() => {
-                    window.aiPanel.getPredictions();
-                    console.log('🔄 Triggered fresh prediction after START');
+                    try {
+                        window.aiPanel.getPredictions();
+                        console.log('🔄 Triggered fresh prediction after START');
+                    } catch (e) {
+                        console.warn('⚠️ Failed to trigger prediction on START:', e.message);
+                    }
                 }, 100);
             }
         } else {
@@ -293,9 +297,16 @@ class MoneyManagementPanel {
 
     setupSpinListener() {
         // Check for new spins every 200ms - FASTER than orchestrator
+        if (this._spinListenerInterval) {
+            clearInterval(this._spinListenerInterval);
+        }
         this.lastSpinCount = 0;
-        setInterval(() => {
-            this.checkForNewSpin();
+        this._spinListenerInterval = setInterval(() => {
+            try {
+                this.checkForNewSpin();
+            } catch (e) {
+                console.warn('⚠️ Spin listener error:', e.message);
+            }
         }, 200);
     }
 
@@ -424,6 +435,25 @@ class MoneyManagementPanel {
             } catch (error) {
                 console.error('⚠️ Failed to process result on backend:', error);
             }
+        }
+
+        // CRITICAL: Feed result back to AI engine for session adaptation
+        // The engine needs to learn from every bet result (win/loss/near-miss)
+        try {
+            const engine = typeof window !== 'undefined' ? window.aiAutoEngine : null;
+            if (engine && engine.isTrained && engine.isEnabled && engine.lastDecision) {
+                engine.recordResult(
+                    engine.lastDecision.selectedPair,
+                    engine.lastDecision.selectedFilter,
+                    hit,
+                    actualNumber,
+                    engine.lastDecision.numbers || []
+                );
+                engine.lastDecision = null; // Consumed
+                console.log('🧠 AI engine session adaptation updated');
+            }
+        } catch (engineError) {
+            console.warn('⚠️ Failed to update AI engine:', engineError.message);
         }
 
         // ═══════════════════════════════════════════════════════
@@ -688,12 +718,21 @@ class MoneyManagementPanel {
          * Receive prediction from AI panel
          * Store it as pending bet to be placed on next spin
          */
-        
+
         if (!prediction || !prediction.numbers || prediction.numbers.length === 0) {
             console.log('⚠️ No valid prediction to set');
             return;
         }
-        
+
+        // AUTO MODE SKIP: If AI engine decided SKIP, don't create a bet
+        // This prevents the delayed prediction cascade from overwriting a SKIP decision
+        const autoEngine = typeof window !== 'undefined' ? window.aiAutoEngine : null;
+        if (autoEngine && autoEngine.isEnabled && autoEngine.lastDecision === null) {
+            this.pendingBet = null;
+            console.log('⏭️ AUTO SKIP: Not creating pending bet (engine decided SKIP)');
+            return;
+        }
+
         console.log('💰 Money panel received prediction:', {
             signal: prediction.signal,
             numbers: prediction.numbers.length,

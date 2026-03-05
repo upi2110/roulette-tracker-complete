@@ -587,6 +587,9 @@ class AIPredictionPanel {
             const pairExtraSets = [];  // Each pair's extra ref numbers = { numbers (Set), pairNumbers (Set) }
 
             // --- TABLE 3: each pair is a separate set ---
+            // Always use EXPANDED numbers (includes ±1 wheel neighbors).
+            // The ±1 expansion IS part of T3's prediction methodology — neighbors are valid bet numbers.
+            // Cross-table intersection: T3_expanded ∩ T2_expanded gives numbers confirmed by both tables.
             if (this.table3Selections.size > 0) {
                 const t3Projections = tableData.table3NextProjections || {};
 
@@ -930,6 +933,11 @@ class AIPredictionPanel {
 
             console.log('✅ Frontend prediction:', prediction);
 
+            // SEMI-AUTO: auto-select optimal filter before displaying
+            if (typeof window !== 'undefined' && window.semiAutoFilter && window.semiAutoFilter.isEnabled) {
+                window.semiAutoFilter.applyOptimalFilter(prediction.numbers);
+            }
+
             // Use existing display logic
             this.updatePrediction(prediction);
 
@@ -967,6 +975,9 @@ class AIPredictionPanel {
         const allNumbers = prediction.numbers || [];
         const anchorGroups = prediction.anchor_groups || [];
         const extraNumbers = prediction.extraNumbers || [];
+
+        // Sort anchor groups by European wheel position of their anchor number
+        anchorGroups.sort((a, b) => (WHEEL_POS[a.anchor] ?? 99) - (WHEEL_POS[b.anchor] ?? 99));
 
         // Color palette for anchor groups
         const groupColors = [
@@ -1245,15 +1256,19 @@ class AIPredictionPanel {
         }
 
         // 4. UPDATE WHEEL HIGHLIGHTS (wheel also syncs money panel after applying filters)
-        if (window.rouletteWheel && typeof window.rouletteWheel.updateHighlights === 'function') {
-            window.rouletteWheel.updateHighlights(anchors, loose, anchorGroups, extraNumbers, prediction);
-            console.log('✅ Wheel highlights updated with anchor groups + extra numbers');
-        } else {
-            // Fallback: update money panel directly if wheel not available
-            if (window.moneyPanel && typeof window.moneyPanel.setPrediction === 'function') {
-                window.moneyPanel.setPrediction(prediction);
-                console.log('✅ Money panel updated (direct)');
+        try {
+            if (window.rouletteWheel && typeof window.rouletteWheel.updateHighlights === 'function') {
+                window.rouletteWheel.updateHighlights(anchors, loose, anchorGroups, extraNumbers, prediction);
+                console.log('✅ Wheel highlights updated with anchor groups + extra numbers');
+            } else {
+                // Fallback: update money panel directly if wheel not available
+                if (window.moneyPanel && typeof window.moneyPanel.setPrediction === 'function') {
+                    window.moneyPanel.setPrediction(prediction);
+                    console.log('✅ Money panel updated (direct)');
+                }
             }
+        } catch (e) {
+            console.warn('⚠️ Wheel/Money panel update from AI failed:', e.message);
         }
 
         console.log('✅ AI panel updated successfully!');
@@ -1479,6 +1494,9 @@ class AIPredictionPanel {
         const loose = mergedPrediction.loose || [];
         const allNumbers = mergedPrediction.numbers || [];
         const anchorGroups = mergedPrediction.anchor_groups || [];
+
+        // Sort anchor groups by European wheel position of their anchor number
+        anchorGroups.sort((a, b) => (WHEEL_POS[a.anchor] ?? 99) - (WHEEL_POS[b.anchor] ?? 99));
         const extraNumbers = mergedPrediction.extraNumbers || [];
 
         // Color palette for anchor groups (same as updatePrediction)

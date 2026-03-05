@@ -84,9 +84,9 @@ describe('MoneyManagementPanel - Defaults', () => {
         expect(mp.sessionData.isBettingEnabled).toBe(false);
     });
 
-    test('Default strategy is 1 (Aggressive)', () => {
+    test('Default strategy is 3 (Cautious)', () => {
         const mp = createPanel();
-        expect(mp.sessionData.bettingStrategy).toBe(1);
+        expect(mp.sessionData.bettingStrategy).toBe(3);
     });
 
     test('Default bet per number is $2', () => {
@@ -408,8 +408,11 @@ describe('Strategy 3: Cautious', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('Strategy Toggle', () => {
-    test('Cycles 1 → 2 → 3 → 1', () => {
+    test('Cycles 3 → 1 → 2 → 3', () => {
         const mp = createPanel();
+        expect(mp.sessionData.bettingStrategy).toBe(3);
+
+        mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(1);
 
         mp.toggleStrategy();
@@ -417,9 +420,6 @@ describe('Strategy Toggle', () => {
 
         mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(3);
-
-        mp.toggleStrategy();
-        expect(mp.sessionData.bettingStrategy).toBe(1);
     });
 
     test('Switching strategy resets bet to $2', () => {
@@ -485,6 +485,7 @@ describe('Bankroll Calculations', () => {
 
     test('Consecutive losses tracked correctly', async () => {
         const mp = createPanel();
+        mp.sessionData.bettingStrategy = 1; // Use Aggressive (no counter reset)
 
         await mp.recordBetResult(2, 10, false, 1);
         await mp.recordBetResult(2, 10, false, 2);

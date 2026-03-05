@@ -35,7 +35,38 @@ h1 { color: #2c3e50; margin-bottom: 12px; text-align: center; font-size: 16px; }
 
 /* Table sections */
 .table-section { margin-bottom: 6px; }
-.table-title { color: #34495e; font-size: 11px; margin-bottom: 2px; padding: 3px 6px; background: #ecf0f1; border-left: 3px solid #3498db; }
+.table-title { color: #34495e; font-size: 11px; margin-bottom: 2px; padding: 3px 6px; background: #ecf0f1; border-left: 3px solid #3498db; display: flex; align-items: center; justify-content: space-between; }
+
+/* Table & Panel collapse/expand toggle button */
+.btn-table-toggle {
+    background: rgba(52, 73, 94, 0.15);
+    border: 1px solid rgba(52, 73, 94, 0.3);
+    color: #34495e;
+    padding: 0 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    transition: all 0.2s;
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+.btn-table-toggle:hover { background: rgba(52, 73, 94, 0.3); }
+
+/* Prediction results collapsible header */
+.prediction-results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 6px;
+    background: #ecf0f1;
+    border-left: 3px solid #667eea;
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #34495e;
+}
 .grid-wrapper { 
     overflow-x: auto; 
     max-height: 320px; 
@@ -328,6 +359,22 @@ td.t3-pm1-flash.t3-pair-selected span,
         background: #fbbf24;
         box-shadow: 0 0 16px rgba(245, 158, 11, 1);
     }
+}
+
+/* Table 1 & Table 2 Anchor Flash — reuses same amber pulse as Table 3 */
+td.t1-flash, td.t2-flash {
+    animation: t3-pm1-pulse 1.2s ease-in-out infinite !important;
+    outline: 3px solid #f59e0b !important;
+    outline-offset: -1px !important;
+    z-index: 10 !important;
+    position: relative !important;
+    background: #fef3c7;
+}
+
+td.t1-flash span, td.t2-flash span {
+    animation: t3-pm1-span-pulse 1.2s ease-in-out infinite;
+    background: #fef3c7;
+    color: #92400e;
 }
 
 @keyframes t3-pm1-span-pulse {

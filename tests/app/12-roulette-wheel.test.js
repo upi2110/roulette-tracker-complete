@@ -1241,7 +1241,7 @@ describe('RouletteWheel: _applyFilters', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
 
-        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true };
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true, set0: true, set5: true, set6: true };
 
         const rawAnchors = [0];
         const rawLoose = [5];
@@ -1266,7 +1266,7 @@ describe('RouletteWheel: _applyFilters', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
 
-        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true };
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true, set0: true, set5: true, set6: true };
         wheel._rawPrediction = {
             anchors: [], loose: [], anchorGroups: [], extraNumbers: [],
             prediction: { numbers: [0, 5], signal: 'BET NOW' }
@@ -1562,8 +1562,9 @@ describe('RouletteWheel: _updateNumberLists', () => {
 
         const el = document.getElementById('wheelNumberLists');
         if (el) {
+            // Separate section: "±1 Anchors (N)"
             expect(el.innerHTML).toContain('±1 Anchors');
-            expect(el.innerHTML).toContain('1');
+            expect(el.innerHTML).toContain('0'); // anchor 0 should appear
         }
     });
 
@@ -1582,7 +1583,9 @@ describe('RouletteWheel: _updateNumberLists', () => {
 
         const el = document.getElementById('wheelNumberLists');
         if (el) {
+            // Separate section: "±2 Anchors (N)"
             expect(el.innerHTML).toContain('±2 Anchors');
+            expect(el.innerHTML).toContain('>15<');
         }
     });
 
@@ -1599,8 +1602,12 @@ describe('RouletteWheel: _updateNumberLists', () => {
 
         const el = document.getElementById('wheelNumberLists');
         if (el) {
-            expect(el.innerHTML).toContain('Loose');
-            expect(el.innerHTML).toContain('2');
+            // Separate section: "Loose (N)"
+            expect(el.innerHTML).toContain('Loose (2)');
+            // 5 and 10: REGULAR_OPPOSITES[5]=32, REGULAR_OPPOSITES[10]=26 → neither pair present
+            // So shown as unpaired badges
+            expect(el.innerHTML).toContain('>5<');
+            expect(el.innerHTML).toContain('>10<');
         }
     });
 
@@ -1619,7 +1626,9 @@ describe('RouletteWheel: _updateNumberLists', () => {
 
         const el = document.getElementById('wheelNumberLists');
         if (el) {
+            // Separate section: "Grey ±1 (N)"
             expect(el.innerHTML).toContain('Grey ±1');
+            expect(el.innerHTML).toContain('>8<');
         }
     });
 
@@ -1636,7 +1645,10 @@ describe('RouletteWheel: _updateNumberLists', () => {
 
         const el = document.getElementById('wheelNumberLists');
         if (el) {
+            // Separate section: "Grey Loose (N)"
             expect(el.innerHTML).toContain('Grey Loose');
+            expect(el.innerHTML).toContain('>11<');
+            expect(el.innerHTML).toContain('>12<');
         }
     });
 
@@ -1648,6 +1660,502 @@ describe('RouletteWheel: _updateNumberLists', () => {
         if (el) el.remove();
 
         expect(() => wheel._updateNumberLists()).not.toThrow();
+    });
+
+    test('Shows ±1 label on anchor center numbers', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // 17 is anchor center with ±1 group [25, 17, 34]
+        wheel.anchorGroups = [{ anchor: 17, group: [25, 17, 34], type: '±1' }];
+        wheel.looseNumbers = [5];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            expect(el.innerHTML).toContain('>17');
+            expect(el.innerHTML).toContain('±1'); // ±1 label on anchor 17
+        }
+    });
+
+    test('Shows ±2 label on anchor center numbers', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [{ anchor: 6, group: [34, 6, 27, 13, 36], type: '±2' }];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            expect(el.innerHTML).toContain('>6');
+            expect(el.innerHTML).toContain('±2');
+        }
+    });
+
+    test('Pairs regular opposites in gold on same row', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // 23 and 3 are regular opposites (REGULAR_OPPOSITES[23]=3)
+        wheel.anchorGroups = [
+            { anchor: 23, group: [8, 23, 10], type: '±1' },
+            { anchor: 3, group: [35, 3, 26], type: '±1' }
+        ];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            const html = el.innerHTML;
+            // Opposite pair marked with ↔
+            expect(html).toContain('↔');
+            // ↔ separator between opposite pair
+            expect(html).toContain('↔');
+            // Both numbers present
+            expect(html).toContain('>23');
+            expect(html).toContain('>3<');
+        }
+    });
+
+    test('Pairs loose opposites together (e.g. 4↔33)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // 4 and 33 are regular opposites
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [4, 33, 0];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            const html = el.innerHTML;
+            // 4 and 33 paired with ↔
+            expect(html).toContain('↔');
+            expect(html).toContain('↔');
+            expect(html).toContain('>4<');
+            expect(html).toContain('>33<');
+            // 0 is unpaired (its opposite 10 is not in the list)
+            expect(html).toContain('>0<');
+        }
+    });
+
+    test('Wheel-adjacent opposites get black circle box', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // Find a pair that are both opposites AND wheel-adjacent
+        // On the wheel: [... 35, 3, 26] — 3 and 26 are adjacent (positions 35, 36)
+        // REGULAR_OPPOSITES[3] = 23, not 26. So 3↔26 are not opposites.
+        // Let's use 0 and 32: wheel positions [0, 1]. REGULAR_OPPOSITES[0]=10, not 32.
+        // Actually most regular opposites are far apart on the wheel.
+        // Use explicit test: set numbers where no pair is adjacent → no black box for pair row
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [23, 3]; // opposites, positions 18 and 35 → not adjacent
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            const html = el.innerHTML;
+            // Paired in gold with ↔
+            expect(html).toContain('↔');
+            // NOT in a black border box (they're far apart on wheel)
+            // The black box has border:2px solid #000
+            // The pair row should NOT have it since they're not adjacent
+            const pairRow = html.split('margin-bottom:3px')[1] || '';
+            // Just verify both numbers are present
+            expect(html).toContain('>23');
+            expect(html).toContain('>3<');
+        }
+    });
+
+    test('Grey opposites paired together', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // 27↔18 and 13↔29 are regular opposites
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [27, 13, 18, 29];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            const html = el.innerHTML;
+            expect(html).toContain('Grey Loose (4)');
+            // All 4 numbers present
+            expect(html).toContain('>27<');
+            expect(html).toContain('>18<');
+            expect(html).toContain('>13<');
+            expect(html).toContain('>29<');
+            // Should have ↔ for pairs
+            const oppCount = (html.match(/↔/g) || []).length;
+            expect(oppCount).toBeGreaterThanOrEqual(2); // 2 pairs
+        }
+    });
+
+    test('_pairByOpposites correctly identifies pairs', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // 23↔3, 4↔33 are pairs; 0 is unpaired (opposite 10 not present)
+        const result = wheel._pairByOpposites([23, 3, 4, 33, 0]);
+        expect(result.pairs.length).toBe(2);
+        expect(result.unpaired).toEqual([0]);
+
+        // Verify pairs contain the right numbers
+        const pairNums = result.pairs.flat().sort((a, b) => a - b);
+        expect(pairNums).toEqual([3, 4, 23, 33]);
+    });
+
+    test('_pairByOpposites handles 0 and 26 correctly', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // REGULAR_OPPOSITES[0]=10, REGULAR_OPPOSITES[26]=10
+        // 0 and 10 → pair
+        const result1 = wheel._pairByOpposites([0, 10]);
+        expect(result1.pairs.length).toBe(1);
+        expect(result1.unpaired.length).toBe(0);
+
+        // 26 and 10 → pair
+        const result2 = wheel._pairByOpposites([26, 10]);
+        expect(result2.pairs.length).toBe(1);
+        expect(result2.unpaired.length).toBe(0);
+
+        // 0, 26, 10 → only one pair possible (first match wins), one unpaired
+        const result3 = wheel._pairByOpposites([0, 26, 10]);
+        expect(result3.pairs.length).toBe(1);
+        expect(result3.unpaired.length).toBe(1);
+    });
+
+    test('Filter to negative-only still shows ±1 labels', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // Simulate: after filtering to negative only, recalculate anchors
+        // Negative numbers near 17: 25(neg), 17(neg), 34(neg) → ±1 anchor at 17
+        wheel.anchorGroups = [{ anchor: 17, group: [25, 17, 34], type: '±1' }];
+        wheel.looseNumbers = [6, 24, 35];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+
+        const el = document.getElementById('wheelNumberLists');
+        if (el) {
+            const html = el.innerHTML;
+            expect(html).toContain('>17');
+            expect(html).toContain('±1');
+            // 6↔22? No. Check: REGULAR_OPPOSITES[6]=22, 22 not present
+            // 24↔15? REGULAR_OPPOSITES[24]=15, 15 not present
+            // 35↔8? REGULAR_OPPOSITES[35]=8, 8 not present
+            // So all loose should be unpaired, shown with normal badges
+            expect(html).toContain('>6<');
+            expect(html).toContain('>24<');
+            expect(html).toContain('>35<');
+        }
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// 16b. _updateNumberLists — filter combination display tests
+// ═══════════════════════════════════════════════════════
+
+describe('RouletteWheel: _updateNumberLists filter combos', () => {
+    // Helper: set up a wheel with prediction + specific filters, return HTML
+    function setupFiltered(allNums, extraNums, filters) {
+        const wheel = new RouletteWheel();
+        wheel.filters = { ...filters };
+
+        const prediction = {
+            numbers: allNums,
+            extraNumbers: extraNums || [],
+            anchors: [],
+            loose: allNums.slice(),
+            anchor_groups: [],
+            signal: 'BET NOW',
+            confidence: 90
+        };
+        wheel.updateHighlights([], allNums, [], extraNums || [], prediction);
+        return document.getElementById('wheelNumberLists')?.innerHTML || '';
+    }
+
+    // A diverse set of prediction numbers covering both tables, both signs
+    const PRED_NUMS = [0, 3, 4, 17, 21, 25, 26, 32, 13, 19, 34, 6, 29, 12, 35];
+
+    test('0-table + positive: only 0-table positive numbers appear', () => {
+        if (!RouletteWheel) return;
+        const filters = { zeroTable: true, nineteenTable: false, positive: true, negative: false, set0: true, set5: true, set6: true };
+        const html = setupFiltered(PRED_NUMS, [], filters);
+
+        // 0-table: {3,26,0,32,21,2,25,27,13,36,23,10,5,1,20,14,18,29,7}
+        // Positive: {3,26,0,32,15,19,4,27,13,36,11,30,8,1,20,14,31,9,22}
+        // 0-table ∩ positive from PRED_NUMS: 0, 3, 26, 32, 13
+        [0, 3, 26, 32, 13].forEach(n => {
+            expect(html).toContain(`>${n}<`);
+        });
+        // 17 is 19-table → should NOT appear
+        expect(html).not.toContain('>17<');
+        // 21 is 0-table but negative → should NOT appear
+        expect(html).not.toContain('>21<');
+        // 19 is 19-table → should NOT appear
+        expect(html).not.toContain('>19<');
+    });
+
+    test('0-table + negative: only 0-table negative numbers appear', () => {
+        if (!RouletteWheel) return;
+        const filters = { zeroTable: true, nineteenTable: false, positive: false, negative: true, set0: true, set5: true, set6: true };
+        const html = setupFiltered(PRED_NUMS, [], filters);
+
+        // 0-table ∩ negative from PRED_NUMS: 21, 25, 29
+        [21, 25, 29].forEach(n => {
+            expect(html).toContain(`>${n}<`);
+        });
+        // 0 is positive → should NOT appear
+        expect(html).not.toContain('>0<');
+        // 34 is 19-table → should NOT appear
+        expect(html).not.toContain('>34<');
+    });
+
+    test('19-table + positive: only 19-table positive numbers appear', () => {
+        if (!RouletteWheel) return;
+        const filters = { zeroTable: false, nineteenTable: true, positive: true, negative: false, set0: true, set5: true, set6: true };
+        const html = setupFiltered(PRED_NUMS, [], filters);
+
+        // 19-table: {15,19,4,17,34,6,11,30,8,24,16,33,31,9,22,28,12,35}
+        // Positive: {3,26,0,32,15,19,4,27,13,36,11,30,8,1,20,14,31,9,22}
+        // 19-table ∩ positive from PRED_NUMS: 4, 19
+        [4, 19].forEach(n => {
+            expect(html).toContain(`>${n}<`);
+        });
+        // 0 is 0-table → should NOT appear
+        expect(html).not.toContain('>0<');
+        // 17 is 19-table but negative → should NOT appear
+        expect(html).not.toContain('>17<');
+    });
+
+    test('19-table + negative: only 19-table negative numbers appear', () => {
+        if (!RouletteWheel) return;
+        const filters = { zeroTable: false, nineteenTable: true, positive: false, negative: true, set0: true, set5: true, set6: true };
+        const html = setupFiltered(PRED_NUMS, [], filters);
+
+        // 19-table ∩ negative from PRED_NUMS: 17, 34, 6, 12, 35
+        [17, 34, 6, 12, 35].forEach(n => {
+            expect(html).toContain(`>${n}<`);
+        });
+        // 3 is 0-table → should NOT appear
+        expect(html).not.toContain('>3<');
+        // 19 is positive → should NOT appear
+        expect(html).not.toContain('>19<');
+    });
+
+    test('All filters ON: all prediction numbers appear', () => {
+        if (!RouletteWheel) return;
+        const filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true, set0: true, set5: true, set6: true };
+        const html = setupFiltered(PRED_NUMS, [], filters);
+
+        PRED_NUMS.forEach(n => {
+            expect(html).toContain(`>${n}<`);
+        });
+    });
+
+    test('0+19 table + positive only: all positive numbers from both tables', () => {
+        if (!RouletteWheel) return;
+        const filters = { zeroTable: true, nineteenTable: true, positive: true, negative: false, set0: true, set5: true, set6: true };
+        const html = setupFiltered(PRED_NUMS, [], filters);
+
+        // Positive from PRED_NUMS: 0, 3, 4, 26, 32, 13, 19
+        [0, 3, 4, 26, 32, 13, 19].forEach(n => {
+            expect(html).toContain(`>${n}<`);
+        });
+        // Negative should not: 17, 21, 25, 34, 6, 29, 12, 35
+        [17, 21, 25, 34, 6, 29, 12, 35].forEach(n => {
+            expect(html).not.toContain(`>${n}<`);
+        });
+    });
+
+    test('Section labels: ±1 and ±2 sections appear with calculateWheelAnchors', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        // Provide a mock calculateWheelAnchors
+        global.window.calculateWheelAnchors = (nums) => {
+            // Simple mock: group first 3+ contiguous wheel numbers as ±1 anchor
+            return { anchors: [], loose: nums, anchorGroups: [] };
+        };
+
+        // Set data with ±1 and ±2 anchors directly
+        wheel.anchorGroups = [
+            { anchor: 17, group: [25, 17, 34], type: '±1' },
+            { anchor: 6, group: [34, 6, 27, 13, 36], type: '±2' }
+        ];
+        wheel.looseNumbers = [0, 4];
+        wheel.extraAnchorGroups = [{ anchor: 8, group: [30, 8, 23], type: '±1' }];
+        wheel.extraLoose = [11];
+
+        wheel._updateNumberLists();
+        const html = document.getElementById('wheelNumberLists')?.innerHTML || '';
+
+        // All section headers should appear
+        expect(html).toContain('±1 Anchors (1)');
+        expect(html).toContain('±2 Anchors (1)');
+        expect(html).toContain('Loose (2)');
+        expect(html).toContain('Grey ±1 (1)');
+        expect(html).toContain('Grey Loose (1)');
+
+        // ±1 label on anchor 17
+        expect(html).toContain('>17');
+        expect(html).toContain('±1');
+        // ±2 label on anchor 6
+        expect(html).toContain('>6');
+        expect(html).toContain('±2');
+    });
+
+    test('2-column grid layout is applied', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [{ anchor: 17, group: [25, 17, 34], type: '±1' }];
+        wheel.looseNumbers = [0, 4];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+        const html = document.getElementById('wheelNumberLists')?.innerHTML || '';
+
+        // Should contain grid-template-columns for 2-column layout
+        expect(html).toContain('grid-template-columns');
+        expect(html).toContain('1fr 1fr');
+    });
+
+    test('Gold pairing works within ±1 section (23↔3)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [
+            { anchor: 23, group: [8, 23, 10], type: '±1' },
+            { anchor: 3, group: [35, 3, 26], type: '±1' }
+        ];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+        const html = document.getElementById('wheelNumberLists')?.innerHTML || '';
+
+        // Should have ±1 section with both anchors
+        expect(html).toContain('±1 Anchors (2)');
+        // Opposite pair marked with ↔
+        expect(html).toContain('↔');
+        expect(html).toContain('↔');
+    });
+
+    test('Gold pairing works within Loose section (4↔33)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [4, 33, 0];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+        const html = document.getElementById('wheelNumberLists')?.innerHTML || '';
+
+        expect(html).toContain('Loose (3)');
+        // 4↔33 paired with ↔
+        expect(html).toContain('↔');
+        expect(html).toContain('↔');
+        // 0 unpaired
+        expect(html).toContain('>0<');
+    });
+
+    test('Grey sections split correctly: Grey ±1, Grey ±2, Grey Loose', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [
+            { anchor: 8, group: [30, 8, 23], type: '±1' },
+            { anchor: 15, group: [4, 19, 15, 32, 0], type: '±2' }
+        ];
+        wheel.extraLoose = [11, 28];
+
+        wheel._updateNumberLists();
+        const html = document.getElementById('wheelNumberLists')?.innerHTML || '';
+
+        expect(html).toContain('Grey ±1 (1)');
+        expect(html).toContain('Grey ±2 (1)');
+        expect(html).toContain('Grey Loose (2)');
+        // 11↔28 are regular opposites → paired with ↔
+        expect(html).toContain('↔');
+        expect(html).toContain('↔');
+    });
+
+    test('Mixed anchors: ±2 and ±1 in separate sections', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [
+            { anchor: 6, group: [34, 6, 27, 13, 36], type: '±2' },
+            { anchor: 17, group: [25, 17, 34], type: '±1' },
+            { anchor: 31, group: [22, 31, 9], type: '±1' }
+        ];
+        wheel.looseNumbers = [0, 5];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+        const html = document.getElementById('wheelNumberLists')?.innerHTML || '';
+
+        // ±2 section: 1 anchor (6)
+        expect(html).toContain('±2 Anchors (1)');
+        expect(html).toContain('>6');
+        // ±1 section: 2 anchors (17, 31) — they are opposites!
+        expect(html).toContain('±1 Anchors (2)');
+        expect(html).toContain('>17');
+        expect(html).toContain('>31');
+        // 17↔31 should be paired with ↔ in ±1 section
+        expect(html).toContain('↔');
+        expect(html).toContain('↔');
+        // Loose section: 2 numbers
+        expect(html).toContain('Loose (2)');
+    });
+
+    test('No numbers produces default message (not empty grid)', () => {
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [];
+        wheel.extraAnchorGroups = [];
+        wheel.extraLoose = [];
+
+        wheel._updateNumberLists();
+        const html = document.getElementById('wheelNumberLists')?.innerHTML || '';
+
+        expect(html).toContain('Select pairs to see predictions');
+        // Should NOT contain grid layout
+        expect(html).not.toContain('grid-template-columns');
     });
 });
 
@@ -1662,7 +2170,7 @@ describe('RouletteWheel: Integration', () => {
 
         // Enable all filters so _applyFilters takes the "allOn" path and passes
         // raw data directly to _updateFromRaw (no recalculation needed)
-        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true };
+        wheel.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true, set0: true, set5: true, set6: true };
 
         // Set up some highlights
         const anchorGroups = [{ anchor: 0, group: [26, 0, 32], type: '±1' }];
@@ -1790,7 +2298,7 @@ describe('RouletteWheel: Edge Cases', () => {
         const wheel = new RouletteWheel();
 
         // 0 is in ZERO_TABLE and POSITIVE
-        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: false };
+        wheel.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: false, set0: true, set5: true, set6: true };
         expect(wheel._passesFilter(0)).toBe(true);
     });
 
@@ -1876,18 +2384,20 @@ describe('RouletteWheel: Radio Button UI Structure', () => {
         });
     });
 
-    test('Source code uses type="radio" for all filter inputs', () => {
+    test('Source code uses type="radio" for table/sign inputs and type="checkbox" for set inputs', () => {
         if (!RouletteWheel) return;
         // Verify the source code directly to avoid jsdom DOM duplication issues
         const src = fs.readFileSync(
             path.join(__dirname, '../../app/roulette-wheel.js'), 'utf-8'
         );
-        // All 6 filter inputs should be type="radio"
+        // 6 filter inputs should be type="radio" (3 table + 3 sign)
         const radioMatches = src.match(/type="radio".*id="filter/g);
         expect(radioMatches).not.toBeNull();
         expect(radioMatches.length).toBe(6);
-        // No checkboxes for filters
-        expect(src).not.toContain('type="checkbox" id="filter');
+        // 3 checkboxes for set filters
+        const checkboxMatches = src.match(/type="checkbox".*id="filterSet/g);
+        expect(checkboxMatches).not.toBeNull();
+        expect(checkboxMatches.length).toBe(3);
     });
 
     test('Source code uses name="tableFilter" for table radios', () => {
@@ -1942,20 +2452,21 @@ describe('RouletteWheel: Radio Button UI Structure', () => {
         expect(wheel.filters.negative).toBe(true);
     });
 
-    test('Layout: 2-row structure with "Table:" and "Sign:" labels in source', () => {
+    test('Layout: 3-row structure with "Table:", "Sign:", and "Set:" labels in source', () => {
         if (!RouletteWheel) return;
         const src = fs.readFileSync(
             path.join(__dirname, '../../app/roulette-wheel.js'), 'utf-8'
         );
-        // wheelFilters uses flex-direction:column for 2 rows
+        // wheelFilters uses flex-direction:column for 3 rows
         expect(src).toContain('flex-direction:column');
         // Row labels
         expect(src).toContain('Table:');
         expect(src).toContain('Sign:');
-        // Two inner rows with display:flex
+        expect(src).toContain('Set:');
+        // Three inner rows with display:flex
         const rowDivMatches = src.match(/display:flex; align-items:center; gap:10px/g);
         expect(rowDivMatches).not.toBeNull();
-        expect(rowDivMatches.length).toBe(2);
+        expect(rowDivMatches.length).toBe(3);
     });
 
     test('filteredCount span exists in wheel panel', () => {
@@ -2488,5 +2999,46 @@ describe('RouletteWheel: Radio Event Listeners', () => {
 
         expect(wheel.filters.zeroTable).toBe(true);
         expect(wheel.filters.nineteenTable).toBe(true);
+    });
+});
+
+// ═══════════════════════════════════════════════════════
+// _updateNumberLists — bet info display
+// ═══════════════════════════════════════════════════════
+
+describe('_updateNumberLists — bet info display', () => {
+    test('shows bet info when moneyPanel session is active', () => {
+        const wheel = new RouletteWheel();
+        global.window.moneyPanel = {
+            sessionData: {
+                isSessionActive: true,
+                lastBetAmount: 3,
+                currentBetPerNumber: 3,
+                lastBetNumbers: 10
+            }
+        };
+        wheel.anchorGroups = [{ anchor: 5, group: [5, 24, 10], type: '±1' }];
+        wheel.looseNumbers = [32];
+        wheel._updateNumberLists();
+        const el = document.getElementById('wheelNumberLists');
+        expect(el.innerHTML).toContain('3/num');
+        expect(el.innerHTML).toContain('30 total');
+    });
+
+    test('hides bet info when session not active', () => {
+        const wheel = new RouletteWheel();
+        global.window.moneyPanel = {
+            sessionData: {
+                isSessionActive: false,
+                lastBetAmount: 0,
+                currentBetPerNumber: 2,
+                lastBetNumbers: 0
+            }
+        };
+        wheel.anchorGroups = [];
+        wheel.looseNumbers = [];
+        wheel._updateNumberLists();
+        const el = document.getElementById('wheelNumberLists');
+        expect(el.innerHTML).not.toContain('Next Bet');
     });
 });

@@ -31,6 +31,16 @@ fi
 echo "✅ Backend files found"
 echo ""
 
+# Activate virtual environment
+VENV_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/venv"
+if [ -d "$VENV_DIR" ]; then
+    source "$VENV_DIR/bin/activate"
+    echo "🐍 Virtual env: $VENV_DIR (activated)"
+else
+    echo "⚠️  No virtual environment found at $VENV_DIR"
+    echo "   Run:  python3 -m venv ../venv && source ../venv/bin/activate && pip install -r requirements.txt"
+fi
+
 # Check Python version
 echo "🐍 Python version:"
 python3 --version
@@ -41,7 +51,7 @@ echo "📦 Checking dependencies..."
 python3 -c "import fastapi, uvicorn, pydantic" 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "⚠️  Missing dependencies. Installing..."
-    pip3 install fastapi uvicorn pydantic --break-system-packages 2>/dev/null || pip3 install fastapi uvicorn pydantic
+    pip install -r "$SCRIPT_DIR/requirements.txt"
     echo ""
 fi
 echo "✅ Dependencies OK"

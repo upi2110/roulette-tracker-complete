@@ -35,6 +35,60 @@ function createWindow() {
         return logPath;
     });
 
+    // IPC handler: load historical spin data from app/data/ directory
+    ipcMain.handle('load-historical-data', async () => {
+        try {
+            const dataDir = path.join(__dirname, 'data');
+            if (!fs.existsSync(dataDir)) {
+                return { files: [], error: 'data/ folder not found' };
+            }
+            const fileNames = fs.readdirSync(dataDir).filter(f => f.endsWith('.txt'));
+            const files = fileNames.map(f => ({
+                filename: f,
+                content: fs.readFileSync(path.join(dataDir, f), 'utf-8')
+            }));
+            console.log(`📂 Loaded ${files.length} historical data file(s)`);
+            return { files };
+        } catch (error) {
+            console.error('❌ Failed to load historical data:', error);
+            return { files: [], error: error.message };
+        }
+    });
+
+    // IPC handler: open test data file for backtesting
+    ipcMain.handle('open-test-file', async () => {
+        try {
+            const result = await dialog.showOpenDialog(mainWindow, {
+                title: 'Load Test Data',
+                properties: ['openFile'],
+                filters: [{ name: 'Text Files', extensions: ['txt'] }]
+            });
+            if (result.canceled || result.filePaths.length === 0) return null;
+            const content = fs.readFileSync(result.filePaths[0], 'utf-8');
+            return { filename: path.basename(result.filePaths[0]), content };
+        } catch (error) {
+            console.error('❌ Failed to open test file:', error);
+            return null;
+        }
+    });
+
+    // IPC handler: save Excel report
+    ipcMain.handle('save-xlsx', async (event, buffer) => {
+        try {
+            const result = await dialog.showSaveDialog(mainWindow, {
+                title: 'Save Excel Report',
+                defaultPath: `auto-test-report-${Date.now()}.xlsx`,
+                filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+            });
+            if (result.canceled) return false;
+            fs.writeFileSync(result.filePath, Buffer.from(buffer));
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to save xlsx:', error);
+            return false;
+        }
+    });
+
     // Create menu
     const template = [
         {
