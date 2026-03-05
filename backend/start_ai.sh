@@ -26,6 +26,17 @@ if [ ! -f "api/ai_server.py" ]; then
     exit 1
 fi
 
+# Activate virtual environment
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/venv"
+if [ -d "$VENV_DIR" ]; then
+    source "$VENV_DIR/bin/activate"
+    echo "🐍 Virtual env: $VENV_DIR (activated)"
+else
+    echo "⚠️  No virtual environment found at $VENV_DIR"
+    echo "   Run:  python3 -m venv ../venv && source ../venv/bin/activate && pip install -r requirements.txt"
+fi
+
 # Check Python version
 python3 --version
 echo ""
@@ -35,7 +46,7 @@ echo "📦 Checking dependencies..."
 python3 -c "import fastapi, uvicorn, pydantic" 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "⚠️  Missing dependencies. Installing..."
-    pip3 install fastapi uvicorn pydantic --break-system-packages
+    pip install -r "$SCRIPT_DIR/requirements.txt"
     echo ""
 fi
 

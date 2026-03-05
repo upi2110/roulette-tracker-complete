@@ -39,6 +39,16 @@ fi
 echo "  Frontend files OK"
 echo ""
 
+# ── Activate virtual environment ──
+VENV_DIR="$PROJECT_DIR/venv"
+if [ -d "$VENV_DIR" ]; then
+    source "$VENV_DIR/bin/activate"
+    echo "  Virtual env: $VENV_DIR (activated)"
+else
+    echo "  WARNING: No virtual environment found at $VENV_DIR"
+    echo "  Run:  python3 -m venv venv && source venv/bin/activate && pip install -r backend/requirements.txt"
+fi
+
 # ── Check Python ──
 echo "  Python: $(python3 --version 2>&1)"
 
@@ -46,7 +56,7 @@ echo "  Python: $(python3 --version 2>&1)"
 python3 -c "import fastapi, uvicorn, pydantic" 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "  Missing Python dependencies. Installing..."
-    pip3 install fastapi uvicorn pydantic --break-system-packages 2>/dev/null || pip3 install fastapi uvicorn pydantic
+    pip install -r "$BACKEND_DIR/requirements.txt"
 fi
 echo "  Dependencies OK"
 echo ""
@@ -100,6 +110,9 @@ echo "  Close the app window or press Ctrl+C to stop everything"
 echo ""
 
 cd "$PROJECT_DIR"
+
+# ── Ensure Node.js is on PATH ──
+export PATH="$HOME/local/node/bin:$PATH"
 
 # ── Check Electron availability ──
 ELECTRON_CMD=""
