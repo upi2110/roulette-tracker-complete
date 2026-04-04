@@ -42,6 +42,15 @@ class AutoTestUI {
                     </div>
                 </div>
 
+                <!-- Prediction mode selector -->
+                <div style="padding:8px 16px;border-bottom:1px solid #0f3460;display:flex;align-items:center;gap:10px;">
+                    <label style="font-size:11px;color:#94a3b8;font-weight:600;white-space:nowrap;">Prediction Mode:</label>
+                    <select id="autoTestPredictionMode" style="padding:4px 8px;font-size:11px;font-weight:600;border:1px solid #3b82f6;border-radius:4px;background:#1e293b;color:#e2e8f0;cursor:pointer;">
+                        <option value="default">T3 + T2 (Default)</option>
+                        <option value="T1_INT_T2">T1 ∩ T2 (Intersection)</option>
+                    </select>
+                </div>
+
                 <!-- File info + manual input -->
                 <div style="padding:8px 16px;border-bottom:1px solid #0f3460;">
                     <div id="autoTestFileInfo" style="font-size:11px;color:#94a3b8;margin-bottom:4px;">No test data loaded</div>
@@ -216,7 +225,11 @@ class AutoTestUI {
             const RunnerClass = this._getRunnerClass();
             if (!RunnerClass) throw new Error('AutoTestRunner not available');
 
-            const runner = new RunnerClass(engine);
+            // Read prediction mode from dropdown
+            const modeSelect = document.getElementById('autoTestPredictionMode');
+            const predictionMode = modeSelect ? modeSelect.value : 'default';
+
+            const runner = new RunnerClass(engine, { predictionMode });
             this.result = await runner.runAll(
                 this.testSpins,
                 { testFile: this.testFileName || 'manual', batchSize: 20 },

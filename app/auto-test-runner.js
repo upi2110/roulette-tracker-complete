@@ -44,6 +44,11 @@ class AutoTestRunner {
         }
         this.engine = engine;
 
+        // Prediction mode: controls which number source the backtest uses
+        // 'default'     = T3+T2 union + set filter (original backtest behavior)
+        // 'T1_INT_T2'   = T1 ∩ T2 intersection + set filter
+        this.predictionMode = (sessionConfig && sessionConfig.predictionMode) || 'default';
+
         // Session parameters — tunable via constructor or setSessionConfig()
         // Defaults: $10 bet cap, reset after 5 consecutive losses (benchmarked optimal)
         this._sessionConfig = Object.assign({
@@ -137,6 +142,7 @@ class AutoTestRunner {
 
         const result = {
             testFile,
+            predictionMode: this.predictionMode,
             totalTestSpins: testSpins.length,
             trainedOn: `${Object.keys(this.engine.pairModels).length} pairs trained`,
             timestamp: new Date().toISOString(),
@@ -205,7 +211,9 @@ class AutoTestRunner {
 
         // ── PHASE 2: LIVE — bet with risk management ──
         for (let i = startIdx + 3; i < testSpins.length - 1; i++) {
-            const decision = this._simulateDecision(testSpins, i);
+            const decision = this.predictionMode === 'T1_INT_T2'
+                ? this._simulateT1IntersectT2Decision(testSpins, i)
+                : this._simulateDecision(testSpins, i);
 
             if (decision.action === 'BET') {
                 const nextActual = testSpins[i + 1];
@@ -461,6 +469,121 @@ class AutoTestRunner {
             };
         }
 
+        return skipResult(`Low confidence ${confidence}% < ${effectiveThreshold}%`);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  T1 ∩ T2 DECISION — Alternative prediction mode
+    //  Uses T1 lookup-table projections (±1 neighbors) intersected
+    //  with T2 flash numbers for confirmed, high-quality signals.
+    // ═══════════════════════════════════════════════════════════
+
+    _simulateT1IntersectT2Decision(testSpins, idx) {
+        const skipResult = (reason) => {
+            this.engine._currentDecisionSpins = null;
+            return { action: 'SKIP', selectedPair: null, selectedFilter: null, numbers: [], confidence: 0, reason };
+        };
+
+        if (idx < 3) return skipResult('Insufficient history');
+        this.engine._currentDecisionSpins = testSpins.slice(0, idx + 1);
+
+        // ── T1: Compute lookup-table projections with ±1 neighbors ──
+        const lastSpin = testSpins[idx];
+        const DIGIT_13 = this.engine._getDigit13OppositeMap ? this.engine._getDigit13OppositeMap() : null;
+        const getD13 = (n) => {
+            try { return this.engine._getDigit13Opposite(n); } catch(e) { return null; }
+        };
+
+        const t1Pairs = {
+            ref0: 0, ref19: 19,
+            prev: lastSpin,
+            prevPlus1: Math.min(lastSpin + 1, 36),
+            prevMinus1: Math.max(lastSpin - 1, 0),
+            prevPlus2: Math.min(lastSpin + 2, 36),
+            prevMinus2: Math.max(lastSpin - 2, 0)
+        };
+
+        const t1AllNumbers = new Set();
+        for (const [pairKey, refNum] of Object.entries(t1Pairs)) {
+            const ref13Opp = getD13(refNum);
+            // Primary ref lookup
+            const refLookup = this.engine._getLookupRow(refNum);
+            if (refLookup) {
+                for (const refKey of ['first', 'second', 'third']) {
+                    const target = refLookup[refKey];
+                    if (target !== undefined) {
+                        // ±1 neighbor expansion (T1 style)
+                        const nums = this.engine._getExpandTargetsToBetNumbers([target], 1);
+                        nums.forEach(n => t1AllNumbers.add(n));
+                    }
+                }
+            }
+            // 13-opposite ref lookup
+            if (ref13Opp !== null && ref13Opp !== undefined) {
+                const oppLookup = this.engine._getLookupRow(ref13Opp);
+                if (oppLookup) {
+                    for (const refKey of ['first', 'second', 'third']) {
+                        const target = oppLookup[refKey];
+                        if (target !== undefined) {
+                            const nums = this.engine._getExpandTargetsToBetNumbers([target], 1);
+                            nums.forEach(n => t1AllNumbers.add(n));
+                        }
+                    }
+                }
+            }
+        }
+
+        if (t1AllNumbers.size === 0) {
+            this.engine._currentDecisionSpins = null;
+            return skipResult('No T1 projections');
+        }
+
+        // ── T2: Get flash-based numbers ──
+        const t2Data = this.engine.simulateT2FlashAndNumbers(testSpins, idx);
+        const t2Numbers = t2Data ? t2Data.numbers : [];
+
+        // ── Intersect T1 ∩ T2 ──
+        let pool;
+        if (t2Numbers.length > 0) {
+            const t1Set = t1AllNumbers;
+            const intersection = t2Numbers.filter(n => t1Set.has(n));
+            // Use intersection if >= 4 numbers, otherwise fall back to T1+T2 union
+            pool = intersection.length >= 4 ? intersection : Array.from(new Set([...t1AllNumbers, ...t2Numbers]));
+        } else {
+            pool = Array.from(t1AllNumbers);
+        }
+
+        // 0/26 pairing
+        if (pool.includes(0) && !pool.includes(26)) pool.push(26);
+        if (pool.includes(26) && !pool.includes(0)) pool.push(0);
+
+        // Set prediction + filter
+        const recentSpins = testSpins.slice(Math.max(0, idx - 10), idx);
+        const setPrediction = this.engine._predictBestSet(pool, recentSpins);
+        const filteredNumbers = this.engine._applyFilterToNumbers(pool, setPrediction.filterKey);
+
+        if (filteredNumbers.length === 0) {
+            this.engine._currentDecisionSpins = null;
+            return skipResult('No numbers after filter');
+        }
+
+        // Confidence + BET/SKIP
+        const confidence = this.engine._computeConfidence(0.5, setPrediction.score, filteredNumbers);
+        const effectiveThreshold = this.engine.confidenceThreshold;
+        const forcebet = this.engine.session.consecutiveSkips >= this.engine.maxConsecutiveSkips;
+
+        this.engine._currentDecisionSpins = null;
+
+        if (confidence >= effectiveThreshold || forcebet) {
+            return {
+                action: 'BET',
+                selectedPair: 'T1∩T2',
+                selectedFilter: setPrediction.filterKey,
+                numbers: filteredNumbers,
+                confidence,
+                reason: `T1∩T2 → ${setPrediction.filterKey} (${filteredNumbers.length} nums, conf: ${confidence}%)`
+            };
+        }
         return skipResult(`Low confidence ${confidence}% < ${effectiveThreshold}%`);
     }
 
