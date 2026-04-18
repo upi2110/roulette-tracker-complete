@@ -82,10 +82,19 @@ class AutoTestRunner {
     async runAll(testSpins, options = {}, progressCallback) {
         const batchSize = options.batchSize || 20;
         const testFile = options.testFile || 'manual';
+        // Auto Test method selected in the UI header dropdown. Passed
+        // through to the returned result so downstream consumers (e.g.
+        // the export report or a future T1-strategy branch) can read it.
+        // Current behaviour does NOT branch on this value — it is
+        // pass-through plumbing until a later backlog item activates it.
+        const method = typeof options.method === 'string' && options.method
+            ? options.method
+            : 'test-strategy';
 
         if (!testSpins || testSpins.length < 5) {
             return {
                 testFile,
+                method,
                 totalTestSpins: testSpins ? testSpins.length : 0,
                 trainedOn: 'N/A',
                 timestamp: new Date().toISOString(),
@@ -137,6 +146,7 @@ class AutoTestRunner {
 
         const result = {
             testFile,
+            method,
             totalTestSpins: testSpins.length,
             trainedOn: `${Object.keys(this.engine.pairModels).length} pairs trained`,
             timestamp: new Date().toISOString(),

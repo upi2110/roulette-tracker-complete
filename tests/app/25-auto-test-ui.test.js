@@ -177,12 +177,16 @@ function installMockDataLoader(spins = [5, 17, 22, 33, 10, 8, 15, 2, 0, 36]) {
  * Install mock AutoTestRunner on global scope.
  */
 function installMockRunner(result) {
+    // Reset the capture-store so each test sees a fresh value.
+    global.__lastRunnerOptions = null;
     global.AutoTestRunner = class {
         constructor(engine) {
             if (!engine) throw new Error('Engine required');
             if (!engine.isTrained) throw new Error('Engine not trained');
         }
         async runAll(testSpins, options, progressCb) {
+            // Capture for method-pass-through assertions.
+            global.__lastRunnerOptions = options;
             if (progressCb) {
                 progressCb(50, 'Running...');
                 progressCb(100, 'Done');
@@ -1269,6 +1273,136 @@ describe('Test Suite 25: AutoTestUI', () => {
             delete window.AIDataLoader;
 
             expect(ui._getDataLoader()).toBeNull();
+        });
+    });
+
+    // ─── O. Auto Test method dropdown ───────────────────────────
+    //
+    // The header next to Load File carries a two-option dropdown
+    // that lets the user pick which Auto Test method should run.
+    // Exact option labels: 'T1-strategy' and 'test-strategy'.
+    // Selecting the dropdown must flow through to runner.runAll()
+    // via options.method without altering the existing test-strategy
+    // behaviour.
+    //
+    describe('O. Method dropdown (T1-strategy / test-strategy)', () => {
+        test('O1: constructor seeds testMethod to the default (test-strategy)', () => {
+            ui = new AutoTestUI();
+            expect(ui.testMethod).toBe('test-strategy');
+        });
+
+        test('O2: dropdown element is rendered in the header', () => {
+            ui = new AutoTestUI();
+            const header = document.getElementById('autoTestHeader');
+            const sel = document.getElementById('autoTestMethodSelect');
+            expect(sel).not.toBeNull();
+            expect(sel.tagName).toBe('SELECT');
+            // It must live inside the header block alongside Load File / Run / Export
+            expect(header.contains(sel)).toBe(true);
+        });
+
+        test('O3: dropdown is placed right next to (after) the Load File button', () => {
+            ui = new AutoTestUI();
+            const loadBtn = document.getElementById('autoTestLoadBtn');
+            const sel = document.getElementById('autoTestMethodSelect');
+            // nextElementSibling is the dropdown — they sit side-by-side.
+            expect(loadBtn.nextElementSibling).toBe(sel);
+        });
+
+        test('O4: dropdown has exactly two options with the required labels', () => {
+            ui = new AutoTestUI();
+            const sel = document.getElementById('autoTestMethodSelect');
+            const opts = Array.from(sel.querySelectorAll('option'));
+            expect(opts.length).toBe(2);
+            const values = opts.map(o => o.value);
+            const texts = opts.map(o => o.textContent);
+            // Order doesn't matter for values/labels — but both must be present.
+            expect(values).toEqual(expect.arrayContaining(['T1-strategy', 'test-strategy']));
+            expect(texts).toEqual(expect.arrayContaining(['T1-strategy', 'test-strategy']));
+        });
+
+        test('O5: dropdown labels are EXACTLY the strings requested (no whitespace / underscore drift)', () => {
+            ui = new AutoTestUI();
+            const sel = document.getElementById('autoTestMethodSelect');
+            const texts = Array.from(sel.querySelectorAll('option')).map(o => o.textContent);
+            // Canonical labels must be present exactly (case-sensitive).
+            expect(texts).toContain('T1-strategy');
+            expect(texts).toContain('test-strategy');
+            // Reject whitespace- or underscore-separated variants.
+            for (const t of texts) {
+                expect(t).not.toMatch(/^T1\s+strategy$|^T1_strategy$|^test\s+strategy$|^test_strategy$/);
+            }
+        });
+
+        test('O6: initial DOM selection matches the default testMethod (test-strategy)', () => {
+            ui = new AutoTestUI();
+            const sel = document.getElementById('autoTestMethodSelect');
+            expect(sel.value).toBe('test-strategy');
+        });
+
+        test('O7: changing the dropdown updates this.testMethod', () => {
+            ui = new AutoTestUI();
+            const sel = document.getElementById('autoTestMethodSelect');
+            sel.value = 'T1-strategy';
+            sel.dispatchEvent(new Event('change'));
+            expect(ui.testMethod).toBe('T1-strategy');
+            // And can be switched back.
+            sel.value = 'test-strategy';
+            sel.dispatchEvent(new Event('change'));
+            expect(ui.testMethod).toBe('test-strategy');
+        });
+
+        test('O8: unknown dropdown values do not leak into testMethod', () => {
+            ui = new AutoTestUI();
+            const sel = document.getElementById('autoTestMethodSelect');
+            const before = ui.testMethod;
+            // Manually inject a bad value that isn't in AUTO_TEST_METHODS.
+            sel.value = 'xyz-not-a-method';
+            sel.dispatchEvent(new Event('change'));
+            expect(ui.testMethod).toBe(before);
+        });
+
+        test('O9: runTest passes the selected method through runner.runAll options (default)', async () => {
+            window.aiAutoEngine = createMockEngine();
+            installMockRunner();
+            ui = new AutoTestUI();
+            ui.testSpins = [5, 17, 22, 33, 10, 8, 15, 2, 0, 36];
+            await ui.runTest();
+            expect(global.__lastRunnerOptions).toBeTruthy();
+            expect(global.__lastRunnerOptions.method).toBe('test-strategy');
+        });
+
+        test('O10: runTest passes method=T1-strategy when dropdown selects T1-strategy', async () => {
+            window.aiAutoEngine = createMockEngine();
+            installMockRunner();
+            ui = new AutoTestUI();
+            ui.testSpins = [5, 17, 22, 33, 10, 8, 15, 2, 0, 36];
+            // Simulate user selecting T1-strategy in the dropdown.
+            const sel = document.getElementById('autoTestMethodSelect');
+            sel.value = 'T1-strategy';
+            sel.dispatchEvent(new Event('change'));
+            await ui.runTest();
+            expect(global.__lastRunnerOptions.method).toBe('T1-strategy');
+        });
+
+        test('O11: pre-existing options (testFile, batchSize) still pass through unchanged', async () => {
+            window.aiAutoEngine = createMockEngine();
+            installMockRunner();
+            ui = new AutoTestUI();
+            ui.testSpins = [5, 17, 22, 33, 10, 8, 15, 2, 0, 36];
+            ui.testFileName = 'mysession.txt';
+            await ui.runTest();
+            const opts = global.__lastRunnerOptions;
+            expect(opts.testFile).toBe('mysession.txt');
+            expect(opts.batchSize).toBe(20);
+        });
+
+        test('O12: AUTO_TEST_METHODS constant is exported with exactly the two labels', () => {
+            // The canonical list of method strings is exposed so callers
+            // (tests and future consumers) cannot drift out of sync.
+            const mod = require('../../app/auto-test-ui');
+            expect(mod.AUTO_TEST_METHODS).toEqual(['T1-strategy', 'test-strategy']);
+            expect(mod.AUTO_TEST_DEFAULT_METHOD).toBe('test-strategy');
         });
     });
 });

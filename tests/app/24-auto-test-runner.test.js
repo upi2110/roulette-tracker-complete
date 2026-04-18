@@ -869,6 +869,55 @@ describe('AutoTestRunner', () => {
             const result = await runner.runAll(testSpins, { batchSize: 2 });
             expect(result.strategies[1].sessions.length).toBeGreaterThan(0);
         });
+
+        // ─── Method pass-through ────────────────────────────────
+        //
+        // The Auto Test UI dropdown selects one of two methods:
+        // 'T1-strategy' or 'test-strategy'. That value is forwarded
+        // through options.method and echoed on the returned result.
+        // The runner must NOT branch on the value yet — current
+        // behaviour of 'test-strategy' is preserved.
+        //
+        test('runAll echoes options.method onto result.method (test-strategy)', async () => {
+            const testSpins = generateTestSpins(12);
+            const result = await runner.runAll(testSpins, { method: 'test-strategy', batchSize: 100 });
+            expect(result.method).toBe('test-strategy');
+        });
+
+        test('runAll echoes options.method onto result.method (T1-strategy)', async () => {
+            const testSpins = generateTestSpins(12);
+            const result = await runner.runAll(testSpins, { method: 'T1-strategy', batchSize: 100 });
+            expect(result.method).toBe('T1-strategy');
+        });
+
+        test('runAll defaults method to "test-strategy" when omitted', async () => {
+            const testSpins = generateTestSpins(12);
+            const result = await runner.runAll(testSpins, { batchSize: 100 });
+            expect(result.method).toBe('test-strategy');
+        });
+
+        test('runAll carries method on the empty-result short-circuit path', async () => {
+            // testSpins too short → early return. method must still be present
+            // so downstream consumers never see an undefined field.
+            const result = await runner.runAll([1, 2, 3], { method: 'T1-strategy' });
+            expect(result.method).toBe('T1-strategy');
+        });
+
+        test('runAll picks default method for null spins', async () => {
+            const result = await runner.runAll(null, { method: '' });
+            // Empty-string method string falls back to the canonical default.
+            expect(result.method).toBe('test-strategy');
+        });
+
+        test('runAll does not change existing result fields when method is supplied', async () => {
+            const testSpins = generateTestSpins(12);
+            const result = await runner.runAll(testSpins, { method: 'T1-strategy', testFile: 't.txt', batchSize: 100 });
+            expect(result.testFile).toBe('t.txt');
+            expect(result.totalTestSpins).toBe(12);
+            expect(result.strategies).toHaveProperty('1');
+            expect(result.strategies).toHaveProperty('2');
+            expect(result.strategies).toHaveProperty('3');
+        });
     });
 
     // ═══════════════════════════════════════════════════════════

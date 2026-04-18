@@ -6,6 +6,14 @@
  * Uses CSS-only charts (no external library).
  */
 
+// Auto Test method options exposed by the Load-File-area dropdown.
+// Labels are user-facing and must match exactly. 'test-strategy' is
+// the pre-existing default behaviour of the Auto Test runner; this
+// constant exists so the value cannot drift out of sync between the
+// UI, the run path, and tests.
+const AUTO_TEST_METHODS = ['T1-strategy', 'test-strategy'];
+const AUTO_TEST_DEFAULT_METHOD = 'test-strategy';
+
 class AutoTestUI {
     constructor() {
         this.testSpins = null;       // number[] — loaded test data
@@ -13,6 +21,10 @@ class AutoTestUI {
         this.result = null;          // FullTestResult — last run result
         this.activeTab = 'overview'; // Current tab
         this.isRunning = false;
+        // Selected Auto Test method from the header dropdown. Default is
+        // 'test-strategy' so the runner's existing behaviour is preserved
+        // until a future task wires 'T1-strategy' into the run path.
+        this.testMethod = AUTO_TEST_DEFAULT_METHOD;
 
         this.createUI();
         this.setupEventListeners();
@@ -37,6 +49,10 @@ class AutoTestUI {
                     <h3 style="margin:0;color:white;font-size:14px;font-weight:700;">🧪 AUTO TEST</h3>
                     <div style="display:flex;gap:8px;">
                         <button id="autoTestLoadBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">📂 Load File</button>
+                        <select id="autoTestMethodSelect" title="Auto Test method" style="padding:6px 8px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">
+                            <option value="T1-strategy">T1-strategy</option>
+                            <option value="test-strategy" selected>test-strategy</option>
+                        </select>
                         <button id="autoTestRunBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #22c55e;border-radius:5px;cursor:pointer;background:#22c55e;color:#000;" disabled>▶ Run Test</button>
                         <button id="autoTestExportBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #3b82f6;border-radius:5px;cursor:pointer;background:#3b82f6;color:white;" disabled>📊 Export Excel</button>
                     </div>
@@ -86,11 +102,23 @@ class AutoTestUI {
         const runBtn = document.getElementById('autoTestRunBtn');
         const exportBtn = document.getElementById('autoTestExportBtn');
         const parseBtn = document.getElementById('autoTestParseBtn');
+        const methodSel = document.getElementById('autoTestMethodSelect');
 
         if (loadBtn) loadBtn.addEventListener('click', () => this.loadTestFile());
         if (runBtn) runBtn.addEventListener('click', () => this.runTest());
         if (exportBtn) exportBtn.addEventListener('click', () => this.exportExcel());
         if (parseBtn) parseBtn.addEventListener('click', () => this.parseManualInput());
+        if (methodSel) {
+            // Initialise the dropdown's visible value from the UI state so
+            // the DOM and this.testMethod are in sync on first paint.
+            methodSel.value = this.testMethod;
+            methodSel.addEventListener('change', () => {
+                const v = methodSel.value;
+                // Only accept known method strings — anything else is
+                // silently ignored so we cannot leak junk into the run path.
+                if (AUTO_TEST_METHODS.includes(v)) this.testMethod = v;
+            });
+        }
 
         // Tab click handlers
         const tabContainer = document.getElementById('autoTestTabs');
@@ -217,9 +245,17 @@ class AutoTestUI {
             if (!RunnerClass) throw new Error('AutoTestRunner not available');
 
             const runner = new RunnerClass(engine);
+            // Carry the header-dropdown selection through to the runner so
+            // future consumers can branch on the method. The runner echoes
+            // it onto result.method. Current behaviour of 'test-strategy'
+            // is unchanged — this is pass-through plumbing only.
             this.result = await runner.runAll(
                 this.testSpins,
-                { testFile: this.testFileName || 'manual', batchSize: 20 },
+                {
+                    testFile: this.testFileName || 'manual',
+                    batchSize: 20,
+                    method: this.testMethod
+                },
                 (pct, msg) => this.updateProgress(pct, msg)
             );
 
@@ -614,7 +650,7 @@ class AutoTestUI {
 
 // Export for both browser and Node.js (tests)
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { AutoTestUI };
+    module.exports = { AutoTestUI, AUTO_TEST_METHODS, AUTO_TEST_DEFAULT_METHOD };
 }
 if (typeof window !== 'undefined') {
     // Create instance after DOM loaded
