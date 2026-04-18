@@ -94,6 +94,7 @@ function createMockResult() {
                 summary: {
                     totalSessions: 3, wins: 1, busts: 1, incomplete: 1,
                     winRate: 0.5, avgSpinsToWin: 20, avgSpinsToBust: 50,
+                    totalProfit: -3900, totalWon: 2100, totalLost: 6000,
                     avgProfit: -1290, maxDrawdown: 4000,
                     bestSession: { startIdx: 0, finalProfit: 100 },
                     worstSession: { startIdx: 1, finalProfit: -4000 }
@@ -107,6 +108,7 @@ function createMockResult() {
                 summary: {
                     totalSessions: 2, wins: 2, busts: 0, incomplete: 0,
                     winRate: 1.0, avgSpinsToWin: 27.5, avgSpinsToBust: 0,
+                    totalProfit: 200, totalWon: 500, totalLost: 300,
                     avgProfit: 100, maxDrawdown: 50,
                     bestSession: { startIdx: 0, finalProfit: 100 },
                     worstSession: { startIdx: 1, finalProfit: 100 }
@@ -117,6 +119,7 @@ function createMockResult() {
                 summary: {
                     totalSessions: 0, wins: 0, busts: 0, incomplete: 0,
                     winRate: 0, avgSpinsToWin: 0, avgSpinsToBust: 0,
+                    totalProfit: 0, totalWon: 0, totalLost: 0,
                     avgProfit: 0, maxDrawdown: 0,
                     bestSession: { startIdx: 0, finalProfit: 0 },
                     worstSession: { startIdx: 0, finalProfit: 0 }
@@ -362,18 +365,76 @@ describe('AutoTestReport', () => {
             expect(sheet.getRow(8).getCell(1).font.color.argb).toBe('FF6F42C1');
         });
 
-        test('sets column widths', () => {
+        test('sets column widths (14 columns: added Total Win $, Total Loss $, Total P&L)', () => {
             const result = createMockResult();
             const workbook = new MockWorkbook();
             const sheet = report._createOverviewSheet(workbook, result);
-            expect(sheet.columns.length).toBe(10);
+            expect(sheet.columns.length).toBe(14);
         });
 
-        test('merges title cells', () => {
+        test('merges title cells across all 14 data columns', () => {
             const result = createMockResult();
             const workbook = new MockWorkbook();
             const sheet = report._createOverviewSheet(workbook, result);
-            expect(sheet.mergedCells).toContain('A1:J1');
+            // A..N = 14 columns. Existing A..J merge was extended to fit
+            // the three new dollar-total columns.
+            expect(sheet.mergedCells).toContain('A1:N1');
+        });
+
+        test('header row includes Total Win $, Total Loss $, Total P&L', () => {
+            const result = createMockResult();
+            const workbook = new MockWorkbook();
+            const sheet = report._createOverviewSheet(workbook, result);
+            const headerRow = sheet.getRow(5);
+            // Collect all 14 header values.
+            const headers = [];
+            for (let i = 1; i <= 14; i++) headers.push(headerRow.getCell(i).value);
+            expect(headers).toContain('Total Win $');
+            expect(headers).toContain('Total Loss $');
+            expect(headers).toContain('Total P&L');
+        });
+
+        test('existing header labels still render (no regression)', () => {
+            const result = createMockResult();
+            const workbook = new MockWorkbook();
+            const sheet = report._createOverviewSheet(workbook, result);
+            const headerRow = sheet.getRow(5);
+            const headers = [];
+            for (let i = 1; i <= 14; i++) headers.push(headerRow.getCell(i).value);
+            for (const h of ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Total Profit', 'Avg Profit', 'Avg Spins', 'Max Spins', 'Max Drawdown']) {
+                expect(headers).toContain(h);
+            }
+        });
+
+        test('data rows render dollar-total values from the summary', () => {
+            const result = createMockResult();
+            const workbook = new MockWorkbook();
+            const sheet = report._createOverviewSheet(workbook, result);
+            const headerRow = sheet.getRow(5);
+            const headerValues = [];
+            for (let i = 1; i <= 14; i++) headerValues.push(headerRow.getCell(i).value);
+            const wonCol = headerValues.indexOf('Total Win $') + 1;
+            const lostCol = headerValues.indexOf('Total Loss $') + 1;
+            const plCol = headerValues.indexOf('Total P&L') + 1;
+            expect(wonCol).toBeGreaterThan(0);
+
+            // Strategy 1: totalWon=2100, totalLost=6000, totalProfit=-3900
+            const s1 = sheet.getRow(6);
+            expect(String(s1.getCell(wonCol).value)).toContain('2,100');
+            expect(String(s1.getCell(lostCol).value)).toContain('6,000');
+            expect(String(s1.getCell(plCol).value)).toContain('-3,900');
+
+            // Strategy 2: totalWon=500, totalLost=300, totalProfit=200
+            const s2 = sheet.getRow(7);
+            expect(String(s2.getCell(wonCol).value)).toContain('500');
+            expect(String(s2.getCell(lostCol).value)).toContain('300');
+            expect(String(s2.getCell(plCol).value)).toContain('200');
+
+            // Strategy 3 (empty): all three totals are $0
+            const s3 = sheet.getRow(8);
+            expect(String(s3.getCell(wonCol).value)).toBe('$0');
+            expect(String(s3.getCell(lostCol).value)).toBe('$0');
+            expect(String(s3.getCell(plCol).value)).toBe('$0');
         });
     });
 

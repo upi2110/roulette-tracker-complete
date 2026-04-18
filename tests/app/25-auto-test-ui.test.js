@@ -38,7 +38,7 @@ function createMockEngine() {
  * Create a mock FullTestResult for rendering tests.
  */
 function createMockResult() {
-    const makeSummary = (wins, busts, incomplete, winRate, avgProfit) => ({
+    const makeSummary = (wins, busts, incomplete, winRate, avgProfit, extras = {}) => ({
         totalSessions: wins + busts + incomplete,
         wins,
         busts,
@@ -48,6 +48,12 @@ function createMockResult() {
         avgSpinsToBust: 40,
         avgProfit,
         maxDrawdown: 500,
+        // Dollar totals added for the report-summary feature. Defaults
+        // yield a sensible net (totalProfit = totalWon - totalLost) so
+        // downstream render/report tests see consistent values.
+        totalWon: extras.totalWon ?? 1500,
+        totalLost: extras.totalLost ?? 900,
+        totalProfit: extras.totalProfit ?? 600,
         bestSession: { startIdx: 0, finalProfit: 100 },
         worstSession: { startIdx: 10, finalProfit: -4000 }
     });
@@ -786,6 +792,76 @@ describe('Test Suite 25: AutoTestUI', () => {
 
             const content = document.getElementById('autoTestContent');
             expect(content.innerHTML).not.toContain('⭐');
+        });
+
+        test('H7: overview includes the three dollar-total column headers', () => {
+            // The new Total Win $, Total Loss $, Total P&L columns must
+            // appear in the on-screen report's header row.
+            ui = new AutoTestUI();
+            const result = createMockResult();
+            ui.renderOverview(result);
+            const html = document.getElementById('autoTestContent').innerHTML;
+            expect(html).toContain('Total Win $');
+            expect(html).toContain('Total Loss $');
+            expect(html).toContain('Total P&amp;L'); // & is HTML-escaped
+        });
+
+        test('H8: overview renders correct dollar-total values per strategy', () => {
+            // Each strategy's row must show $<totalWon>, $<totalLost>, $<totalProfit>
+            // using the mock summary values.
+            ui = new AutoTestUI();
+            const result = createMockResult();
+            result.strategies[1].summary.totalWon = 3200;
+            result.strategies[1].summary.totalLost = 1800;
+            result.strategies[1].summary.totalProfit = 1400;
+            ui.renderOverview(result);
+            const html = document.getElementById('autoTestContent').innerHTML;
+            // totalWon cell carries data-field="totalWon" for anchoring
+            const winMatch = html.match(/data-field="totalWon"[^>]*>\$(\d[\d,]*)/);
+            const lossMatch = html.match(/data-field="totalLost"[^>]*>\$(\d[\d,]*)/);
+            const plMatch = html.match(/data-field="totalPL"[^>]*>\$(-?\d[\d,]*)/);
+            expect(winMatch).not.toBeNull();
+            expect(lossMatch).not.toBeNull();
+            expect(plMatch).not.toBeNull();
+            // Strategy 1 is the first row — first match corresponds to it.
+            expect(winMatch[1]).toBe('3200');
+            expect(lossMatch[1]).toBe('1800');
+            expect(plMatch[1]).toBe('1400');
+        });
+
+        test('H9: overview still renders existing headers (no regression)', () => {
+            ui = new AutoTestUI();
+            const result = createMockResult();
+            ui.renderOverview(result);
+            const html = document.getElementById('autoTestContent').innerHTML;
+            // Each of the existing header labels must still render.
+            for (const h of ['Strategy', 'Sessions', 'Wins', 'Busts', 'Win%', 'Avg P&amp;L', 'Avg Spins', 'Max Spins']) {
+                expect(html).toContain(h);
+            }
+        });
+
+        test('H10: report works across multiple modes — renders all three strategy rows with totals', () => {
+            // Each of the three strategies (1/2/3) must have its own
+            // populated dollar-total cells in the UI.
+            ui = new AutoTestUI();
+            const result = createMockResult();
+            result.strategies[1].summary.totalWon = 1000;
+            result.strategies[1].summary.totalLost = 400;
+            result.strategies[1].summary.totalProfit = 600;
+            result.strategies[2].summary.totalWon = 2000;
+            result.strategies[2].summary.totalLost = 1500;
+            result.strategies[2].summary.totalProfit = 500;
+            result.strategies[3].summary.totalWon = 3000;
+            result.strategies[3].summary.totalLost = 500;
+            result.strategies[3].summary.totalProfit = 2500;
+            ui.renderOverview(result);
+            const html = document.getElementById('autoTestContent').innerHTML;
+            const wonMatches = [...html.matchAll(/data-field="totalWon"[^>]*>\$(\d[\d,]*)/g)].map(m => m[1]);
+            const lostMatches = [...html.matchAll(/data-field="totalLost"[^>]*>\$(\d[\d,]*)/g)].map(m => m[1]);
+            const plMatches = [...html.matchAll(/data-field="totalPL"[^>]*>\$(-?\d[\d,]*)/g)].map(m => m[1]);
+            expect(wonMatches).toEqual(['1000', '2000', '3000']);
+            expect(lostMatches).toEqual(['400', '1500', '500']);
+            expect(plMatches).toEqual(['600', '500', '2500']);
         });
     });
 

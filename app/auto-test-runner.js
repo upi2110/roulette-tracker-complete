@@ -582,6 +582,26 @@ class AutoTestRunner {
         // Average profit from decided sessions (excludes incomplete)
         const avgProfit = decided.length > 0 ? totalProfit / decided.length : 0;
 
+        // Gross won / lost dollar totals across every BET step in every
+        // decided session. A winning bet's payout is step.pnl > 0; a
+        // losing bet's stake loss is step.pnl < 0. We sum gross positives
+        // and gross negatives separately so the report can show:
+        //   Total Win $  = sum of positive pnl steps
+        //   Total Loss $ = absolute sum of negative pnl steps (positive $)
+        //   Total P&L    = totalWon - totalLost (== totalProfit)
+        // Nothing in the session math itself is changed — this is a
+        // derivation layered on top of the existing step.pnl values.
+        let totalWon = 0;
+        let totalLost = 0;
+        for (const s of decided) {
+            if (!Array.isArray(s.steps)) continue;
+            for (const step of s.steps) {
+                if (typeof step.pnl !== 'number') continue;
+                if (step.pnl > 0) totalWon += step.pnl;
+                else if (step.pnl < 0) totalLost += -step.pnl;
+            }
+        }
+
         // Max drawdown across all sessions
         const maxDrawdown = Math.max(0, ...sessions.map(s => s.maxDrawdown));
 
@@ -607,6 +627,8 @@ class AutoTestRunner {
             maxSpinsToWin,
             avgSpinsToBust: Math.round(avgSpinsToBust * 10) / 10,
             totalProfit: Math.round(totalProfit * 100) / 100,
+            totalWon: Math.round(totalWon * 100) / 100,
+            totalLost: Math.round(totalLost * 100) / 100,
             avgProfit: Math.round(avgProfit * 100) / 100,
             maxDrawdown: Math.round(maxDrawdown * 100) / 100,
             bestSession,
@@ -628,6 +650,8 @@ class AutoTestRunner {
             maxSpinsToWin: 0,
             avgSpinsToBust: 0,
             totalProfit: 0,
+            totalWon: 0,
+            totalLost: 0,
             avgProfit: 0,
             maxDrawdown: 0,
             bestSession: { startIdx: 0, finalProfit: 0 },

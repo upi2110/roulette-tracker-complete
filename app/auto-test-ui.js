@@ -378,6 +378,9 @@ class AutoTestUI {
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Busts</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Win%</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Avg P&L</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;">Total Win $</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;">Total Loss $</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;">Total P&L</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Avg Spins</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Max Spins</th>
                     </tr>
@@ -388,6 +391,12 @@ class AutoTestUI {
             const s = result.strategies[num].summary;
             const isBest = num === bestStrategy && bestWinRate > 0;
             const rowBg = isBest ? 'rgba(34,197,94,0.1)' : 'transparent';
+            // Dollar totals. Fall back to 0 defensively in case an older
+            // session result object (cached in memory) predates the
+            // totalWon/totalLost fields — the main runner always sets them.
+            const totalWon = typeof s.totalWon === 'number' ? s.totalWon : 0;
+            const totalLost = typeof s.totalLost === 'number' ? s.totalLost : 0;
+            const totalPL = typeof s.totalProfit === 'number' ? s.totalProfit : (totalWon - totalLost);
             html += `
                 <tr style="background:${rowBg};">
                     <td style="padding:6px;border:1px solid #334155;color:${colors[num]};font-weight:700;">${strategyNames[num]}${isBest ? ' ⭐' : ''}</td>
@@ -396,6 +405,9 @@ class AutoTestUI {
                     <td style="padding:6px;text-align:center;border:1px solid #334155;color:#ef4444;">${s.busts}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;font-weight:700;">${(s.winRate * 100).toFixed(1)}%</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;color:${s.avgProfit >= 0 ? '#22c55e' : '#ef4444'};">$${s.avgProfit.toFixed(0)}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:#22c55e;" data-field="totalWon">$${totalWon.toFixed(0)}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:#ef4444;" data-field="totalLost">$${totalLost.toFixed(0)}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;font-weight:700;color:${totalPL >= 0 ? '#22c55e' : '#ef4444'};" data-field="totalPL">$${totalPL.toFixed(0)}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;">${s.avgSpinsToWin || '--'}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;color:${(s.maxSpinsToWin || 0) > 50 ? '#f59e0b' : '#94a3b8'};">${s.maxSpinsToWin || '--'}</td>
                 </tr>`;

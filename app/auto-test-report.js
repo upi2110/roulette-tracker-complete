@@ -95,8 +95,8 @@ class AutoTestReport {
     _createOverviewSheet(workbook, result) {
         const sheet = workbook.addWorksheet('Overview');
 
-        // Title
-        sheet.mergeCells('A1:J1');
+        // Title — merged across all data columns (A..N = 14 cols)
+        sheet.mergeCells('A1:N1');
         const titleCell = sheet.getCell('A1');
         titleCell.value = 'Auto Test Report';
         titleCell.font = { size: 16, bold: true, color: { argb: 'FF333333' } };
@@ -109,7 +109,12 @@ class AutoTestReport {
         sheet.getCell('A3').font = { size: 10, color: { argb: 'FF666666' } };
 
         // Headers (row 5)
-        const headers = ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Total Profit', 'Avg Profit', 'Avg Spins', 'Max Spins', 'Max Drawdown'];
+        // Added three dollar-total columns after Total Profit:
+        //   Total Win $  — gross sum of all winning bet payouts
+        //   Total Loss $ — gross sum of all losing bet stakes (abs value)
+        //   Total P&L    — net = Total Win $ − Total Loss $
+        // All existing columns are preserved in their previous positions.
+        const headers = ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Total Profit', 'Total Win $', 'Total Loss $', 'Total P&L', 'Avg Profit', 'Avg Spins', 'Max Spins', 'Max Drawdown'];
         const headerRow = sheet.getRow(5);
         headers.forEach((h, i) => {
             const cell = headerRow.getCell(i + 1);
@@ -129,6 +134,13 @@ class AutoTestReport {
         for (const strategyNum of [1, 2, 3]) {
             const summary = result.strategies[strategyNum].summary;
             const row = sheet.getRow(5 + strategyNum);
+            // Dollar totals — defensive fallback to 0 if an older summary
+            // object predates the totalWon/totalLost fields. The runner
+            // now always populates them (_computeSummary +
+            // _emptyStrategySummary).
+            const totalWon = typeof summary.totalWon === 'number' ? summary.totalWon : 0;
+            const totalLost = typeof summary.totalLost === 'number' ? summary.totalLost : 0;
+            const totalPL = typeof summary.totalProfit === 'number' ? summary.totalProfit : (totalWon - totalLost);
             const values = [
                 STRATEGY_LABELS[strategyNum],
                 summary.totalSessions,
@@ -137,6 +149,9 @@ class AutoTestReport {
                 summary.incomplete,
                 `${(summary.winRate * 100).toFixed(1)}%`,
                 `$${(summary.totalProfit || 0).toLocaleString()}`,
+                `$${totalWon.toLocaleString()}`,
+                `$${totalLost.toLocaleString()}`,
+                `$${totalPL.toLocaleString()}`,
                 `$${summary.avgProfit.toFixed(2)}`,
                 summary.avgSpinsToWin,
                 summary.maxSpinsToWin || '--',
@@ -166,10 +181,12 @@ class AutoTestReport {
             }
         }
 
-        // Column widths
+        // Column widths — 14 columns total (Strategy + 13 metric columns).
         sheet.columns = [
             { width: 28 }, { width: 10 }, { width: 8 }, { width: 8 },
-            { width: 12 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }
+            { width: 12 }, { width: 10 }, { width: 14 }, { width: 14 },
+            { width: 14 }, { width: 14 }, { width: 14 }, { width: 12 },
+            { width: 12 }, { width: 14 }
         ];
 
         return sheet;

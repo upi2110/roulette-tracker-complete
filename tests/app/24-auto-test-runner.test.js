@@ -701,6 +701,63 @@ describe('AutoTestRunner', () => {
             const summary = runner._computeSummary(sessions);
             expect(summary.winRate).toBe(0);
         });
+
+        test('totalWon / totalLost are gross positive / gross negative pnl totals across decided sessions', () => {
+            // Wins and busts each carry a steps[] array with BET outcomes.
+            // totalWon sums step.pnl > 0; totalLost sums -step.pnl where pnl < 0.
+            // INCOMPLETE sessions are excluded. totalProfit must equal
+            // totalWon - totalLost.
+            const sessions = [
+                {
+                    outcome: 'WIN', finalProfit: 100, totalSpins: 20, maxDrawdown: 10, startIdx: 0,
+                    steps: [
+                        { action: 'BET', pnl: 70 },
+                        { action: 'BET', pnl: -30 },
+                        { action: 'SKIP', pnl: 0 },
+                        { action: 'BET', pnl: 60 }
+                    ]
+                },
+                {
+                    outcome: 'BUST', finalProfit: -200, totalSpins: 30, maxDrawdown: 300, startIdx: 1,
+                    steps: [
+                        { action: 'BET', pnl: 40 },
+                        { action: 'BET', pnl: -240 }
+                    ]
+                },
+                {
+                    outcome: 'INCOMPLETE', finalProfit: 999, totalSpins: 40, maxDrawdown: 0, startIdx: 2,
+                    steps: [ { action: 'BET', pnl: 999 } ] // must be excluded
+                }
+            ];
+            const summary = runner._computeSummary(sessions);
+            // Wins pnl: 70 + 60 (pos) = 130; bust pos: 40 → totalWon = 170
+            expect(summary.totalWon).toBe(170);
+            // Wins neg: 30; bust neg: 240 → totalLost = 270
+            expect(summary.totalLost).toBe(270);
+            // Net = 170 − 270 = −100, which matches sum of decided finalProfit (100 + -200).
+            expect(summary.totalProfit).toBe(-100);
+            expect(summary.totalProfit).toBe(summary.totalWon - summary.totalLost);
+        });
+
+        test('totalWon / totalLost default to 0 when steps array is missing or empty', () => {
+            // Defensive guard in the runner: sessions without steps[] arrays
+            // should still yield numeric zero totals (not NaN or undefined).
+            const sessions = [
+                { outcome: 'WIN', finalProfit: 10, totalSpins: 5, maxDrawdown: 0, startIdx: 0 /* no steps */ },
+                { outcome: 'BUST', finalProfit: -40, totalSpins: 5, maxDrawdown: 40, startIdx: 1, steps: [] }
+            ];
+            const summary = runner._computeSummary(sessions);
+            expect(summary.totalWon).toBe(0);
+            expect(summary.totalLost).toBe(0);
+        });
+
+        test('empty summary carries numeric zeros for totalWon / totalLost', () => {
+            const summary = runner._computeSummary([]);
+            expect(summary.totalWon).toBe(0);
+            expect(summary.totalLost).toBe(0);
+            // totalProfit is also zero; the empty summary is consistent.
+            expect(summary.totalProfit).toBe(0);
+        });
     });
 
     // ═══════════════════════════════════════════════════════════
