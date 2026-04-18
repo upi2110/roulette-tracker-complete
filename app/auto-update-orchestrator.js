@@ -12,6 +12,13 @@ class AutoUpdateOrchestrator {
         this.sessionStarted = false;
         this.autoMode = false;  // NEW: auto mode flag
 
+        // Which decision policy to use when autoMode is on:
+        //   'auto'        → window.aiAutoEngine.decide() (default pipeline)
+        //   't1-strategy' → window.decideT1Strategy(engine, spinsArr, idx)
+        // T1-strategy reuses the exact helper from app/t1-strategy.js
+        // that Auto Test's runner uses. No T1 algorithm duplication.
+        this.decisionMode = 'auto';
+
         console.log('🔧 Auto-Update Orchestrator initialized');
     }
 
@@ -69,9 +76,25 @@ class AutoUpdateOrchestrator {
         // Small delay to ensure table3DisplayProjections is populated
         await new Promise(r => setTimeout(r, 150));
 
-        // 2. Get engine decision
-        const decision = window.aiAutoEngine.decide();
-        console.log('🤖 AUTO DECISION:', decision);
+        // 2. Get engine decision — route through the T1-strategy helper
+        //    when the user selected that live mode, otherwise fall
+        //    through to the engine's default pipeline. The T1 helper
+        //    lives in app/t1-strategy.js and is the same one Auto Test
+        //    uses, so both paths share a single source of T1 logic.
+        let decision;
+        if (this.decisionMode === 't1-strategy' && typeof window.decideT1Strategy === 'function') {
+            const spinsArr = Array.isArray(window.spins)
+                ? window.spins
+                    .map(s => (s && typeof s.actual === 'number') ? s.actual : null)
+                    .filter(n => n !== null)
+                : [];
+            const idx = spinsArr.length - 1;
+            decision = window.decideT1Strategy(window.aiAutoEngine, spinsArr, idx);
+            console.log('🤖 T1-STRATEGY DECISION:', decision);
+        } else {
+            decision = window.aiAutoEngine.decide();
+            console.log('🤖 AUTO DECISION:', decision);
+        }
 
         // 3. Store decision on engine for feedback loop
         // money-management-panel reads this after bet resolves to call engine.recordResult()
@@ -182,6 +205,18 @@ class AutoUpdateOrchestrator {
     setAutoMode(enabled) {
         this.autoMode = enabled;
         console.log(`🤖 Auto mode ${enabled ? 'ENABLED' : 'DISABLED'}`);
+    }
+
+    /**
+     * Choose the live-decision policy routed from handleAutoMode().
+     * Accepts 'auto' (default engine pipeline) or 't1-strategy' (the
+     * same T1 decision policy used by Auto Test). Unknown values are
+     * silently normalised to 'auto' so a typo cannot leave the live
+     * flow in an unreachable state.
+     */
+    setDecisionMode(mode) {
+        this.decisionMode = (mode === 't1-strategy') ? 't1-strategy' : 'auto';
+        console.log(`🤖 Decision mode → ${this.decisionMode}`);
     }
 
     async startSessionFirst() {

@@ -7,7 +7,13 @@ class AIAutoModeUI {
     constructor() {
         this.isAutoMode = false;
         this.isSemiAutoMode = false;
-        this.currentMode = 'manual'; // 'manual' | 'semi' | 'auto'
+        // 'manual' | 'semi' | 'auto' | 't1-strategy'.
+        // t1-strategy behaves exactly like 'auto' at the engine-enable
+        // layer (engine is enabled, orchestrator is in auto mode) but
+        // instructs the orchestrator to route live decisions through
+        // the T1 policy from app/t1-strategy.js — the same helper the
+        // Auto Test runner uses. No duplication of T1 algorithm here.
+        this.currentMode = 'manual';
         this.engine = null;      // Will be set to window.aiAutoEngine
         this.dataLoader = null;  // Will be set to window.aiDataLoader
 
@@ -48,6 +54,11 @@ class AIAutoModeUI {
                     border:2px solid #64748b;border-radius:6px;cursor:pointer;
                     background:transparent;color:#94a3b8;
                 ">AUTO</button>
+                <button id="t1StrategyModeBtn" title="Same T1 decision policy as Auto Test" style="
+                    flex:1;padding:6px 12px;font-size:12px;font-weight:700;
+                    border:2px solid #64748b;border-radius:6px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">T1-strategy</button>
                 <button id="trainBtn" style="
                     padding:6px 16px;font-size:11px;font-weight:700;
                     border:2px solid #f59e0b;border-radius:6px;cursor:pointer;
@@ -103,6 +114,13 @@ class AIAutoModeUI {
             });
         }
 
+        const t1Btn = document.getElementById('t1StrategyModeBtn');
+        if (t1Btn) {
+            t1Btn.addEventListener('click', () => {
+                if (this.currentMode !== 't1-strategy') this.setMode('t1-strategy');
+            });
+        }
+
         if (trainBtn) {
             trainBtn.addEventListener('click', () => this.startTraining());
         }
@@ -128,24 +146,36 @@ class AIAutoModeUI {
         const engine = this.engine || (typeof window !== 'undefined' ? window.aiAutoEngine : null);
         const semiFilter = typeof window !== 'undefined' ? window.semiAutoFilter : null;
 
-        if (mode === 'auto') {
-            // Switching to AUTO — requires trained engine
+        if (mode === 'auto' || mode === 't1-strategy') {
+            // Switching to an engine-driven live mode — requires trained
+            // engine. Both 'auto' and 't1-strategy' share the engine-
+            // enable + orchestrator auto-on plumbing; the only
+            // difference is which decision function the orchestrator
+            // calls per-spin (see setDecisionMode below).
             if (!engine || !engine.isTrained) {
-                console.warn('⚠️ Cannot switch to AUTO — engine not trained');
+                console.warn(`⚠️ Cannot switch to ${mode.toUpperCase()} — engine not trained`);
                 this._showTrainingStatusBar(true);
                 this.updateTrainingProgress(0, '⚠️ Train first! Click 🎓 TRAIN to load data');
                 this._flashTrainButton();
                 return;
             }
 
-            this.currentMode = 'auto';
-            this.isAutoMode = true;
+            this.currentMode = mode;
+            this.isAutoMode = true;         // engine-driven live decisions
             this.isSemiAutoMode = false;
             engine.enable();
             if (semiFilter) semiFilter.disable();
 
             if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
                 window.autoUpdateOrchestrator.setAutoMode(true);
+                // Tell the orchestrator WHICH decision policy to use
+                // per-spin. Falls through harmlessly if setDecisionMode
+                // is not present (older orchestrator build).
+                if (typeof window.autoUpdateOrchestrator.setDecisionMode === 'function') {
+                    window.autoUpdateOrchestrator.setDecisionMode(
+                        mode === 't1-strategy' ? 't1-strategy' : 'auto'
+                    );
+                }
             }
 
         } else if (mode === 'semi') {
@@ -158,6 +188,11 @@ class AIAutoModeUI {
 
             if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
                 window.autoUpdateOrchestrator.setAutoMode(false);
+                // Reset the decision-mode flag so a future AUTO
+                // re-selection picks the default (non-T1) path.
+                if (typeof window.autoUpdateOrchestrator.setDecisionMode === 'function') {
+                    window.autoUpdateOrchestrator.setDecisionMode('auto');
+                }
             }
 
         } else {
@@ -170,12 +205,17 @@ class AIAutoModeUI {
 
             if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
                 window.autoUpdateOrchestrator.setAutoMode(false);
+                if (typeof window.autoUpdateOrchestrator.setDecisionMode === 'function') {
+                    window.autoUpdateOrchestrator.setDecisionMode('auto');
+                }
             }
         }
 
         this._updateModeButtons();
-        // SEMI and MANUAL both show pair selection; AUTO hides it
-        this.togglePairSelection(this.currentMode !== 'auto');
+        // SEMI and MANUAL show pair selection; engine-driven modes
+        // (AUTO and T1-strategy) hide it — the engine picks the pair.
+        const engineDriven = (this.currentMode === 'auto' || this.currentMode === 't1-strategy');
+        this.togglePairSelection(!engineDriven);
 
         const statusDiv = document.getElementById('autoModeStatus');
         if (statusDiv) {
@@ -219,6 +259,14 @@ class AIAutoModeUI {
             autoBtn.style.background = mode === 'auto' ? '#22c55e' : 'transparent';
             autoBtn.style.color = mode === 'auto' ? 'white' : '#94a3b8';
             autoBtn.style.borderColor = mode === 'auto' ? '#22c55e' : '#64748b';
+        }
+
+        const t1Btn = document.getElementById('t1StrategyModeBtn');
+        if (t1Btn) {
+            // Use a distinct indigo to visually separate from AUTO's green.
+            t1Btn.style.background = mode === 't1-strategy' ? '#6366f1' : 'transparent';
+            t1Btn.style.color = mode === 't1-strategy' ? 'white' : '#94a3b8';
+            t1Btn.style.borderColor = mode === 't1-strategy' ? '#6366f1' : '#64748b';
         }
     }
 
