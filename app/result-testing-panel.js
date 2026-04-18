@@ -1,3 +1,11 @@
+// Canonical list of live AI modes that the Result-testing replay
+// dropdown exposes. Matches the mode identifiers used by
+// app/ai-auto-mode-ui.js (setMode accepts any of these) plus the new
+// 't1-strategy' mode added in commit 2fa70c2b. Exposed so tests and
+// downstream callers never hard-code the list.
+const RESULT_TESTING_MODES = ['manual', 'semi', 'auto', 't1-strategy'];
+const RESULT_TESTING_DEFAULT_MODE = 'manual';
+
 /**
  * Result-testing panel — manual verification tab in the AI prediction area.
  *
@@ -28,6 +36,11 @@ class ResultTestingPanel {
     constructor() {
         this.submitted = null;       // Last submitted FullTestResult
         this.lastTabLoaded = null;   // Last tab the user pulled into manual
+        // Mode currently selected in the header dropdown. Default is
+        // 'manual'; when a submission arrives the dropdown is re-seeded
+        // to the AI mode matching the submitted Auto Test method, but
+        // the user can override it at any time before clicking Run.
+        this.selectedMode = RESULT_TESTING_DEFAULT_MODE;
         this.createUI();
         this.setupEventListeners();
     }
@@ -60,11 +73,20 @@ class ResultTestingPanel {
                 </div>
                 <div id="resultTestingSummary" style="display:none;margin-bottom:8px;">
                     <div id="resultTestingSubmissionInfo" style="background:#f1f5f9;padding:6px 8px;border-radius:4px;margin-bottom:6px;"></div>
-                    <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+                    <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap;">
                         <label for="resultTestingTabInput" style="font-weight:600;color:#3730a3;">Tab:</label>
                         <input id="resultTestingTabInput" type="text" placeholder="e.g. S1-Start9 or strategy1"
                                title="Enter a session id (S1-Start9) or a tab name (overview / strategy1..3)"
-                               style="flex:1;padding:4px 6px;border:1px solid #a5b4fc;border-radius:3px;font-size:11px;"/>
+                               style="flex:1;min-width:160px;padding:4px 6px;border:1px solid #a5b4fc;border-radius:3px;font-size:11px;"/>
+                        <label for="resultTestingModeSelect" style="font-weight:600;color:#3730a3;">Mode:</label>
+                        <select id="resultTestingModeSelect"
+                                title="Live AI mode to use when the session replay starts"
+                                style="padding:4px 6px;font-size:11px;font-weight:600;border:1px solid #a5b4fc;border-radius:3px;background:white;color:#1e293b;cursor:pointer;">
+                            <option value="manual">manual</option>
+                            <option value="semi">semi</option>
+                            <option value="auto">auto</option>
+                            <option value="t1-strategy">T1-strategy</option>
+                        </select>
                         <button id="resultTestingRunBtn" type="button"
                                 style="padding:4px 10px;font-size:11px;font-weight:700;border:1px solid #6366f1;border-radius:3px;background:#6366f1;color:white;cursor:pointer;">
                             ▶ Run
@@ -97,6 +119,16 @@ class ResultTestingPanel {
         const input = document.getElementById('resultTestingTabInput');
         const runBtn = document.getElementById('resultTestingRunBtn');
         const dlBtn = document.getElementById('resultTestingDownloadBtn');
+        const modeSel = document.getElementById('resultTestingModeSelect');
+
+        if (modeSel) {
+            // Keep DOM and JS state in sync on first paint.
+            modeSel.value = this.selectedMode;
+            modeSel.addEventListener('change', () => {
+                const v = modeSel.value;
+                if (RESULT_TESTING_MODES.includes(v)) this.selectedMode = v;
+            });
+        }
 
         if (input) {
             // Enter in the field runs the same action as the Run button.
@@ -148,7 +180,36 @@ class ResultTestingPanel {
             const method = autoTestResult.method || 'auto-test';
             info.innerHTML = `<strong>Submitted:</strong> ${this._escape(String(file))} • ${spins} spins • method=<code>${this._escape(String(method))}</code>`;
         }
+
+        // Re-seed the mode dropdown default to the AI mode matching the
+        // submitted Auto Test method (apples-to-apples comparison) —
+        // the user can still override it from the dropdown before
+        // clicking Run. This changes only the default selection; it
+        // does not force the mode on replay.
+        const defaultAiMode = this._mapAutoTestMethodToAiMode(autoTestResult.method);
+        this.selectedMode = RESULT_TESTING_MODES.includes(defaultAiMode)
+            ? defaultAiMode
+            : RESULT_TESTING_DEFAULT_MODE;
+        const modeSel = document.getElementById('resultTestingModeSelect');
+        if (modeSel) modeSel.value = this.selectedMode;
+
         return true;
+    }
+
+    /**
+     * Return the replay mode the user currently has selected in the
+     * dropdown. Falls back to the instance state, then to the default.
+     */
+    getSelectedMode() {
+        const modeSel = (typeof document !== 'undefined')
+            ? document.getElementById('resultTestingModeSelect')
+            : null;
+        if (modeSel && RESULT_TESTING_MODES.includes(modeSel.value)) {
+            return modeSel.value;
+        }
+        return RESULT_TESTING_MODES.includes(this.selectedMode)
+            ? this.selectedMode
+            : RESULT_TESTING_DEFAULT_MODE;
     }
 
     /**
@@ -265,19 +326,17 @@ class ResultTestingPanel {
                 return { ok: false, error: 'empty-session-window', ref: sessionRef };
             }
 
-            // Match the AI prediction mode to the Auto Test method the
-            // user submitted, so the live comparison runs under the
-            // same policy as the recorded run:
-            //   Auto Test method → live AI mode
-            //     'T1-strategy'    → 't1-strategy'
-            //     'test-strategy'  → 'auto'   (same default pipeline)
-            //     'auto-test'      → 'auto'   (original Auto mode)
-            //     anything else    → 'manual'
-            // If the selected mode can't activate (e.g. engine not
-            // trained for t1-strategy / auto) AIAutoModeUI itself logs
-            // a warning and stays on the current mode — we tolerate
-            // that silently rather than refusing to replay.
-            const aiMode = this._mapAutoTestMethodToAiMode(this.submitted.method);
+            // Replay mode comes from the Result-testing dropdown, so
+            // the user explicitly controls which strategy the session
+            // is verified under. On submit() the dropdown is seeded
+            // to match the Auto Test method (apples-to-apples default)
+            // but can be overridden to any supported mode — 'manual',
+            // 'semi', 'auto', or 't1-strategy'. If the selected mode
+            // can't activate (e.g. engine not trained for t1-strategy
+            // / auto), AIAutoModeUI itself logs a warning and stays on
+            // the current mode; we tolerate that silently rather than
+            // refusing to replay.
+            const aiMode = this.getSelectedMode();
             this._switchToMode(aiMode);
             this._loadSpinsIntoRenderer(windowSpins);
 
@@ -309,12 +368,17 @@ class ResultTestingPanel {
             return { ok: false, error: 'invalid-tab' };
         }
 
-        this._switchToManualMode();
+        // Tab-name branch also honours the mode dropdown so the user
+        // can override the legacy "always manual" behaviour.
+        const aiModeForTab = this.getSelectedMode();
+        this._switchToMode(aiModeForTab);
         this._loadSpinsIntoRenderer(spins);
 
         this.lastTabLoaded = tabName;
 
-        if (msg) msg.textContent = `✔ Switched to Manual and loaded ${spins.length} spins for tab=${tabName}.`;
+        if (msg) {
+            msg.textContent = `✔ Replaying tab=${tabName} in ${aiModeForTab.toUpperCase()} mode — loaded ${spins.length} spins.`;
+        }
         if (dlBtn) dlBtn.disabled = false;
 
         if (cmp) {
@@ -322,7 +386,7 @@ class ResultTestingPanel {
             cmp.style.display = 'block';
         }
 
-        return { ok: true, kind: 'tab', tabName, spinCount: spins.length };
+        return { ok: true, kind: 'tab', tabName, aiMode: aiModeForTab, spinCount: spins.length };
     }
 
     // ── Replay helpers ──────────────────────────────────────────────
@@ -608,7 +672,7 @@ class ResultTestingPanel {
 
 // ── Dual export (Node tests + browser) ──
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { ResultTestingPanel };
+    module.exports = { ResultTestingPanel, RESULT_TESTING_MODES, RESULT_TESTING_DEFAULT_MODE };
 }
 if (typeof window !== 'undefined') {
     document.addEventListener('DOMContentLoaded', () => {

@@ -292,12 +292,26 @@ describe('E. Enter and Run flow', () => {
         expect(p.lastTabLoaded).toBe('strategy2');
     });
 
-    test('E3: processTabEntry switches to manual mode when ai-auto-mode UI is present', () => {
+    test('E3: processTabEntry switches AI mode according to the mode dropdown', () => {
+        // Under the new dropdown-driven flow the tab-replay branch
+        // honours whatever mode the user has selected (default seeded
+        // from submitted.method). Fixture's method is 'auto-test' →
+        // default AI mode 'auto'. If the user overrides to 'manual'
+        // via the dropdown, the replay uses 'manual' instead.
         const calls = [];
         window.aiAutoModeUI = { setMode: (m) => { calls.push(m); } };
         const p = new ResultTestingPanel();
         p.submit(makeAutoTestResult());
-        const out = p.processTabEntry('strategy1');
+        // Default (auto-test → auto) replay:
+        let out = p.processTabEntry('strategy1');
+        expect(out.ok).toBe(true);
+        expect(calls).toContain('auto');
+
+        // User overrides the dropdown to 'manual' → replay must honour it.
+        const modeSel = document.getElementById('resultTestingModeSelect');
+        modeSel.value = 'manual';
+        modeSel.dispatchEvent(new Event('change'));
+        out = p.processTabEntry('strategy1');
         expect(out.ok).toBe(true);
         expect(calls).toContain('manual');
     });
@@ -811,5 +825,188 @@ describe('K. Session replay mirrors Auto Test method as the live AI mode', () =>
         p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
         expect(() => p.processTabEntry('S1-Start9')).not.toThrow();
         expect(window.spins.length).toBe(60 - 9);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  L. Mode dropdown (explicit user override)
+// ═══════════════════════════════════════════════════════════════════
+//
+// The Result-testing panel exposes a dropdown so the user can pick
+// which live AI mode drives the session replay — 'manual', 'semi',
+// 'auto', or 't1-strategy'. On submit() the dropdown is seeded to
+// the AI mode that matches the submitted Auto Test method (apples-
+// to-apples default) but the user can override it before clicking
+// Run. The replay (both the session branch and the tab branch)
+// honours the dropdown, not the Auto Test method directly.
+//
+const { RESULT_TESTING_MODES, RESULT_TESTING_DEFAULT_MODE } = require('../../app/result-testing-panel');
+
+describe('L. Mode dropdown (user override for replay)', () => {
+    let setCalls;
+    beforeEach(() => {
+        setCalls = [];
+        window.aiAutoModeUI = { setMode: (m) => setCalls.push(m) };
+    });
+
+    test('L1: dropdown exists with exactly the four supported modes', () => {
+        new ResultTestingPanel();
+        const sel = document.getElementById('resultTestingModeSelect');
+        expect(sel).not.toBeNull();
+        expect(sel.tagName).toBe('SELECT');
+        const values = Array.from(sel.querySelectorAll('option')).map(o => o.value);
+        // Order matters only visually — enforce presence + count.
+        expect(values).toEqual(expect.arrayContaining(['manual', 'semi', 'auto', 't1-strategy']));
+        expect(values.length).toBe(4);
+    });
+
+    test('L2: fresh panel seeds the dropdown to the default mode', () => {
+        const p = new ResultTestingPanel();
+        const sel = document.getElementById('resultTestingModeSelect');
+        expect(sel.value).toBe(RESULT_TESTING_DEFAULT_MODE);
+        expect(p.selectedMode).toBe(RESULT_TESTING_DEFAULT_MODE);
+    });
+
+    test('L3: submit() with method=T1-strategy re-seeds the dropdown to t1-strategy', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        const sel = document.getElementById('resultTestingModeSelect');
+        expect(sel.value).toBe('t1-strategy');
+        expect(p.getSelectedMode()).toBe('t1-strategy');
+    });
+
+    test('L4: submit() with method=auto-test re-seeds the dropdown to auto', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'auto-test' }));
+        expect(document.getElementById('resultTestingModeSelect').value).toBe('auto');
+    });
+
+    test('L5: submit() with missing method re-seeds the dropdown to manual', () => {
+        const p = new ResultTestingPanel();
+        const r = makeAutoTestResult();
+        delete r.method;
+        p.submit(r);
+        expect(document.getElementById('resultTestingModeSelect').value).toBe('manual');
+    });
+
+    test('L6: changing the dropdown updates this.selectedMode (change event)', () => {
+        const p = new ResultTestingPanel();
+        const sel = document.getElementById('resultTestingModeSelect');
+        sel.value = 'semi';
+        sel.dispatchEvent(new Event('change'));
+        expect(p.selectedMode).toBe('semi');
+        expect(p.getSelectedMode()).toBe('semi');
+    });
+
+    test('L7: user override beats the submit()-seeded default in session replay', () => {
+        // Auto Test method says t1-strategy, but user overrides to semi
+        // BEFORE clicking Run. Replay must use semi.
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        const sel = document.getElementById('resultTestingModeSelect');
+        sel.value = 'semi';
+        sel.dispatchEvent(new Event('change'));
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.ok).toBe(true);
+        expect(out.aiMode).toBe('semi');
+        expect(setCalls).toContain('semi');
+        expect(setCalls).not.toContain('t1-strategy');
+    });
+
+    test('L8: user override beats the seeded default in tab replay', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'auto-test' }));
+        const sel = document.getElementById('resultTestingModeSelect');
+        sel.value = 't1-strategy';
+        sel.dispatchEvent(new Event('change'));
+        const out = p.processTabEntry('strategy1');
+        expect(out.ok).toBe(true);
+        expect(out.aiMode).toBe('t1-strategy');
+        expect(setCalls).toContain('t1-strategy');
+    });
+
+    test('L9: unknown dropdown values are ignored — selectedMode stays stable', () => {
+        const p = new ResultTestingPanel();
+        p.selectedMode = 'auto';
+        const sel = document.getElementById('resultTestingModeSelect');
+        sel.value = 'not-a-mode';
+        sel.dispatchEvent(new Event('change'));
+        // selectedMode unchanged.
+        expect(p.selectedMode).toBe('auto');
+        // getSelectedMode falls back via: DOM not in list → instance
+        // state → which is still 'auto'.
+        expect(p.getSelectedMode()).toBe('auto');
+    });
+
+    test('L10: getSelectedMode prefers the DOM value when valid, falls back otherwise', () => {
+        const p = new ResultTestingPanel();
+        const sel = document.getElementById('resultTestingModeSelect');
+        sel.value = 'auto';
+        sel.dispatchEvent(new Event('change'));
+        expect(p.getSelectedMode()).toBe('auto');
+        // Blow away the dropdown element entirely.
+        sel.remove();
+        expect(p.getSelectedMode()).toBe('auto'); // falls back to this.selectedMode
+    });
+
+    test('L11: session-id replay still works with a user-overridden mode', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        const sel = document.getElementById('resultTestingModeSelect');
+        sel.value = 'auto';
+        sel.dispatchEvent(new Event('change'));
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.ok).toBe(true);
+        expect(out.kind).toBe('session');
+        expect(out.aiMode).toBe('auto');
+        expect(window.spins.length).toBe(60 - 9);
+    });
+
+    test('L12: comparison card reflects the user-overridden mode', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        const sel = document.getElementById('resultTestingModeSelect');
+        sel.value = 'semi';
+        sel.dispatchEvent(new Event('change'));
+        p.processTabEntry('S1-Start9');
+        const html = document.getElementById('resultTestingComparison').innerHTML;
+        expect(html).toMatch(/data-field="session-ai-mode"/);
+        // The card announces the replay mode — user selected SEMI even
+        // though the Auto Test method was T1-strategy.
+        expect(html).toMatch(/SEMI/);
+        // Auto Test method is still shown (so comparison is unambiguous).
+        expect(html).toMatch(/T1-strategy/);
+    });
+
+    test('L13: download verification report still works after dropdown change', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'auto-test' }));
+        const sel = document.getElementById('resultTestingModeSelect');
+        sel.value = 't1-strategy';
+        sel.dispatchEvent(new Event('change'));
+        p.processTabEntry('S1-Start9');
+        // Download button enabled after replay.
+        expect(document.getElementById('resultTestingDownloadBtn').disabled).toBe(false);
+        // Report text renders (non-empty).
+        expect(p.buildVerificationReportText().length).toBeGreaterThan(0);
+    });
+
+    test('L14: exported constants list matches the DOM options', () => {
+        new ResultTestingPanel();
+        const sel = document.getElementById('resultTestingModeSelect');
+        const values = Array.from(sel.querySelectorAll('option')).map(o => o.value);
+        expect(RESULT_TESTING_MODES.slice().sort()).toEqual(values.slice().sort());
+        expect(RESULT_TESTING_DEFAULT_MODE).toBe('manual');
+    });
+
+    test('L15: status message reports the mode actually used (not the seeded default)', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        const sel = document.getElementById('resultTestingModeSelect');
+        sel.value = 'manual';
+        sel.dispatchEvent(new Event('change'));
+        p.processTabEntry('S1-Start9');
+        expect(document.getElementById('resultTestingMessage').textContent)
+            .toMatch(/MANUAL mode/);
     });
 });
