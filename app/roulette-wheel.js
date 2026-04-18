@@ -64,7 +64,12 @@ class RouletteWheel {
         this.numberInfo = {};
 
         // Filter state — default: 0 Table ON, 19 Table OFF, Positive ON, Negative ON, All sets ON
-        this.filters = { zeroTable: true, nineteenTable: false, positive: true, negative: true,
+        // Default table filter: BOTH (0 AND 19 wheel halves selected).
+        // Matches the "Both" radio carrying the `checked` attribute in the
+        // HTML template below. Keeps this initial state in sync with the
+        // DOM so the first _onFilterChange()/drawWheel() call sees the
+        // same truth whether it reads this.filters or the radio group.
+        this.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true,
                          set0: true, set5: true, set6: true };
 
         // Store the raw/unfiltered prediction for re-filtering
@@ -93,13 +98,13 @@ class RouletteWheel {
                     <div style="display:flex; align-items:center; gap:10px;">
                         <span style="font-size:10px;font-weight:700;color:#475569;min-width:40px;">Table:</span>
                         <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#065f46;">
-                            <input type="radio" name="tableFilter" id="filter0Table" value="0" checked style="accent-color:#22c55e;"> 0
+                            <input type="radio" name="tableFilter" id="filter0Table" value="0" style="accent-color:#22c55e;"> 0
                         </label>
                         <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#581c87;">
                             <input type="radio" name="tableFilter" id="filter19Table" value="19" style="accent-color:#9333ea;"> 19
                         </label>
                         <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#1e40af;">
-                            <input type="radio" name="tableFilter" id="filterBothTables" value="both" style="accent-color:#3b82f6;"> Both
+                            <input type="radio" name="tableFilter" id="filterBothTables" value="both" checked style="accent-color:#3b82f6;"> Both
                         </label>
                         <span id="filteredCount" style="margin-left:auto;font-size:11px;font-weight:700;color:#64748b;"></span>
                     </div>

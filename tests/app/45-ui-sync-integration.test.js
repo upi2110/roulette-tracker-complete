@@ -107,6 +107,10 @@ describe('45 — UI Sync Integration', () => {
         test('A1: _syncAIPanel calls updateFilteredDisplay with filtered numbers', () => {
             if (!RouletteWheel) return;
             const wheel = new RouletteWheel();
+            // Startup default is "Both" (zeroTable AND nineteenTable true)
+            // which is all-on and bypasses filtering. This test specifically
+            // covers the filtering path; force zero-table-only here.
+            wheel.filters.nineteenTable = false;
 
             const receivedData = [];
             global.window.aiPanel = {
@@ -139,6 +143,8 @@ describe('45 — UI Sync Integration', () => {
         test('A2: filtered count is less than unfiltered when filters active', () => {
             if (!RouletteWheel) return;
             const wheel = new RouletteWheel();
+            // Force partial filters — startup default is all-on.
+            wheel.filters.nineteenTable = false;
 
             let filteredCount = null;
             global.window.aiPanel = {
@@ -346,6 +352,8 @@ describe('45 — UI Sync Integration', () => {
         test('B1: _syncMoneyPanel called with filtered numbers', () => {
             if (!RouletteWheel) return;
             const wheel = new RouletteWheel();
+            // Force partial filters — startup default is all-on.
+            wheel.filters.nineteenTable = false;
 
             let receivedPrediction = null;
             global.window.moneyPanel = {
@@ -478,8 +486,12 @@ describe('45 — UI Sync Integration', () => {
         test('C1: number list only shows numbers passing all filters', () => {
             if (!RouletteWheel) return;
             const wheel = new RouletteWheel();
+            // Force zero-table-only (partial filters) — startup default is
+            // now all-on "Both" and that would bypass the filtering path
+            // this test is designed to exercise.
+            wheel.filters.nineteenTable = false;
 
-            // 0 table, both signs, all sets (default)
+            // 0 table, both signs, all sets (forced above)
             const allNums = [0, 15, 32, 19, 4, 21, 2, 25, 13];
             const prediction = makePrediction(allNums);
             wheel.updateHighlights([], allNums, [], [], prediction);
@@ -500,6 +512,8 @@ describe('45 — UI Sync Integration', () => {
         test('C2: Loose count reflects filtered numbers only', () => {
             if (!RouletteWheel) return;
             const wheel = new RouletteWheel();
+            // Force partial filters so the Loose count reflects filtering.
+            wheel.filters.nineteenTable = false;
 
             const allNums = [0, 15, 32, 19, 4, 21, 2, 25, 13];
             const prediction = makePrediction(allNums);
@@ -677,11 +691,14 @@ describe('45 — UI Sync Integration', () => {
     // ═══════════════════════════════════════════════════════════
     describe('D: Filter State Correctness', () => {
 
-        test('D1: default filters: 0 table on, 19 off, both signs, all sets', () => {
+        test('D1: default filters: BOTH tables on, both signs, all sets (startup default)', () => {
+            // European wheel startup default is "Both" (0 AND 19 selected),
+            // matching the HTML template in app/roulette-wheel.js which
+            // carries `checked` on filterBothTables.
             if (!RouletteWheel) return;
             const wheel = new RouletteWheel();
             expect(wheel.filters).toEqual({
-                zeroTable: true, nineteenTable: false,
+                zeroTable: true, nineteenTable: true,
                 positive: true, negative: true,
                 set0: true, set5: true, set6: true
             });
@@ -713,8 +730,11 @@ describe('45 — UI Sync Integration', () => {
         test('D3: allOn shortcut correctly detected', () => {
             if (!RouletteWheel) return;
             const wheel = new RouletteWheel();
+            // Startup default is all-on ("Both"). Flip one filter off so
+            // the allOn bypass is initially NOT taken; then we flip it back
+            // on to verify the bypass DOES fire. Exercises both branches.
+            wheel.filters.nineteenTable = false;
 
-            // Default has nineteenTable: false → allOn is false
             // Verify by checking that _applyFilters calls _updateFilteredCount with a number
             let countArg = undefined;
             const origUpdateCount = wheel._updateFilteredCount.bind(wheel);

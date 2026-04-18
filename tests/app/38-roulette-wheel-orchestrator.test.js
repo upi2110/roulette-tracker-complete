@@ -176,9 +176,9 @@ describe('A: RouletteWheel constructor', () => {
         }
     });
 
-    test('A11: default filters — zeroTable true, nineteenTable false', () => {
+    test('A11: default filters — zeroTable true, nineteenTable true (startup default is "Both")', () => {
         expect(wheel.filters.zeroTable).toBe(true);
-        expect(wheel.filters.nineteenTable).toBe(false);
+        expect(wheel.filters.nineteenTable).toBe(true);
     });
 
     test('A12: default filters — positive true, negative true', () => {

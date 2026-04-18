@@ -171,13 +171,88 @@ describe('RouletteWheel: Constructor', () => {
         });
     });
 
-    test('default filter state: zeroTable ON, nineteenTable OFF, positive ON, negative ON', () => {
+    test('default filter state: zeroTable ON, nineteenTable ON ("Both"), positive ON, negative ON', () => {
+        // Startup default is BOTH 0 and 19 selected on the European wheel.
+        // The HTML template puts `checked` on filterBothTables and this
+        // constructor-initialised state mirrors that truth so the first
+        // draw is consistent between DOM and this.filters.
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
         expect(wheel.filters.zeroTable).toBe(true);
-        expect(wheel.filters.nineteenTable).toBe(false);
+        expect(wheel.filters.nineteenTable).toBe(true);
         expect(wheel.filters.positive).toBe(true);
         expect(wheel.filters.negative).toBe(true);
+    });
+
+    test('createWheel: HTML radio default is "Both" (filterBothTables carries the `checked` attribute)', () => {
+        // After createWheel runs, the DOM must reflect Both-by-default.
+        // NOTE: setupDOM() also pre-creates stub radios with the same
+        // IDs for other tests' convenience. We scope this assertion to
+        // the wheel panel's own copy via querySelectorAll on the parsed
+        // source template — or, equivalently, grep for `checked` in the
+        // source. Here we check the panel-rendered radios by selecting
+        // the LAST matching element (createWheel's copy is appended
+        // after setupDOM's stubs so it's document-order-last).
+        if (!RouletteWheel) return;
+        new RouletteWheel(); // createWheel is invoked from constructor
+        const all0 = document.querySelectorAll('[id="filter0Table"]');
+        const all19 = document.querySelectorAll('[id="filter19Table"]');
+        const allBoth = document.querySelectorAll('[id="filterBothTables"]');
+        const f0 = all0[all0.length - 1];
+        const f19 = all19[all19.length - 1];
+        const fBoth = allBoth[allBoth.length - 1];
+        expect(fBoth).toBeTruthy();
+        expect(fBoth.checked).toBe(true);
+        expect(f0.checked).toBe(false);
+        expect(f19.checked).toBe(false);
+    });
+
+    test('createWheel: source template carries `checked` on filterBothTables only (structural)', () => {
+        // Cross-check via source: the template in createWheel must put
+        // `checked` on filterBothTables and not on filter0Table/filter19Table.
+        const src = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'app', 'roulette-wheel.js'),
+            'utf-8'
+        );
+        // Find each radio's opening tag in the template.
+        const f0Tag = src.match(/<input[^>]*id="filter0Table"[^>]*>/);
+        const f19Tag = src.match(/<input[^>]*id="filter19Table"[^>]*>/);
+        const fBothTag = src.match(/<input[^>]*id="filterBothTables"[^>]*>/);
+        expect(f0Tag).not.toBeNull();
+        expect(f19Tag).not.toBeNull();
+        expect(fBothTag).not.toBeNull();
+        expect(f0Tag[0]).not.toMatch(/\schecked(\s|>|=)/);
+        expect(f19Tag[0]).not.toMatch(/\schecked(\s|>|=)/);
+        expect(fBothTag[0]).toMatch(/\schecked(\s|>|=)/);
+    });
+
+    test('createWheel: selecting "0" or "19" after startup still works through _onFilterChange', () => {
+        // Post-startup user interaction must still flip the filter state.
+        // This guards against a regression where the default change
+        // accidentally breaks the toggle paths.
+        if (!RouletteWheel) return;
+        const wheel = new RouletteWheel();
+        const f0 = document.getElementById('filter0Table');
+        const f19 = document.getElementById('filter19Table');
+        const fBoth = document.getElementById('filterBothTables');
+
+        // Select "0" only.
+        fBoth.checked = false; f19.checked = false; f0.checked = true;
+        wheel._onFilterChange();
+        expect(wheel.filters.zeroTable).toBe(true);
+        expect(wheel.filters.nineteenTable).toBe(false);
+
+        // Select "19" only.
+        f0.checked = false; fBoth.checked = false; f19.checked = true;
+        wheel._onFilterChange();
+        expect(wheel.filters.zeroTable).toBe(false);
+        expect(wheel.filters.nineteenTable).toBe(true);
+
+        // Select "Both".
+        f0.checked = false; f19.checked = false; fBoth.checked = true;
+        wheel._onFilterChange();
+        expect(wheel.filters.zeroTable).toBe(true);
+        expect(wheel.filters.nineteenTable).toBe(true);
     });
 
     test('POSITIVE and NEGATIVE sets are defined', () => {
@@ -298,21 +373,25 @@ describe('RouletteWheel: _passesFilter', () => {
         expect(wheel._passesFilter(21)).toBe(true);
     });
 
-    test('Number in nineteen table only fails with default filters (nineteenTable OFF)', () => {
+    test('Number in nineteen table passes with DEFAULT filters (nineteenTable ON by default)', () => {
+        // Default was zeroTable-only; default is now BOTH, so 19 passes
+        // out of the box. Intent of the test (confirm the default
+        // governs whether 19 passes) is preserved.
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
         // 19 is in NINETEEN_TABLE_NUMS only, not in ZERO_TABLE_NUMS
         expect(NINETEEN_TABLE_NUMS.has(19)).toBe(true);
         expect(ZERO_TABLE_NUMS.has(19)).toBe(false);
-        expect(wheel._passesFilter(19)).toBe(false);
+        expect(wheel._passesFilter(19)).toBe(true);
     });
 
-    test('Number in nineteen table passes when nineteenTable filter is ON', () => {
+    test('Number in nineteen table fails when nineteenTable filter is explicitly OFF', () => {
+        // Inverse of the default case: if the user de-selects the 19
+        // table (e.g. selects "0" only), 19 must no longer pass.
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
-        wheel.filters.nineteenTable = true;
-        // 19 is in NINETEEN_TABLE and POSITIVE
-        expect(wheel._passesFilter(19)).toBe(true);
+        wheel.filters.nineteenTable = false;
+        expect(wheel._passesFilter(19)).toBe(false);
     });
 
     test('All filters off: nothing passes', () => {
@@ -1204,16 +1283,21 @@ describe('RouletteWheel: _onFilterChange', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
 
-        // Remove all radio buttons by ID
+        // Remove ALL copies of each radio by ID. setupDOM() pre-creates
+        // stub elements and createWheel() also creates its own; an
+        // id-match can be duplicated in the test DOM, so we loop until
+        // none remain to truly simulate "radio missing".
         ['filter0Table', 'filter19Table', 'filterBothTables',
          'filterPositive', 'filterNegative', 'filterBothSigns'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.remove();
+            let el;
+            while ((el = document.getElementById(id))) el.remove();
         });
 
         wheel._onFilterChange();
 
-        // Falls back to default: 0 table selected, both signs
+        // With no radio present, _onFilterChange falls through to the
+        // zero-table-only branch and the both-signs branch. This
+        // fallback is the renderer's safety net and must remain stable.
         expect(wheel.filters.zeroTable).toBe(true);
         expect(wheel.filters.nineteenTable).toBe(false);
         expect(wheel.filters.positive).toBe(true);
@@ -1281,8 +1365,12 @@ describe('RouletteWheel: _applyFilters', () => {
     test('Partial filters: filters prediction numbers through _passesFilter', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
+        // Force partial-mode (zeroTable only). Default is now "Both" which
+        // is all-on and bypasses the filtering code path; this test
+        // specifically covers the partial branch.
+        wheel.filters.nineteenTable = false;
 
-        // Default filters: zeroTable ON, nineteenTable OFF, positive ON, negative ON
+        // Filters: zeroTable ON, nineteenTable OFF, positive ON, negative ON
         // 19 is in NINETEEN_TABLE only -> should be filtered out
         // 0 is in ZERO_TABLE and POSITIVE -> should pass
         wheel._rawPrediction = {
@@ -1343,6 +1431,8 @@ describe('RouletteWheel: _applyFilters', () => {
     test('Partial filters with calculateWheelAnchors: recalculates anchors', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
+        // Force partial-mode so _applyFilters takes the filtering path.
+        wheel.filters.nineteenTable = false;
 
         global.window.calculateWheelAnchors = jest.fn(() => ({
             anchors: [0],
@@ -1363,8 +1453,10 @@ describe('RouletteWheel: _applyFilters', () => {
     test('Partial filters: extra numbers are also filtered', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
+        // Force partial-mode for this test.
+        wheel.filters.nineteenTable = false;
 
-        // Default: zeroTable ON, nineteenTable OFF
+        // Filters: zeroTable ON, nineteenTable OFF
         // 19 is nineteen-only -> filtered out
         // 7 is zero-table + negative -> passes
         wheel._rawPrediction = {
@@ -2440,14 +2532,16 @@ describe('RouletteWheel: Radio Button UI Structure', () => {
         expect(src).toContain('id="filterBothSigns" value="both"');
     });
 
-    test('Default filter state matches: 0 table ON, both signs ON', () => {
+    test('Default filter state matches: BOTH tables ON, both signs ON', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
 
-        // Constructor defaults (verified via filters object, not DOM checked state,
-        // because jsdom doesn't fully implement radio group exclusivity)
+        // Startup default on the European wheel is "Both" — both 0 and 19
+        // wheel halves selected. Verified via filters object (jsdom does
+        // not fully implement radio group exclusivity so the `checked`
+        // property isn't a reliable oracle on its own).
         expect(wheel.filters.zeroTable).toBe(true);
-        expect(wheel.filters.nineteenTable).toBe(false);
+        expect(wheel.filters.nineteenTable).toBe(true);
         expect(wheel.filters.positive).toBe(true);
         expect(wheel.filters.negative).toBe(true);
     });
@@ -2853,13 +2947,17 @@ describe('RouletteWheel: Radio → applyFilters → Panel Sync', () => {
     test('filteredCount shows correct number after radio change', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
+        // Startup default is now Both. Force zero-table-only first so
+        // this test can exercise the transition Both ← 0 and the counter.
+        selectRadio('filter0Table');
+        wheel._onFilterChange();
 
         // 0 = zero + positive, 19 = nineteen + positive
         wheel.updateHighlights([], [0, 19], [], [], {
             numbers: [0, 19], signal: 'BET NOW', confidence: 90
         });
 
-        // Default: 0-table + both-signs → only 0 passes
+        // 0-table + both-signs → only 0 passes
         const countEl = document.getElementById('filteredCount');
         expect(countEl.textContent).toContain('1');
 
@@ -2873,13 +2971,16 @@ describe('RouletteWheel: Radio → applyFilters → Panel Sync', () => {
     test('filteredCount shows red when 0 numbers pass', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
+        // Force zero-table-only so 19 cannot pass.
+        selectRadio('filter0Table');
+        wheel._onFilterChange();
 
         // 19 is nineteen-table only
         wheel.updateHighlights([], [19], [], [], {
             numbers: [19], signal: 'BET NOW', confidence: 90
         });
 
-        // Default: 0-table → 19 doesn't pass → 0 nums
+        // 0-table → 19 doesn't pass → 0 nums
         const countEl = document.getElementById('filteredCount');
         expect(countEl.textContent).toContain('0');
         const color = countEl.style.color;
@@ -2889,13 +2990,16 @@ describe('RouletteWheel: Radio → applyFilters → Panel Sync', () => {
     test('filteredCount shows green when numbers pass', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
+        // Force zero-table-only (partial mode) so the counter is active.
+        selectRadio('filter0Table');
+        wheel._onFilterChange();
 
         // 0 is zero-table + positive
         wheel.updateHighlights([], [0], [], [], {
             numbers: [0], signal: 'BET NOW', confidence: 90
         });
 
-        // Default: 0-table + both-signs → 0 passes → 1 num
+        // 0-table + both-signs → 0 passes → 1 num
         const countEl = document.getElementById('filteredCount');
         expect(countEl.textContent).toContain('1');
         const color = countEl.style.color;
@@ -2905,6 +3009,9 @@ describe('RouletteWheel: Radio → applyFilters → Panel Sync', () => {
     test('Extra numbers are also filtered by radio selection', () => {
         if (!RouletteWheel) return;
         const wheel = new RouletteWheel();
+        // Force zero-table-only so the 19-table extra is rejected.
+        selectRadio('filter0Table');
+        wheel._onFilterChange();
 
         const moneyPredictions = [];
         global.window.moneyPanel = {
@@ -2916,7 +3023,7 @@ describe('RouletteWheel: Radio → applyFilters → Panel Sync', () => {
             numbers: [0], signal: 'BET NOW', confidence: 90
         });
 
-        // Default 0-table: extra 17 should be filtered out (nineteen-table)
+        // 0-table: extra 17 should be filtered out (nineteen-table)
         const lastP = moneyPredictions[moneyPredictions.length - 1];
         expect(lastP.extraNumbers).not.toContain(17);
     });
