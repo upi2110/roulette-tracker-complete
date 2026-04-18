@@ -926,6 +926,40 @@ function renderTable1() {
         window._t1PulseInterval = null;
     }
 
+    // ── Active-side helper (presentation only) ──
+    // Returns the active SIDE set (SET_5 or SET_6) based on the latest spin,
+    // or null when the latest spin is in SET_0 only / not matched.
+    // A pair family on the NEXT row is highlighted green only when its
+    // ±1-expanded projected numbers contain AT LEAST 2 members of this set —
+    // i.e. the pair segment actually covers ≥2 active-side numbers.
+    // NOTE: this does NOT change formation, anchors, ±1 expansion, or lookup.
+    const _getT1ActiveSideSet = (actual) => {
+        if (typeof SET_5_NUMS === 'undefined' || typeof SET_6_NUMS === 'undefined') return null;
+        if (SET_5_NUMS.has(actual)) return SET_5_NUMS;
+        if (SET_6_NUMS.has(actual)) return SET_6_NUMS;
+        return null;
+    };
+
+    // Count how many of the pair's 3 NEXT-row projection anchors fall
+    // inside the active-side set. The "projection anchors" are the three
+    // lookup-row targets (1st, 2nd, 3rd) displayed in the NEXT row — the
+    // same values the user sees. This is the Table 1 ±1 structure: each
+    // pair family (prev, prev±1, prev±2, and their 13-opposite variants)
+    // already encodes the ±1 anchor expansion at the pair-family level,
+    // and getLookupRow returns the three projection anchors for that pair.
+    // The green highlight fires when ≥ 2 of these three displayed anchors
+    // are in the active side set — it never consults the main Ref anchor
+    // alone. No additional ±1/±2 neighborhood expansion is used here.
+    const _t1PairActiveCoverage = (refNum, activeSideSet) => {
+        if (!activeSideSet) return 0;
+        const row = typeof getLookupRow === 'function' ? getLookupRow(refNum) : null;
+        if (!row) return 0;
+        const targets = [row.first, row.second, row.third];
+        let count = 0;
+        for (const n of targets) if (activeSideSet.has(n)) count++;
+        return count;
+    };
+
     visibleSpins.forEach((spin, relIdx) => {
         const idx = startIdx + relIdx;
         const row = document.createElement('tr');
@@ -1032,21 +1066,47 @@ function renderTable1() {
 
     if (spins.length >= 1) {
         const lastSpin = spins[spins.length - 1].actual;
+        // Active side set for NEXT row. Pair-anchor coverage rule:
+        // a pair is highlighted green iff its anchor number belongs to this set.
+        // null ⇒ latest spin is in SET_0 only or none ⇒ no green anywhere.
+        const activeSideSet = _getT1ActiveSideSet(lastSpin);
 
         const html = [];
 
+        // Pair families excluded from the active-set green highlight feature.
+        //  - 'ref0' / 'ref19' : static anchors, out of scope for this feature.
+        // All other pair families (prev, prev_13opp, prevPlus1,
+        // prevPlus1_13opp, prevMinus1, prevMinus1_13opp, prevPlus2,
+        // prevPlus2_13opp, prevMinus2, prevMinus2_13opp) are eligible.
+        // The "±1 only" requirement applies to the neighborhood EXPANSION
+        // used inside _t1PairActiveCoverage (expandTargetsToBetNumbers(..., 1)),
+        // not to the pair-family selection itself.
+        const T1_GREEN_EXCLUDED_PAIRS = new Set(['ref0', 'ref19']);
+
         const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
-            const anchorClass = 'anchor-cell' +
+            // Pair-match: this pair's ±1-expanded projected numbers cover ≥2
+            // members of the active 5/6 set. When true, ALL cells in this
+            // pair's NEXT-row segment (anchor + 3 target# + 3 code/dash = 7)
+            // get t1-set-match. When false, segment renders unchanged.
+            // Exclusion: ref0 and ref19 pair families never receive this
+            // highlight — the feature targets the prev-based families only.
+            const pairMatch = !!activeSideSet
+                && !T1_GREEN_EXCLUDED_PAIRS.has(dataPair)
+                && _t1PairActiveCoverage(refNum, activeSideSet) >= 2;
+            const matchCls = pairMatch ? ' t1-set-match' : '';
+
+            const anchorClass = ('anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
                 (addCopairSep ? ' copair-separator' : '') +
-                (is13Opp ? ' opp13-cell' : '');
+                (is13Opp ? ' opp13-cell' : '') +
+                matchCls).trim();
             html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
 
             const lookupRow = getLookupRow(refNum);
 
             if (!lookupRow) {
-                const cellClass = is13Opp ? 'opp13-cell' : '';
+                const cellClass = ((is13Opp ? 'opp13-cell' : '') + matchCls).trim();
                 html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
                 html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
                 html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
@@ -1054,7 +1114,7 @@ function renderTable1() {
             }
 
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
-            const cellClass = is13Opp ? 'opp13-cell' : '';
+            const cellClass = ((is13Opp ? 'opp13-cell' : '') + matchCls).trim();
 
             targets.forEach((target) => {
                 html.push(`<td class="${cellClass}"${dp}>${target}</td>`);

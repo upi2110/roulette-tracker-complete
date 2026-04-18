@@ -238,10 +238,26 @@ th.t3-pair-selected {
 }
 
 /* XX codes = VERY LIGHT ORANGE/PEACH */
-.code-xx { 
-    background: #ffe5cc !important; 
+.code-xx {
+    background: #ffe5cc !important;
     color: #8b4513;
     font-weight: 600;
+}
+
+/* Table 1 active-set match highlight — light green.
+ * Base variant omits !important so .t1-flash inline !important still wins
+ * on flashing cells. The .opp13-cell variant MUST use !important because
+ * .opp13-cell (line 132) and .anchor-cell.opp13-cell (line 214) both set
+ * their gray backgrounds with !important, which would otherwise override
+ * this highlight. Flash inline styles still win because inline !important
+ * beats stylesheet !important in the cascade. */
+.t1-set-match {
+    background: #d4f7d4;
+    color: #14532d;
+}
+.t1-set-match.opp13-cell {
+    background: #bff0bf !important;
+    color: #14532d !important;
 }
 
 /* 13-digit opposite position codes - slightly darker background */
