@@ -1286,9 +1286,9 @@ describe('Test Suite 25: AutoTestUI', () => {
     // behaviour.
     //
     describe('O. Method dropdown (T1-strategy / test-strategy)', () => {
-        test('O1: constructor seeds testMethod to the default (test-strategy)', () => {
+        test('O1: constructor seeds testMethod to the default (auto-test — the original Auto Test mode)', () => {
             ui = new AutoTestUI();
-            expect(ui.testMethod).toBe('test-strategy');
+            expect(ui.testMethod).toBe('auto-test');
         });
 
         test('O2: dropdown element is rendered in the header', () => {
@@ -1309,16 +1309,16 @@ describe('Test Suite 25: AutoTestUI', () => {
             expect(loadBtn.nextElementSibling).toBe(sel);
         });
 
-        test('O4: dropdown has exactly two options with the required labels', () => {
+        test('O4: dropdown has exactly three options with the required labels (original auto-test + T1-strategy + test-strategy)', () => {
             ui = new AutoTestUI();
             const sel = document.getElementById('autoTestMethodSelect');
             const opts = Array.from(sel.querySelectorAll('option'));
-            expect(opts.length).toBe(2);
+            expect(opts.length).toBe(3);
             const values = opts.map(o => o.value);
             const texts = opts.map(o => o.textContent);
-            // Order doesn't matter for values/labels — but both must be present.
-            expect(values).toEqual(expect.arrayContaining(['T1-strategy', 'test-strategy']));
-            expect(texts).toEqual(expect.arrayContaining(['T1-strategy', 'test-strategy']));
+            // Order doesn't matter for values/labels — all three must be present.
+            expect(values).toEqual(expect.arrayContaining(['auto-test', 'T1-strategy', 'test-strategy']));
+            expect(texts).toEqual(expect.arrayContaining(['auto-test', 'T1-strategy', 'test-strategy']));
         });
 
         test('O5: dropdown labels are EXACTLY the strings requested (no whitespace / underscore drift)', () => {
@@ -1326,18 +1326,19 @@ describe('Test Suite 25: AutoTestUI', () => {
             const sel = document.getElementById('autoTestMethodSelect');
             const texts = Array.from(sel.querySelectorAll('option')).map(o => o.textContent);
             // Canonical labels must be present exactly (case-sensitive).
+            expect(texts).toContain('auto-test');
             expect(texts).toContain('T1-strategy');
             expect(texts).toContain('test-strategy');
             // Reject whitespace- or underscore-separated variants.
             for (const t of texts) {
-                expect(t).not.toMatch(/^T1\s+strategy$|^T1_strategy$|^test\s+strategy$|^test_strategy$/);
+                expect(t).not.toMatch(/^T1\s+strategy$|^T1_strategy$|^test\s+strategy$|^test_strategy$|^auto\s+test$|^auto_test$/);
             }
         });
 
-        test('O6: initial DOM selection matches the default testMethod (test-strategy)', () => {
+        test('O6: initial DOM selection matches the default testMethod (auto-test)', () => {
             ui = new AutoTestUI();
             const sel = document.getElementById('autoTestMethodSelect');
-            expect(sel.value).toBe('test-strategy');
+            expect(sel.value).toBe('auto-test');
         });
 
         test('O7: changing the dropdown updates this.testMethod', () => {
@@ -1362,14 +1363,15 @@ describe('Test Suite 25: AutoTestUI', () => {
             expect(ui.testMethod).toBe(before);
         });
 
-        test('O9: runTest passes the selected method through runner.runAll options (default)', async () => {
+        test('O9: runTest passes the selected method through runner.runAll options (default: auto-test)', async () => {
             window.aiAutoEngine = createMockEngine();
             installMockRunner();
             ui = new AutoTestUI();
             ui.testSpins = [5, 17, 22, 33, 10, 8, 15, 2, 0, 36];
             await ui.runTest();
             expect(global.__lastRunnerOptions).toBeTruthy();
-            expect(global.__lastRunnerOptions.method).toBe('test-strategy');
+            // Default is the original Auto Test mode.
+            expect(global.__lastRunnerOptions.method).toBe('auto-test');
         });
 
         test('O10: runTest passes method=T1-strategy when dropdown selects T1-strategy', async () => {
@@ -1397,12 +1399,80 @@ describe('Test Suite 25: AutoTestUI', () => {
             expect(opts.batchSize).toBe(20);
         });
 
-        test('O12: AUTO_TEST_METHODS constant is exported with exactly the two labels', () => {
+        test('O12: AUTO_TEST_METHODS constant is exported with exactly the three labels', () => {
             // The canonical list of method strings is exposed so callers
             // (tests and future consumers) cannot drift out of sync.
             const mod = require('../../app/auto-test-ui');
-            expect(mod.AUTO_TEST_METHODS).toEqual(['T1-strategy', 'test-strategy']);
-            expect(mod.AUTO_TEST_DEFAULT_METHOD).toBe('test-strategy');
+            expect(mod.AUTO_TEST_METHODS).toEqual(['auto-test', 'T1-strategy', 'test-strategy']);
+            expect(mod.AUTO_TEST_DEFAULT_METHOD).toBe('auto-test');
+        });
+
+        // ─── Original Auto Test mode coverage ───────────────────
+        //
+        // The original Auto Test mode must remain selectable and the
+        // default choice. T1-strategy and test-strategy are additive
+        // alternatives — they must not displace or mask the original.
+        //
+        test('O13: the original Auto Test option ("auto-test") exists and is the default selection', () => {
+            ui = new AutoTestUI();
+            const sel = document.getElementById('autoTestMethodSelect');
+            // Exists as one of the options.
+            const values = Array.from(sel.querySelectorAll('option')).map(o => o.value);
+            expect(values).toContain('auto-test');
+            // And it is the currently selected one at boot.
+            expect(sel.value).toBe('auto-test');
+            expect(ui.testMethod).toBe('auto-test');
+        });
+
+        test('O14: selecting "auto-test" updates ui.testMethod back to the original mode', () => {
+            ui = new AutoTestUI();
+            const sel = document.getElementById('autoTestMethodSelect');
+            // First move away from the default…
+            sel.value = 'T1-strategy';
+            sel.dispatchEvent(new Event('change'));
+            expect(ui.testMethod).toBe('T1-strategy');
+            // …then return to the original Auto Test mode.
+            sel.value = 'auto-test';
+            sel.dispatchEvent(new Event('change'));
+            expect(ui.testMethod).toBe('auto-test');
+        });
+
+        test('O15: runTest passes method="auto-test" when the original option is selected', async () => {
+            window.aiAutoEngine = createMockEngine();
+            installMockRunner();
+            ui = new AutoTestUI();
+            ui.testSpins = [5, 17, 22, 33, 10, 8, 15, 2, 0, 36];
+            const sel = document.getElementById('autoTestMethodSelect');
+            // Explicitly pick auto-test (even though it is also the default).
+            sel.value = 'auto-test';
+            sel.dispatchEvent(new Event('change'));
+            await ui.runTest();
+            expect(global.__lastRunnerOptions.method).toBe('auto-test');
+        });
+
+        test('O16: all three modes are independently selectable and wired end-to-end', async () => {
+            window.aiAutoEngine = createMockEngine();
+            installMockRunner();
+            ui = new AutoTestUI();
+            ui.testSpins = [5, 17, 22, 33, 10, 8, 15, 2, 0, 36];
+            const sel = document.getElementById('autoTestMethodSelect');
+
+            const observed = [];
+            for (const v of ['auto-test', 'T1-strategy', 'test-strategy']) {
+                sel.value = v;
+                sel.dispatchEvent(new Event('change'));
+                await ui.runTest();
+                observed.push(global.__lastRunnerOptions.method);
+            }
+            expect(observed).toEqual(['auto-test', 'T1-strategy', 'test-strategy']);
+        });
+
+        test('O17: the original auto-test option is the FIRST option in DOM order (primary choice)', () => {
+            ui = new AutoTestUI();
+            const sel = document.getElementById('autoTestMethodSelect');
+            const firstOpt = sel.querySelector('option');
+            expect(firstOpt.value).toBe('auto-test');
+            expect(firstOpt.textContent).toBe('auto-test');
         });
     });
 });

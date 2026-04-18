@@ -87,9 +87,11 @@ class AutoTestRunner {
         // the export report or a future T1-strategy branch) can read it.
         // Current behaviour does NOT branch on this value — it is
         // pass-through plumbing until a later backlog item activates it.
+        // Default 'auto-test' matches AUTO_TEST_DEFAULT_METHOD in
+        // app/auto-test-ui.js (the original Auto Test mode).
         const method = typeof options.method === 'string' && options.method
             ? options.method
-            : 'test-strategy';
+            : 'auto-test';
 
         if (!testSpins || testSpins.length < 5) {
             return {

@@ -7,12 +7,16 @@
  */
 
 // Auto Test method options exposed by the Load-File-area dropdown.
-// Labels are user-facing and must match exactly. 'test-strategy' is
-// the pre-existing default behaviour of the Auto Test runner; this
-// constant exists so the value cannot drift out of sync between the
-// UI, the run path, and tests.
-const AUTO_TEST_METHODS = ['T1-strategy', 'test-strategy'];
-const AUTO_TEST_DEFAULT_METHOD = 'test-strategy';
+// Labels are user-facing and must match exactly.
+//   - 'auto-test'     : the ORIGINAL Auto Test behaviour (default).
+//   - 'T1-strategy'   : alternate T1 test method.
+//   - 'test-strategy' : alternate generic test method.
+// The runner currently does not branch on this value — its behaviour
+// is identical for every option. This constant exists so the canonical
+// list and default cannot drift out of sync between the UI, the
+// runner's runAll default, and the tests.
+const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test-strategy'];
+const AUTO_TEST_DEFAULT_METHOD = 'auto-test';
 
 class AutoTestUI {
     constructor() {
@@ -50,8 +54,9 @@ class AutoTestUI {
                     <div style="display:flex;gap:8px;">
                         <button id="autoTestLoadBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">📂 Load File</button>
                         <select id="autoTestMethodSelect" title="Auto Test method" style="padding:6px 8px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">
+                            <option value="auto-test" selected>auto-test</option>
                             <option value="T1-strategy">T1-strategy</option>
-                            <option value="test-strategy" selected>test-strategy</option>
+                            <option value="test-strategy">test-strategy</option>
                         </select>
                         <button id="autoTestRunBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #22c55e;border-radius:5px;cursor:pointer;background:#22c55e;color:#000;" disabled>▶ Run Test</button>
                         <button id="autoTestExportBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #3b82f6;border-radius:5px;cursor:pointer;background:#3b82f6;color:white;" disabled>📊 Export Excel</button>

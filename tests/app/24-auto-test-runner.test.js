@@ -890,10 +890,18 @@ describe('AutoTestRunner', () => {
             expect(result.method).toBe('T1-strategy');
         });
 
-        test('runAll defaults method to "test-strategy" when omitted', async () => {
+        test('runAll defaults method to "auto-test" (the original mode) when omitted', async () => {
             const testSpins = generateTestSpins(12);
             const result = await runner.runAll(testSpins, { batchSize: 100 });
-            expect(result.method).toBe('test-strategy');
+            expect(result.method).toBe('auto-test');
+        });
+
+        test('runAll echoes method="auto-test" onto result.method (original mode)', async () => {
+            // The original Auto Test mode must remain selectable through
+            // the same pass-through plumbing as the two alternate methods.
+            const testSpins = generateTestSpins(12);
+            const result = await runner.runAll(testSpins, { method: 'auto-test', batchSize: 100 });
+            expect(result.method).toBe('auto-test');
         });
 
         test('runAll carries method on the empty-result short-circuit path', async () => {
@@ -905,8 +913,9 @@ describe('AutoTestRunner', () => {
 
         test('runAll picks default method for null spins', async () => {
             const result = await runner.runAll(null, { method: '' });
-            // Empty-string method string falls back to the canonical default.
-            expect(result.method).toBe('test-strategy');
+            // Empty-string method falls back to the canonical default
+            // ("auto-test" — the original Auto Test mode).
+            expect(result.method).toBe('auto-test');
         });
 
         test('runAll does not change existing result fields when method is supplied', async () => {
