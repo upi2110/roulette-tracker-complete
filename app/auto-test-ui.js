@@ -60,6 +60,7 @@ class AutoTestUI {
                         </select>
                         <button id="autoTestRunBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #22c55e;border-radius:5px;cursor:pointer;background:#22c55e;color:#000;" disabled>▶ Run Test</button>
                         <button id="autoTestExportBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #3b82f6;border-radius:5px;cursor:pointer;background:#3b82f6;color:white;" disabled>📊 Export Excel</button>
+                        <button id="autoTestSubmitBtn" title="Send the completed Auto Test result to the Result-testing tab for manual verification" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #6366f1;border-radius:5px;cursor:pointer;background:#6366f1;color:white;" disabled>🧾 Submit-to test</button>
                     </div>
                 </div>
 
@@ -106,12 +107,14 @@ class AutoTestUI {
         const loadBtn = document.getElementById('autoTestLoadBtn');
         const runBtn = document.getElementById('autoTestRunBtn');
         const exportBtn = document.getElementById('autoTestExportBtn');
+        const submitBtn = document.getElementById('autoTestSubmitBtn');
         const parseBtn = document.getElementById('autoTestParseBtn');
         const methodSel = document.getElementById('autoTestMethodSelect');
 
         if (loadBtn) loadBtn.addEventListener('click', () => this.loadTestFile());
         if (runBtn) runBtn.addEventListener('click', () => this.runTest());
         if (exportBtn) exportBtn.addEventListener('click', () => this.exportExcel());
+        if (submitBtn) submitBtn.addEventListener('click', () => this.submitToResultTesting());
         if (parseBtn) parseBtn.addEventListener('click', () => this.parseManualInput());
         if (methodSel) {
             // Initialise the dropdown's visible value from the UI state so
@@ -240,8 +243,10 @@ class AutoTestUI {
         this.isRunning = true;
         const runBtn = document.getElementById('autoTestRunBtn');
         const exportBtn = document.getElementById('autoTestExportBtn');
+        const submitBtn = document.getElementById('autoTestSubmitBtn');
         if (runBtn) { runBtn.disabled = true; runBtn.textContent = '⏳ Running...'; }
         if (exportBtn) exportBtn.disabled = true;
+        if (submitBtn) submitBtn.disabled = true;
 
         this.updateProgress(0, 'Starting...');
 
@@ -268,7 +273,15 @@ class AutoTestUI {
             this._showTabs();
             this.renderOverview(this.result);
 
+            // Attach the full spin array the user ran so downstream
+            // consumers (Result-testing panel) can load it without
+            // reaching back into AutoTestUI internals.
+            if (this.result && Array.isArray(this.testSpins)) {
+                this.result.testSpins = this.testSpins.slice();
+            }
+
             if (exportBtn) exportBtn.disabled = false;
+            if (submitBtn) submitBtn.disabled = false;
             console.log('✅ Backtest complete:', this.result.testFile);
         } catch (err) {
             this._showError(`Test failed: ${err.message}`);
@@ -288,6 +301,20 @@ class AutoTestUI {
         if (typeof AutoTestRunner !== 'undefined') return AutoTestRunner;
         if (typeof window !== 'undefined' && window.AutoTestRunner) return window.AutoTestRunner;
         return null;
+    }
+
+    /**
+     * Hand the last completed Auto Test result over to the
+     * Result-testing panel. No-op when no run has completed or the
+     * panel isn't initialised yet. Returns true/false so tests can
+     * assert the hand-off without mocking window plumbing.
+     */
+    submitToResultTesting() {
+        if (!this.result) return false;
+        const panel = (typeof window !== 'undefined') ? window.resultTestingPanel : null;
+        if (!panel || typeof panel.submit !== 'function') return false;
+        const ok = panel.submit(this.result);
+        return ok !== false;
     }
 
     // ═══════════════════════════════════════════════════════════
