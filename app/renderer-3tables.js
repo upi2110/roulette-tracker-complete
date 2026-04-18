@@ -927,16 +927,36 @@ function renderTable1() {
     }
 
     // ── Active-side helper (presentation only) ──
-    // Returns the active SIDE set (SET_5 or SET_6) based on the latest spin,
-    // or null when the latest spin is in SET_0 only / not matched.
-    // A pair family on the NEXT row is highlighted green only when its
-    // ±1-expanded projected numbers contain AT LEAST 2 members of this set —
-    // i.e. the pair segment actually covers ≥2 active-side numbers.
+    // Returns the active SIDE set (SET_5 or SET_6) for a given actual number,
+    // or null when that number is in SET_0 only / not matched.
     // NOTE: this does NOT change formation, anchors, ±1 expansion, or lookup.
     const _getT1ActiveSideSet = (actual) => {
         if (typeof SET_5_NUMS === 'undefined' || typeof SET_6_NUMS === 'undefined') return null;
         if (SET_5_NUMS.has(actual)) return SET_5_NUMS;
         if (SET_6_NUMS.has(actual)) return SET_6_NUMS;
+        return null;
+    };
+
+    // ── Carry-forward trigger helper (presentation only) ──
+    // Walks the spins array backwards and returns the most recent actual
+    // number that is in SET_5 or SET_6. Returns null if none exists.
+    // Rule (per spec):
+    //   - current actual ∈ SET_5/SET_6 → use it directly (loop returns on
+    //     the very first iteration).
+    //   - current actual ∈ SET_0 / none → walk back to find the most recent
+    //     SET_5/SET_6 actual. Consecutive SET_0 rows all resolve to the
+    //     same carry-forward trigger until a new SET_5/SET_6 appears.
+    // This does NOT alter spin history, table formation, or any other
+    // computed value — it only decides which actual number feeds
+    // _getT1ActiveSideSet for the NEXT-row highlight.
+    const _getT1CarryForwardTrigger = (spinsArr) => {
+        if (typeof SET_5_NUMS === 'undefined' || typeof SET_6_NUMS === 'undefined') return null;
+        if (!spinsArr || spinsArr.length === 0) return null;
+        for (let i = spinsArr.length - 1; i >= 0; i--) {
+            const n = spinsArr[i] && spinsArr[i].actual;
+            if (typeof n !== 'number') continue;
+            if (SET_5_NUMS.has(n) || SET_6_NUMS.has(n)) return n;
+        }
         return null;
     };
 
@@ -1066,10 +1086,19 @@ function renderTable1() {
 
     if (spins.length >= 1) {
         const lastSpin = spins[spins.length - 1].actual;
-        // Active side set for NEXT row. Pair-anchor coverage rule:
-        // a pair is highlighted green iff its anchor number belongs to this set.
-        // null ⇒ latest spin is in SET_0 only or none ⇒ no green anywhere.
-        const activeSideSet = _getT1ActiveSideSet(lastSpin);
+        // Active side set for NEXT row. Carry-forward rule:
+        //   - if the latest actual is in SET_5/SET_6 it's used directly;
+        //   - if the latest actual is in SET_0, walk back to the most
+        //     recent SET_5/SET_6 actual and use THAT as the trigger;
+        //   - if no such spin exists in history, activeSideSet is null
+        //     and no pair segment is highlighted.
+        // The carry-forward trigger is used ONLY for selecting the
+        // active SET_5/SET_6 side — it does NOT change the pair-family
+        // anchors on the NEXT row (those still derive from lastSpin).
+        const triggerActual = _getT1CarryForwardTrigger(spins);
+        const activeSideSet = triggerActual !== null
+            ? _getT1ActiveSideSet(triggerActual)
+            : null;
 
         const html = [];
 

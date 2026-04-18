@@ -375,10 +375,12 @@ describe('L. User-scenario targeted tests', () => {
         expect(pm).not.toMatch(/\.has\s*\(\s*anchorNum\s*\)/);
     });
 
-    test('L4: SET_0 alone never creates green (latest ∈ SET_0 only ⇒ zero green)', () => {
+    test('L4: SET_0 alone (pure-SET_0 history) never creates green', () => {
+        // History must be all SET_0 — otherwise the carry-forward trigger
+        // will pick up a prior SET_5/SET_6 value and highlight.
         const set0Latest = [26, 19, 0, 13, 34, 10, 16, 20, 9, 29, 12, 2, 30];
         for (const n of set0Latest) {
-            seedSpins([5, 11, 7, 15, n]);
+            seedSpins([10, 20, 9, 29, n]);
             const html = renderAndGetHtml();
             expect({ latest: n, green: html.includes('t1-set-match') })
                 .toEqual({ latest: n, green: false });
@@ -490,17 +492,142 @@ describe('M. Screenshot case: actual = 15', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-//  D. Example 6 — SET_0 alone never creates green
+//  N. Carry-forward trigger for SET_0 latest spins
 // ═══════════════════════════════════════════════════════════════
-describe('D. SET_0-only trigger ⇒ no green', () => {
+describe('N. Carry-forward trigger (SET_0 latest ⇒ use prior SET_5/SET_6)', () => {
+    /** Render with given spins and return per-pair (dataPair, refNum, greenCount) for the NEXT row. */
+    function renderVerdicts(spins) {
+        seedSpins(spins);
+        const nextRow = extractNextRow(renderAndGetHtml());
+        const last = spins[spins.length - 1];
+        return pairRefsFromLastSpin(last).map(([dataPair, refNum]) => ({
+            dataPair, refNum, greenCount: greenCountForPair(nextRow, dataPair)
+        }));
+    }
+
+    test('N1: latest=29 (∈ SET_0) with carry-forward to 15 (∈ SET_5) ⇒ SET_5 active; pair anchors still derive from 29', () => {
+        // Spec example: latest=29 is SET_0. Carry-forward finds 15 (SET_5)
+        // and uses SET_5 as the active side. Pair-family anchors (prev,
+        // prev±1, prev±2) still derive from lastSpin=29 — the trigger
+        // only selects the active set.
+        // History between 15 and 29 is all SET_0 so the carry-forward
+        // walk correctly returns 15 (not something else).
+        const seed = [10, 20, 15, 9, 29];
+        // Sanity guard on the seed — if this ever fires, the seed is wrong.
+        expect(SET_5.has(15)).toBe(true);
+        for (const n of [10, 20, 9, 29]) expect(SET_0.has(n)).toBe(true);
+        const verdicts = renderVerdicts(seed);
+        verdicts.forEach(({ dataPair, refNum, greenCount }) => {
+            const expected = oracleShouldHighlight(dataPair, refNum, SET_5) ? 7 : 0;
+            expect({ dataPair, refNum, greenCount })
+                .toEqual({ dataPair, refNum, greenCount: expected });
+        });
+    });
+
+    test('N2: latest=29 with NO prior SET_5 or SET_6 ⇒ no green', () => {
+        // All-SET_0 history; carry-forward finds nothing; null trigger; no green.
+        const verdicts = renderVerdicts([10, 20, 9, 29, 29]);
+        verdicts.forEach(v => expect(v.greenCount).toBe(0));
+    });
+
+    test('N3: latest ∈ SET_0 with previous ∈ SET_6 ⇒ highlights use SET_6 trigger', () => {
+        // History: 33 ∈ SET_6, then SET_0 trail to latest. Carry-forward = 33.
+        const seed = [10, 33, 20, 9, 29];
+        expect(SET_6.has(33)).toBe(true);
+        for (const n of [10, 20, 9, 29]) expect(SET_0.has(n)).toBe(true);
+        const verdicts = renderVerdicts(seed);
+        pairRefsFromLastSpin(29).forEach(([dataPair, refNum]) => {
+            const v = verdicts.find(x => x.dataPair === dataPair);
+            const expected = oracleShouldHighlight(dataPair, refNum, SET_6) ? 7 : 0;
+            expect({ dataPair, refNum, greenCount: v.greenCount })
+                .toEqual({ dataPair, refNum, greenCount: expected });
+        });
+    });
+
+    test('N4: consecutive SET_0 rows keep the same carry-forward trigger', () => {
+        // In both sequences, the last spin is 29 (SET_0). Carry-forward
+        // back through pure-SET_0 rows resolves to 15 (SET_5) → same
+        // active side and same pair anchors ⇒ identical DOM highlights.
+        const v1 = renderVerdicts([10, 20, 15, 9, 29]);             // 1 SET_0 row after 15
+        const v2 = renderVerdicts([10, 20, 15, 9, 29, 10, 20, 29]); // several SET_0 rows after 15
+        expect(v1.length).toBe(12);
+        expect(v2.length).toBe(12);
+        for (let i = 0; i < 12; i++) {
+            expect({ pair: v2[i].dataPair, ref: v2[i].refNum, green: v2[i].greenCount })
+                .toEqual({ pair: v1[i].dataPair, ref: v1[i].refNum, green: v1[i].greenCount });
+        }
+    });
+
+    test('N5: trigger updates when a new SET_5/SET_6 actual appears', () => {
+        // First sequence: latest=29 (SET_0), carry-forward to 15 (SET_5).
+        // Second sequence: append 33 (SET_6) so lastSpin=33 and trigger=33.
+        const v1 = renderVerdicts([10, 20, 15, 9, 29]); // SET_5 trigger
+        pairRefsFromLastSpin(29).forEach(([dataPair, refNum]) => {
+            const v = v1.find(x => x.dataPair === dataPair);
+            const expected = oracleShouldHighlight(dataPair, refNum, SET_5) ? 7 : 0;
+            expect({ dataPair, refNum, greenCount: v.greenCount })
+                .toEqual({ dataPair, refNum, greenCount: expected });
+        });
+
+        const v2 = renderVerdicts([10, 20, 15, 9, 29, 33]); // SET_6 now triggers
+        pairRefsFromLastSpin(33).forEach(([dataPair, refNum]) => {
+            const v = v2.find(x => x.dataPair === dataPair);
+            const expected = oracleShouldHighlight(dataPair, refNum, SET_6) ? 7 : 0;
+            expect({ dataPair, refNum, greenCount: v.greenCount })
+                .toEqual({ dataPair, refNum, greenCount: expected });
+        });
+    });
+
+    test('N6: latest ∈ SET_5 ignores deeper history — used directly (not carried over)', () => {
+        // A SET_5 latest must behave identically with or without earlier
+        // SET_6 values in history — it's the trigger directly.
+        const v1 = renderVerdicts([5, 11, 7, 15, 17]);
+        const v2 = renderVerdicts([33, 4, 21, 15, 17]); // earlier SET_6 shouldn't matter
+        for (let i = 0; i < 12; i++) {
+            expect({ pair: v2[i].dataPair, ref: v2[i].refNum, green: v2[i].greenCount })
+                .toEqual({ pair: v1[i].dataPair, ref: v1[i].refNum, green: v1[i].greenCount });
+        }
+    });
+
+    test('N7: source wires a carry-forward helper that walks spins backwards for SET_5/SET_6 membership', () => {
+        const src = fs.readFileSync(
+            pathMod.join(__dirname, '..', '..', 'app', 'renderer-3tables.js'),
+            'utf-8'
+        );
+        const fnStart = src.indexOf('function renderTable1');
+        const t2Start = src.indexOf('function renderTable2');
+        const t1Body = src.slice(fnStart, t2Start);
+        // Helper must exist.
+        expect(t1Body).toMatch(/_getT1CarryForwardTrigger/);
+        // NEXT-row block must call it and pass the result to _getT1ActiveSideSet.
+        expect(t1Body).toMatch(/_getT1CarryForwardTrigger\s*\(\s*spins\s*\)/);
+        expect(t1Body).toMatch(/const\s+activeSideSet\s*=[^;]+_getT1ActiveSideSet\(/);
+        // Helper body iterates SET_5 / SET_6 membership.
+        const helperIdx = t1Body.indexOf('const _getT1CarryForwardTrigger');
+        expect(helperIdx).toBeGreaterThan(-1);
+        const helperBody = t1Body.slice(helperIdx, helperIdx + 600);
+        expect(helperBody).toMatch(/SET_5_NUMS\.has/);
+        expect(helperBody).toMatch(/SET_6_NUMS\.has/);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  D. SET_0-only history ⇒ no green anywhere
+// ═══════════════════════════════════════════════════════════════
+describe('D. SET_0-only history (no prior SET_5/SET_6) ⇒ no green', () => {
+    // Every element of the seed is in SET_0 so the carry-forward
+    // trigger lookup walks all the way back without finding a
+    // SET_5/SET_6 member. Expected: no green in the NEXT row.
     const seeds = [
-        [5, 11, 7, 15, 26], // 26 ∈ SET_0 only
-        [3, 21, 9, 27, 19], // 19 ∈ SET_0 only
-        [4, 33, 22, 35, 0], // 0 ∈ SET_0 only
-        [32, 15, 25, 17, 13] // 13 ∈ SET_0 only
+        [10, 20, 9, 29, 26],   // all ∈ SET_0
+        [12, 2, 34, 16, 19],   // all ∈ SET_0
+        [30, 10, 20, 9, 0],    // all ∈ SET_0
+        [26, 2, 16, 29, 13]    // all ∈ SET_0
     ];
     seeds.forEach((spins, i) => {
-        test(`D${i + 1}: latest=${spins[spins.length - 1]} ∈ SET_0 → NEXT row has zero t1-set-match cells`, () => {
+        test(`D${i + 1}: pure-SET_0 history (latest=${spins[spins.length - 1]}) ⇒ NEXT row has zero t1-set-match cells`, () => {
+            // Sanity: confirm every element really is in SET_0.
+            for (const n of spins) expect(SET_0.has(n)).toBe(true);
             seedSpins(spins);
             const nextRow = extractNextRow(renderAndGetHtml());
             expect(nextRow).not.toMatch(/t1-set-match/);
@@ -578,8 +705,11 @@ describe('E. Coverage boundary (≥2 required)', () => {
 //  F. Historical rows are never highlighted
 // ═══════════════════════════════════════════════════════════════
 describe('F. Historical rows untouched', () => {
-    test('F1: latest ∈ SET_0 only → no green anywhere, historical or NEXT', () => {
-        seedSpins([5, 11, 7, 15, 26]); // history has SET_5 but latest is SET_0
+    test('F1: pure-SET_0 history → no green anywhere (historical or NEXT)', () => {
+        // Under the carry-forward rule, a mixed history (SET_5 earlier,
+        // SET_0 now) WILL highlight via the carry-forward trigger. To
+        // guarantee "no green", the entire history must be SET_0.
+        seedSpins([10, 20, 9, 29, 26]);
         const html = renderAndGetHtml();
         expect(html).not.toMatch(/t1-set-match/);
     });
