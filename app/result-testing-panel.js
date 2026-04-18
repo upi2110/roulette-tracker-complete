@@ -62,7 +62,8 @@ class ResultTestingPanel {
                     <div id="resultTestingSubmissionInfo" style="background:#f1f5f9;padding:6px 8px;border-radius:4px;margin-bottom:6px;"></div>
                     <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
                         <label for="resultTestingTabInput" style="font-weight:600;color:#3730a3;">Tab:</label>
-                        <input id="resultTestingTabInput" type="text" placeholder="e.g. strategy1 or 1"
+                        <input id="resultTestingTabInput" type="text" placeholder="e.g. S1-Start9 or strategy1"
+                               title="Enter a session id (S1-Start9) or a tab name (overview / strategy1..3)"
                                style="flex:1;padding:4px 6px;border:1px solid #a5b4fc;border-radius:3px;font-size:11px;"/>
                         <button id="resultTestingRunBtn" type="button"
                                 style="padding:4px 10px;font-size:11px;font-weight:700;border:1px solid #6366f1;border-radius:3px;background:#6366f1;color:white;cursor:pointer;">
@@ -167,6 +168,42 @@ class ResultTestingPanel {
     }
 
     /**
+     * Parse a session identifier like the ones the Auto Test report
+     * uses for its per-session detail sheets:
+     *     "S{strategy}-Start{startIdx}"    e.g.  S1-Start9
+     * The parser is tolerant of case, whitespace, and common
+     * separator variants (hyphen, underscore, space) so a user
+     * typing the label as they see it in the Auto Test report always
+     * resolves. Returns {strategy, startIdx} or null.
+     */
+    resolveSessionRef(raw) {
+        if (typeof raw !== 'string') return null;
+        const t = raw.trim();
+        if (!t) return null;
+        const m = t.match(/^S\s*(\d+)[\s\-_]*Start\s*(\d+)$/i);
+        if (!m) return null;
+        const strategy = parseInt(m[1], 10);
+        const startIdx = parseInt(m[2], 10);
+        if (!Number.isFinite(strategy) || !Number.isFinite(startIdx)) return null;
+        if (strategy < 1 || strategy > 3) return null;
+        if (startIdx < 0) return null;
+        return { strategy, startIdx };
+    }
+
+    /**
+     * Look up the actual session object inside the submitted Auto Test
+     * result for the given {strategy, startIdx} reference. Returns the
+     * session object (as constructed by AutoTestRunner._buildSessionResult)
+     * or null if no session matches.
+     */
+    findSession(ref) {
+        if (!ref || !this.submitted || !this.submitted.strategies) return null;
+        const bucket = this.submitted.strategies[ref.strategy];
+        if (!bucket || !Array.isArray(bucket.sessions)) return null;
+        return bucket.sessions.find(s => s && s.startIdx === ref.startIdx) || null;
+    }
+
+    /**
      * Handle the user pressing Enter (or clicking Run). Switches the
      * app into Manual mode and loads the spin history that produced
      * the submitted Auto Test result so the user can replay it.
@@ -181,16 +218,21 @@ class ResultTestingPanel {
             return { ok: false, error: 'no-submission' };
         }
 
-        const tabName = this.resolveTabName(raw);
-        if (!tabName) {
-            if (msg) msg.textContent = '⚠ Enter a tab name (overview / strategy1 / strategy2 / strategy3) or a number 0–3.';
-            return { ok: false, error: 'invalid-tab' };
-        }
+        // Two input shapes are supported:
+        //  (1) Auto Test SESSION id, e.g. "S1-Start9" — matches the
+        //      per-session detail label produced by the Auto Test
+        //      report (see app/auto-test-report.js _createSessionSheet:
+        //      `S${strategyNum}-Start${session.startIdx}`). When this
+        //      matches, we replay the EXACT session: load only that
+        //      session's spin window, switch to Manual, and render a
+        //      session-level comparison card.
+        //  (2) Generic tab name ("overview" / "strategy1..3" / numeric
+        //      synonyms). Pre-existing behaviour — kept for
+        //      backwards compatibility of the previous tests.
+        const sessionRef = this.resolveSessionRef(raw);
 
-        // Pull the spin history that drove this Auto Test. The runner
-        // stores the full testSpins on result (via auto-test-ui which
-        // passes testSpins into runAll). If it's not there, we use the
-        // UI-side cached testSpins via the global handle autoTestUI.
+        // Resolve the full test-spin array first; we need it regardless
+        // of which branch we take (the session window is a slice of it).
         let spins = null;
         if (Array.isArray(this.submitted.testSpins)) {
             spins = this.submitted.testSpins;
@@ -204,41 +246,231 @@ class ResultTestingPanel {
             return { ok: false, error: 'no-spins' };
         }
 
-        // Switch to manual mode so the user can drive the replay.
-        if (typeof window !== 'undefined' && window.aiAutoModeUI
-            && typeof window.aiAutoModeUI.setMode === 'function') {
-            try { window.aiAutoModeUI.setMode('manual'); } catch (_) { /* best-effort */ }
+        // ── Session replay branch ────────────────────────────────────
+        if (sessionRef) {
+            const session = this.findSession(sessionRef);
+            if (!session) {
+                if (msg) msg.textContent = `⚠ Session ${this._formatSessionLabel(sessionRef)} not found in submitted result.`;
+                return { ok: false, error: 'session-not-found', ref: sessionRef };
+            }
+            // Take the spin window for this session: from startIdx to
+            // end-of-file (the runner stops on WIN/BUST/INCOMPLETE, so
+            // the available-spins window is the remainder of testSpins
+            // starting at startIdx). totalSpins on the session tells us
+            // how many the runner actually consumed; we load the whole
+            // window so the user can replay it manually.
+            const windowSpins = spins.slice(sessionRef.startIdx);
+            if (windowSpins.length === 0) {
+                if (msg) msg.textContent = `⚠ Session ${this._formatSessionLabel(sessionRef)} has no spin window in history.`;
+                return { ok: false, error: 'empty-session-window', ref: sessionRef };
+            }
+
+            // Match the AI prediction mode to the Auto Test method the
+            // user submitted, so the live comparison runs under the
+            // same policy as the recorded run:
+            //   Auto Test method → live AI mode
+            //     'T1-strategy'    → 't1-strategy'
+            //     'test-strategy'  → 'auto'   (same default pipeline)
+            //     'auto-test'      → 'auto'   (original Auto mode)
+            //     anything else    → 'manual'
+            // If the selected mode can't activate (e.g. engine not
+            // trained for t1-strategy / auto) AIAutoModeUI itself logs
+            // a warning and stays on the current mode — we tolerate
+            // that silently rather than refusing to replay.
+            const aiMode = this._mapAutoTestMethodToAiMode(this.submitted.method);
+            this._switchToMode(aiMode);
+            this._loadSpinsIntoRenderer(windowSpins);
+
+            const label = this._formatSessionLabel(sessionRef);
+            this.lastTabLoaded = label;
+            if (msg) {
+                msg.textContent = `✔ Replaying ${label} in ${aiMode.toUpperCase()} mode — loaded ${windowSpins.length} spins.`;
+            }
+            if (dlBtn) dlBtn.disabled = false;
+
+            if (cmp) {
+                cmp.innerHTML = this._buildSessionComparisonHtml(sessionRef, session, aiMode);
+                cmp.style.display = 'block';
+            }
+            return {
+                ok: true,
+                kind: 'session',
+                ref: sessionRef,
+                sessionLabel: label,
+                aiMode,
+                spinCount: windowSpins.length
+            };
         }
 
-        // Seed the global spins array and trigger a render. We write
-        // into window.spins (the renderer's shared source of truth) and
-        // call window.render() if exposed. We deliberately AVOID
-        // altering the renderer or introducing any new ±1 / anchor
-        // logic here — this is purely a data hand-off.
-        if (typeof window !== 'undefined') {
-            if (!Array.isArray(window.spins)) window.spins = [];
-            window.spins.length = 0;
-            spins.forEach((n, i) => {
-                window.spins.push({ actual: n, direction: i % 2 === 0 ? 'C' : 'AC' });
-            });
-            if (typeof window.render === 'function') {
-                try { window.render(); } catch (_) { /* ignore render-time errors */ }
-            }
+        // ── Fallback: generic tab name branch ────────────────────────
+        const tabName = this.resolveTabName(raw);
+        if (!tabName) {
+            if (msg) msg.textContent = '⚠ Enter a session id (e.g. S1-Start9) or tab name (overview / strategy1 / strategy2 / strategy3).';
+            return { ok: false, error: 'invalid-tab' };
         }
+
+        this._switchToManualMode();
+        this._loadSpinsIntoRenderer(spins);
 
         this.lastTabLoaded = tabName;
 
         if (msg) msg.textContent = `✔ Switched to Manual and loaded ${spins.length} spins for tab=${tabName}.`;
         if (dlBtn) dlBtn.disabled = false;
 
-        // Populate the comparison panel with the auto-test summary for
-        // the chosen strategy tab (or all three for overview).
         if (cmp) {
             cmp.innerHTML = this._buildComparisonHtml(tabName);
             cmp.style.display = 'block';
         }
 
-        return { ok: true, tabName, spinCount: spins.length };
+        return { ok: true, kind: 'tab', tabName, spinCount: spins.length };
+    }
+
+    // ── Replay helpers ──────────────────────────────────────────────
+    //
+    // These small helpers exist so the session-replay and tab-replay
+    // code paths above share their side-effects verbatim. They do NOT
+    // change the renderer, add projection math, or touch anchors —
+    // they only write into window.spins and best-effort-invoke
+    // window.render and window.aiAutoModeUI.setMode.
+
+    _switchToManualMode() {
+        this._switchToMode('manual');
+    }
+
+    /**
+     * Best-effort mode switch. Safe to call with any string — the
+     * downstream AIAutoModeUI.setMode will guard against untrained
+     * engines itself. Never throws into the caller.
+     */
+    _switchToMode(mode) {
+        if (typeof window === 'undefined' || !window.aiAutoModeUI) return;
+        if (typeof window.aiAutoModeUI.setMode !== 'function') return;
+        try { window.aiAutoModeUI.setMode(mode); } catch (_) { /* best-effort */ }
+    }
+
+    /**
+     * Map an Auto Test method string (as stored on result.method by
+     * the runner, see app/auto-test-runner.js) to the corresponding
+     * live AI prediction mode identifier used by AIAutoModeUI.
+     */
+    _mapAutoTestMethodToAiMode(method) {
+        if (method === 'T1-strategy') return 't1-strategy';
+        if (method === 'test-strategy') return 'auto';
+        if (method === 'auto-test') return 'auto';
+        return 'manual';
+    }
+
+    _loadSpinsIntoRenderer(spinNumbers) {
+        if (typeof window === 'undefined') return;
+        if (!Array.isArray(window.spins)) window.spins = [];
+        window.spins.length = 0;
+        spinNumbers.forEach((n, i) => {
+            window.spins.push({ actual: n, direction: i % 2 === 0 ? 'C' : 'AC' });
+        });
+        if (typeof window.render === 'function') {
+            try { window.render(); } catch (_) { /* ignore render-time errors */ }
+        }
+    }
+
+    _formatSessionLabel(ref) {
+        if (!ref) return '';
+        return `S${ref.strategy}-Start${ref.startIdx}`;
+    }
+
+    /**
+     * Compute the Auto-Test-parity dollar totals for a single session
+     * by reducing its steps[].pnl entries. Mirrors the derivation in
+     * AutoTestRunner._computeSummary so the numbers match what the
+     * Auto Test Overview column set shows.
+     */
+    _computeSessionTotals(session) {
+        let totalWon = 0, totalLost = 0;
+        if (session && Array.isArray(session.steps)) {
+            for (const step of session.steps) {
+                if (!step || typeof step.pnl !== 'number') continue;
+                if (step.pnl > 0) totalWon += step.pnl;
+                else if (step.pnl < 0) totalLost += -step.pnl;
+            }
+        }
+        return {
+            totalWon: Math.round(totalWon * 100) / 100,
+            totalLost: Math.round(totalLost * 100) / 100,
+            totalPL: Math.round((totalWon - totalLost) * 100) / 100
+        };
+    }
+
+    /**
+     * Render a session-level comparison card. Uses the same field
+     * style as the Auto Test Overview — Sessions / Wins / Busts /
+     * Total Win $ / Total Loss $ / Total P&L — but scoped to the one
+     * session being replayed so the user can diff the rendered
+     * verification numbers against the Auto Test result.
+     */
+    _buildSessionComparisonHtml(ref, session, aiMode) {
+        const label = this._formatSessionLabel(ref);
+        const totals = this._computeSessionTotals(session);
+        const strategyNames = { 1: 'Aggressive', 2: 'Conservative', 3: 'Cautious' };
+        const outcomeColor = session.outcome === 'WIN' ? '#059669'
+            : session.outcome === 'BUST' ? '#dc2626'
+            : '#475569';
+        const winRatePct = (typeof session.winRate === 'number')
+            ? `${(session.winRate * 100).toFixed(1)}%` : '--';
+        const method = (this.submitted && this.submitted.method) || 'auto-test';
+        const modeLabel = (typeof aiMode === 'string' && aiMode) ? aiMode.toUpperCase() : 'MANUAL';
+        return `
+            <div style="font-weight:700;color:#3730a3;margin-bottom:4px;">
+                Auto Test (submitted) — session=<code>${this._escape(label)}</code>
+                <span style="margin-left:8px;font-weight:400;color:#6b7280;">
+                    Strategy ${ref.strategy} (${this._escape(strategyNames[ref.strategy] || '?')})
+                    • Start ${ref.startIdx}
+                    • <span style="color:${outcomeColor};font-weight:700;">${this._escape(session.outcome || '?')}</span>
+                </span>
+                <div style="font-weight:400;color:#4338ca;font-size:10px;margin-top:2px;" data-field="session-ai-mode">
+                    Auto Test method=<code>${this._escape(String(method))}</code> →
+                    replaying live in <strong>${this._escape(modeLabel)}</strong> mode
+                </div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                <thead><tr style="background:#c7d2fe;">
+                    <th style="padding:2px 6px;text-align:left;">Field</th>
+                    <th style="padding:2px 6px;">Total Spins</th>
+                    <th style="padding:2px 6px;">Total Bets</th>
+                    <th style="padding:2px 6px;">Wins</th>
+                    <th style="padding:2px 6px;">Losses</th>
+                    <th style="padding:2px 6px;">Win Rate</th>
+                    <th style="padding:2px 6px;">Max DD</th>
+                    <th style="padding:2px 6px;">Final Profit</th>
+                </tr></thead>
+                <tbody>
+                    <tr>
+                        <td style="padding:2px 6px;font-weight:700;">${this._escape(label)}</td>
+                        <td style="padding:2px 6px;text-align:right;">${session.totalSpins || 0}</td>
+                        <td style="padding:2px 6px;text-align:right;">${session.totalBets || 0}</td>
+                        <td style="padding:2px 6px;text-align:right;color:#059669;">${session.wins || 0}</td>
+                        <td style="padding:2px 6px;text-align:right;color:#dc2626;">${session.losses || 0}</td>
+                        <td style="padding:2px 6px;text-align:right;">${winRatePct}</td>
+                        <td style="padding:2px 6px;text-align:right;">$${(session.maxDrawdown || 0).toLocaleString()}</td>
+                        <td style="padding:2px 6px;text-align:right;font-weight:700;color:${outcomeColor};">$${(session.finalProfit || 0).toLocaleString()}</td>
+                    </tr>
+                </tbody>
+            </table>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:6px;">
+                <thead><tr style="background:#c7d2fe;">
+                    <th style="padding:2px 6px;text-align:left;">Dollar totals</th>
+                    <th style="padding:2px 6px;">Total Win $</th>
+                    <th style="padding:2px 6px;">Total Loss $</th>
+                    <th style="padding:2px 6px;">Total P&amp;L</th>
+                </tr></thead>
+                <tbody>
+                    <tr>
+                        <td style="padding:2px 6px;font-weight:700;">${this._escape(label)}</td>
+                        <td style="padding:2px 6px;text-align:right;color:#059669;" data-field="session-totalWon">$${totals.totalWon.toLocaleString()}</td>
+                        <td style="padding:2px 6px;text-align:right;color:#dc2626;" data-field="session-totalLost">$${totals.totalLost.toLocaleString()}</td>
+                        <td style="padding:2px 6px;text-align:right;font-weight:700;" data-field="session-totalPL">$${totals.totalPL.toLocaleString()}</td>
+                    </tr>
+                </tbody>
+            </table>
+        `;
     }
 
     /**
@@ -303,6 +535,31 @@ class ResultTestingPanel {
         lines.push(`Method       : ${res.method || 'auto-test'}`);
         lines.push(`Loaded tab   : ${this.lastTabLoaded || '(none)'}`);
         lines.push('');
+
+        // If the user loaded a specific session (e.g. S1-Start9),
+        // include its per-session stats + Auto-Test-parity dollar
+        // totals (Total Win $ / Total Loss $ / Total P&L). When the
+        // Loaded tab is a generic tab name, fall through to the
+        // per-strategy summary block below (unchanged).
+        const ref = this._parseSessionLabel(this.lastTabLoaded);
+        if (ref) {
+            const session = this.findSession(ref);
+            if (session) {
+                const totals = this._computeSessionTotals(session);
+                lines.push(`Session      : S${ref.strategy}-Start${ref.startIdx}  (Strategy ${ref.strategy})`);
+                lines.push(`  outcome    : ${session.outcome || '?'}`);
+                lines.push(`  totalSpins : ${session.totalSpins || 0}`);
+                lines.push(`  totalBets  : ${session.totalBets || 0}`);
+                lines.push(`  wins/losses: ${session.wins || 0}/${session.losses || 0}`);
+                lines.push(`  finalProfit: $${(session.finalProfit || 0).toLocaleString()}`);
+                lines.push(`  maxDrawdown: $${(session.maxDrawdown || 0).toLocaleString()}`);
+                lines.push(`  Total Win $: $${totals.totalWon.toLocaleString()}`);
+                lines.push(`  Total Loss$: $${totals.totalLost.toLocaleString()}`);
+                lines.push(`  Total P&L  : $${totals.totalPL.toLocaleString()}`);
+                lines.push('');
+            }
+        }
+
         if (res.strategies) {
             for (const k of [1, 2, 3]) {
                 const s = res.strategies[k] && res.strategies[k].summary;
@@ -313,6 +570,11 @@ class ResultTestingPanel {
         lines.push('');
         lines.push('(Fill in the manual verification result below.)');
         return lines.join('\n');
+    }
+
+    /** Reverse of _formatSessionLabel. null on non-session strings. */
+    _parseSessionLabel(label) {
+        return this.resolveSessionRef(label);
     }
 
     downloadVerificationReport() {

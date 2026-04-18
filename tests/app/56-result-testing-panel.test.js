@@ -36,6 +36,29 @@ function makeAutoTestResult(overrides = {}) {
         bestSession: { startIdx: 0, finalProfit: profit },
         worstSession: { startIdx: 0, finalProfit: profit }
     });
+    // Realistic session objects matching AutoTestRunner._buildSessionResult
+    // — startIdx, strategy, outcome, finalProfit, totalSpins, totalBets,
+    //   wins, losses, winRate, maxDrawdown, peakProfit, steps.
+    const mkSession = (startIdx, strategy, outcome, finalProfit, extras = {}) => Object.assign({
+        startIdx, strategy, outcome,
+        finalBankroll: 4000 + finalProfit,
+        finalProfit,
+        totalSpins: 20,
+        totalBets: 15,
+        totalSkips: 5,
+        wins: outcome === 'WIN' ? 8 : 3,
+        losses: outcome === 'WIN' ? 7 : 12,
+        winRate: outcome === 'WIN' ? 0.53 : 0.2,
+        maxDrawdown: outcome === 'BUST' ? 400 : 120,
+        peakProfit: Math.max(0, finalProfit),
+        steps: [
+            { action: 'BET', pnl: 60 },
+            { action: 'BET', pnl: -25 },
+            { action: 'BET', pnl: 80 },
+            { action: 'BET', pnl: -40 },
+            { action: 'SKIP', pnl: 0 }
+        ]
+    }, extras);
     return Object.assign({
         testFile: 'test-session.txt',
         totalTestSpins: 60,
@@ -43,8 +66,18 @@ function makeAutoTestResult(overrides = {}) {
         timestamp: '2026-04-18T10:00:00.000Z',
         testSpins: Array.from({ length: 60 }, (_, i) => i % 37),
         strategies: {
-            1: { sessions: [], summary: mkSummary(3, 1, 1, -100) },
-            2: { sessions: [], summary: mkSummary(2, 2, 0, 200) },
+            1: {
+                sessions: [
+                    mkSession(0, 1, 'WIN',   120),
+                    mkSession(9, 1, 'BUST', -350),
+                    mkSession(17, 1, 'INCOMPLETE', 30)
+                ],
+                summary: mkSummary(3, 1, 1, -100)
+            },
+            2: {
+                sessions: [ mkSession(0, 2, 'WIN', 100), mkSession(12, 2, 'WIN', 200) ],
+                summary: mkSummary(2, 2, 0, 200)
+            },
             3: { sessions: [], summary: mkSummary(0, 0, 0, 0) }
         }
     }, overrides);
@@ -495,5 +528,288 @@ describe('I. AutoTestUI ↔ ResultTestingPanel hand-off', () => {
         // result.testSpins is stashed on the result for downstream consumers.
         expect(Array.isArray(ui.result.testSpins)).toBe(true);
         expect(ui.result.testSpins.length).toBe(10);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  J. Session-identifier replay (S{strategy}-Start{startIdx})
+// ═══════════════════════════════════════════════════════════════════
+//
+// Mirrors the session detail sheet naming produced by the Auto Test
+// report (app/auto-test-report.js _createSessionSheet:
+//     `S${strategyNum}-Start${session.startIdx}`).
+// These tests lock in that typing that exact label in the Result-
+// testing tab-input resolves the matching session, loads only its
+// spin window into window.spins, switches the app to Manual mode,
+// and renders a session-scoped comparison card.
+//
+describe('J. resolveSessionRef + session replay', () => {
+    test('J1: resolveSessionRef parses "S1-Start9" into {strategy:1, startIdx:9}', () => {
+        const p = new ResultTestingPanel();
+        expect(p.resolveSessionRef('S1-Start9')).toEqual({ strategy: 1, startIdx: 9 });
+    });
+
+    test('J2: resolveSessionRef is case/whitespace/separator tolerant', () => {
+        const p = new ResultTestingPanel();
+        expect(p.resolveSessionRef('s2-start12')).toEqual({ strategy: 2, startIdx: 12 });
+        expect(p.resolveSessionRef('  S3 - Start 0  ')).toEqual({ strategy: 3, startIdx: 0 });
+        expect(p.resolveSessionRef('S1_Start5')).toEqual({ strategy: 1, startIdx: 5 });
+    });
+
+    test('J3: invalid session refs return null (strategy out of range, bad format)', () => {
+        const p = new ResultTestingPanel();
+        expect(p.resolveSessionRef('S4-Start9')).toBeNull();   // no strategy 4
+        expect(p.resolveSessionRef('S0-Start9')).toBeNull();   // strategy 0 invalid
+        expect(p.resolveSessionRef('Strat1-9')).toBeNull();
+        expect(p.resolveSessionRef('overview')).toBeNull();
+        expect(p.resolveSessionRef('')).toBeNull();
+        expect(p.resolveSessionRef(null)).toBeNull();
+    });
+
+    test('J4: findSession locates the correct session by {strategy, startIdx}', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        const s = p.findSession({ strategy: 1, startIdx: 9 });
+        expect(s).not.toBeNull();
+        expect(s.startIdx).toBe(9);
+        expect(s.strategy).toBe(1);
+        expect(s.outcome).toBe('BUST');
+    });
+
+    test('J5: findSession returns null when no session matches', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        expect(p.findSession({ strategy: 3, startIdx: 0 })).toBeNull(); // strat 3 has no sessions
+        expect(p.findSession({ strategy: 1, startIdx: 999 })).toBeNull();
+    });
+
+    test('J6: processTabEntry("S1-Start9") loads only that session window into window.spins', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.ok).toBe(true);
+        expect(out.kind).toBe('session');
+        expect(out.ref).toEqual({ strategy: 1, startIdx: 9 });
+        expect(out.sessionLabel).toBe('S1-Start9');
+        // testSpins is length 60, startIdx 9 → window length 51.
+        expect(window.spins.length).toBe(60 - 9);
+        // The first spin in the window matches testSpins[9].
+        const res = makeAutoTestResult();
+        expect(window.spins[0].actual).toBe(res.testSpins[9]);
+    });
+
+    test('J7: processTabEntry("S1-Start9") switches aiAutoModeUI to match the Auto Test method', () => {
+        // Default fixture's method is 'auto-test' → live AI mode 'auto'.
+        const setCalls = [];
+        window.aiAutoModeUI = { setMode: (m) => setCalls.push(m) };
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.ok).toBe(true);
+        expect(out.aiMode).toBe('auto');
+        expect(setCalls).toContain('auto');
+    });
+
+    test('J8: comparison HTML shows the session label, strategy, outcome, and Auto-Test dollar totals', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.ok).toBe(true);
+        const html = document.getElementById('resultTestingComparison').innerHTML;
+        // Session label rendered clearly.
+        expect(html).toMatch(/S1-Start9/);
+        // Strategy + outcome present (BUST for our fixture).
+        expect(html).toMatch(/Strategy\s*1/);
+        expect(html).toMatch(/BUST/);
+        // Auto-Test-parity dollar-total columns are rendered with
+        // stable data-field anchors.
+        expect(html).toMatch(/data-field="session-totalWon"/);
+        expect(html).toMatch(/data-field="session-totalLost"/);
+        expect(html).toMatch(/data-field="session-totalPL"/);
+        // Total Win $ / Total Loss $ / Total P&L labels present.
+        expect(html).toMatch(/Total Win \$/);
+        expect(html).toMatch(/Total Loss \$/);
+        expect(html).toMatch(/Total P&amp;L/); // HTML-escaped
+    });
+
+    test('J9: dollar totals are computed from steps[].pnl (140 / 65 / 75 for the fixture)', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start9');
+        // Steps: +60, -25, +80, -40, 0. Won=140, Lost=65, PL=75.
+        const html = document.getElementById('resultTestingComparison').innerHTML;
+        const won  = html.match(/data-field="session-totalWon"[^>]*>\$(\d[\d,]*)/);
+        const lost = html.match(/data-field="session-totalLost"[^>]*>\$(\d[\d,]*)/);
+        const pl   = html.match(/data-field="session-totalPL"[^>]*>\$(-?\d[\d,]*)/);
+        expect(won[1]).toBe('140');
+        expect(lost[1]).toBe('65');
+        expect(pl[1]).toBe('75');
+    });
+
+    test('J10: download button is enabled after a valid session replay', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        expect(document.getElementById('resultTestingDownloadBtn').disabled).toBe(true);
+        p.processTabEntry('S1-Start9');
+        expect(document.getElementById('resultTestingDownloadBtn').disabled).toBe(false);
+    });
+
+    test('J11: verification report text includes the session block when a session was loaded', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start9');
+        const text = p.buildVerificationReportText();
+        expect(text).toMatch(/Loaded tab\s*:\s*S1-Start9/);
+        expect(text).toMatch(/Session\s*:\s*S1-Start9/);
+        expect(text).toMatch(/Total Win \$/);
+        expect(text).toMatch(/Total Loss\$/);
+        expect(text).toMatch(/Total P&L/);
+    });
+
+    test('J12: unknown session id yields ok=false with a specific error code', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        const out = p.processTabEntry('S1-Start999');
+        expect(out.ok).toBe(false);
+        expect(out.error).toBe('session-not-found');
+        expect(document.getElementById('resultTestingMessage').textContent)
+            .toMatch(/Session.*S1-Start999.*not found/);
+    });
+
+    test('J13: invalid session id (wrong strategy) is rejected cleanly', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        const out = p.processTabEntry('S7-Start9');
+        expect(out.ok).toBe(false);
+        // Falls through to tab-name parser which also rejects it.
+        expect(out.error).toBe('invalid-tab');
+        expect(document.getElementById('resultTestingMessage').textContent)
+            .toMatch(/session id.*S1-Start9/i);
+    });
+
+    test('J14: session replay does not break the existing generic tab flow', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start9');
+        // Then issue a generic tab-name request.
+        const out = p.processTabEntry('overview');
+        expect(out.ok).toBe(true);
+        expect(out.kind).toBe('tab');
+        expect(out.tabName).toBe('overview');
+        // Overview comparison fully overwrites the previous session
+        // card so the UI is consistent.
+        const html = document.getElementById('resultTestingComparison').innerHTML;
+        expect(html).toMatch(/Strategy 1/);
+        expect(html).toMatch(/Strategy 2/);
+        expect(html).toMatch(/Strategy 3/);
+    });
+
+    test('J15: Enter in the input box triggers session replay end-to-end', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        const input = document.getElementById('resultTestingTabInput');
+        input.value = 'S1-Start9';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        expect(p.lastTabLoaded).toBe('S1-Start9');
+        expect(window.spins.length).toBe(60 - 9);
+        const html = document.getElementById('resultTestingComparison').innerHTML;
+        expect(html).toMatch(/S1-Start9/);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  K. Strategy-match on session replay (Auto Test method → live AI mode)
+// ═══════════════════════════════════════════════════════════════════
+//
+// When the user submits an Auto Test run, result.method records which
+// Auto Test method was used. For session replay to produce a valid
+// comparison, the live AI prediction panel must switch to the
+// matching mode — T1-strategy in the user's screenshot case. These
+// tests lock in the mapping:
+//   result.method 'T1-strategy'    → AI mode 't1-strategy'
+//   result.method 'test-strategy'  → AI mode 'auto'
+//   result.method 'auto-test'      → AI mode 'auto'
+//   anything else / missing        → AI mode 'manual'
+//
+describe('K. Session replay mirrors Auto Test method as the live AI mode', () => {
+    let setCalls;
+    beforeEach(() => {
+        setCalls = [];
+        window.aiAutoModeUI = { setMode: (m) => setCalls.push(m) };
+    });
+
+    test('K1: mapAutoTestMethodToAiMode mapping is exhaustive', () => {
+        const p = new ResultTestingPanel();
+        expect(p._mapAutoTestMethodToAiMode('T1-strategy')).toBe('t1-strategy');
+        expect(p._mapAutoTestMethodToAiMode('test-strategy')).toBe('auto');
+        expect(p._mapAutoTestMethodToAiMode('auto-test')).toBe('auto');
+        expect(p._mapAutoTestMethodToAiMode('')).toBe('manual');
+        expect(p._mapAutoTestMethodToAiMode(undefined)).toBe('manual');
+        expect(p._mapAutoTestMethodToAiMode('bogus')).toBe('manual');
+    });
+
+    test('K2: screenshot case — method="T1-strategy" + session S1-Start9 → AI mode t1-strategy', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.ok).toBe(true);
+        expect(out.aiMode).toBe('t1-strategy');
+        expect(setCalls).toContain('t1-strategy');
+    });
+
+    test('K3: method="test-strategy" session replay → AI mode auto', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'test-strategy' }));
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.aiMode).toBe('auto');
+        expect(setCalls).toContain('auto');
+    });
+
+    test('K4: method="auto-test" (default) session replay → AI mode auto', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'auto-test' }));
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.aiMode).toBe('auto');
+        expect(setCalls).toContain('auto');
+    });
+
+    test('K5: no method on result → fallback to manual mode', () => {
+        const p = new ResultTestingPanel();
+        // Clear the method explicitly on the result.
+        const r = makeAutoTestResult();
+        delete r.method;
+        p.submit(r);
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.aiMode).toBe('manual');
+        expect(setCalls).toContain('manual');
+    });
+
+    test('K6: comparison card surfaces the Auto Test method AND the live AI mode being used', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        p.processTabEntry('S1-Start9');
+        const html = document.getElementById('resultTestingComparison').innerHTML;
+        // Tells the user which method produced the session and which
+        // live mode is now replaying it — so the comparison is visibly
+        // apples-to-apples.
+        expect(html).toMatch(/data-field="session-ai-mode"/);
+        expect(html).toMatch(/T1-strategy/);
+        expect(html).toMatch(/T1-STRATEGY/);
+    });
+
+    test('K7: status message reports the AI mode used for replay', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        p.processTabEntry('S1-Start9');
+        expect(document.getElementById('resultTestingMessage').textContent)
+            .toMatch(/T1-STRATEGY mode/);
+    });
+
+    test('K8: does not throw / still replays when window.aiAutoModeUI is absent', () => {
+        delete window.aiAutoModeUI;
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        expect(() => p.processTabEntry('S1-Start9')).not.toThrow();
+        expect(window.spins.length).toBe(60 - 9);
     });
 });
