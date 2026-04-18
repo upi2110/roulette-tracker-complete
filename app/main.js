@@ -72,12 +72,20 @@ function createWindow() {
         }
     });
 
-    // IPC handler: save Excel report
-    ipcMain.handle('save-xlsx', async (event, buffer) => {
+    // IPC handler: save Excel report.
+    // Accepts an optional filename (2nd arg) so callers other than the
+    // Auto Test report (e.g. the Money Management session report with a
+    // "session-result-..." filename) can override the default path. When
+    // no filename is supplied the legacy auto-test-report-<ts>.xlsx
+    // default is preserved, so existing callers remain byte-identical.
+    ipcMain.handle('save-xlsx', async (event, buffer, filename) => {
         try {
+            const defaultPath = (typeof filename === 'string' && filename.trim())
+                ? filename
+                : `auto-test-report-${Date.now()}.xlsx`;
             const result = await dialog.showSaveDialog(mainWindow, {
                 title: 'Save Excel Report',
-                defaultPath: `auto-test-report-${Date.now()}.xlsx`,
+                defaultPath,
                 filters: [{ name: 'Excel', extensions: ['xlsx'] }]
             });
             if (result.canceled) return false;

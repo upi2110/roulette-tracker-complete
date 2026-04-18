@@ -91,6 +91,22 @@ class MoneyManagementPanel {
                         margin-top: 8px;
                         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                     ">🟣 Strategy 3: Cautious</button>
+                <!-- Session report download (independent of bet logic) -->
+                <button id="downloadSessionReportBtn"
+                        title="Download current session as session-result-YYYY-MM-DD-HHmmss.xlsx"
+                        style="
+                            width: 100%;
+                            padding: 8px;
+                            font-size: 12px;
+                            font-weight: 600;
+                            border: 1px solid #3b82f6;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            background: #3b82f6;
+                            color: white;
+                            margin-top: 8px;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        ">📊 Download Session Report</button>
             </div>
 
             <div class="panel-content" id="moneyPanelContent" style="display: block;">
@@ -246,12 +262,66 @@ class MoneyManagementPanel {
             bettingBtn.hasListener = true;
             bettingBtn.addEventListener('click', () => this.toggleBetting());
         }
-        
+
         const strategyBtn = document.getElementById('toggleStrategyBtn');
         if (strategyBtn && !strategyBtn.hasListener) {
             strategyBtn.hasListener = true;
             strategyBtn.addEventListener('click', () => this.toggleStrategy());
         }
+
+        // Download Session Report — writes a workbook with the same
+        // field set as the Auto Test Overview (Total Win $ / Total
+        // Loss $ / Total P&L). Filename: session-result-YYYY-MM-DD-HHmmss.xlsx.
+        // No effect on betting, bankroll, or strategy state.
+        const dlBtn = document.getElementById('downloadSessionReportBtn');
+        if (dlBtn && !dlBtn.hasListener) {
+            dlBtn.hasListener = true;
+            dlBtn.addEventListener('click', () => this.downloadSessionReport());
+        }
+    }
+
+    /**
+     * Generate and save the Money Management session report. Reads a
+     * snapshot of this.sessionData + this.betHistory, hands it to the
+     * MoneyReport class (see app/money-report.js), and triggers the
+     * same save pipeline used by the Auto Test report (IPC in Electron,
+     * Blob fallback in plain browsers). Returns the save result so
+     * tests can assert success without intercepting network calls.
+     */
+    async downloadSessionReport() {
+        try {
+            const ExcelJSModule = this._getExcelJS();
+            if (!ExcelJSModule) return false;
+            const ReportClass = this._getMoneyReportClass();
+            if (!ReportClass) return false;
+            const rep = new ReportClass(ExcelJSModule);
+            // Shallow-copy snapshots so the report generation can never
+            // accidentally mutate live session state.
+            const sd = Object.assign({}, this.sessionData || {});
+            const bh = Array.isArray(this.betHistory) ? this.betHistory.slice() : [];
+            const wb = rep.generate(sd, bh);
+            const filename = ReportClass.buildFilename(new Date());
+            return await rep.saveToFile(wb, filename);
+        } catch (e) {
+            console.warn('Session report download failed:', e && e.message);
+            return false;
+        }
+    }
+
+    /** Resolve the ExcelJS module in browser, Node test, or global scope. */
+    _getExcelJS() {
+        if (typeof ExcelJS !== 'undefined') return ExcelJS;
+        if (typeof window !== 'undefined' && window.ExcelJS) return window.ExcelJS;
+        if (typeof globalThis !== 'undefined' && globalThis.ExcelJS) return globalThis.ExcelJS;
+        return null;
+    }
+
+    /** Resolve the MoneyReport class similarly. */
+    _getMoneyReportClass() {
+        if (typeof MoneyReport !== 'undefined') return MoneyReport;
+        if (typeof window !== 'undefined' && window.MoneyReport) return window.MoneyReport;
+        if (typeof globalThis !== 'undefined' && globalThis.MoneyReport) return globalThis.MoneyReport;
+        return null;
     }
 
     togglePanel() {

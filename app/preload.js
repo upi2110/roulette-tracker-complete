@@ -45,11 +45,19 @@ contextBridge.exposeInMainWorld('aiAPI', {
     },
 
     /**
-     * Save Excel report buffer to file
+     * Save Excel report buffer to file.
+     *
+     * @param {Array<number>} buffer - Uint8Array converted via Array.from(...)
+     * @param {string} [filename]    - Optional default filename for the save
+     *                                 dialog. Falls back to the legacy
+     *                                 auto-test-report-<timestamp>.xlsx when
+     *                                 omitted, so pre-existing callers
+     *                                 (AutoTestReport.saveToFile) continue
+     *                                 to work unchanged.
      */
-    async saveXlsx(buffer) {
+    async saveXlsx(buffer, filename) {
         try {
-            return await ipcRenderer.invoke('save-xlsx', buffer);
+            return await ipcRenderer.invoke('save-xlsx', buffer, filename);
         } catch (e) {
             console.warn('Save xlsx failed:', e.message);
             return false;
