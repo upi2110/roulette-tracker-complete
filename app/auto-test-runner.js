@@ -12,7 +12,28 @@
  *   engine._selectBestFilter(numbers)
  *   engine._computeConfidence(pairScore, filterScore, numbers)
  *   engine.recordResult(), engine.recordSkip(), engine.resetSession()
+ *
+ * Method dispatch:
+ *   'auto-test' / 'test-strategy' → _simulateDecision() (unchanged).
+ *   'T1-strategy'                 → decideT1Strategy() from t1-strategy.js.
  */
+
+// Resolve the T1 strategy helper in both Node (tests) and browser
+// (Electron) contexts. If it's unavailable for any reason, the runner
+// silently falls back to _simulateDecision — the method label still
+// round-trips on result.method, which keeps 'auto-test'/'test-strategy'
+// safe from accidental regression.
+let _decideT1Strategy = null;
+try {
+    // Node path — test harnesses load this file via require().
+    if (typeof module !== 'undefined' && module.exports && typeof require === 'function') {
+        // eslint-disable-next-line global-require
+        _decideT1Strategy = require('./t1-strategy').decideT1Strategy;
+    }
+} catch (_) { /* browser path handled below */ }
+if (!_decideT1Strategy && typeof window !== 'undefined' && typeof window.decideT1Strategy === 'function') {
+    _decideT1Strategy = window.decideT1Strategy;
+}
 
 // Pair refKey → display name mapping (same as ai-auto-engine.js)
 const TEST_REFKEY_TO_PAIR_NAME = {
@@ -83,15 +104,16 @@ class AutoTestRunner {
         const batchSize = options.batchSize || 20;
         const testFile = options.testFile || 'manual';
         // Auto Test method selected in the UI header dropdown. Passed
-        // through to the returned result so downstream consumers (e.g.
-        // the export report or a future T1-strategy branch) can read it.
-        // Current behaviour does NOT branch on this value — it is
-        // pass-through plumbing until a later backlog item activates it.
+        // through to the returned result and stored on the runner so
+        // _simulateDecision can branch on it. 'auto-test' and
+        // 'test-strategy' share the default pipeline; 'T1-strategy'
+        // dispatches to decideT1Strategy in t1-strategy.js.
         // Default 'auto-test' matches AUTO_TEST_DEFAULT_METHOD in
         // app/auto-test-ui.js (the original Auto Test mode).
         const method = typeof options.method === 'string' && options.method
             ? options.method
             : 'auto-test';
+        this._currentMethod = method;
 
         if (!testSpins || testSpins.length < 5) {
             return {
@@ -386,6 +408,14 @@ class AutoTestRunner {
      *             numbers: number[], confidence: number, reason: string }}
      */
     _simulateDecision(testSpins, idx, blacklistedPairs) {
+        // Method dispatch: 'T1-strategy' uses its own decision policy
+        // (see app/t1-strategy.js). 'auto-test' and 'test-strategy'
+        // share this default pipeline — their behaviour is byte-
+        // identical to before the T1-strategy feature was added.
+        if (this._currentMethod === 'T1-strategy' && typeof _decideT1Strategy === 'function') {
+            return _decideT1Strategy(this.engine, testSpins, idx);
+        }
+
         const skipResult = (reason) => {
             this.engine._currentDecisionSpins = null; // Clean up on skip
             return {

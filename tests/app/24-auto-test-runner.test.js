@@ -927,6 +927,54 @@ describe('AutoTestRunner', () => {
             expect(result.strategies).toHaveProperty('2');
             expect(result.strategies).toHaveProperty('3');
         });
+
+        // ─── Method dispatch: T1-strategy routes to t1-strategy.js ──
+        //
+        // The runner stores options.method on this._currentMethod before
+        // the session loop begins, then _simulateDecision branches to
+        // decideT1Strategy when the method is 'T1-strategy'. The default
+        // pipeline (auto-test / test-strategy) remains untouched.
+        //
+        test('runAll stores options.method on the runner (this._currentMethod)', async () => {
+            const testSpins = generateTestSpins(8);
+            await runner.runAll(testSpins, { method: 'T1-strategy' });
+            expect(runner._currentMethod).toBe('T1-strategy');
+            await runner.runAll(testSpins, { method: 'test-strategy' });
+            expect(runner._currentMethod).toBe('test-strategy');
+            await runner.runAll(testSpins, { method: 'auto-test' });
+            expect(runner._currentMethod).toBe('auto-test');
+        });
+
+        test('_simulateDecision branches on _currentMethod (T1-strategy reason text differs)', () => {
+            // Drive _simulateDecision directly so the dispatch is easy
+            // to inspect. With _currentMethod='T1-strategy', the
+            // decision comes from decideT1Strategy and its reason
+            // strings are prefixed "T1:" or "T1-strategy".
+            const testSpins = generateTestSpins(8);
+            runner._currentMethod = 'T1-strategy';
+            const dT1 = runner._simulateDecision(testSpins, 4);
+            expect(typeof dT1.reason).toBe('string');
+            // Either a T1-specific SKIP reason or a T1-strategy BET reason.
+            expect(dT1.reason).toMatch(/^T1[:\- ]|^T1-strategy/);
+
+            // Switch back to auto-test and the same input should NOT
+            // produce a T1-prefixed reason.
+            runner._currentMethod = 'auto-test';
+            const dAT = runner._simulateDecision(testSpins, 4);
+            expect(dAT.reason).not.toMatch(/^T1[:\- ]|^T1-strategy/);
+        });
+
+        test('test-strategy path is byte-identical to auto-test path (no accidental divergence)', () => {
+            // Both labels flow through the default pipeline. Given the
+            // same engine state and the same test spins, their decisions
+            // must match property-by-property.
+            const testSpins = generateTestSpins(8);
+            runner._currentMethod = 'test-strategy';
+            const dTS = runner._simulateDecision(testSpins, 4);
+            runner._currentMethod = 'auto-test';
+            const dAT = runner._simulateDecision(testSpins, 4);
+            expect(dAT).toEqual(dTS);
+        });
     });
 
     // ═══════════════════════════════════════════════════════════
