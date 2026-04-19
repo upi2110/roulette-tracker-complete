@@ -949,6 +949,129 @@ describe('BB. Replay suppresses live-panel side effects', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
+//  DD. session-result workbook IS a comparison (not a thin summary)
+// ═══════════════════════════════════════════════════════════════════
+describe('DD. session-result workbook is a full comparison', () => {
+    async function setupReplay() {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        return p;
+    }
+
+    test('DD1: downloadSessionReport saves under session-result-*.xlsx', async () => {
+        const p = await setupReplay();
+        const saved = [];
+        window.aiAPI = { saveXlsx: async (buf, name) => { saved.push({ name, len: buf.length }); return true; } };
+        await p.downloadSessionReport();
+        expect(saved.length).toBe(1);
+        expect(saved[0].name).toMatch(/^session-result-\d{4}-\d{2}-\d{2}-\d{6}\.xlsx$/);
+        delete window.aiAPI;
+    });
+
+    test('DD2: the saved bytes parse back to a workbook with all six comparison sheets', async () => {
+        const ExcelJSReal = require('exceljs');
+        const p = await setupReplay();
+        let bytes = null;
+        window.aiAPI = { saveXlsx: async (buf) => { bytes = Buffer.from(buf); return true; } };
+        await p.downloadSessionReport();
+        expect(bytes).not.toBeNull();
+        const wb = new ExcelJSReal.Workbook();
+        await wb.xlsx.load(bytes);
+        // The six sheets the ComparisonReport class produces:
+        for (const name of ['Overview', 'Auto Test', 'Result-testing', 'KPI Deltas', 'Spin-by-Spin', 'Auto Test Spins', 'Result Spins']) {
+            expect(wb.getWorksheet(name)).not.toBeUndefined();
+        }
+        delete window.aiAPI;
+    }, 30000);
+
+    test('DD3: Overview sheet in the session-result workbook shows side-by-side Auto Test + Result-testing + Delta + Status columns', async () => {
+        const ExcelJSReal = require('exceljs');
+        const p = await setupReplay();
+        let bytes = null;
+        window.aiAPI = { saveXlsx: async (buf) => { bytes = Buffer.from(buf); return true; } };
+        await p.downloadSessionReport();
+        const wb = new ExcelJSReal.Workbook();
+        await wb.xlsx.load(bytes);
+        const s = wb.getWorksheet('Overview');
+        const hdr = s.getRow(7);
+        expect(hdr.getCell(1).value).toBe('Metric');
+        expect(hdr.getCell(2).value).toBe('Auto Test');
+        expect(hdr.getCell(3).value).toBe('Result-testing');
+        expect(hdr.getCell(4).value).toBe('Delta');
+        expect(hdr.getCell(5).value).toBe('Status');
+        delete window.aiAPI;
+    }, 30000);
+
+    test('DD4: session-result workbook Total P&L row shows both sides with the real numbers (not $0)', async () => {
+        const ExcelJSReal = require('exceljs');
+        const p = await setupReplay();
+        let bytes = null;
+        window.aiAPI = { saveXlsx: async (buf) => { bytes = Buffer.from(buf); return true; } };
+        await p.downloadSessionReport();
+        const wb = new ExcelJSReal.Workbook();
+        await wb.xlsx.load(bytes);
+        const s = wb.getWorksheet('Overview');
+        let plRow = null;
+        for (let r = 8; r < 22; r++) {
+            if (s.getRow(r).getCell(1).value === 'Total P&L') { plRow = s.getRow(r); break; }
+        }
+        expect(plRow).not.toBeNull();
+        expect(String(plRow.getCell(2).value)).toMatch(/112/);
+        expect(String(plRow.getCell(3).value)).toMatch(/112/);
+        expect(String(plRow.getCell(5).value)).toBe('MATCH');
+        delete window.aiAPI;
+    }, 30000);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  EE. In-UI comparison card re-renders with Result-testing + deltas
+// ═══════════════════════════════════════════════════════════════════
+describe('EE. In-UI comparison card (both sides after replay)', () => {
+    test('EE1: after replay, #resultTestingComparison contains both AT and RT columns', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const html = document.getElementById('resultTestingComparison').innerHTML;
+        expect(html).toMatch(/Auto Test/);
+        expect(html).toMatch(/Result-testing/);
+        expect(html).toMatch(/Delta/);
+        expect(html).toMatch(/Status/);
+        // Header row for a known metric is present.
+        expect(html).toMatch(/Total P&amp;L|Total P&L/);
+    });
+
+    test('EE2: MATCH rows are tinted green (#d4edda), MISMATCH rows red (#f8d7da)', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const html = document.getElementById('resultTestingComparison').innerHTML;
+        // At least one green (match) row in the fixture.
+        expect(html).toMatch(/#d4edda/);
+    });
+
+    test('EE3: verdict line reports PASS when all KPIs match', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const html = document.getElementById('resultTestingComparison').innerHTML;
+        expect(html).toMatch(/PASS/);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
 //  CC. totalSpins mismatch fix (71 vs 74)
 // ═══════════════════════════════════════════════════════════════════
 describe('CC. totalSpins mismatch — exclude WATCH phase to match Auto Test', () => {

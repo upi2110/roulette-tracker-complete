@@ -512,15 +512,31 @@ class ResultTestingPanel {
                 ? this._scheduleRecordedReplay(session, { sessionRef, aiMode })
                 : this._scheduleLiveReplay(windowSpins);
             this._lastReplayPromise = replayP.then((r) => {
-                // Enable the comparison workbook button + the
-                // relocated "Download Session Report" button (in the
-                // AI Prediction header) now that _replayStats is
-                // populated with the replay snapshot.
                 if (typeof document !== 'undefined') {
+                    // Enable the comparison workbook button + the
+                    // relocated "Download Session Report" button (in
+                    // the AI Prediction header) now that _replayStats
+                    // is populated with the replay snapshot.
                     const wbBtn = document.getElementById('resultTestingWorkbookBtn');
                     if (wbBtn) wbBtn.disabled = false;
                     const srBtn = document.getElementById('aiHeaderSessionReportBtn');
                     if (srBtn) srBtn.disabled = false;
+                    // Re-render the in-UI comparison card so the
+                    // user sees the Result-testing KPI block + deltas
+                    // next to the Auto Test block. Previously the
+                    // card only showed the Auto Test side; after
+                    // replay the deltas row reveals any MISMATCH
+                    // without the user having to open the workbook.
+                    try {
+                        const cmpEl = document.getElementById('resultTestingComparison');
+                        if (cmpEl) {
+                            const data = this.buildComparisonData(sessionRef);
+                            if (data) {
+                                cmpEl.innerHTML = this._buildFullComparisonHtml(data);
+                                cmpEl.style.display = 'block';
+                            }
+                        }
+                    } catch (_) { /* best-effort */ }
                 }
                 return r;
             });
@@ -1225,6 +1241,84 @@ class ResultTestingPanel {
     }
 
     /**
+     * Build a FULL side-by-side comparison HTML card rendered after a
+     * replay finishes. Shows the Auto Test KPI column, the Result-
+     * testing KPI column, and a Delta / Status column per row.
+     * Mismatched rows are tinted red, matched rows green — the same
+     * colour scheme the exported comparison workbook uses.
+     */
+    _buildFullComparisonHtml(data) {
+        if (!data || !data.autoTest || !data.resultTesting) return '';
+        const at = data.autoTest;
+        const rt = data.resultTesting;
+        const deltas = data.deltas || {};
+        const meta = data.meta || {};
+        const strategyNames = { 1: 'Aggressive', 2: 'Conservative', 3: 'Cautious' };
+        const fmt = (v, kind) => {
+            if (v === undefined || v === null) return '--';
+            if (typeof v !== 'number') return String(v);
+            if (kind === 'pct')   return `${(v * 100).toFixed(1)}%`;
+            if (kind === 'money') return `$${v.toLocaleString()}`;
+            return String(v);
+        };
+        const fields = [
+            ['totalSpins',    'Total Spins',    'int'],
+            ['totalBets',     'Total Bets',     'int'],
+            ['wins',          'Wins',           'int'],
+            ['losses',        'Losses',         'int'],
+            ['winRate',       'Win Rate',       'pct'],
+            ['totalWon',      'Total Win $',    'money'],
+            ['totalLost',     'Total Loss $',   'money'],
+            ['totalPL',       'Total P&L',      'money'],
+            ['maxDrawdown',   'Max Drawdown',   'money'],
+            ['finalProfit',   'Final Profit',   'money'],
+            ['finalBankroll', 'Final Bankroll', 'money']
+        ];
+        let anyMismatch = false;
+        const rows = fields.map(([k, label, kind]) => {
+            const av = at[k], rv = rt[k], dv = deltas[k];
+            let status = 'N/A', rowColor = '#f1f5f9';
+            if (typeof av === 'number' && typeof rv === 'number') {
+                if (Math.abs(av - rv) < 0.005) { status = 'MATCH'; rowColor = '#d4edda'; }
+                else { status = 'MISMATCH'; rowColor = '#f8d7da'; anyMismatch = true; }
+            }
+            return `<tr style="background:${rowColor};">
+                <td style="padding:2px 6px;font-weight:600;">${this._escape(label)}</td>
+                <td style="padding:2px 6px;text-align:right;">${this._escape(fmt(av, kind))}</td>
+                <td style="padding:2px 6px;text-align:right;">${this._escape(fmt(rv, kind))}</td>
+                <td style="padding:2px 6px;text-align:right;">${dv === undefined ? '--' : this._escape(fmt(dv, kind))}</td>
+                <td style="padding:2px 6px;text-align:center;font-weight:700;color:${status === 'MATCH' ? '#155724' : status === 'MISMATCH' ? '#721c24' : '#64748b'};">${status}</td>
+            </tr>`;
+        }).join('');
+        const verdict = rt.ran
+            ? (anyMismatch
+                ? '<span style="color:#721c24;font-weight:700;">MISMATCH — see deltas</span>'
+                : '<span style="color:#155724;font-weight:700;">PASS — all KPIs match</span>')
+            : '<span style="color:#64748b;font-weight:700;">PENDING — no replay stats</span>';
+        return `
+            <div style="font-weight:700;color:#3730a3;margin-bottom:4px;">
+                Comparison — session=<code>${this._escape(meta.sessionLabel || '?')}</code>
+                <span style="margin-left:8px;font-weight:400;color:#6b7280;">
+                    Strategy ${at.strategy || '?'} (${this._escape(strategyNames[at.strategy] || '?')})
+                    • Auto Test method=<code>${this._escape(String(meta.method || 'auto-test'))}</code>
+                    • Replay mode=<strong>${this._escape(String(meta.aiMode || 'manual').toUpperCase())}</strong>
+                </span>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                <thead><tr style="background:#c7d2fe;">
+                    <th style="padding:2px 6px;text-align:left;">Metric</th>
+                    <th style="padding:2px 6px;">Auto Test</th>
+                    <th style="padding:2px 6px;">Result-testing</th>
+                    <th style="padding:2px 6px;">Delta</th>
+                    <th style="padding:2px 6px;">Status</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <div style="margin-top:4px;font-size:11px;">Result: ${verdict}</div>
+        `;
+    }
+
+    /**
      * Build a minimal comparison view: a small table of the submitted
      * Auto Test summary stats for the chosen tab. The live side of the
      * comparison is left for the user to read from the main tables.
@@ -1606,19 +1700,35 @@ class ResultTestingPanel {
      */
     async downloadSessionReport() {
         if (typeof window === 'undefined') return false;
-        if (!this._replayStats || !this._replayStats.sessionData) return false;
+        const data = this.buildComparisonData();
+        if (!data) return false;
         const ExcelJS = window.ExcelJS || (typeof require === 'function' ? (() => { try { return require('exceljs'); } catch (_) { return null; } })() : null);
         if (!ExcelJS) return false;
-        const MoneyReportCtor = (typeof window !== 'undefined' && window.MoneyReport)
-            ? window.MoneyReport
+        // The user's spec is that the session-result workbook is a
+        // TRUE COMPARISON (both sides, KPI deltas, both spin
+        // histories, color-coded MATCH/MISMATCH) — not a thin
+        // MoneyReport summary. We reuse ComparisonReport (the same
+        // class the comparison-*.xlsx download produces) so the
+        // session-result-*.xlsx is a fully populated comparison
+        // workbook. MoneyReport + money-management-panel.js stay
+        // untouched; this is a pure wiring change inside
+        // Result-testing.
+        const Ctor = (typeof window.ComparisonReport === 'function') ? window.ComparisonReport
+            : ((typeof require === 'function') ? (() => { try { return require('./comparison-report').ComparisonReport; } catch (_) { return null; } })() : null);
+        if (!Ctor) return false;
+        // Filename stays under the legacy "session-result-..." prefix
+        // so downstream tooling / user muscle memory continues to
+        // work. The MoneyReport buildFilename helper still owns
+        // that filename format — we borrow it so the date stamp
+        // format is identical across all three downloads.
+        const NameCtor = (typeof window.MoneyReport === 'function') ? window.MoneyReport
             : ((typeof require === 'function') ? (() => { try { return require('./money-report').MoneyReport; } catch (_) { return null; } })() : null);
-        if (!MoneyReportCtor) return false;
+        const filename = (NameCtor && typeof NameCtor.buildFilename === 'function')
+            ? NameCtor.buildFilename(new Date())
+            : `session-result-${Date.now()}.xlsx`;
         try {
-            const sd = Object.assign({}, this._replayStats.sessionData);
-            const bh = Array.isArray(this._replayStats.betHistory) ? this._replayStats.betHistory.slice() : [];
-            const rep = new MoneyReportCtor(ExcelJS);
-            const wb = rep.generate(sd, bh);
-            const filename = MoneyReportCtor.buildFilename(new Date());
+            const rep = new Ctor(ExcelJS);
+            const wb = rep.generate(data);
             return await rep.saveToFile(wb, filename);
         } catch (_) {
             return false;
