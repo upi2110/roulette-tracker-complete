@@ -39,26 +39,44 @@ function makeAutoTestResult(overrides = {}) {
     // Realistic session objects matching AutoTestRunner._buildSessionResult
     // — startIdx, strategy, outcome, finalProfit, totalSpins, totalBets,
     //   wins, losses, winRate, maxDrawdown, peakProfit, steps.
-    const mkSession = (startIdx, strategy, outcome, finalProfit, extras = {}) => Object.assign({
-        startIdx, strategy, outcome,
-        finalBankroll: 4000 + finalProfit,
-        finalProfit,
-        totalSpins: 20,
-        totalBets: 15,
-        totalSkips: 5,
-        wins: outcome === 'WIN' ? 8 : 3,
-        losses: outcome === 'WIN' ? 7 : 12,
-        winRate: outcome === 'WIN' ? 0.53 : 0.2,
-        maxDrawdown: outcome === 'BUST' ? 400 : 120,
-        peakProfit: Math.max(0, finalProfit),
-        steps: [
-            { action: 'BET', pnl: 60 },
-            { action: 'BET', pnl: -25 },
-            { action: 'BET', pnl: 80 },
-            { action: 'BET', pnl: -40 },
-            { action: 'SKIP', pnl: 0 }
-        ]
-    }, extras);
+    //
+    // The steps array is the authoritative replay length (one entry
+    // per spin observation, same contract as the real runner). For
+    // the fixture we use 20 steps so tests can assert the session-
+    // bounded replay is exactly 20 spins — NOT the 51-spin file tail
+    // that the pre-fix slice would have produced.
+    const mkSession = (startIdx, strategy, outcome, finalProfit, extras = {}) => {
+        const steps = [];
+        // 3 WATCH spins (matches the runner's Phase 1 live loop).
+        for (let i = 0; i < 3; i++) steps.push({ action: 'WATCH', pnl: 0 });
+        // Mix of BET / SKIP entries totalling 17 → session length 20.
+        const liveActions = [
+            { action: 'BET', pnl: 60 }, { action: 'BET', pnl: -25 },
+            { action: 'BET', pnl: 80 }, { action: 'BET', pnl: -40 },
+            { action: 'SKIP', pnl: 0 }, { action: 'BET', pnl: 30 },
+            { action: 'BET', pnl: -20 }, { action: 'BET', pnl: 50 },
+            { action: 'SKIP', pnl: 0 }, { action: 'BET', pnl: -15 },
+            { action: 'BET', pnl: 40 }, { action: 'BET', pnl: -35 },
+            { action: 'BET', pnl: 25 }, { action: 'SKIP', pnl: 0 },
+            { action: 'BET', pnl: -50 }, { action: 'BET', pnl: 90 },
+            { action: 'BET', pnl: -60 }
+        ];
+        for (const a of liveActions) steps.push(a);
+        return Object.assign({
+            startIdx, strategy, outcome,
+            finalBankroll: 4000 + finalProfit,
+            finalProfit,
+            totalSpins: 20,
+            totalBets: 15,
+            totalSkips: 5,
+            wins: outcome === 'WIN' ? 8 : 3,
+            losses: outcome === 'WIN' ? 7 : 12,
+            winRate: outcome === 'WIN' ? 0.53 : 0.2,
+            maxDrawdown: outcome === 'BUST' ? 400 : 120,
+            peakProfit: Math.max(0, finalProfit),
+            steps
+        }, extras);
+    };
     return Object.assign({
         testFile: 'test-session.txt',
         totalTestSpins: 60,
@@ -618,7 +636,7 @@ describe('J. resolveSessionRef + session replay', () => {
         expect(out.ref).toEqual({ strategy: 1, startIdx: 9 });
         expect(out.sessionLabel).toBe('S1-Start9');
         // testSpins is length 60, startIdx 9 → window length 51.
-        expect(window.spins.length).toBe(60 - 9);
+        expect(window.spins.length).toBe(20);
         // The first spin in the window matches testSpins[9].
         const res = makeAutoTestResult();
         expect(window.spins[0].actual).toBe(res.testSpins[9]);
@@ -658,18 +676,21 @@ describe('J. resolveSessionRef + session replay', () => {
         expect(html).toMatch(/Total P&amp;L/); // HTML-escaped
     });
 
-    test('J9: dollar totals are computed from steps[].pnl (140 / 65 / 75 for the fixture)', () => {
+    test('J9: dollar totals are computed from steps[].pnl (375 / 245 / 130 for the fixture)', () => {
         const p = new ResultTestingPanel();
         p.submit(makeAutoTestResult());
         p.processTabEntry('S1-Start9');
-        // Steps: +60, -25, +80, -40, 0. Won=140, Lost=65, PL=75.
+        // Fixture steps (20 entries, 3 WATCH pnl=0 + 17 live actions).
+        // Positives: 60+80+30+50+40+25+90 = 375.
+        // Negatives: 25+40+20+15+35+50+60 = 245.
+        // Net P&L: 375 − 245 = 130.
         const html = document.getElementById('resultTestingComparison').innerHTML;
         const won  = html.match(/data-field="session-totalWon"[^>]*>\$(\d[\d,]*)/);
         const lost = html.match(/data-field="session-totalLost"[^>]*>\$(\d[\d,]*)/);
         const pl   = html.match(/data-field="session-totalPL"[^>]*>\$(-?\d[\d,]*)/);
-        expect(won[1]).toBe('140');
-        expect(lost[1]).toBe('65');
-        expect(pl[1]).toBe('75');
+        expect(won[1]).toBe('375');
+        expect(lost[1]).toBe('245');
+        expect(pl[1]).toBe('130');
     });
 
     test('J10: download button is enabled after a valid session replay', () => {
@@ -737,7 +758,7 @@ describe('J. resolveSessionRef + session replay', () => {
         input.value = 'S1-Start9';
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
         expect(p.lastTabLoaded).toBe('S1-Start9');
-        expect(window.spins.length).toBe(60 - 9);
+        expect(window.spins.length).toBe(20);
         const html = document.getElementById('resultTestingComparison').innerHTML;
         expect(html).toMatch(/S1-Start9/);
     });
@@ -836,7 +857,7 @@ describe('K. Session replay mirrors Auto Test method as the live AI mode', () =>
         const p = new ResultTestingPanel();
         p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
         expect(() => p.processTabEntry('S1-Start9')).not.toThrow();
-        expect(window.spins.length).toBe(60 - 9);
+        expect(window.spins.length).toBe(20);
     });
 });
 
@@ -971,7 +992,7 @@ describe('L. Mode dropdown (user override for replay)', () => {
         expect(out.ok).toBe(true);
         expect(out.kind).toBe('session');
         expect(out.aiMode).toBe('auto');
-        expect(window.spins.length).toBe(60 - 9);
+        expect(window.spins.length).toBe(20);
     });
 
     test('L12: comparison card reflects the user-overridden mode', () => {
@@ -1192,13 +1213,13 @@ describe('M. Live replay (spin-by-spin, with money management)', () => {
         expect(out.ok).toBe(true);
         expect(out.kind).toBe('session');
         // Sync state is observable BEFORE the deferred replay runs.
-        expect(window.spins.length).toBe(60 - 9);
+        expect(window.spins.length).toBe(20);
         // The replay promise exists and completes.
         expect(p._lastReplayPromise).not.toBeNull();
         await p.waitForReplay();
         // After the replay, window.spins has been re-stepped through
         // the full session window.
-        expect(window.moneyPanel._calls.length).toBe(60 - 9);
+        expect(window.moneyPanel._calls.length).toBe(20);
     });
 
     test('M8: waitForReplay resolves immediately when no replay is in flight', async () => {
@@ -1427,7 +1448,7 @@ describe('N. Real MoneyManagementPanel end-to-end replay', () => {
         const out = p.processTabEntry('S1-Start9');
         expect(out.ok).toBe(true);
         // Sync state observable.
-        expect(window.spins.length).toBe(60 - 9);
+        expect(window.spins.length).toBe(20);
         // Await the deferred replay.
         await p.waitForReplay();
         // Real money panel shows bets recorded during replay.
@@ -1438,3 +1459,142 @@ describe('N. Real MoneyManagementPanel end-to-end replay', () => {
         expect(document.getElementById('resultTestingDownloadBtn').disabled).toBe(false);
     });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+//  P. Session-boundary clamp (replay stops at real session length)
+// ═══════════════════════════════════════════════════════════════════
+//
+// Regression fix: the replay used to slice testSpins.slice(startIdx)
+// — i.e., the full remainder of the raw file. For a 500-spin file
+// and a ~30-spin session that produced hundreds of extra skips
+// after the real session end. These tests lock in the new rule:
+// the replay window equals the session's own length (steps.length,
+// falling back to totalSpins, finally to the file tail).
+//
+describe('P. Replay window bounded by session length', () => {
+    test('P1: _resolveSessionLength prefers session.steps.length', () => {
+        const p = new ResultTestingPanel();
+        expect(p._resolveSessionLength({ steps: new Array(27).fill({ action: 'BET', pnl: 0 }) })).toBe(27);
+    });
+
+    test('P2: _resolveSessionLength falls back to totalSpins when steps missing/empty', () => {
+        const p = new ResultTestingPanel();
+        expect(p._resolveSessionLength({ totalSpins: 18 })).toBe(18);
+        expect(p._resolveSessionLength({ steps: [], totalSpins: 12 })).toBe(12);
+    });
+
+    test('P3: _resolveSessionLength returns Infinity when neither is available', () => {
+        const p = new ResultTestingPanel();
+        expect(_Number_isFiniteSafe(p._resolveSessionLength({}))).toBe(false);
+        expect(_Number_isFiniteSafe(p._resolveSessionLength(null))).toBe(false);
+    });
+
+    test('P4: processTabEntry session window length matches the session.steps length (NOT file tail)', () => {
+        const p = new ResultTestingPanel();
+        // Make the testSpins file MUCH longer than the session to
+        // prove the clamp: 500 spins total, session starts at 9 and
+        // has exactly 20 steps. Pre-fix this would have produced
+        // a 491-spin window.
+        const res = makeAutoTestResult({
+            totalTestSpins: 500,
+            testSpins: Array.from({ length: 500 }, (_, i) => i % 37)
+        });
+        p.submit(res);
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.ok).toBe(true);
+        // The session's steps array (from mkSession) is 20 entries.
+        // The replay window MUST be 20 spins, not 491.
+        expect(out.spinCount).toBe(20);
+        expect(window.spins.length).toBe(20);
+    });
+
+    test('P5: a long session with a short tail is clamped to the file length', () => {
+        // Session claims 40 steps but file only has 15 spins after
+        // startIdx. Window must clamp to 15 (end of file) rather
+        // than overrun.
+        const p = new ResultTestingPanel();
+        const res = makeAutoTestResult({
+            totalTestSpins: 20,
+            testSpins: Array.from({ length: 20 }, (_, i) => i % 37)
+        });
+        // Override the first strategy-1 session to start at 5
+        // with 40 steps (truncated by file length).
+        res.strategies[1].sessions[0] = {
+            startIdx: 5, strategy: 1, outcome: 'INCOMPLETE',
+            finalBankroll: 4000, finalProfit: 0,
+            totalSpins: 40, totalBets: 0, totalSkips: 40,
+            wins: 0, losses: 0, winRate: 0, maxDrawdown: 0, peakProfit: 0,
+            steps: new Array(40).fill({ action: 'SKIP', pnl: 0 })
+        };
+        p.submit(res);
+        const out = p.processTabEntry('S1-Start5');
+        expect(out.ok).toBe(true);
+        expect(out.spinCount).toBe(15); // 20 − 5 clamp
+        expect(window.spins.length).toBe(15);
+    });
+
+    test('P6: falls back to session.totalSpins when steps is missing on the session object', () => {
+        const p = new ResultTestingPanel();
+        const res = makeAutoTestResult({
+            totalTestSpins: 200,
+            testSpins: Array.from({ length: 200 }, (_, i) => i % 37)
+        });
+        // Remove steps on the session; keep totalSpins=17.
+        const s = res.strategies[1].sessions.find(x => x.startIdx === 9);
+        s.steps = [];
+        s.totalSpins = 17;
+        p.submit(res);
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.spinCount).toBe(17);
+        expect(window.spins.length).toBe(17);
+    });
+
+    test('P7: money panel is ticked only for the session window — NO over-run skips', async () => {
+        // This is the direct user-reported bug: replay was causing
+        // Skips: 597/5 because the money panel was ticked 500+ times
+        // past the real session end. Post-fix: exactly 20 ticks.
+        const money = {
+            lastSpinCount: 0,
+            sessionData: { totalBets: 0, totalWins: 0, totalLosses: 0,
+                           isSessionActive: false, isBettingEnabled: false },
+            betHistory: [],
+            pendingBet: null,
+            checkFailed: false,
+            calls: 0,
+            async checkForNewSpin() { this.calls++; },
+            setPrediction() {}
+        };
+        window.moneyPanel = money;
+        window.autoUpdateOrchestrator = {
+            autoMode: true, lastSpinCount: 0,
+            async handleAutoMode() {}
+        };
+        if (!document.getElementById('aiPanelContent')) {
+            const c = document.createElement('div');
+            c.id = 'aiPanelContent';
+            document.body.appendChild(c);
+        }
+        const p = new ResultTestingPanel();
+        // File has 500 spins, session has 20 steps.
+        p.submit(makeAutoTestResult({
+            totalTestSpins: 500,
+            testSpins: Array.from({ length: 500 }, (_, i) => i % 37)
+        }));
+        p.processTabEntry('S1-Start9');
+        await p.waitForReplay();
+        expect(money.calls).toBe(20); // not 491!
+    });
+
+    test('P8: existing 60-spin fixture still resolves a 20-spin replay (regression guard)', () => {
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.ok).toBe(true);
+        expect(out.spinCount).toBe(20);
+        expect(window.spins.length).toBe(20);
+    });
+});
+
+function _Number_isFiniteSafe(v) {
+    return typeof v === 'number' && Number.isFinite(v);
+}

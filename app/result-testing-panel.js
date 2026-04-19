@@ -279,6 +279,35 @@ class ResultTestingPanel {
     }
 
     /**
+     * Compute the true replay-window length for a given Auto Test
+     * session. Preference order:
+     *   1) session.steps.length — the authoritative count of spin
+     *      observations from AutoTestRunner._runSession (each WATCH
+     *      + BET + SKIP + COOLDOWN + REANALYZE step corresponds to
+     *      exactly one spin, see _buildSessionResult in
+     *      app/auto-test-runner.js line 371). This is the number we
+     *      should replay.
+     *   2) session.totalSpins — summary-level count (excludes WATCH
+     *      and REANALYZE). Less accurate but still bounded. Used
+     *      when the session object lacks a steps array.
+     *   3) Infinity — last-resort fallback that lets the caller
+     *      clamp to the raw testSpins length. Only triggers when
+     *      neither of the above is available on the session object.
+     *
+     * Returns a positive integer (or Infinity for the last-resort).
+     */
+    _resolveSessionLength(session) {
+        if (!session || typeof session !== 'object') return Infinity;
+        if (Array.isArray(session.steps) && session.steps.length > 0) {
+            return session.steps.length;
+        }
+        if (typeof session.totalSpins === 'number' && session.totalSpins > 0) {
+            return session.totalSpins;
+        }
+        return Infinity;
+    }
+
+    /**
      * Handle the user pressing Enter (or clicking Run). Switches the
      * app into Manual mode and loads the spin history that produced
      * the submitted Auto Test result so the user can replay it.
@@ -328,13 +357,20 @@ class ResultTestingPanel {
                 if (msg) msg.textContent = `⚠ Session ${this._formatSessionLabel(sessionRef)} not found in submitted result.`;
                 return { ok: false, error: 'session-not-found', ref: sessionRef };
             }
-            // Take the spin window for this session: from startIdx to
-            // end-of-file (the runner stops on WIN/BUST/INCOMPLETE, so
-            // the available-spins window is the remainder of testSpins
-            // starting at startIdx). totalSpins on the session tells us
-            // how many the runner actually consumed; we load the whole
-            // window so the user can replay it manually.
-            const windowSpins = spins.slice(sessionRef.startIdx);
+            // Take the spin window for this session using the actual
+            // session boundary recorded on the AutoTestRunner session
+            // object — NOT the rest of the raw file. Using the file
+            // tail caused the replay to continue hundreds of spins
+            // past the real session end, racking up skip after skip
+            // (the user's screenshot showed Skips: 597/5 for a
+            // ~30-spin session). The authoritative boundary is
+            // session.steps.length (every WATCH / BET / SKIP /
+            // COOLDOWN / REANALYZE step is one spin observation from
+            // the runner's live loop). We clamp to the file length
+            // in case the session was INCOMPLETE at EOF.
+            const sessionLen = this._resolveSessionLength(session);
+            const endIdx = Math.min(sessionRef.startIdx + sessionLen, spins.length);
+            const windowSpins = spins.slice(sessionRef.startIdx, endIdx);
             if (windowSpins.length === 0) {
                 if (msg) msg.textContent = `⚠ Session ${this._formatSessionLabel(sessionRef)} has no spin window in history.`;
                 return { ok: false, error: 'empty-session-window', ref: sessionRef };
