@@ -55,6 +55,13 @@ class ResultTestingPanel {
         // and-forget — the sync state (window.spins, comparison card)
         // is observable before the async replay runs.
         this._lastReplayPromise = null;
+        // Snapshot of the money-panel state captured immediately after a
+        // recorded-session replay finishes. Shape:
+        //   { sessionData: {...}, betHistory: [...], sessionRef, aiMode }
+        // Consumed by buildComparisonData() so the comparison workbook
+        // and verification report can diff Auto Test vs replay without
+        // re-reading the live panel. Null until a replay has run.
+        this._replayStats = null;
         this.createUI();
         this.setupEventListeners();
     }
@@ -108,10 +115,15 @@ class ResultTestingPanel {
                     </div>
                     <div id="resultTestingMessage" style="font-size:11px;color:#3730a3;min-height:14px;"></div>
                     <div id="resultTestingComparison" style="display:none;margin-top:6px;padding:6px;background:#eef2ff;border-radius:4px;"></div>
-                    <div style="margin-top:6px;display:flex;gap:6px;">
+                    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
                         <button id="resultTestingDownloadBtn" type="button" disabled
                                 style="padding:4px 10px;font-size:11px;font-weight:600;border:1px solid #94a3b8;border-radius:3px;background:#f8fafc;color:#334155;cursor:pointer;">
                             ⬇ Download verification report
+                        </button>
+                        <button id="resultTestingWorkbookBtn" type="button" disabled
+                                title="Download side-by-side Auto Test vs Result-testing .xlsx comparison"
+                                style="padding:4px 10px;font-size:11px;font-weight:600;border:1px solid #94a3b8;border-radius:3px;background:#f8fafc;color:#334155;cursor:pointer;">
+                            ⬇ Download comparison workbook
                         </button>
                     </div>
                 </div>
@@ -162,6 +174,10 @@ class ResultTestingPanel {
         if (dlBtn) {
             dlBtn.addEventListener('click', () => this.downloadVerificationReport());
         }
+        const wbBtn = document.getElementById('resultTestingWorkbookBtn');
+        if (wbBtn) {
+            wbBtn.addEventListener('click', () => this.downloadComparisonWorkbook());
+        }
     }
 
     /**
@@ -187,6 +203,9 @@ class ResultTestingPanel {
         if (cmp) { cmp.style.display = 'none'; cmp.innerHTML = ''; }
         if (msg) msg.textContent = '';
         if (dlBtn) dlBtn.disabled = true;
+        this._replayStats = null;
+        const wbBtn = document.getElementById('resultTestingWorkbookBtn');
+        if (wbBtn) wbBtn.disabled = true;
 
         if (info) {
             const file = autoTestResult.testFile || 'manual';
@@ -419,9 +438,26 @@ class ResultTestingPanel {
             // Fallback: replaySessionLive(windowSpins) — used only
             // when the session has no recorded steps (should not
             // normally happen for real Auto Test sessions).
-            this._lastReplayPromise = (Array.isArray(session.steps) && session.steps.length > 0)
+            // Remember the ref/mode so the promise-chain below can
+            // attach the snapshot after the replay actually finishes.
+            this._pendingReplayCtx = { sessionRef, session, aiMode };
+            const replayP = (Array.isArray(session.steps) && session.steps.length > 0)
                 ? this._scheduleRecordedReplay(session)
                 : this._scheduleLiveReplay(windowSpins);
+            // After the replay settles, capture the money-panel
+            // snapshot so downloadComparisonWorkbook() / the verification
+            // text can diff Auto Test vs Result-testing without a
+            // second live pass.
+            this._lastReplayPromise = replayP.then((r) => {
+                try { this._captureReplayStats(sessionRef, session, aiMode); } catch (_) {}
+                // Enable the comparison workbook button now that we
+                // have both sides.
+                if (typeof document !== 'undefined') {
+                    const wbBtn = document.getElementById('resultTestingWorkbookBtn');
+                    if (wbBtn) wbBtn.disabled = false;
+                }
+                return r;
+            });
 
             return {
                 ok: true,
@@ -1015,6 +1051,61 @@ class ResultTestingPanel {
             }
         }
 
+        // ── Side-by-side comparison block. When a session replay has
+        //    produced stats (this._replayStats is populated), include a
+        //    full Auto Test vs Result-testing KPI diff. When no replay
+        //    has run yet, the Result-testing column is still rendered
+        //    but marked "(no replay stats captured yet)" so the user
+        //    can see which side is missing.
+        if (ref) {
+            const comparison = this.buildComparisonData(ref);
+            if (comparison) {
+                const at = comparison.autoTest;
+                const rt = comparison.resultTesting;
+                const deltas = comparison.deltas;
+                lines.push('── Comparison: Auto Test vs Result-testing ──');
+                lines.push(`Replay mode  : ${comparison.meta.aiMode || 'manual'}${rt.ran ? '' : '  (no replay stats captured yet)'}`);
+                lines.push('');
+                const pad = (s, n) => String(s).padEnd(n, ' ');
+                const fmt = (k, v) => {
+                    if (v === undefined || v === null) return '--';
+                    if (typeof v !== 'number') return String(v);
+                    if (k === 'winRate') return `${(v * 100).toFixed(1)}%`;
+                    if (['totalWon', 'totalLost', 'totalPL', 'maxDrawdown', 'finalProfit', 'finalBankroll'].includes(k)) return `$${v.toLocaleString()}`;
+                    return String(v);
+                };
+                const fields = [
+                    ['totalSpins',   'Total Spins'],
+                    ['totalBets',    'Total Bets'],
+                    ['wins',         'Wins'],
+                    ['losses',       'Losses'],
+                    ['winRate',      'Win Rate'],
+                    ['totalWon',     'Total Win $'],
+                    ['totalLost',    'Total Loss $'],
+                    ['totalPL',      'Total P&L'],
+                    ['maxDrawdown',  'Max Drawdown'],
+                    ['finalProfit',  'Final Profit'],
+                    ['finalBankroll','Final Bankroll']
+                ];
+                lines.push(`${pad('Metric', 16)}  ${pad('Auto Test', 14)}  ${pad('Result-test', 14)}  ${pad('Delta', 12)}  Status`);
+                let anyMismatch = false;
+                for (const [k, label] of fields) {
+                    const av = at[k];
+                    const rv = rt[k];
+                    const dv = deltas[k];
+                    let status = 'N/A';
+                    if (typeof av === 'number' && typeof rv === 'number') {
+                        status = Math.abs(av - rv) < 0.005 ? 'MATCH' : 'MISMATCH';
+                        if (status === 'MISMATCH') anyMismatch = true;
+                    }
+                    lines.push(`${pad(label, 16)}  ${pad(fmt(k, av), 14)}  ${pad(fmt(k, rv), 14)}  ${pad(dv === undefined ? '--' : fmt(k, dv), 12)}  ${status}`);
+                }
+                lines.push('');
+                lines.push(`Result       : ${rt.ran ? (anyMismatch ? 'MISMATCH (see deltas above)' : 'PASS (all KPIs match)') : 'PENDING (no replay captured)'}`);
+                lines.push('');
+            }
+        }
+
         if (res.strategies) {
             for (const k of [1, 2, 3]) {
                 const s = res.strategies[k] && res.strategies[k].summary;
@@ -1054,6 +1145,191 @@ class ResultTestingPanel {
         }
     }
 
+    /**
+     * Snapshot the current money-panel state into `_replayStats` right
+     * after a recorded-session replay finishes. Kept in a dedicated
+     * method so tests can invoke it directly without scheduling a
+     * real replay.
+     */
+    _captureReplayStats(sessionRef, session, aiMode) {
+        if (typeof window === 'undefined') return null;
+        const money = window.moneyPanel;
+        if (!money || !money.sessionData) return null;
+        // Shallow-copy so later live play doesn't mutate the snapshot.
+        const sd = Object.assign({}, money.sessionData);
+        const bh = Array.isArray(money.betHistory) ? money.betHistory.slice() : [];
+        this._replayStats = {
+            sessionRef,
+            session,
+            aiMode,
+            sessionData: sd,
+            betHistory: bh,
+            capturedAt: new Date().toISOString()
+        };
+        return this._replayStats;
+    }
+
+    /**
+     * Produce the Auto Test KPI block for a session — the canonical
+     * truth against which the replay is compared. All dollar totals
+     * derive from session.steps[].pnl; headline fields come from the
+     * runner's session summary. Never mutates `session`.
+     */
+    _buildAutoTestSide(sessionRef, session) {
+        if (!session) return {};
+        const totals = this._computeSessionTotals(session);
+        const spinHistory = Array.isArray(session.steps) ? session.steps.map((s, i) => ({
+            step: i + 1,
+            action: s.action,
+            spinNumber: s.spinNumber,
+            nextNumber: s.nextNumber,
+            selectedPair: s.selectedPair,
+            selectedFilter: s.selectedFilter,
+            betPerNumber: s.betPerNumber,
+            hit: s.hit,
+            pnl: s.pnl,
+            bankroll: s.bankroll
+        })) : [];
+        return {
+            sessionLabel: this._formatSessionLabel(sessionRef),
+            strategy: sessionRef ? sessionRef.strategy : null,
+            startIdx: sessionRef ? sessionRef.startIdx : null,
+            outcome: session.outcome || null,
+            totalSpins: session.totalSpins || 0,
+            totalBets: session.totalBets || 0,
+            wins: session.wins || 0,
+            losses: session.losses || 0,
+            winRate: typeof session.winRate === 'number' ? session.winRate : 0,
+            maxDrawdown: session.maxDrawdown || 0,
+            finalProfit: session.finalProfit || 0,
+            finalBankroll: session.finalBankroll || 0,
+            totalWon: totals.totalWon,
+            totalLost: totals.totalLost,
+            totalPL: totals.totalPL,
+            spinHistory
+        };
+    }
+
+    /**
+     * Produce the Result-testing KPI block from the captured replay
+     * stats. When no replay has run yet, returns an empty-ish object
+     * (all counters set to 0 with a placeholder label) so the
+     * downstream workbook/text still renders.
+     */
+    _buildResultTestingSide(sessionRef, aiMode) {
+        const stats = this._replayStats;
+        if (!stats || !stats.sessionData) {
+            return {
+                sessionLabel: this._formatSessionLabel(sessionRef),
+                aiMode: aiMode || this.getSelectedMode(),
+                totalSpins: 0, totalBets: 0, wins: 0, losses: 0, winRate: 0,
+                maxDrawdown: 0, finalProfit: 0, finalBankroll: 0,
+                totalWon: 0, totalLost: 0, totalPL: 0,
+                betHistory: [],
+                ran: false
+            };
+        }
+        const sd = stats.sessionData;
+        const bh = stats.betHistory || [];
+        let totalWon = 0, totalLost = 0;
+        for (const b of bh) {
+            const nc = b && typeof b.netChange === 'number' ? b.netChange : 0;
+            if (nc > 0) totalWon += nc; else if (nc < 0) totalLost += -nc;
+        }
+        const decided = (sd.totalWins || 0) + (sd.totalLosses || 0);
+        const winRate = decided > 0 ? (sd.totalWins || 0) / decided : 0;
+        return {
+            sessionLabel: this._formatSessionLabel(sessionRef),
+            aiMode: stats.aiMode || aiMode || this.getSelectedMode(),
+            totalSpins: Array.isArray(window.spins) ? window.spins.length : (sd.totalBets || 0),
+            totalBets: sd.totalBets || 0,
+            wins: sd.totalWins || 0,
+            losses: sd.totalLosses || 0,
+            winRate,
+            maxDrawdown: sd.maxDrawdown || 0,
+            finalProfit: typeof sd.sessionProfit === 'number' ? sd.sessionProfit : (totalWon - totalLost),
+            finalBankroll: typeof sd.currentBankroll === 'number' ? sd.currentBankroll : 0,
+            totalWon: Math.round(totalWon * 100) / 100,
+            totalLost: Math.round(totalLost * 100) / 100,
+            totalPL: Math.round((totalWon - totalLost) * 100) / 100,
+            betHistory: bh,
+            ran: true
+        };
+    }
+
+    /**
+     * Compute (Result-testing − Auto Test) for each KPI field so the
+     * user can see mismatches at a glance. Non-numeric or unknown
+     * fields are omitted from the delta bag.
+     */
+    _computeDeltas(autoTest, resultTesting) {
+        const out = {};
+        const keys = ['totalSpins', 'totalBets', 'wins', 'losses', 'winRate',
+            'totalWon', 'totalLost', 'totalPL', 'maxDrawdown', 'finalProfit', 'finalBankroll'];
+        for (const k of keys) {
+            const a = autoTest[k];
+            const r = resultTesting[k];
+            if (typeof a === 'number' && typeof r === 'number') {
+                out[k] = Math.round((r - a) * 100) / 100;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Assemble the full comparison object consumed by
+     * ComparisonReport.generate() and by buildVerificationReportText().
+     * Returns null when there is nothing to compare (no submission or
+     * no last-loaded session).
+     */
+    buildComparisonData(explicitRef) {
+        const ref = explicitRef || this._parseSessionLabel(this.lastTabLoaded);
+        if (!ref || !this.submitted) return null;
+        const session = this.findSession(ref);
+        if (!session) return null;
+        const aiMode = (this._replayStats && this._replayStats.aiMode) || this.getSelectedMode();
+        const autoTest = this._buildAutoTestSide(ref, session);
+        const resultTesting = this._buildResultTestingSide(ref, aiMode);
+        const deltas = this._computeDeltas(autoTest, resultTesting);
+        return {
+            meta: {
+                sessionLabel: this._formatSessionLabel(ref),
+                autoTestFile: this.submitted.testFile || 'manual',
+                method: this.submitted.method || 'auto-test',
+                aiMode,
+                generatedAt: new Date().toISOString()
+            },
+            autoTest,
+            resultTesting,
+            deltas
+        };
+    }
+
+    /**
+     * Download the side-by-side comparison .xlsx. Requires a
+     * ComparisonReport-capable ExcelJS module on window (loaded by
+     * index.html alongside the existing Auto Test / Money reports) and
+     * a prior successful session replay. Returns a boolean indicating
+     * whether the save pipeline was invoked.
+     */
+    async downloadComparisonWorkbook() {
+        if (typeof window === 'undefined') return false;
+        const data = this.buildComparisonData();
+        if (!data) return false;
+        const ExcelJS = window.ExcelJS || (typeof require === 'function' ? (() => { try { return require('exceljs'); } catch (_) { return null; } })() : null);
+        if (!ExcelJS) return false;
+        const Ctor = (typeof window.ComparisonReport === 'function') ? window.ComparisonReport
+            : ((typeof require === 'function') ? (() => { try { return require('./comparison-report').ComparisonReport; } catch (_) { return null; } })() : null);
+        if (!Ctor) return false;
+        try {
+            const rep = new Ctor(ExcelJS);
+            const wb = rep.generate(data);
+            return await rep.saveToFile(wb, Ctor.buildFilename());
+        } catch (_) {
+            return false;
+        }
+    }
+
     _escape(s) {
         return String(s).replace(/[&<>"']/g, c => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -1078,6 +1354,11 @@ ResultTestingPanel.cancelPendingReplays = function () {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { ResultTestingPanel, RESULT_TESTING_MODES, RESULT_TESTING_DEFAULT_MODE };
 }
+// Make sure ComparisonReport is available on window for the browser
+// path (index.html loads comparison-report.js before this file).
+// Nothing to do here — the comparison module self-installs onto
+// window when loaded. This comment exists so future readers know the
+// browser wiring is elsewhere.
 if (typeof window !== 'undefined') {
     document.addEventListener('DOMContentLoaded', () => {
         // Construct after other panels have had a chance to render.
