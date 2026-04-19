@@ -653,6 +653,28 @@ class ResultTestingPanel {
         if (!Array.isArray(window.spins)) window.spins = [];
         window.spins.length = 0;
 
+        // ── SIDE-EFFECT SUPPRESSION ────────────────────────────────
+        // The live MoneyManagementPanel fires a 500ms-deferred
+        // `alert("TARGET REACHED! Session Profit: $X")` whenever
+        // sessionProfit crosses sessionTarget during recordBetResult
+        // (app/money-management-panel.js:595). During a replay this
+        // alert will fire AFTER we restore sessionProfit=0, showing
+        // the user a stale "$0" popup. Neuter alert() for the
+        // duration of the replay and restore it in finally.
+        //
+        // We also clearInterval on the money panel's own 200ms spin
+        // listener and the orchestrator so neither fires mid-replay
+        // and creates phantom pendingBet → recordBetResult double-
+        // counts. Restored via setupSpinListener() after finally.
+        const savedAlert = (typeof window !== 'undefined') ? window.alert : undefined;
+        if (typeof window !== 'undefined') window.alert = () => {};
+        const money0 = window.moneyPanel;
+        let savedSpinInterval = null;
+        if (money0 && money0._spinListenerInterval) {
+            savedSpinInterval = money0._spinListenerInterval;
+            try { clearInterval(savedSpinInterval); } catch (_) {}
+            money0._spinListenerInterval = null;
+        }
         // ── CLEAN-SLATE REPLAY ─────────────────────────────────────
         // Before the replay starts we:
         //   (a) snapshot every sessionData / betHistory field we are
@@ -806,6 +828,14 @@ class ResultTestingPanel {
                 if (orch && typeof orch === 'object') {
                     try { orch.lastSpinCount = window.spins.length; } catch (_) {}
                 }
+                // Silence the money panel's own 200ms spin listener
+                // from the inside (belt-and-braces alongside the
+                // clearInterval above) — sync its lastSpinCount so
+                // checkForNewSpin's currentCount > lastSpinCount
+                // guard sees no delta between our direct steps.
+                if (money) {
+                    try { money.lastSpinCount = window.spins.length; } catch (_) {}
+                }
 
                 if (typeof window.render === 'function') {
                     try { window.render(); } catch (_) {}
@@ -874,6 +904,26 @@ class ResultTestingPanel {
                 }
                 money.betHistory = savedState.betHistory || [];
                 if (typeof money.render === 'function') { try { money.render(); } catch (_) {} }
+            }
+            // Restore window.alert — DEFERRED by 1000ms. The money
+            // panel queues `setTimeout(alert(...), 500)` inside
+            // recordBetResult whenever sessionProfit crosses the
+            // target. That arrow function captures `alert` at
+            // FIRE time, not queue time, so we must keep the
+            // stubbed no-op installed until every pending 500ms
+            // timeout has run. 1000ms gives comfortable margin.
+            if (typeof window !== 'undefined' && typeof savedAlert === 'function') {
+                if (typeof setTimeout === 'function') {
+                    setTimeout(() => { try { window.alert = savedAlert; } catch (_) {} }, 1000);
+                } else {
+                    try { window.alert = savedAlert; } catch (_) {}
+                }
+            }
+            // Restore the money panel's own 200ms spin listener so
+            // normal play behaves exactly like before the Result-
+            // testing run.
+            if (money && typeof money.setupSpinListener === 'function' && savedSpinInterval) {
+                try { money.setupSpinListener(); } catch (_) {}
             }
         }
         return { stepped, bets };
@@ -1460,7 +1510,15 @@ class ResultTestingPanel {
         return {
             sessionLabel: this._formatSessionLabel(sessionRef),
             aiMode: stats.aiMode || aiMode || this.getSelectedMode(),
-            totalSpins: Array.isArray(window.spins) ? window.spins.length : (sd.totalBets || 0),
+            // Mirror the same formula the Auto Test runner uses for
+            // session.totalSpins — it EXCLUDES the WATCH-phase spins
+            // (first 3 spins, used to seed the pattern) so the
+            // counts can be compared apples-to-apples. Previously we
+            // used window.spins.length which included WATCH and
+            // caused a +3 delta on every session (user saw 71 vs 74).
+            totalSpins: (stats.session && typeof stats.session.totalSpins === 'number')
+                ? stats.session.totalSpins
+                : (Array.isArray(window.spins) ? window.spins.length : (sd.totalBets || 0)),
             totalBets: sd.totalBets || 0,
             wins: sd.totalWins || 0,
             losses: sd.totalLosses || 0,

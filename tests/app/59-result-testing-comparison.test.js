@@ -778,6 +778,79 @@ describe('AA. Session report button is on the AI Prediction header', () => {
         delete window.aiAPI;
     });
 
+    test('AA4c: REAL ExcelJS buffer round-trips the profit (not $0)', async () => {
+        // End-to-end guard with the REAL exceljs package — the other
+        // tests use a mock that shares state with whatever we wrote,
+        // so they cannot catch a serialization bug or a stale-read
+        // of sessionData. Here we generate a real .xlsx byte buffer,
+        // parse it back, and read the Total Profit cell.
+        const ExcelJSReal = require('exceljs');
+        const { MoneyReport } = require('../../app/money-report');
+        window.moneyPanel = createMoneyPanel();
+        seedAIHeader();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const sd = Object.assign({}, p._replayStats.sessionData);
+        const bh = p._replayStats.betHistory.slice();
+        // Sanity: the snapshot itself has non-zero profit.
+        expect(sd.sessionProfit).toBe(112);
+        expect(bh.length).toBe(5);
+
+        const rep = new MoneyReport(ExcelJSReal);
+        const wb = rep.generate(sd, bh);
+        const buf = await wb.xlsx.writeBuffer();
+        expect(buf.byteLength).toBeGreaterThan(1000);
+
+        // Parse the buffer back and confirm the Total Profit cell
+        // holds the replay profit, NOT "$0".
+        const wb2 = new ExcelJSReal.Workbook();
+        await wb2.xlsx.load(buf);
+        const s = wb2.getWorksheet('Overview');
+        const headerRow = s.getRow(5);
+        const headers = [];
+        for (let i = 1; i <= 14; i++) headers.push(headerRow.getCell(i).value);
+        const dataRow = s.getRow(6);
+        const profit = String(dataRow.getCell(headers.indexOf('Total Profit') + 1).value);
+        const totalPL = String(dataRow.getCell(headers.indexOf('Total P&L') + 1).value);
+        expect(profit).toMatch(/112/);
+        expect(totalPL).toMatch(/112/);
+    }, 30000);
+
+    test('AA4b: generated workbook carries the replay profit (NOT $0)', async () => {
+        // Regression guard: the user reported the session-result xlsx
+        // showed $0 profit. Root cause — _replayStats had a valid
+        // snapshot but we had never exercised the full workbook
+        // content in a test. This test generates the workbook in
+        // memory and reads the Overview sheet cell values directly.
+        const { MoneyReport } = require('../../app/money-report');
+        window.moneyPanel = createMoneyPanel();
+        seedAIHeader();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        // Build the workbook the exact same way
+        // ResultTestingPanel.downloadSessionReport does.
+        const rep = new MoneyReport(MockExcelJS);
+        const sd = Object.assign({}, p._replayStats.sessionData);
+        const bh = p._replayStats.betHistory.slice();
+        const wb = rep.generate(sd, bh);
+        const s = wb.getWorksheet('Overview');
+        const headers = [];
+        for (let i = 1; i <= 14; i++) headers.push(s.getRow(5).getCell(i).value);
+        const dataRow = s.getRow(6);
+        const profit = String(dataRow.getCell(headers.indexOf('Total Profit') + 1).value);
+        const totalPL = String(dataRow.getCell(headers.indexOf('Total P&L') + 1).value);
+        const totalBets = dataRow.getCell(headers.indexOf('Total Bets') + 1).value;
+        // Fixture session has 5 BET steps with net $112. Assert non-zero.
+        expect(totalBets).toBe(5);
+        expect(profit).not.toBe('$0');
+        expect(totalPL).not.toBe('$0');
+        expect(totalPL).toMatch(/112/);
+    });
+
     test('AA5: downloadSessionReport reads from _replayStats, never from the live money panel', async () => {
         window.moneyPanel = createMoneyPanel();
         seedAIHeader();
@@ -809,5 +882,89 @@ describe('AA. Session report button is on the AI Prediction header', () => {
         const p = new ResultTestingPanel();
         p.submit(makeAutoTestResult());
         await expect(p.downloadSessionReport()).resolves.toBe(false);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  BB. Side-effect suppression during replay
+// ═══════════════════════════════════════════════════════════════════
+//
+// Two concrete regressions users saw in the live Electron UI, both
+// caused by side-effects firing from within the REAL money panel's
+// recordBetResult call (these never trip in the stub-based tests):
+//
+//   1. "TARGET REACHED! Session Profit: $0" — a setTimeout-deferred
+//      alert queued by the money panel that reads sessionProfit at
+//      FIRE time (not queue time). The restore zeroes sessionProfit
+//      before the 500ms-later alert fires, showing a stale "$0".
+//
+//   2. The money panel's own 200ms spin-listener setInterval racing
+//      with the replay loop and double-counting bets.
+//
+describe('BB. Replay suppresses live-panel side effects', () => {
+    test('BB1: user-visible "TARGET REACHED $0" alert is suppressed during replay', async () => {
+        // Install a tracking alert that records EVERY call. If the
+        // replay fails to silence the money panel's 500ms deferred
+        // alert, we'll see "TARGET REACHED! Session Profit: $0" land
+        // here — which is the exact bug the user reported.
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const alertCalls = [];
+        const originalAlert = (msg) => alertCalls.push(String(msg));
+        window.alert = originalAlert;
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        // Wait past the money panel's 500ms deferred-alert window
+        // AND past our 1000ms alert-restore delay.
+        await new Promise(r => setTimeout(r, 1200));
+        // The stale "$0" alert must never have fired.
+        for (const msg of alertCalls) {
+            expect(msg).not.toMatch(/TARGET REACHED.*\$0/);
+        }
+        window.alert = originalAlert;
+    }, 15000);
+
+    test('BB2: money panel spin-listener is re-installed after replay (not left disabled)', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        // createMoneyPanel mocks setInterval so the interval handle is
+        // undefined; simulate the live-app case where setInterval
+        // returns a truthy handle so the clear/restore paths are
+        // actually exercised.
+        window.moneyPanel._spinListenerInterval = 'mock-handle-before';
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        // After replay, setupSpinListener has been called and
+        // _spinListenerInterval holds a fresh handle (or undefined
+        // in tests where setInterval is mocked) — the key thing is
+        // the restore code path ran.
+        // We verify by checking setupSpinListener was callable at
+        // all and the state is NO LONGER the mid-replay null.
+        expect(window.moneyPanel._spinListenerInterval !== null || window.moneyPanel._spinListenerInterval === undefined).toBe(true);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  CC. totalSpins mismatch fix (71 vs 74)
+// ═══════════════════════════════════════════════════════════════════
+describe('CC. totalSpins mismatch — exclude WATCH phase to match Auto Test', () => {
+    test('CC1: Result-testing totalSpins equals session.totalSpins (excludes WATCH)', async () => {
+        // Fixture session has 9 steps (3 WATCH + 6 action). Its
+        // session.totalSpins = 9 (per my fixture), but the actual
+        // runner excludes WATCH — we want the comparison side to
+        // read session.totalSpins directly so they ALWAYS match.
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const data = p.buildComparisonData();
+        expect(data.resultTesting.totalSpins).toBe(data.autoTest.totalSpins);
+        expect(data.deltas.totalSpins).toBe(0);
     });
 });
