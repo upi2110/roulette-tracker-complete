@@ -437,3 +437,154 @@ describe('U. Download comparison workbook button', () => {
         expect(btn.disabled).toBe(true);
     });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+//  V. Clean-slate replay + strategy alignment
+// ═══════════════════════════════════════════════════════════════════
+describe('V. Clean-slate replay + strategy alignment', () => {
+    test('V1: replay aligns moneyPanel.bettingStrategy to the session strategy', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        // Live panel defaults to Strategy 3 (Cautious); the fixture
+        // session is Strategy 1. Without alignment the Money
+        // Management UI would still show "Cautious" even though the
+        // replay came from an Aggressive Auto Test run.
+        window.moneyPanel.sessionData.bettingStrategy = 3;
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        expect(window.moneyPanel.sessionData.bettingStrategy).toBe(1);
+    });
+
+    test('V2: replay resets totals so replay profit equals session.finalProfit (not prior+replay)', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        // Seed the panel with prior bets from a previous session. Before
+        // the clean-slate fix this was the root cause of the user's
+        // Auto Test $144 → Money Management $126 mismatch.
+        window.moneyPanel.sessionData.totalBets = 7;
+        window.moneyPanel.sessionData.totalWins = 3;
+        window.moneyPanel.sessionData.totalLosses = 4;
+        window.moneyPanel.sessionData.sessionProfit = -50;
+        window.moneyPanel.sessionData.currentBankroll = 3950;
+        window.moneyPanel.betHistory = [
+            { spin: 1, totalBet: 20, hit: false, netChange: -20, timestamp: 'prior' }
+        ];
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const sd = window.moneyPanel.sessionData;
+        // Fixture session.finalProfit = $112 ; totalBets = 5 (BET steps).
+        expect(sd.totalBets).toBe(5);
+        expect(sd.totalWins).toBe(3);
+        expect(sd.totalLosses).toBe(2);
+        expect(sd.sessionProfit).toBe(112);
+        // Final bankroll = startingBankroll($4000) + profit($112).
+        expect(sd.currentBankroll).toBe(4112);
+    });
+
+    test('V3: clean-slate replay zeroes consecutive counters before playing', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        window.moneyPanel.sessionData.consecutiveLosses = 4;
+        window.moneyPanel.sessionData.consecutiveWins = 0;
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        // After 5 replayed bets (BET-HIT, BET-LOSS, SKIP, BET-HIT, BET-LOSS, BET-HIT),
+        // consecutive counters reflect the replay only — prior 4-loss streak is
+        // gone. Last step hit=true → consecutiveWins should be 1.
+        expect(window.moneyPanel.sessionData.consecutiveWins).toBe(1);
+        expect(window.moneyPanel.sessionData.consecutiveLosses).toBe(0);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  W. Workbook color-coding + Spin-by-Spin sheet
+// ═══════════════════════════════════════════════════════════════════
+describe('W. Color coding + Spin-by-Spin sheet', () => {
+    async function getWb() {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const data = p.buildComparisonData();
+        return { data, wb: new ComparisonReport(MockExcelJS).generate(data), p };
+    }
+
+    test('W1: Spin-by-Spin sheet exists with the expected header set', async () => {
+        const { wb } = await getWb();
+        const s = wb.getWorksheet('Spin-by-Spin');
+        expect(s).not.toBeNull();
+        const hdr = s.getRow(1);
+        expect(hdr.getCell(1).value).toBe('#');
+        expect(hdr.getCell(2).value).toBe('AT Action');
+        expect(hdr.getCell(7).value).toBe('AT Bankroll');
+        expect(hdr.getCell(11).value).toBe('Status');
+    });
+
+    test('W2: Spin-by-Spin sheet has one row per session step', async () => {
+        const { wb, data } = await getWb();
+        const s = wb.getWorksheet('Spin-by-Spin');
+        const expected = data.autoTest.spinHistory.length;
+        // Last row with a non-null first cell must match the step count.
+        expect(s.getRow(expected + 1).getCell(1).value).toBe(expected);
+        // Row after that has no value set.
+        expect(s.getRow(expected + 2).getCell(1).value).toBeNull();
+    });
+
+    test('W3: BET rows in Spin-by-Spin are MATCH when replay pnl equals Auto Test pnl', async () => {
+        const { wb, data } = await getWb();
+        const s = wb.getWorksheet('Spin-by-Spin');
+        // Locate a BET row (skip the 3 WATCH rows that open the fixture).
+        let betRow = null;
+        for (let r = 2; r < 20; r++) {
+            const row = s.getRow(r);
+            if (row.getCell(2).value === 'BET') { betRow = row; break; }
+        }
+        expect(betRow).not.toBeNull();
+        expect(betRow.getCell(11).value).toBe('MATCH');
+    });
+
+    test('W4: MATCH rows on Overview are tinted green; MISMATCH rows tinted red', async () => {
+        const { p } = await getWb();
+        // Force a mismatch on finalProfit by corrupting the capture.
+        p._replayStats.sessionData.sessionProfit = 999;
+        const data = p.buildComparisonData();
+        const wb = new ComparisonReport(MockExcelJS).generate(data);
+        const s = wb.getWorksheet('Overview');
+        // Find the Final Profit row and confirm its fill is the red tone.
+        let mismatchRow = null;
+        for (let r = 8; r < 22; r++) {
+            if (s.getRow(r).getCell(1).value === 'Final Profit') { mismatchRow = s.getRow(r); break; }
+        }
+        expect(mismatchRow).not.toBeNull();
+        const fill = mismatchRow.getCell(5).fill;
+        expect(fill && fill.fgColor && fill.fgColor.argb).toBe('FFF8D7DA');
+
+        // Find a MATCH row (Total Bets) and confirm green tone.
+        let matchRow = null;
+        for (let r = 8; r < 22; r++) {
+            if (s.getRow(r).getCell(1).value === 'Total Bets') { matchRow = s.getRow(r); break; }
+        }
+        expect(matchRow).not.toBeNull();
+        const mFill = matchRow.getCell(5).fill;
+        expect(mFill && mFill.fgColor && mFill.fgColor.argb).toBe('FFD4EDDA');
+    });
+
+    test('W5: KPI Deltas sheet status cells carry the same green/red fills', async () => {
+        const { p } = await getWb();
+        p._replayStats.sessionData.sessionProfit = 999;
+        const data = p.buildComparisonData();
+        const wb = new ComparisonReport(MockExcelJS).generate(data);
+        const s = wb.getWorksheet('KPI Deltas');
+        let mm = null;
+        for (let r = 2; r < 20; r++) if (s.getRow(r).getCell(1).value === 'Final Profit') { mm = s.getRow(r); break; }
+        expect(mm.getCell(5).fill.fgColor.argb).toBe('FFF8D7DA');
+    });
+});

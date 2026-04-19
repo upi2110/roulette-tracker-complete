@@ -299,7 +299,30 @@ class MoneyManagementPanel {
             // accidentally mutate live session state.
             const sd = Object.assign({}, this.sessionData || {});
             const bh = Array.isArray(this.betHistory) ? this.betHistory.slice() : [];
-            const wb = rep.generate(sd, bh);
+            // Pull Auto Test context off the Result-testing panel
+            // when a session replay was the source of the current bet
+            // history — this makes the downloaded session-result
+            // workbook self-describing (session id, Auto Test method,
+            // start idx, outcome) so it can be diffed against the
+            // Auto Test report without guessing.
+            let ctx = {};
+            try {
+                const rtp = (typeof window !== 'undefined') ? window.resultTestingPanel : null;
+                if (rtp && rtp._replayStats && rtp._replayStats.session) {
+                    const s = rtp._replayStats.session;
+                    const r = rtp._replayStats.sessionRef;
+                    ctx = {
+                        sessionLabel: r ? `S${r.strategy}-Start${r.startIdx}` : null,
+                        startIdx: r ? r.startIdx : undefined,
+                        outcome: s.outcome,
+                        totalSpins: s.totalSpins,
+                        maxDrawdown: s.maxDrawdown,
+                        method: (rtp.submitted && rtp.submitted.method) || null,
+                        autoTestFile: (rtp.submitted && rtp.submitted.testFile) || null
+                    };
+                }
+            } catch (_) { /* best-effort */ }
+            const wb = rep.generate(sd, bh, ctx);
             const filename = ReportClass.buildFilename(new Date());
             return await rep.saveToFile(wb, filename);
         } catch (e) {

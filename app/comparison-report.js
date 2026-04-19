@@ -66,9 +66,25 @@ class ComparisonReport {
         this._createSideSheet(wb, 'Auto Test', at, meta);
         this._createSideSheet(wb, 'Result-testing', rt, meta);
         this._createDeltasSheet(wb, at, rt, deltas);
+        this._createSpinBySpinSheet(wb, at, rt);
         this._createAutoTestSpinsSheet(wb, at);
         this._createResultSpinsSheet(wb, rt);
         return wb;
+    }
+
+    // ── color helpers for MATCH/MISMATCH highlighting ────────────────
+    static _matchFill()    { return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } }; }
+    static _mismatchFill() { return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8D7DA' } }; }
+    static _naFill()       { return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9ECEF' } }; }
+    static _statusFill(status) {
+        if (status === 'MATCH')    return ComparisonReport._matchFill();
+        if (status === 'MISMATCH') return ComparisonReport._mismatchFill();
+        return ComparisonReport._naFill();
+    }
+    static _statusFontColor(status) {
+        if (status === 'MATCH')    return 'FF155724';
+        if (status === 'MISMATCH') return 'FF721C24';
+        return 'FF6C757D';
     }
 
     async saveToFile(workbook, filename) {
@@ -154,8 +170,12 @@ class ComparisonReport {
                 cell.value = v;
                 cell.alignment = { horizontal: c === 0 ? 'left' : 'center' };
                 cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+                // Color-code every cell in the row by the match status
+                // so MISMATCH rows visually pop in Excel without the
+                // user needing to scroll to the Status column.
+                cell.fill = ComparisonReport._statusFill(status);
                 if (c === 4) {
-                    cell.font = { bold: true, color: { argb: status === 'MATCH' ? 'FF059669' : status === 'MISMATCH' ? 'FFDC2626' : 'FF64748B' } };
+                    cell.font = { bold: true, color: { argb: ComparisonReport._statusFontColor(status) } };
                 }
             });
         });
@@ -216,9 +236,91 @@ class ComparisonReport {
             row.getCell(3).value = ComparisonReport._fmt(rtVal, f.kind);
             row.getCell(4).value = (dlt === undefined || dlt === null) ? '--' : ComparisonReport._fmt(dlt, f.kind);
             row.getCell(5).value = status;
-            for (let c = 1; c <= 5; c++) row.getCell(c).alignment = { horizontal: c === 1 ? 'left' : 'center' };
+            for (let c = 1; c <= 5; c++) {
+                const cell = row.getCell(c);
+                cell.alignment = { horizontal: c === 1 ? 'left' : 'center' };
+                cell.fill = ComparisonReport._statusFill(status);
+                if (c === 5) cell.font = { bold: true, color: { argb: ComparisonReport._statusFontColor(status) } };
+            }
         });
         sheet.columns = [{ width: 22 }, { width: 18 }, { width: 18 }, { width: 14 }, { width: 12 }];
+    }
+
+    /**
+     * Spin-by-spin side-by-side sheet. Each row maps one Auto Test
+     * step to its Result-testing counterpart (by step index) so the
+     * user can scan for action / hit / pnl / bankroll divergences
+     * directly. Mismatching rows are tinted red; matching rows green.
+     *
+     * The pairing assumes the replay preserves step ordering — which
+     * is true for replayRecordedSession: it iterates session.steps in
+     * order and calls recordBetResult once per BET step.
+     */
+    _createSpinBySpinSheet(wb, at, rt) {
+        const sheet = wb.addWorksheet('Spin-by-Spin');
+        const headers = [
+            '#', 'AT Action', 'AT Next#', 'AT Bet', 'AT Hit', 'AT P&L', 'AT Bankroll',
+            'RT Total Bet', 'RT Hit', 'RT Net', 'Status'
+        ];
+        const headerRow = sheet.getRow(1);
+        headers.forEach((h, i) => {
+            const cell = headerRow.getCell(i + 1);
+            cell.value = h;
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+            cell.alignment = { horizontal: 'center' };
+        });
+
+        const steps = Array.isArray(at.spinHistory) ? at.spinHistory : [];
+        const bets  = Array.isArray(rt.betHistory)  ? rt.betHistory  : [];
+        // Walk the AT step list, advancing an RT-bet cursor only on
+        // BET steps so ordering lines up.
+        let rtIdx = 0;
+        steps.forEach((s, i) => {
+            const row = sheet.getRow(i + 2);
+            const isBet = s && s.action === 'BET';
+            const rtBet = isBet ? bets[rtIdx] : null;
+            if (isBet) rtIdx++;
+
+            // Derive row status by checking hit / pnl alignment.
+            let status = 'MATCH';
+            if (isBet) {
+                if (!rtBet) status = 'MISMATCH';
+                else if (!!rtBet.hit !== !!s.hit) status = 'MISMATCH';
+                else if (typeof s.pnl === 'number' && typeof rtBet.netChange === 'number'
+                         && Math.abs(s.pnl - rtBet.netChange) > 0.005) status = 'MISMATCH';
+            } else {
+                status = 'N/A';
+            }
+
+            const values = [
+                i + 1,
+                s && s.action ? s.action : '--',
+                s && s.nextNumber != null ? s.nextNumber : '--',
+                s && s.betPerNumber != null ? `$${s.betPerNumber}` : '--',
+                isBet ? (s.hit ? 'YES' : 'NO') : '--',
+                (s && s.pnl != null && s.pnl !== 0) ? `$${s.pnl}` : '--',
+                s && s.bankroll != null ? `$${Number(s.bankroll).toLocaleString()}` : '--',
+                rtBet && rtBet.totalBet != null ? `$${rtBet.totalBet}` : '--',
+                rtBet ? (rtBet.hit ? 'YES' : 'NO') : '--',
+                rtBet && rtBet.netChange != null ? `$${rtBet.netChange}` : '--',
+                status
+            ];
+            values.forEach((v, c) => {
+                const cell = row.getCell(c + 1);
+                cell.value = v;
+                cell.alignment = { horizontal: 'center' };
+                cell.fill = ComparisonReport._statusFill(status);
+                if (c === values.length - 1) {
+                    cell.font = { bold: true, color: { argb: ComparisonReport._statusFontColor(status) } };
+                }
+            });
+        });
+        sheet.columns = [
+            { width: 6 }, { width: 12 }, { width: 10 }, { width: 10 },
+            { width: 8 }, { width: 10 }, { width: 14 },
+            { width: 14 }, { width: 8 }, { width: 12 }, { width: 12 }
+        ];
     }
 
     _createAutoTestSpinsSheet(wb, at) {

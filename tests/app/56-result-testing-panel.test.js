@@ -1780,9 +1780,12 @@ describe('Q. replayRecordedSession — session.steps is the source of truth', ()
         const rep = new MoneyReport(MockExcelJS);
         const wb = rep.generate(money.sessionData, money.betHistory);
         const overview = wb.getWorksheet('Overview');
-        const headerRow = overview.getRow(5);
-        const headers = []; for (let i = 1; i <= 14; i++) headers.push(headerRow.getCell(i).value);
-        const dataRow = overview.getRow(6);
+        // MoneyReport Overview was expanded to mirror Auto Test columns
+        // (Session / Start Idx / Outcome / ... / Max Drawdown). Header
+        // is now on row 6, data on row 7, with 18 columns.
+        const headerRow = overview.getRow(6);
+        const headers = []; for (let i = 1; i <= 18; i++) headers.push(headerRow.getCell(i).value);
+        const dataRow = overview.getRow(7);
         const totalWon = String(dataRow.getCell(headers.indexOf('Total Win $') + 1).value);
         const totalLost = String(dataRow.getCell(headers.indexOf('Total Loss $') + 1).value);
         const totalPL = String(dataRow.getCell(headers.indexOf('Total P&L') + 1).value);

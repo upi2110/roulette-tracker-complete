@@ -580,17 +580,64 @@ class ResultTestingPanel {
         if (!Array.isArray(window.spins)) window.spins = [];
         window.spins.length = 0;
 
-        // Force-enable money panel gates for the replay so the real
-        // recordBetResult flow is not silently blocked by a paused
-        // bet state. Save + restore so live play afterwards is
-        // unchanged.
-        let savedSessionActive, savedBettingEnabled;
+        // ── CLEAN-SLATE REPLAY ─────────────────────────────────────
+        // Before the replay starts we:
+        //   (a) snapshot every sessionData / betHistory field we are
+        //       about to overwrite, so live play after the replay
+        //       resumes at the user's pre-replay state;
+        //   (b) reset counters + bankroll so the replay's final
+        //       sessionProfit equals session.finalProfit instead of
+        //       "old totals + new totals" (this is what caused the
+        //       user's Auto Test $144 → Money Management $126 mismatch
+        //       — the prior live bets were still on the panel);
+        //   (c) align bettingStrategy to the session's strategy so the
+        //       UI label ("Strategy 3: Cautious" vs the Auto Test
+        //       strategy the session was recorded under) matches
+        //       end-to-end. The internal strategy-based bet-adjustment
+        //       does NOT change pnl on already-recorded bets — the
+        //       replay feeds recorded betPerNumber directly — but it
+        //       keeps the visible state honest.
         const money = window.moneyPanel;
+        const savedState = {};
         if (money && money.sessionData && typeof money.sessionData === 'object') {
-            savedSessionActive = money.sessionData.isSessionActive;
-            savedBettingEnabled = money.sessionData.isBettingEnabled;
-            money.sessionData.isSessionActive = true;
-            money.sessionData.isBettingEnabled = true;
+            const sd = money.sessionData;
+            for (const k of [
+                'isSessionActive', 'isBettingEnabled', 'bettingStrategy',
+                'currentBankroll', 'startingBankroll', 'sessionProfit',
+                'totalBets', 'totalWins', 'totalLosses',
+                'consecutiveLosses', 'consecutiveWins',
+                'currentBetPerNumber', 'spinsWithBets'
+            ]) {
+                savedState[k] = sd[k];
+            }
+            savedState.betHistory = Array.isArray(money.betHistory) ? money.betHistory.slice() : [];
+
+            // Force-enable gates.
+            sd.isSessionActive = true;
+            sd.isBettingEnabled = true;
+
+            // Apply session's strategy so the UI reflects what Auto Test ran.
+            if (session.strategy === 1 || session.strategy === 2 || session.strategy === 3) {
+                sd.bettingStrategy = session.strategy;
+            }
+
+            // Clean-slate the running totals so the replay's finals
+            // equal the Auto Test session's finals (not
+            // prior-live + replay additions).
+            const startBank = (typeof session.startingBankroll === 'number' && session.startingBankroll > 0)
+                ? session.startingBankroll
+                : (typeof sd.startingBankroll === 'number' && sd.startingBankroll > 0 ? sd.startingBankroll : 4000);
+            sd.startingBankroll = startBank;
+            sd.currentBankroll = startBank;
+            sd.sessionProfit = 0;
+            sd.totalBets = 0;
+            sd.totalWins = 0;
+            sd.totalLosses = 0;
+            sd.consecutiveLosses = 0;
+            sd.consecutiveWins = 0;
+            sd.currentBetPerNumber = 2;
+            sd.spinsWithBets = [];
+            money.betHistory = [];
         }
 
         // Quiet the orchestrator's polling loop during the replay.
@@ -654,9 +701,18 @@ class ResultTestingPanel {
                 }));
             }
         } finally {
+            // Note: we intentionally do NOT restore totals/bankroll/
+            // betHistory after the replay — the user explicitly asked
+            // for "the money management panel reflects the Auto Test
+            // session". We DO restore the binary gates
+            // (isSessionActive / isBettingEnabled) so a subsequent
+            // live session doesn't start in an unexpected state.
+            // The saved values for totals are kept on `savedState` but
+            // only the gate flags are written back. If the user wants
+            // a full revert they can click New Session.
             if (money && money.sessionData && typeof money.sessionData === 'object') {
-                if (typeof savedSessionActive !== 'undefined') money.sessionData.isSessionActive = savedSessionActive;
-                if (typeof savedBettingEnabled !== 'undefined') money.sessionData.isBettingEnabled = savedBettingEnabled;
+                if (typeof savedState.isSessionActive !== 'undefined') money.sessionData.isSessionActive = savedState.isSessionActive;
+                if (typeof savedState.isBettingEnabled !== 'undefined') money.sessionData.isBettingEnabled = savedState.isBettingEnabled;
                 if (typeof money.render === 'function') { try { money.render(); } catch (_) {} }
             }
         }

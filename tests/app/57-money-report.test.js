@@ -160,9 +160,15 @@ describe('C. Overview sheet contents', () => {
         expect(overview.name).toBe('Overview');
     });
 
-    test('C2: header row (row 5) includes Total Win $, Total Loss $, Total P&L', () => {
+    // The MoneyReport Overview was widened to mirror the Auto Test
+    // report columns (Session / Start Idx / Outcome / Total Spins /
+    // Max Drawdown added). Header is on row 6, data on row 7, with
+    // 18 total columns. Merge range is now A1:R1.
+    const N_COLS = 18;
+
+    test('C2: header row includes Total Win $, Total Loss $, Total P&L', () => {
         const headers = [];
-        for (let i = 1; i <= 14; i++) headers.push(overview.getRow(5).getCell(i).value);
+        for (let i = 1; i <= N_COLS; i++) headers.push(overview.getRow(6).getCell(i).value);
         expect(headers).toContain('Total Win $');
         expect(headers).toContain('Total Loss $');
         expect(headers).toContain('Total P&L');
@@ -170,51 +176,51 @@ describe('C. Overview sheet contents', () => {
 
     test('C3: Auto-Test-style header names are all present', () => {
         const headers = [];
-        for (let i = 1; i <= 14; i++) headers.push(overview.getRow(5).getCell(i).value);
+        for (let i = 1; i <= N_COLS; i++) headers.push(overview.getRow(6).getCell(i).value);
         for (const h of ['Session', 'Starting Bankroll', 'Current Bankroll', 'Total Bets',
                          'Wins', 'Losses', 'Win Rate', 'Total Profit', 'Avg Profit',
-                         'Strategy', 'Consecutive Losses']) {
+                         'Strategy', 'Consecutive Losses',
+                         'Start Idx', 'Outcome', 'Total Spins', 'Max Drawdown']) {
             expect(headers).toContain(h);
         }
     });
 
-    test('C4: data row (row 6) carries the computed dollar totals', () => {
-        const headerRow = overview.getRow(5);
-        const dataRow = overview.getRow(6);
+    test('C4: data row carries the computed dollar totals', () => {
+        const headerRow = overview.getRow(6);
+        const dataRow = overview.getRow(7);
         const idx = {};
-        for (let i = 1; i <= 14; i++) idx[headerRow.getCell(i).value] = i;
+        for (let i = 1; i <= N_COLS; i++) idx[headerRow.getCell(i).value] = i;
         expect(String(dataRow.getCell(idx['Total Win $']).value)).toBe('$250');
         expect(String(dataRow.getCell(idx['Total Loss $']).value)).toBe('$90');
         expect(String(dataRow.getCell(idx['Total P&L']).value)).toBe('$160');
     });
 
     test('C5: data row shows Wins / Losses / Win Rate from session data', () => {
-        const headerRow = overview.getRow(5);
-        const dataRow = overview.getRow(6);
+        const headerRow = overview.getRow(6);
+        const dataRow = overview.getRow(7);
         const idx = {};
-        for (let i = 1; i <= 14; i++) idx[headerRow.getCell(i).value] = i;
+        for (let i = 1; i <= N_COLS; i++) idx[headerRow.getCell(i).value] = i;
         expect(dataRow.getCell(idx['Wins']).value).toBe(5);
         expect(dataRow.getCell(idx['Losses']).value).toBe(3);
         expect(String(dataRow.getCell(idx['Win Rate']).value)).toMatch(/62\.5%/);
     });
 
-    test('C6: title is merged across 14 columns (A1:N1), matching Auto Test', () => {
-        expect(overview.mergedCells).toContain('A1:N1');
+    test('C6: title is merged across all columns (A1:R1), matching Auto Test', () => {
+        expect(overview.mergedCells).toContain('A1:R1');
     });
 
-    test('C7: sheet has 14 column widths set', () => {
-        expect(overview.columns.length).toBe(14);
+    test('C7: sheet has 18 column widths set', () => {
+        expect(overview.columns.length).toBe(N_COLS);
     });
 
     test('C8: strategy label reflects bettingStrategy id', () => {
         const wb3 = new MoneyReport(MockExcelJS).generate(makeSessionData({ bettingStrategy: 3 }), []);
         const wb1 = new MoneyReport(MockExcelJS).generate(makeSessionData({ bettingStrategy: 1 }), []);
-        // Value in data row column "Strategy" (we located it via headers in C5).
         const strHeader = (w) => {
             const s = w.getWorksheet('Overview');
             const headers = [];
-            for (let i = 1; i <= 14; i++) headers.push(s.getRow(5).getCell(i).value);
-            return s.getRow(6).getCell(headers.indexOf('Strategy') + 1).value;
+            for (let i = 1; i <= N_COLS; i++) headers.push(s.getRow(6).getCell(i).value);
+            return s.getRow(7).getCell(headers.indexOf('Strategy') + 1).value;
         };
         expect(String(strHeader(wb3))).toMatch(/Cautious/);
         expect(String(strHeader(wb1))).toMatch(/Aggressive/);
