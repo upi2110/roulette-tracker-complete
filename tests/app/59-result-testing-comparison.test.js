@@ -60,13 +60,11 @@ function makeAutoTestResult() {
         finalBankroll: 4112, finalProfit: 112,
         totalSpins: 9, totalBets: 5, totalSkips: 1,
         wins: 3, losses: 2, winRate: 0.6,
-        // maxDrawdown=0 because the live MoneyManagementPanel does not
-        // track drawdown on sessionData — we keep the Auto Test side at
-        // 0 too so the MATCH assertions hold. Real Auto Test sessions
-        // often have non-zero maxDrawdown; the user will see a
-        // legitimate MISMATCH there until that field is wired into the
-        // money panel (out of scope for this comparison fix).
-        maxDrawdown: 0, peakProfit: 112,
+        // maxDrawdown is $24 (peak $4060 after the first hit → trough
+        // $4036 after the -$24 loss). replayRecordedSession now tracks
+        // drawdown live during replay so this value should round-trip
+        // through the comparison sheet as a MATCH.
+        maxDrawdown: 24, peakProfit: 112,
         steps
     };
     const summary = {
@@ -586,5 +584,96 @@ describe('W. Color coding + Spin-by-Spin sheet', () => {
         let mm = null;
         for (let r = 2; r < 20; r++) if (s.getRow(r).getCell(1).value === 'Final Profit') { mm = s.getRow(r); break; }
         expect(mm.getCell(5).fill.fgColor.argb).toBe('FFF8D7DA');
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  X. Profit-sync bug fix: sessionProfit == sum(betHistory netChange)
+// ═══════════════════════════════════════════════════════════════════
+describe('X. sessionProfit matches betHistory netChange sum', () => {
+    test('X1: after replay, sessionProfit equals sum of betHistory netChange', async () => {
+        // Regression fix for "Auto Test $144 vs Money Management $126".
+        // Before the fix, replayRecordedSession overwrote betHistory
+        // netChange values with the recorded step.pnl — but
+        // sessionProfit was accumulated from the live money-panel
+        // formula inside recordBetResult. The two diverged whenever
+        // the Auto Test runner's pnl math differed from the money
+        // panel's. Now we capture netChange live from betHistory[0]
+        // after each recordBetResult, so the two are always equal.
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const sum = window.moneyPanel.betHistory.reduce((a, b) => a + (b.netChange || 0), 0);
+        expect(sum).toBe(window.moneyPanel.sessionData.sessionProfit);
+    });
+
+    test('X2: replay tracks maxDrawdown on sessionData (no longer stuck at 0)', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        // Fixture has a -$24 drawdown after the opening +$60 hit.
+        // The tracker rounds to 2dp, so expect ≥ 24 (allowing for
+        // any larger trough as the replay continues).
+        expect(window.moneyPanel.sessionData.maxDrawdown).toBeGreaterThanOrEqual(24);
+    });
+
+    test('X3: comparison Max Drawdown row is MATCH when fixture pnl sequence matches', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const data = p.buildComparisonData();
+        // Auto Test fixture maxDrawdown=24 and replay trough=24 → MATCH.
+        expect(data.autoTest.maxDrawdown).toBe(24);
+        expect(data.resultTesting.maxDrawdown).toBeGreaterThanOrEqual(24);
+        expect(data.deltas.maxDrawdown).toBeLessThanOrEqual(0.01);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  Y. Verification report is .xlsx (not .txt)
+// ═══════════════════════════════════════════════════════════════════
+describe('Y. downloadVerificationReport writes an .xlsx workbook', () => {
+    test('Y1: returns a Promise<boolean> (async signature)', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const ret = p.downloadVerificationReport();
+        expect(typeof ret.then).toBe('function');
+        await ret; // drain
+    });
+
+    test('Y2: routes through the aiAPI.saveXlsx IPC with a verification-*.xlsx filename', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const savedNames = [];
+        window.aiAPI = { saveXlsx: async (buf, name) => { savedNames.push(name); return true; } };
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        await p.downloadVerificationReport();
+        expect(savedNames.length).toBe(1);
+        expect(savedNames[0]).toMatch(/^verification-\d{4}-\d{2}-\d{2}-\d{6}\.xlsx$/);
+        delete window.aiAPI;
+    });
+
+    test('Y3: UI button label reflects the .xlsx output', () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        new ResultTestingPanel();
+        const btn = document.getElementById('resultTestingDownloadBtn');
+        expect(btn.textContent).toMatch(/\.xlsx/);
     });
 });

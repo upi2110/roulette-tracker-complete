@@ -117,8 +117,9 @@ class ResultTestingPanel {
                     <div id="resultTestingComparison" style="display:none;margin-top:6px;padding:6px;background:#eef2ff;border-radius:4px;"></div>
                     <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
                         <button id="resultTestingDownloadBtn" type="button" disabled
+                                title="Download verification workbook (.xlsx) — saves to Desktop by default"
                                 style="padding:4px 10px;font-size:11px;font-weight:600;border:1px solid #94a3b8;border-radius:3px;background:#f8fafc;color:#334155;cursor:pointer;">
-                            ⬇ Download verification report
+                            ⬇ Download verification report (.xlsx)
                         </button>
                         <button id="resultTestingWorkbookBtn" type="button" disabled
                                 title="Download side-by-side Auto Test vs Result-testing .xlsx comparison"
@@ -643,6 +644,32 @@ class ResultTestingPanel {
         // Quiet the orchestrator's polling loop during the replay.
         const orch = window.autoUpdateOrchestrator;
 
+        // Build the FULL per-session bet history LIVE as each bet
+        // resolves — reading money.betHistory[0] right after each
+        // recordBetResult call (the live panel unshift-es newest to
+        // index 0). This is critical:
+        //
+        //   - The live panel caps its own betHistory at 10 entries,
+        //     so we MUST capture each entry at creation time to get
+        //     the full session.
+        //   - Historically we overwrote betHistory with step.pnl from
+        //     the Auto Test report, which desynced money.betHistory
+        //     netChange ($step.pnl = $144 sum) from
+        //     money.sessionData.sessionProfit (sum of money-panel
+        //     formula netChange = $126). The user saw Total P&L $144
+        //     but Final Profit $126 — two "truths". Capturing from
+        //     the panel itself guarantees one truth.
+        //
+        // We also track the running bankroll and compute maxDrawdown
+        // (peak-to-trough decline) because the live panel does not
+        // track it on sessionData — without this, the comparison
+        // always showed $0 vs session.maxDrawdown which is always a
+        // legitimate divergence that no user action can resolve.
+        const fullBetHistory = [];
+        let peakBankroll = (money && money.sessionData && typeof money.sessionData.currentBankroll === 'number')
+            ? money.sessionData.currentBankroll : 0;
+        let maxDrawdown = 0;
+
         let stepped = 0;
         let bets = 0;
         try {
@@ -668,7 +695,32 @@ class ResultTestingPanel {
                     try {
                         await money.recordBetResult(betPerNumber, numbersCount, hit, actualNum);
                         bets++;
+                        // Snapshot the entry the money panel just
+                        // unshifted so we keep the live netChange
+                        // (not the Auto Test pnl).
+                        const live = Array.isArray(money.betHistory) && money.betHistory[0]
+                            ? money.betHistory[0] : null;
+                        if (live) {
+                            fullBetHistory.push({
+                                spin: fullBetHistory.length + 1,
+                                betAmount: live.betAmount,
+                                totalBet: live.totalBet,
+                                hit: live.hit,
+                                actualNumber: live.actualNumber,
+                                netChange: live.netChange,
+                                timestamp: live.timestamp || `replay-${fullBetHistory.length + 1}`
+                            });
+                        }
                     } catch (_) { /* best-effort */ }
+                }
+
+                // Running drawdown — whether this was a BET or a
+                // SKIP/WATCH, the bankroll is the live panel's value.
+                if (money && money.sessionData && typeof money.sessionData.currentBankroll === 'number') {
+                    const bank = money.sessionData.currentBankroll;
+                    if (bank > peakBankroll) peakBankroll = bank;
+                    const dd = peakBankroll - bank;
+                    if (dd > maxDrawdown) maxDrawdown = dd;
                 }
 
                 // Keep orchestrator's poll quiet so it doesn't also
@@ -684,21 +736,14 @@ class ResultTestingPanel {
                 stepped++;
             }
 
-            // Rewrite the full per-session bet history so the
-            // exported money-report workbook shows the complete run,
-            // not just the last 10 live caps.
-            if (money && Array.isArray(session.steps)) {
-                const betSteps = session.steps.filter(s => s && s.action === 'BET');
-                money.betHistory = betSteps.map((s, i) => ({
-                    spin: i + 1,
-                    betAmount: (typeof s.betPerNumber === 'number') ? s.betPerNumber : 2,
-                    totalBet: ((typeof s.betPerNumber === 'number') ? s.betPerNumber : 2)
-                            * ((typeof s.numbersCount === 'number') ? s.numbersCount : 1),
-                    hit: !!s.hit,
-                    actualNumber: s.nextNumber,
-                    netChange: typeof s.pnl === 'number' ? s.pnl : 0,
-                    timestamp: (s.timestamp || `replay-${i + 1}`)
-                }));
+            // Publish the captured full history + maxDrawdown back to
+            // the panel so the downloaded session-result workbook and
+            // the live UI reflect the complete replay.
+            if (money) {
+                money.betHistory = fullBetHistory;
+                if (money.sessionData && typeof money.sessionData === 'object') {
+                    money.sessionData.maxDrawdown = Math.round(maxDrawdown * 100) / 100;
+                }
             }
         } finally {
             // Note: we intentionally do NOT restore totals/bankroll/
@@ -1179,23 +1224,32 @@ class ResultTestingPanel {
         return this.resolveSessionRef(label);
     }
 
-    downloadVerificationReport() {
-        const text = this.buildVerificationReportText();
-        if (!text) return false;
-        if (typeof document === 'undefined') return false;
+    /**
+     * Download the verification report as an Excel workbook (.xlsx).
+     * Reuses the ComparisonReport module so the verification file has
+     * the same rich six-sheet structure as the comparison workbook —
+     * the user asked for "all reports in Excel", not plain text. The
+     * text-building helper is kept for the status-line assertions used
+     * by the existing test suite, but is no longer saved to disk.
+     */
+    async downloadVerificationReport() {
+        if (typeof window === 'undefined') return false;
+        const data = this.buildComparisonData();
+        if (!data) return false;
+        const ExcelJS = window.ExcelJS || (typeof require === 'function' ? (() => { try { return require('exceljs'); } catch (_) { return null; } })() : null);
+        if (!ExcelJS) return false;
+        const Ctor = (typeof window.ComparisonReport === 'function') ? window.ComparisonReport
+            : ((typeof require === 'function') ? (() => { try { return require('./comparison-report').ComparisonReport; } catch (_) { return null; } })() : null);
+        if (!Ctor) return false;
         try {
-            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `verification-${Date.now()}.txt`;
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-                try { URL.revokeObjectURL(url); } catch (_) {}
-                if (a.parentNode) a.parentNode.removeChild(a);
-            }, 0);
-            return true;
+            const rep = new Ctor(ExcelJS);
+            const wb = rep.generate(data);
+            // Filename kept under the "verification-" prefix so downstream
+            // tooling that filters by prefix still finds it.
+            const d = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+            return await rep.saveToFile(wb, `verification-${stamp}.xlsx`);
         } catch (_) {
             return false;
         }
@@ -1302,7 +1356,10 @@ class ResultTestingPanel {
             wins: sd.totalWins || 0,
             losses: sd.totalLosses || 0,
             winRate,
-            maxDrawdown: sd.maxDrawdown || 0,
+            // maxDrawdown is now tracked during replay (peak-to-trough
+            // bankroll decline, stamped onto sessionData by
+            // replayRecordedSession) so it no longer always reads 0.
+            maxDrawdown: typeof sd.maxDrawdown === 'number' ? sd.maxDrawdown : 0,
             finalProfit: typeof sd.sessionProfit === 'number' ? sd.sessionProfit : (totalWon - totalLost),
             finalBankroll: typeof sd.currentBankroll === 'number' ? sd.currentBankroll : 0,
             totalWon: Math.round(totalWon * 100) / 100,

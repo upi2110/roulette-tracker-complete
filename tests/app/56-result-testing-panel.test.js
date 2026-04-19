@@ -457,9 +457,10 @@ describe('G. Download verification report', () => {
         expect(p.buildVerificationReportText()).toBe('');
     });
 
-    test('G4: downloadVerificationReport returns false when nothing to download', () => {
+    test('G4: downloadVerificationReport returns false when nothing to download', async () => {
         const p = new ResultTestingPanel();
-        expect(p.downloadVerificationReport()).toBe(false);
+        // downloadVerificationReport is now async and returns a Promise<boolean>.
+        await expect(p.downloadVerificationReport()).resolves.toBe(false);
     });
 });
 
@@ -1654,6 +1655,19 @@ describe('Q. replayRecordedSession — session.steps is the source of truth', ()
                 const net = hit ? (betPerNumber * 35 - totalBet) : -totalBet;
                 state.sessionData.currentBankroll += net;
                 state.sessionData.sessionProfit += net;
+                // Mirror the real panel: unshift newest entry onto betHistory.
+                // replayRecordedSession now captures live netChange from
+                // money.betHistory[0] after each call, so the stub must
+                // expose the same contract or the capture loop is a no-op.
+                state.betHistory.unshift({
+                    spin: state.sessionData.totalBets,
+                    betAmount: betPerNumber,
+                    totalBet,
+                    hit,
+                    actualNumber,
+                    netChange: net,
+                    timestamp: `t${state.sessionData.totalBets}`
+                });
             },
             setPrediction() {},
             render() { state.renderCalls++; }

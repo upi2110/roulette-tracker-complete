@@ -80,9 +80,21 @@ function createWindow() {
     // default is preserved, so existing callers remain byte-identical.
     ipcMain.handle('save-xlsx', async (event, buffer, filename) => {
         try {
-            const defaultPath = (typeof filename === 'string' && filename.trim())
+            // Default save location is the user's Desktop per product
+            // request — the Save dialog still appears so the user can
+            // override, but the initial folder + pre-filled filename
+            // land in Desktop so every report (Auto Test, session
+            // result, comparison, verification) has a predictable
+            // home. app.getPath('desktop') resolves to
+            // ~/Desktop on macOS, C:\Users\<user>\Desktop on Windows,
+            // and $XDG_DESKTOP_DIR on Linux.
+            const baseName = (typeof filename === 'string' && filename.trim())
                 ? filename
                 : `auto-test-report-${Date.now()}.xlsx`;
+            const desktopDir = (() => {
+                try { return app.getPath('desktop'); } catch (_) { return null; }
+            })();
+            const defaultPath = desktopDir ? path.join(desktopDir, baseName) : baseName;
             const result = await dialog.showSaveDialog(mainWindow, {
                 title: 'Save Excel Report',
                 defaultPath,
