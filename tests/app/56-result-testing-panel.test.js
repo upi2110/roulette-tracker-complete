@@ -110,6 +110,18 @@ beforeEach(() => {
     delete window.autoTestUI;
     delete window.render;
     delete window.spins;
+    // Clear live-session globals too so dangling async replays scheduled
+    // by earlier tests (J/K/L tests don't await the replay) don't tick
+    // the next test's fresh moneyPanel stub. replaySessionLive guards
+    // on the presence of these globals, so setting them undefined
+    // makes the scheduled replay no-op harmlessly.
+    delete window.moneyPanel;
+    delete window.autoUpdateOrchestrator;
+    // Cancel any replay setTimeouts scheduled by earlier tests so they
+    // cannot fire into the current test's freshly-installed stubs.
+    if (typeof ResultTestingPanel.cancelPendingReplays === 'function') {
+        ResultTestingPanel.cancelPendingReplays();
+    }
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1008,5 +1020,255 @@ describe('L. Mode dropdown (user override for replay)', () => {
         p.processTabEntry('S1-Start9');
         expect(document.getElementById('resultTestingMessage').textContent)
             .toMatch(/MANUAL mode/);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  M. Live replay with money management
+// ═══════════════════════════════════════════════════════════════════
+//
+// Replay must step through the chosen session one spin at a time and
+// tick both the money-panel bet-resolution loop and the orchestrator
+// decision cascade on every step — matching how a real live session
+// runs. These tests install lightweight stubs for moneyPanel and
+// autoUpdateOrchestrator that count invocations, then assert the
+// replay drives them the same number of times as the session window.
+//
+describe('M. Live replay (spin-by-spin, with money management)', () => {
+    function makeMoneyPanelStub() {
+        const calls = [];
+        const bets = [];
+        return {
+            lastSpinCount: 0,
+            isSessionActive: true,
+            isBettingEnabled: true,
+            pendingBet: null,
+            sessionData: { totalBets: 0, totalWins: 0, totalLosses: 0 },
+            betHistory: [],
+            async checkForNewSpin() {
+                calls.push(window.spins.length);
+                // Simulate resolving a pendingBet if one exists.
+                if (this.pendingBet && window.spins.length > this.lastSpinCount) {
+                    const last = window.spins[window.spins.length - 1].actual;
+                    const hit = this.pendingBet.predictedNumbers.includes(last);
+                    const pnl = hit ? this.pendingBet.betAmount * this.pendingBet.numbersCount : -this.pendingBet.betAmount * this.pendingBet.numbersCount;
+                    this.sessionData.totalBets++;
+                    if (hit) this.sessionData.totalWins++;
+                    else this.sessionData.totalLosses++;
+                    bets.push({ spin: last, hit, pnl });
+                    this.betHistory.push({
+                        spin: this.sessionData.totalBets,
+                        betAmount: this.pendingBet.betAmount,
+                        totalBet: this.pendingBet.betAmount * this.pendingBet.numbersCount,
+                        hit, actualNumber: last, netChange: pnl, timestamp: `t${this.sessionData.totalBets}`
+                    });
+                    this.pendingBet = null;
+                }
+                this.lastSpinCount = window.spins.length;
+            },
+            setPrediction(pred) {
+                if (this.isBettingEnabled) {
+                    this.pendingBet = {
+                        predictedNumbers: pred.numbers || [],
+                        numbersCount: (pred.numbers || []).length,
+                        betAmount: 2,
+                        confidence: pred.confidence || 0
+                    };
+                }
+            },
+            _calls: calls,
+            _bets: bets
+        };
+    }
+
+    function makeOrchestratorStub(decisionFactory) {
+        const calls = [];
+        return {
+            autoMode: true,
+            decisionMode: 'auto',
+            setAutoMode(x) { this.autoMode = !!x; },
+            setDecisionMode() {},
+            async handleAutoMode() {
+                calls.push(window.spins.length);
+                const decision = decisionFactory
+                    ? decisionFactory(window.spins.length)
+                    : { action: 'BET', selectedPair: 'prev', selectedFilter: 'both_both', numbers: [5, 17, 22] };
+                if (window.moneyPanel && typeof window.moneyPanel.setPrediction === 'function' && decision.action === 'BET') {
+                    window.moneyPanel.setPrediction(decision);
+                }
+            },
+            _calls: calls
+        };
+    }
+
+    beforeEach(() => {
+        window.aiAutoModeUI = { setMode: () => {} };
+    });
+
+    test('M1: replaySessionLive steps through each spin and ticks the money panel', async () => {
+        const money = makeMoneyPanelStub();
+        window.moneyPanel = money;
+        window.autoUpdateOrchestrator = makeOrchestratorStub();
+        const p = new ResultTestingPanel();
+        const result = await p.replaySessionLive([10, 15, 20, 18, 29]);
+        expect(result.stepped).toBe(5);
+        expect(money._calls.length).toBe(5);
+        // Money panel saw the spin count growing on each step.
+        expect(money._calls).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    test('M2: replay ticks the orchestrator on every step when autoMode is on', async () => {
+        window.moneyPanel = makeMoneyPanelStub();
+        const orch = makeOrchestratorStub();
+        window.autoUpdateOrchestrator = orch;
+        const p = new ResultTestingPanel();
+        await p.replaySessionLive([1, 2, 3, 4]);
+        expect(orch._calls.length).toBe(4);
+    });
+
+    test('M3: replay does NOT tick the orchestrator when autoMode is off (manual/semi)', async () => {
+        window.moneyPanel = makeMoneyPanelStub();
+        const orch = makeOrchestratorStub();
+        orch.autoMode = false;
+        window.autoUpdateOrchestrator = orch;
+        const p = new ResultTestingPanel();
+        await p.replaySessionLive([1, 2, 3]);
+        expect(orch._calls.length).toBe(0);
+    });
+
+    test('M4: bet history grows during replay (money management engaged spin-by-spin)', async () => {
+        const money = makeMoneyPanelStub();
+        window.moneyPanel = money;
+        // Orchestrator emits a BET on every step with predicted numbers
+        // that include some of the replay spins, so some wins resolve.
+        window.autoUpdateOrchestrator = makeOrchestratorStub(() => ({
+            action: 'BET', selectedPair: 'prev', selectedFilter: 'both_both',
+            numbers: [10, 15, 20, 18, 29]
+        }));
+        const p = new ResultTestingPanel();
+        await p.replaySessionLive([10, 15, 20, 18, 29]);
+        // First step: no pendingBet yet → no bet. Then orchestrator
+        // sets one. Subsequent 4 steps resolve the prior pendingBet.
+        expect(money.sessionData.totalBets).toBe(4);
+        expect(money.betHistory.length).toBe(4);
+        // Every predicted number above is in the replay list, so all 4 bets hit.
+        expect(money.sessionData.totalWins).toBe(4);
+    });
+
+    test('M5: replay resets moneyPanel.lastSpinCount so historical spins are treated as new', async () => {
+        const money = makeMoneyPanelStub();
+        money.lastSpinCount = 42; // simulate a stale watermark from earlier play
+        window.moneyPanel = money;
+        window.autoUpdateOrchestrator = makeOrchestratorStub();
+        const p = new ResultTestingPanel();
+        await p.replaySessionLive([1, 2, 3]);
+        // The replay should have zeroed lastSpinCount before starting
+        // and advanced it to 3 by the end.
+        expect(money.lastSpinCount).toBe(3);
+    });
+
+    test('M6: replay resets window.spins and repopulates it exactly from the session window', async () => {
+        window.spins = [{ actual: 99 }, { actual: 88 }]; // junk to be cleared
+        window.moneyPanel = makeMoneyPanelStub();
+        window.autoUpdateOrchestrator = makeOrchestratorStub();
+        const p = new ResultTestingPanel();
+        const spinNums = [10, 15, 20];
+        await p.replaySessionLive(spinNums);
+        expect(window.spins.length).toBe(3);
+        expect(window.spins.map(s => s.actual)).toEqual(spinNums);
+    });
+
+    test('M7: processTabEntry session branch schedules a live replay on _lastReplayPromise', async () => {
+        window.moneyPanel = makeMoneyPanelStub();
+        window.autoUpdateOrchestrator = makeOrchestratorStub();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.ok).toBe(true);
+        expect(out.kind).toBe('session');
+        // Sync state is observable BEFORE the deferred replay runs.
+        expect(window.spins.length).toBe(60 - 9);
+        // The replay promise exists and completes.
+        expect(p._lastReplayPromise).not.toBeNull();
+        await p.waitForReplay();
+        // After the replay, window.spins has been re-stepped through
+        // the full session window.
+        expect(window.moneyPanel._calls.length).toBe(60 - 9);
+    });
+
+    test('M8: waitForReplay resolves immediately when no replay is in flight', async () => {
+        const p = new ResultTestingPanel();
+        const ok = await p.waitForReplay();
+        expect(ok).toBe(true);
+    });
+
+    test('M9: replay with an empty windowSpins returns stepped=0 without throwing', async () => {
+        window.moneyPanel = makeMoneyPanelStub();
+        window.autoUpdateOrchestrator = makeOrchestratorStub();
+        const p = new ResultTestingPanel();
+        const r1 = await p.replaySessionLive([]);
+        const r2 = await p.replaySessionLive(null);
+        expect(r1.stepped).toBe(0);
+        expect(r2.stepped).toBe(0);
+    });
+
+    test('M10: replay tolerates missing moneyPanel / missing orchestrator', async () => {
+        delete window.moneyPanel;
+        delete window.autoUpdateOrchestrator;
+        const p = new ResultTestingPanel();
+        const result = await p.replaySessionLive([1, 2, 3]);
+        expect(result.stepped).toBe(3);
+        expect(window.spins.length).toBe(3);
+    });
+
+    test('M11: replay call from processTabEntry preserves session-id resolution and comparison card', async () => {
+        window.moneyPanel = makeMoneyPanelStub();
+        window.autoUpdateOrchestrator = makeOrchestratorStub();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        const out = p.processTabEntry('S1-Start9');
+        // Sync comparison card rendered with the session details.
+        const html = document.getElementById('resultTestingComparison').innerHTML;
+        expect(html).toMatch(/S1-Start9/);
+        expect(html).toMatch(/data-field="session-totalPL"/);
+        // Replay completes end-to-end.
+        await p.waitForReplay();
+        // Download still works.
+        expect(document.getElementById('resultTestingDownloadBtn').disabled).toBe(false);
+        expect(p.buildVerificationReportText().length).toBeGreaterThan(0);
+        // And out object has the replay promise wired up.
+        expect(out.replay).toBe(p._lastReplayPromise);
+    });
+
+    test('M12: replay still runs under manual mode (money panel resolves bets if user preset them)', async () => {
+        const money = makeMoneyPanelStub();
+        // Simulate the user having placed a bet manually before replay.
+        money.pendingBet = { predictedNumbers: [10, 15], numbersCount: 2, betAmount: 2, confidence: 75 };
+        window.moneyPanel = money;
+        // Manual mode ⇒ orchestrator autoMode is false ⇒ no new
+        // orchestrator ticks happen during replay.
+        const orch = makeOrchestratorStub();
+        orch.autoMode = false;
+        window.autoUpdateOrchestrator = orch;
+        const p = new ResultTestingPanel();
+        await p.replaySessionLive([10, 20, 30]); // step 1 = 10 → hit
+        expect(money.sessionData.totalBets).toBe(1);
+        expect(money.sessionData.totalWins).toBe(1);
+        expect(orch._calls.length).toBe(0); // manual never ticks the engine
+    });
+
+    test('M13: replay never throws even when setPrediction / checkForNewSpin throw', async () => {
+        window.moneyPanel = {
+            lastSpinCount: 0,
+            checkForNewSpin() { throw new Error('money boom'); },
+            setPrediction() { throw new Error('pred boom'); }
+        };
+        window.autoUpdateOrchestrator = {
+            autoMode: true,
+            async handleAutoMode() { throw new Error('orch boom'); }
+        };
+        const p = new ResultTestingPanel();
+        const r = await p.replaySessionLive([1, 2]);
+        expect(r.stepped).toBe(2);
     });
 });

@@ -6,6 +6,14 @@
 const RESULT_TESTING_MODES = ['manual', 'semi', 'auto', 't1-strategy'];
 const RESULT_TESTING_DEFAULT_MODE = 'manual';
 
+// Module-level Set of in-flight replay setTimeout ids. Used so tests
+// can cancel any replays scheduled by earlier tests before starting
+// a new one (avoids dangling timers firing into the next test's
+// fresh moneyPanel / orchestrator stubs). Production code should
+// never need to call the cancel helper — the ids are naturally
+// removed as each timer fires.
+const _activeReplayTimers = new Set();
+
 /**
  * Result-testing panel — manual verification tab in the AI prediction area.
  *
@@ -41,6 +49,12 @@ class ResultTestingPanel {
         // to the AI mode matching the submitted Auto Test method, but
         // the user can override it at any time before clicking Run.
         this.selectedMode = RESULT_TESTING_DEFAULT_MODE;
+        // Promise returned by the most recent async live replay. Tests
+        // can `await panel._lastReplayPromise` (or `waitForReplay()`)
+        // to observe post-replay state. UI code treats it as fire-
+        // and-forget — the sync state (window.spins, comparison card)
+        // is observable before the async replay runs.
+        this._lastReplayPromise = null;
         this.createUI();
         this.setupEventListeners();
     }
@@ -351,13 +365,26 @@ class ResultTestingPanel {
                 cmp.innerHTML = this._buildSessionComparisonHtml(sessionRef, session, aiMode);
                 cmp.style.display = 'block';
             }
+
+            // Kick off the live replay after a macrotask so the sync
+            // state above (window.spins populated, comparison card
+            // rendered, download enabled) is observable to any
+            // synchronous caller before the replay starts mutating
+            // state further. Tests can `await panel.waitForReplay()`
+            // or `await panel._lastReplayPromise` to observe the
+            // post-replay state. In the browser the promise is
+            // fire-and-forget — the money panel + orchestrator ticks
+            // happen in the background and the UI updates as they do.
+            this._lastReplayPromise = this._scheduleLiveReplay(windowSpins);
+
             return {
                 ok: true,
                 kind: 'session',
                 ref: sessionRef,
                 sessionLabel: label,
                 aiMode,
-                spinCount: windowSpins.length
+                spinCount: windowSpins.length,
+                replay: this._lastReplayPromise
             };
         }
 
@@ -434,6 +461,114 @@ class ResultTestingPanel {
         if (typeof window.render === 'function') {
             try { window.render(); } catch (_) { /* ignore render-time errors */ }
         }
+    }
+
+    /**
+     * Replay a session's spin window through the real live pipeline,
+     * one spin at a time. At each step we:
+     *   1) push a single new entry into window.spins,
+     *   2) directly invoke window.moneyPanel.checkForNewSpin() so the
+     *      money panel resolves any pendingBet against that spin just
+     *      like its 200ms polling loop would do during live play,
+     *   3) directly invoke window.autoUpdateOrchestrator.handleAutoMode()
+     *      when an engine-driven mode is active so the AI produces a
+     *      fresh prediction for the next step (that call cascades
+     *      down to moneyPanel.setPrediction via the wheel, the same
+     *      path normal live play uses),
+     *   4) best-effort window.render() so the UI redraws.
+     *
+     * This drives the money-panel bet lifecycle (pending → resolved)
+     * and the engine-adaptation feedback loop (engine.recordResult
+     * via the money panel) exactly as they run in a real session —
+     * without having to wait for the 200ms / 500ms setIntervals.
+     *
+     * opts.stepDelayMs (default 0): optional delay between steps so
+     * a watching user can see the UI tick through spins. Tests pass
+     * 0 for fast execution.
+     *
+     * Returns { stepped } so callers can confirm the loop ran.
+     */
+    async replaySessionLive(windowSpins, opts = {}) {
+        const stepDelayMs = typeof opts.stepDelayMs === 'number' ? opts.stepDelayMs : 0;
+        if (typeof window === 'undefined') return { stepped: 0 };
+        if (!Array.isArray(windowSpins) || windowSpins.length === 0) return { stepped: 0 };
+
+        // Reset the renderer and money-panel watermarks so each step
+        // counts as a genuinely new live spin.
+        if (!Array.isArray(window.spins)) window.spins = [];
+        window.spins.length = 0;
+        if (window.moneyPanel && typeof window.moneyPanel === 'object') {
+            try { window.moneyPanel.lastSpinCount = 0; } catch (_) { /* best-effort */ }
+        }
+
+        let stepped = 0;
+        for (let i = 0; i < windowSpins.length; i++) {
+            const n = windowSpins[i];
+            window.spins.push({ actual: n, direction: i % 2 === 0 ? 'C' : 'AC' });
+
+            // 1) Money-panel tick — resolves any pendingBet against
+            //    this new spin (the same work its 200ms poll does).
+            if (window.moneyPanel && typeof window.moneyPanel.checkForNewSpin === 'function') {
+                try { await window.moneyPanel.checkForNewSpin(); } catch (_) {}
+            }
+
+            // 2) Orchestrator tick — produces the next decision and
+            //    cascades it through the AI panel → wheel →
+            //    moneyPanel.setPrediction (pendingBet for the NEXT
+            //    step). Gated on autoMode so manual / semi modes
+            //    don't trigger engine decisions during the replay.
+            const orch = window.autoUpdateOrchestrator;
+            if (orch && typeof orch.handleAutoMode === 'function' && orch.autoMode) {
+                try { await orch.handleAutoMode(); } catch (_) {}
+            }
+
+            if (typeof window.render === 'function') {
+                try { window.render(); } catch (_) { /* ignore */ }
+            }
+            if (stepDelayMs > 0) {
+                await new Promise(r => setTimeout(r, stepDelayMs));
+            }
+            stepped++;
+        }
+        return { stepped };
+    }
+
+    /**
+     * Convenience wrapper for tests: awaits the most recent replay
+     * promise (if any). Resolves immediately when no replay is in
+     * flight.
+     */
+    async waitForReplay() {
+        if (this._lastReplayPromise && typeof this._lastReplayPromise.then === 'function') {
+            try { await this._lastReplayPromise; } catch (_) { /* surface by callers via then */ }
+        }
+        return true;
+    }
+
+    /**
+     * Defer a live-replay call to the next macrotask so the caller
+     * (processTabEntry) can return with the sync state visible to
+     * its caller first. Returns a promise that resolves when the
+     * replay loop completes.
+     */
+    _scheduleLiveReplay(windowSpins, opts = {}) {
+        return new Promise((resolve) => {
+            if (typeof setTimeout === 'function') {
+                const tid = setTimeout(() => {
+                    _activeReplayTimers.delete(tid);
+                    this.replaySessionLive(windowSpins, opts)
+                        .then(resolve)
+                        .catch(() => resolve({ stepped: 0, error: true }));
+                }, 0);
+                _activeReplayTimers.add(tid);
+            } else {
+                Promise.resolve().then(() => {
+                    this.replaySessionLive(windowSpins, opts)
+                        .then(resolve)
+                        .catch(() => resolve({ stepped: 0, error: true }));
+                });
+            }
+        });
     }
 
     _formatSessionLabel(ref) {
@@ -669,6 +804,19 @@ class ResultTestingPanel {
         }[c]));
     }
 }
+
+/**
+ * Cancel any scheduled-but-not-yet-fired replay timers. Exposed as a
+ * static so tests can call it between scenarios when they don't
+ * `await panel.waitForReplay()`. Safe to call repeatedly.
+ */
+ResultTestingPanel.cancelPendingReplays = function () {
+    if (typeof clearTimeout !== 'function') return;
+    for (const tid of _activeReplayTimers) {
+        try { clearTimeout(tid); } catch (_) { /* ignore */ }
+    }
+    _activeReplayTimers.clear();
+};
 
 // ── Dual export (Node tests + browser) ──
 if (typeof module !== 'undefined' && module.exports) {
