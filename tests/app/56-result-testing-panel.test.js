@@ -1155,16 +1155,21 @@ describe('M. Live replay (spin-by-spin, with money management)', () => {
         expect(money.sessionData.totalWins).toBe(4);
     });
 
-    test('M5: replay resets moneyPanel.lastSpinCount so historical spins are treated as new', async () => {
+    test('M5: replay processes every spin as new (stale lastSpinCount does not block)', async () => {
         const money = makeMoneyPanelStub();
         money.lastSpinCount = 42; // simulate a stale watermark from earlier play
         window.moneyPanel = money;
         window.autoUpdateOrchestrator = makeOrchestratorStub();
         const p = new ResultTestingPanel();
         await p.replaySessionLive([1, 2, 3]);
-        // The replay should have zeroed lastSpinCount before starting
-        // and advanced it to 3 by the end.
-        expect(money.lastSpinCount).toBe(3);
+        // Even with lastSpinCount pre-seeded to a stale value, the
+        // replay temporarily zeroes it so checkForNewSpin fires once
+        // per replayed spin. The stub records each call.
+        expect(money._calls.length).toBe(3);
+        // Post-replay the flag/watermark state is restored to what
+        // the user had before (42), so ordinary live play after a
+        // replay continues from the user's prior state.
+        expect(money.lastSpinCount).toBe(42);
     });
 
     test('M6: replay resets window.spins and repopulates it exactly from the session window', async () => {
@@ -1260,6 +1265,7 @@ describe('M. Live replay (spin-by-spin, with money management)', () => {
     test('M13: replay never throws even when setPrediction / checkForNewSpin throw', async () => {
         window.moneyPanel = {
             lastSpinCount: 0,
+            sessionData: {},
             checkForNewSpin() { throw new Error('money boom'); },
             setPrediction() { throw new Error('pred boom'); }
         };
@@ -1270,5 +1276,165 @@ describe('M. Live replay (spin-by-spin, with money management)', () => {
         const p = new ResultTestingPanel();
         const r = await p.replaySessionLive([1, 2]);
         expect(r.stepped).toBe(2);
+    });
+
+    test('M14: replay force-enables the money panel gates during the loop and restores them after', async () => {
+        const money = makeMoneyPanelStub();
+        // User had both gates OFF before replay (e.g. betting paused).
+        money.sessionData = {
+            totalBets: 0, totalWins: 0, totalLosses: 0,
+            isSessionActive: false, isBettingEnabled: false
+        };
+        // Capture the gate values seen during each step.
+        const gateSnapshots = [];
+        const origCheck = money.checkForNewSpin.bind(money);
+        money.checkForNewSpin = async function () {
+            gateSnapshots.push({
+                active: money.sessionData.isSessionActive,
+                betting: money.sessionData.isBettingEnabled
+            });
+            return origCheck();
+        };
+        window.moneyPanel = money;
+        window.autoUpdateOrchestrator = makeOrchestratorStub();
+        const p = new ResultTestingPanel();
+        await p.replaySessionLive([1, 2, 3]);
+        // During every step of the replay, both gates were TRUE
+        // (force-enabled by replaySessionLive) so the real money
+        // panel's internal guards would let bets flow.
+        expect(gateSnapshots.length).toBe(3);
+        for (const snap of gateSnapshots) {
+            expect(snap.active).toBe(true);
+            expect(snap.betting).toBe(true);
+        }
+        // After the replay completes, the user's prior state is
+        // restored so ordinary live play outside Result-testing is
+        // unaffected.
+        expect(money.sessionData.isSessionActive).toBe(false);
+        expect(money.sessionData.isBettingEnabled).toBe(false);
+    });
+
+    test('M15: replay keeps the orchestrator poll quiet (bumps lastSpinCount each step)', async () => {
+        window.moneyPanel = makeMoneyPanelStub();
+        const orch = makeOrchestratorStub();
+        orch.lastSpinCount = 0;
+        window.autoUpdateOrchestrator = orch;
+        const p = new ResultTestingPanel();
+        await p.replaySessionLive([10, 11, 12, 13, 14]);
+        // After the replay each spin has been processed and the
+        // orchestrator's lastSpinCount matches the final spin count,
+        // so its 500ms setInterval (in real life) would see no delta
+        // and stay silent until another genuine live spin arrives.
+        expect(orch.lastSpinCount).toBe(5);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  N. Integration with the REAL MoneyManagementPanel
+// ═══════════════════════════════════════════════════════════════════
+//
+// M tests used lightweight mocks. N tests use the actual
+// MoneyManagementPanel class (via createMoneyPanel from test-setup)
+// to catch gaps between the stub shape and the real panel's gates
+// (isSessionActive / isBettingEnabled on sessionData, recordBetResult
+// flow, etc.). This proves the replay actually engages the production
+// money-management path — not just a test-only mock.
+//
+const { createMoneyPanel } = require('../test-setup');
+
+describe('N. Real MoneyManagementPanel end-to-end replay', () => {
+    beforeEach(() => {
+        // createMoneyPanel calls setupDOM internally which resets body,
+        // so seed the AI panel content afterwards.
+        window.aiAutoModeUI = { setMode: () => {} };
+    });
+
+    test('N1: replay drives the real money panel — sessionData.totalBets grows', async () => {
+        const moneyPanel = createMoneyPanel();
+        window.moneyPanel = moneyPanel;
+        // Stub orchestrator that provides a BET prediction on every
+        // tick, routing it through the real panel's setPrediction.
+        // The prediction numbers are chosen to overlap with every
+        // replayed spin so bets resolve as wins.
+        window.autoUpdateOrchestrator = {
+            autoMode: true,
+            lastSpinCount: 0,
+            async handleAutoMode() {
+                moneyPanel.setPrediction({
+                    numbers: [5, 17, 22, 33, 10, 8, 15, 2, 0, 36, 30, 20],
+                    signal: 'BET NOW',
+                    confidence: 80
+                });
+            }
+        };
+        // Ensure aiPanelContent exists (setupDOM clears body each test).
+        if (!document.getElementById('aiPanelContent')) {
+            const c = document.createElement('div');
+            c.id = 'aiPanelContent';
+            document.body.appendChild(c);
+        }
+        const p = new ResultTestingPanel();
+        const totalBetsBefore = moneyPanel.sessionData.totalBets;
+        await p.replaySessionLive([5, 17, 22, 33, 10, 8, 15, 2, 0, 36]);
+        // Real money panel recorded bets during the replay.
+        expect(moneyPanel.sessionData.totalBets).toBeGreaterThan(totalBetsBefore);
+    });
+
+    test('N2: replay leaves the real panel back in its pre-replay gate state', async () => {
+        const moneyPanel = createMoneyPanel();
+        // User starts with both gates OFF.
+        moneyPanel.sessionData.isSessionActive = false;
+        moneyPanel.sessionData.isBettingEnabled = false;
+        window.moneyPanel = moneyPanel;
+        window.autoUpdateOrchestrator = {
+            autoMode: true, lastSpinCount: 0,
+            async handleAutoMode() {}
+        };
+        if (!document.getElementById('aiPanelContent')) {
+            const c = document.createElement('div');
+            c.id = 'aiPanelContent';
+            document.body.appendChild(c);
+        }
+        const p = new ResultTestingPanel();
+        await p.replaySessionLive([1, 2, 3]);
+        // Gates restored so ordinary live play after the replay is unchanged.
+        expect(moneyPanel.sessionData.isSessionActive).toBe(false);
+        expect(moneyPanel.sessionData.isBettingEnabled).toBe(false);
+    });
+
+    test('N3: replay end-to-end from processTabEntry with the real money panel', async () => {
+        const moneyPanel = createMoneyPanel();
+        // Pre-enable so the user-visible bet history reflects the replay.
+        moneyPanel.sessionData.isSessionActive = true;
+        moneyPanel.sessionData.isBettingEnabled = true;
+        window.moneyPanel = moneyPanel;
+        window.autoUpdateOrchestrator = {
+            autoMode: true, lastSpinCount: 0,
+            async handleAutoMode() {
+                moneyPanel.setPrediction({
+                    numbers: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                    signal: 'BET NOW', confidence: 75
+                });
+            }
+        };
+        if (!document.getElementById('aiPanelContent')) {
+            const c = document.createElement('div');
+            c.id = 'aiPanelContent';
+            document.body.appendChild(c);
+        }
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult({ method: 'T1-strategy' }));
+        const out = p.processTabEntry('S1-Start9');
+        expect(out.ok).toBe(true);
+        // Sync state observable.
+        expect(window.spins.length).toBe(60 - 9);
+        // Await the deferred replay.
+        await p.waitForReplay();
+        // Real money panel shows bets recorded during replay.
+        expect(moneyPanel.betHistory.length).toBeGreaterThan(0);
+        // Comparison card still rendered.
+        expect(document.getElementById('resultTestingComparison').innerHTML).toMatch(/S1-Start9/);
+        // Download still works.
+        expect(document.getElementById('resultTestingDownloadBtn').disabled).toBe(false);
     });
 });

@@ -490,47 +490,112 @@ class ResultTestingPanel {
      */
     async replaySessionLive(windowSpins, opts = {}) {
         const stepDelayMs = typeof opts.stepDelayMs === 'number' ? opts.stepDelayMs : 0;
-        if (typeof window === 'undefined') return { stepped: 0 };
-        if (!Array.isArray(windowSpins) || windowSpins.length === 0) return { stepped: 0 };
+        if (typeof window === 'undefined') return { stepped: 0, moneyEngaged: false };
+        if (!Array.isArray(windowSpins) || windowSpins.length === 0) {
+            return { stepped: 0, moneyEngaged: false };
+        }
 
         // Reset the renderer and money-panel watermarks so each step
         // counts as a genuinely new live spin.
         if (!Array.isArray(window.spins)) window.spins = [];
         window.spins.length = 0;
-        if (window.moneyPanel && typeof window.moneyPanel === 'object') {
-            try { window.moneyPanel.lastSpinCount = 0; } catch (_) { /* best-effort */ }
+
+        // ── Force money management into "session active + betting
+        //    enabled" for the duration of the replay, so the real
+        //    MoneyManagementPanel's isSessionActive / isBettingEnabled
+        //    gates (app/money-management-panel.js lines 384 + 447) let
+        //    checkForNewSpin resolve bets and setPrediction populate
+        //    pendingBet. This is the critical live-pipeline engagement
+        //    step — without it, the money panel silently no-ops on
+        //    every checkForNewSpin. The user's prior panel state is
+        //    saved and restored after the replay completes so ordinary
+        //    live play outside Result-testing is unaffected.
+        let moneyEngaged = false;
+        let savedSessionActive, savedBettingEnabled, savedLastSpinCount;
+        const money = window.moneyPanel;
+        if (money && typeof money === 'object') {
+            try {
+                if (money.sessionData && typeof money.sessionData === 'object') {
+                    savedSessionActive = money.sessionData.isSessionActive;
+                    savedBettingEnabled = money.sessionData.isBettingEnabled;
+                    money.sessionData.isSessionActive = true;
+                    money.sessionData.isBettingEnabled = true;
+                    moneyEngaged = true;
+                }
+                savedLastSpinCount = money.lastSpinCount;
+                money.lastSpinCount = 0;
+            } catch (_) { /* best-effort */ }
         }
+
+        // Silence the real orchestrator's 500ms polling loop during
+        // replay: we bump its lastSpinCount after each tick so its
+        // internal setInterval sees no delta and won't double-fire
+        // handleAutoMode alongside our direct per-step invocation.
+        const orchRef = window.autoUpdateOrchestrator;
 
         let stepped = 0;
-        for (let i = 0; i < windowSpins.length; i++) {
-            const n = windowSpins[i];
-            window.spins.push({ actual: n, direction: i % 2 === 0 ? 'C' : 'AC' });
+        try {
+            for (let i = 0; i < windowSpins.length; i++) {
+                const n = windowSpins[i];
+                window.spins.push({ actual: n, direction: i % 2 === 0 ? 'C' : 'AC' });
 
-            // 1) Money-panel tick — resolves any pendingBet against
-            //    this new spin (the same work its 200ms poll does).
-            if (window.moneyPanel && typeof window.moneyPanel.checkForNewSpin === 'function') {
-                try { await window.moneyPanel.checkForNewSpin(); } catch (_) {}
-            }
+                // 1) Money-panel tick — resolves any pendingBet against
+                //    this new spin (the same work its 200ms poll does).
+                if (money && typeof money.checkForNewSpin === 'function') {
+                    try { await money.checkForNewSpin(); } catch (_) {}
+                }
 
-            // 2) Orchestrator tick — produces the next decision and
-            //    cascades it through the AI panel → wheel →
-            //    moneyPanel.setPrediction (pendingBet for the NEXT
-            //    step). Gated on autoMode so manual / semi modes
-            //    don't trigger engine decisions during the replay.
-            const orch = window.autoUpdateOrchestrator;
-            if (orch && typeof orch.handleAutoMode === 'function' && orch.autoMode) {
-                try { await orch.handleAutoMode(); } catch (_) {}
-            }
+                // 2) Orchestrator tick — produces the next decision and
+                //    cascades it through the AI panel → wheel →
+                //    moneyPanel.setPrediction (pendingBet for the NEXT
+                //    step). Gated on autoMode so manual / semi modes
+                //    don't trigger engine decisions during the replay.
+                if (orchRef && typeof orchRef.handleAutoMode === 'function' && orchRef.autoMode) {
+                    try { await orchRef.handleAutoMode(); } catch (_) {}
+                }
 
-            if (typeof window.render === 'function') {
-                try { window.render(); } catch (_) { /* ignore */ }
+                // 3) Keep the orchestrator's poll-loop quiet: sync
+                //    its lastSpinCount so the 500ms setInterval sees
+                //    no delta when it wakes up between our steps.
+                if (orchRef && typeof orchRef === 'object') {
+                    try { orchRef.lastSpinCount = window.spins.length; } catch (_) {}
+                }
+
+                if (typeof window.render === 'function') {
+                    try { window.render(); } catch (_) { /* ignore */ }
+                }
+                if (stepDelayMs > 0) {
+                    await new Promise(r => setTimeout(r, stepDelayMs));
+                }
+                stepped++;
             }
-            if (stepDelayMs > 0) {
-                await new Promise(r => setTimeout(r, stepDelayMs));
+        } finally {
+            // Restore the user's prior money-panel flags. If the user
+            // had betting paused, they get their paused state back
+            // after the replay. The sessionData updates (bankroll,
+            // totalBets, betHistory) made during the replay stay —
+            // that's the whole point: the comparison report reflects
+            // a real run.
+            if (money && typeof money === 'object' && money.sessionData) {
+                try {
+                    if (typeof savedSessionActive !== 'undefined') {
+                        money.sessionData.isSessionActive = savedSessionActive;
+                    }
+                    if (typeof savedBettingEnabled !== 'undefined') {
+                        money.sessionData.isBettingEnabled = savedBettingEnabled;
+                    }
+                    if (typeof savedLastSpinCount !== 'undefined') {
+                        money.lastSpinCount = savedLastSpinCount;
+                    }
+                    // Force a re-render so the restored flag state
+                    // is reflected in the visible UI.
+                    if (typeof money.render === 'function') {
+                        try { money.render(); } catch (_) {}
+                    }
+                } catch (_) {}
             }
-            stepped++;
         }
-        return { stepped };
+        return { stepped, moneyEngaged };
     }
 
     /**
