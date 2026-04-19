@@ -402,16 +402,26 @@ class ResultTestingPanel {
                 cmp.style.display = 'block';
             }
 
-            // Kick off the live replay after a macrotask so the sync
-            // state above (window.spins populated, comparison card
-            // rendered, download enabled) is observable to any
-            // synchronous caller before the replay starts mutating
-            // state further. Tests can `await panel.waitForReplay()`
-            // or `await panel._lastReplayPromise` to observe the
-            // post-replay state. In the browser the promise is
-            // fire-and-forget — the money panel + orchestrator ticks
-            // happen in the background and the UI updates as they do.
-            this._lastReplayPromise = this._scheduleLiveReplay(windowSpins);
+            // Kick off the replay after a macrotask so the sync state
+            // above (window.spins populated, comparison card rendered,
+            // download enabled) is observable before the replay
+            // mutates state further.
+            //
+            // Primary path: replayRecordedSession(session) — feeds
+            // session.steps directly into moneyPanel.recordBetResult.
+            // This is the AUTHORITATIVE replay because it uses the
+            // recorded Auto Test session data (the same tabs the
+            // Auto Test report exports) and therefore never depends
+            // on the live orchestrator→wheel→setPrediction cascade
+            // that silently fails in the real UI due to the 800ms
+            // prediction-debounce.
+            //
+            // Fallback: replaySessionLive(windowSpins) — used only
+            // when the session has no recorded steps (should not
+            // normally happen for real Auto Test sessions).
+            this._lastReplayPromise = (Array.isArray(session.steps) && session.steps.length > 0)
+                ? this._scheduleRecordedReplay(session)
+                : this._scheduleLiveReplay(windowSpins);
 
             return {
                 ok: true,
@@ -497,6 +507,124 @@ class ResultTestingPanel {
         if (typeof window.render === 'function') {
             try { window.render(); } catch (_) { /* ignore render-time errors */ }
         }
+    }
+
+    /**
+     * Replay a session DIRECTLY from the Auto Test report's recorded
+     * `session.steps` array — the authoritative source of truth. This
+     * is the primary replay path used by processTabEntry, chosen
+     * because it avoids the fragile async cascade in live play
+     * (orchestrator → aiPanel → _autoTriggerPredictions 800ms debounce
+     * → wheel → moneyPanel.setPrediction) that leaves the money panel
+     * empty during Result-testing replays in the live UI.
+     *
+     * For every BET step in session.steps we call
+     * moneyPanel.recordBetResult(betPerNumber, numbersCount, hit,
+     * nextNumber) — the exact entry point the 200ms live poll uses.
+     * sessionData (totalBets, totalWins, totalLosses, currentBankroll,
+     * sessionProfit) is updated as in live play; engine.recordResult
+     * is called back if engine.lastDecision is set; the strategy-
+     * based bet-adjustment runs normally.
+     *
+     * After the loop we rewrite moneyPanel.betHistory with the FULL
+     * per-session bet list (the live panel caps this to 10 recent
+     * bets; we need the complete history so the exported
+     * session-result workbook's totals are accurate end-to-end).
+     *
+     * Returns { stepped, bets }.
+     */
+    async replayRecordedSession(session, opts = {}) {
+        const stepDelayMs = typeof opts.stepDelayMs === 'number' ? opts.stepDelayMs : 0;
+        if (typeof window === 'undefined') return { stepped: 0, bets: 0 };
+        if (!session || !Array.isArray(session.steps) || session.steps.length === 0) {
+            return { stepped: 0, bets: 0 };
+        }
+
+        // Fresh window.spins (renderer will populate its view as we push).
+        if (!Array.isArray(window.spins)) window.spins = [];
+        window.spins.length = 0;
+
+        // Force-enable money panel gates for the replay so the real
+        // recordBetResult flow is not silently blocked by a paused
+        // bet state. Save + restore so live play afterwards is
+        // unchanged.
+        let savedSessionActive, savedBettingEnabled;
+        const money = window.moneyPanel;
+        if (money && money.sessionData && typeof money.sessionData === 'object') {
+            savedSessionActive = money.sessionData.isSessionActive;
+            savedBettingEnabled = money.sessionData.isBettingEnabled;
+            money.sessionData.isSessionActive = true;
+            money.sessionData.isBettingEnabled = true;
+        }
+
+        // Quiet the orchestrator's polling loop during the replay.
+        const orch = window.autoUpdateOrchestrator;
+
+        let stepped = 0;
+        let bets = 0;
+        try {
+            for (const step of session.steps) {
+                if (!step || typeof step !== 'object') continue;
+
+                // Advance window.spins by one so the rest of the
+                // renderer/panel logic sees the same spin count growth
+                // a live session would produce.
+                const actual = (step.nextNumber != null)
+                    ? step.nextNumber
+                    : (step.spinNumber != null ? step.spinNumber : 0);
+                window.spins.push({ actual, direction: stepped % 2 === 0 ? 'C' : 'AC' });
+
+                if (step.action === 'BET' && money && typeof money.recordBetResult === 'function') {
+                    const betPerNumber = (typeof step.betPerNumber === 'number' && step.betPerNumber > 0)
+                        ? step.betPerNumber : 2;
+                    const numbersCount = (typeof step.numbersCount === 'number' && step.numbersCount > 0)
+                        ? step.numbersCount
+                        : (Array.isArray(step.predictedNumbers) ? step.predictedNumbers.length : 1);
+                    const hit = !!step.hit;
+                    const actualNum = (typeof step.nextNumber === 'number') ? step.nextNumber : 0;
+                    try {
+                        await money.recordBetResult(betPerNumber, numbersCount, hit, actualNum);
+                        bets++;
+                    } catch (_) { /* best-effort */ }
+                }
+
+                // Keep orchestrator's poll quiet so it doesn't also
+                // fire handleAutoMode between our direct steps.
+                if (orch && typeof orch === 'object') {
+                    try { orch.lastSpinCount = window.spins.length; } catch (_) {}
+                }
+
+                if (typeof window.render === 'function') {
+                    try { window.render(); } catch (_) {}
+                }
+                if (stepDelayMs > 0) await new Promise(r => setTimeout(r, stepDelayMs));
+                stepped++;
+            }
+
+            // Rewrite the full per-session bet history so the
+            // exported money-report workbook shows the complete run,
+            // not just the last 10 live caps.
+            if (money && Array.isArray(session.steps)) {
+                const betSteps = session.steps.filter(s => s && s.action === 'BET');
+                money.betHistory = betSteps.map((s, i) => ({
+                    spin: i + 1,
+                    betAmount: (typeof s.betPerNumber === 'number') ? s.betPerNumber : 2,
+                    totalBet: ((typeof s.betPerNumber === 'number') ? s.betPerNumber : 2)
+                            * ((typeof s.numbersCount === 'number') ? s.numbersCount : 1),
+                    hit: !!s.hit,
+                    actualNumber: s.nextNumber,
+                    netChange: typeof s.pnl === 'number' ? s.pnl : 0,
+                    timestamp: (s.timestamp || `replay-${i + 1}`)
+                }));
+            }
+        } finally {
+            if (money && money.sessionData && typeof money.sessionData === 'object') {
+                if (typeof savedSessionActive !== 'undefined') money.sessionData.isSessionActive = savedSessionActive;
+                if (typeof savedBettingEnabled !== 'undefined') money.sessionData.isBettingEnabled = savedBettingEnabled;
+                if (typeof money.render === 'function') { try { money.render(); } catch (_) {} }
+            }
+        }
+        return { stepped, bets };
     }
 
     /**
@@ -667,6 +795,33 @@ class ResultTestingPanel {
                     this.replaySessionLive(windowSpins, opts)
                         .then(resolve)
                         .catch(() => resolve({ stepped: 0, error: true }));
+                });
+            }
+        });
+    }
+
+    /**
+     * Defer a recorded-session replay to the next macrotask. Used
+     * when the submitted Auto Test session has a populated steps
+     * array (the normal case for real Auto Test runs). Tracks the
+     * timer id in the shared Set so tests can cancel pending
+     * replays via ResultTestingPanel.cancelPendingReplays().
+     */
+    _scheduleRecordedReplay(session, opts = {}) {
+        return new Promise((resolve) => {
+            if (typeof setTimeout === 'function') {
+                const tid = setTimeout(() => {
+                    _activeReplayTimers.delete(tid);
+                    this.replayRecordedSession(session, opts)
+                        .then(resolve)
+                        .catch(() => resolve({ stepped: 0, bets: 0, error: true }));
+                }, 0);
+                _activeReplayTimers.add(tid);
+            } else {
+                Promise.resolve().then(() => {
+                    this.replayRecordedSession(session, opts)
+                        .then(resolve)
+                        .catch(() => resolve({ stepped: 0, bets: 0, error: true }));
                 });
             }
         });
