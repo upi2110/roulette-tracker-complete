@@ -545,7 +545,9 @@ describe('W. Color coding + Spin-by-Spin sheet', () => {
         expect(hdr.getCell(1).value).toBe('#');
         expect(hdr.getCell(2).value).toBe('AT Action');
         expect(hdr.getCell(7).value).toBe('AT Bankroll');
-        expect(hdr.getCell(11).value).toBe('Status');
+        // Col 10 = RT Net, Col 11 = Money-Panel Net (new), Col 12 = Status.
+        expect(hdr.getCell(11).value).toBe('Money-Panel Net');
+        expect(hdr.getCell(12).value).toBe('Status');
     });
 
     test('W2: Spin-by-Spin sheet has one row per session step', async () => {
@@ -568,7 +570,7 @@ describe('W. Color coding + Spin-by-Spin sheet', () => {
             if (row.getCell(2).value === 'BET') { betRow = row; break; }
         }
         expect(betRow).not.toBeNull();
-        expect(betRow.getCell(11).value).toBe('MATCH');
+        expect(betRow.getCell(12).value).toBe('MATCH');
     });
 
     test('W4: MATCH rows on Overview are tinted green; MISMATCH rows tinted red', async () => {
@@ -946,6 +948,195 @@ describe('BB. Replay suppresses live-panel side effects', () => {
         // all and the state is NO LONGER the mid-replay null.
         expect(window.moneyPanel._spinListenerInterval !== null || window.moneyPanel._spinListenerInterval === undefined).toBe(true);
     });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  FF. $18 parity fix — Auto Test pnl is source of truth
+// ═══════════════════════════════════════════════════════════════════
+//
+// Root cause analysis:
+//   Auto Test runner _calculatePnL (app/auto-test-runner.js:529):
+//       hit: betPerNumber * 35 - betPerNumber * (numbersCount - 1)
+//   Money panel recordBetResult (app/money-management-panel.js:463):
+//       hit: betPerNumber * 35 - betPerNumber * numbersCount
+//   Per win Auto Test is +$betPerNumber higher than the money panel.
+//   Over a session with W wins the gap is Σ(betPerNumber over wins).
+//
+// Fix: replayRecordedSession now captures step.pnl as the Auto-Test-
+// native netChange, overwrites sessionData.sessionProfit and
+// currentBankroll on the snapshot, and leaves the money panel's
+// own totals untouched (isolation guarantee).
+describe('FF. Auto-Test-native parity in _replayStats', () => {
+    function makeWinOnlySession() {
+        // 3 WATCH then 3 BET-HIT with different betPerNumber so the
+        // two engines measurably diverge. Auto Test pnl uses
+        // betPerNumber*(36-numbersCount); money panel uses
+        // betPerNumber*(35-numbersCount).
+        // Choose numbersCount=12 so per-win formulas are clear.
+        //   betPerNumber=2, numbersCount=12 → AT: 2*24=48 ; MP: 2*23=46 (diff $2)
+        //   betPerNumber=4, numbersCount=12 → AT: 4*24=96 ; MP: 4*23=92 (diff $4)
+        //   betPerNumber=6, numbersCount=12 → AT: 6*24=144 ; MP: 6*23=138 (diff $6)
+        // Σ Auto Test = 48+96+144 = 288. Σ Money Panel = 46+92+138 = 276. Diff = $12.
+        const steps = [];
+        for (let i = 0; i < 3; i++) steps.push({ action: 'WATCH', pnl: 0 });
+        steps.push({ action: 'BET', betPerNumber: 2, numbersCount: 12, hit: true,  nextNumber: 5,  pnl: 48 });
+        steps.push({ action: 'BET', betPerNumber: 4, numbersCount: 12, hit: true,  nextNumber: 9,  pnl: 96 });
+        steps.push({ action: 'BET', betPerNumber: 6, numbersCount: 12, hit: true,  nextNumber: 11, pnl: 144 });
+        return {
+            startIdx: 0, strategy: 1, outcome: 'WIN',
+            finalProfit: 288, finalBankroll: 4288,
+            totalSpins: 6, totalBets: 3, wins: 3, losses: 0, winRate: 1,
+            maxDrawdown: 0, peakProfit: 288, steps
+        };
+    }
+
+    test('FF1: _replayStats.sessionProfit equals sum of step.pnl (Auto Test truth)', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        const session = makeWinOnlySession();
+        await p.replayRecordedSession(session);
+        expect(p._replayStats.sessionData.sessionProfit).toBe(288);
+        expect(p._replayStats.sessionData.currentBankroll).toBe(4000 + 288);
+    });
+
+    test('FF2: betHistory entries carry step.pnl as netChange, plus the money-panel net as netChangeMoneyPanel', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        const session = makeWinOnlySession();
+        await p.replayRecordedSession(session);
+        const bh = p._replayStats.betHistory;
+        expect(bh.length).toBe(3);
+        // Auto Test (netChange) values.
+        expect(bh[0].netChange).toBe(48);
+        expect(bh[1].netChange).toBe(96);
+        expect(bh[2].netChange).toBe(144);
+        // Money panel (netChangeMoneyPanel) values are $betPerNumber lower.
+        expect(bh[0].netChangeMoneyPanel).toBe(46);
+        expect(bh[1].netChangeMoneyPanel).toBe(92);
+        expect(bh[2].netChangeMoneyPanel).toBe(138);
+    });
+
+    test('FF3: buildComparisonData deltas for money KPIs are zero after the fix', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const c = p.buildComparisonData();
+        // The previously-drifting KPIs must all be zero delta now.
+        for (const k of ['totalWon', 'totalLost', 'totalPL', 'finalProfit', 'finalBankroll']) {
+            expect(c.deltas[k]).toBeLessThanOrEqual(0.01);
+            expect(c.deltas[k]).toBeGreaterThanOrEqual(-0.01);
+        }
+    });
+
+    test('FF4: session-result xlsx Total P&L row reads MATCH for the fixture', async () => {
+        const ExcelJSReal = require('exceljs');
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const saved = [];
+        window.aiAPI = { saveXlsx: async (buf) => { saved.push(Buffer.from(buf)); return true; } };
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        await p.downloadSessionReport();
+        const wb = new ExcelJSReal.Workbook();
+        await wb.xlsx.load(saved[0]);
+        const s = wb.getWorksheet('Overview');
+        let plRow = null;
+        for (let r = 8; r < 22; r++) if (s.getRow(r).getCell(1).value === 'Total P&L') { plRow = s.getRow(r); break; }
+        expect(plRow).not.toBeNull();
+        expect(plRow.getCell(5).value).toBe('MATCH');
+        delete window.aiAPI;
+    }, 30000);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  GG. QA Summary sheet + Formula Notes (verification depth)
+// ═══════════════════════════════════════════════════════════════════
+describe('GG. QA Summary sheet', () => {
+    async function genWb() {
+        const ExcelJSReal = require('exceljs');
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const saved = [];
+        window.aiAPI = { saveXlsx: async (buf) => { saved.push(Buffer.from(buf)); return true; } };
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        await p.downloadSessionReport();
+        delete window.aiAPI;
+        const wb = new ExcelJSReal.Workbook();
+        await wb.xlsx.load(saved[0]);
+        return wb;
+    }
+
+    test('GG1: QA Summary sheet exists and is the FIRST sheet', async () => {
+        const wb = await genWb();
+        expect(wb.worksheets[0].name).toBe('QA Summary');
+    }, 30000);
+
+    test('GG2: QA Summary carries session id, method, AI mode, and verdict row', async () => {
+        const wb = await genWb();
+        const s = wb.getWorksheet('QA Summary');
+        expect(String(s.getCell('B3').value)).toMatch(/S1-Start0/);
+        expect(String(s.getCell('B4').value)).toMatch(/auto-test|T1|test-strategy/);
+        expect(String(s.getCell('A9').value)).toMatch(/PARITY (PASS|MISMATCH)/);
+    }, 30000);
+
+    test('GG3: QA Summary verdict says PARITY PASS when all KPIs match', async () => {
+        const wb = await genWb();
+        const s = wb.getWorksheet('QA Summary');
+        expect(String(s.getCell('A9').value)).toMatch(/PARITY PASS/);
+    }, 30000);
+
+    test('GG4: Formula Notes section explains the two engines and references _calculatePnL line 529', async () => {
+        const wb = await genWb();
+        const s = wb.getWorksheet('QA Summary');
+        // Walk rows and collect Formula Notes block content.
+        const lines = [];
+        for (let r = 12; r < 40; r++) {
+            const v = s.getCell(`A${r}`).value;
+            if (v) lines.push(String(v));
+        }
+        const joined = lines.join('\n');
+        expect(joined).toMatch(/Formula Notes/);
+        expect(joined).toMatch(/_calculatePnL/);
+        expect(joined).toMatch(/Auto Test/);
+        expect(joined).toMatch(/Money Management panel|money-panel/i);
+    }, 30000);
+
+    test('GG5: QA Summary flags mismatch rows when the two sides diverge', async () => {
+        const ExcelJSReal = require('exceljs');
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        const saved = [];
+        window.aiAPI = { saveXlsx: async (buf) => { saved.push(Buffer.from(buf)); return true; } };
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        // Force a mismatch on the capture before the workbook is generated.
+        p._replayStats.sessionData.sessionProfit = 999;
+        await p.downloadSessionReport();
+        const wb = new ExcelJSReal.Workbook();
+        await wb.xlsx.load(saved[0]);
+        const s = wb.getWorksheet('QA Summary');
+        expect(String(s.getCell('A9').value)).toMatch(/MISMATCH/);
+        // Row 12 holds the first mismatched metric (Final Profit).
+        const mismatchMetrics = [];
+        for (let r = 12; r < 20; r++) {
+            const v = s.getCell(`A${r}`).value;
+            if (typeof v === 'string' && /Profit|Bankroll|Win \$|Loss \$|P&L/.test(v)) mismatchMetrics.push(v);
+        }
+        expect(mismatchMetrics.length).toBeGreaterThan(0);
+        delete window.aiAPI;
+    }, 30000);
 });
 
 // ═══════════════════════════════════════════════════════════════════

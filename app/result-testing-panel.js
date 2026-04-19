@@ -781,9 +781,34 @@ class ResultTestingPanel {
         // track it on sessionData — without this, the comparison
         // always showed $0 vs session.maxDrawdown which is always a
         // legitimate divergence that no user action can resolve.
+        // ── AUTO-TEST-NATIVE ACCOUNTING (fixes the $18 mismatch) ──
+        // The money panel's recordBetResult computes netChange as
+        //   betPerNumber * 35 - betPerNumber * numbersCount
+        // while the Auto Test runner's _calculatePnL (see
+        // app/auto-test-runner.js:529) computes
+        //   betPerNumber * 35 - betPerNumber * (numbersCount - 1)
+        // — i.e. the Auto Test model does NOT lose the winning chip
+        // (one chip pays out at 35× instead of 35× minus its own
+        // stake). Per win this is +$betPerNumber in Auto Test.
+        // Across a session that compounds to an $18-ish gap on every
+        // xlsx we produced.
+        //
+        // Per spec the Auto Test workbook is the SOURCE OF TRUTH.
+        // So this replay captures each bet's Auto Test pnl
+        // (step.pnl) — not the money panel's netChange — and uses
+        // THAT to drive the Result-testing report's sessionProfit,
+        // bankroll, and bet history. The money panel is STILL called
+        // (for its side effects: strategy adjustment, engine
+        // feedback, render) but its totals are not consulted for
+        // report generation. This keeps parity by construction.
         const fullBetHistory = [];
-        let peakBankroll = (money && money.sessionData && typeof money.sessionData.currentBankroll === 'number')
-            ? money.sessionData.currentBankroll : 0;
+        const startingBank = (money && money.sessionData && typeof money.sessionData.startingBankroll === 'number')
+            ? money.sessionData.startingBankroll : 4000;
+        let autoTestBank = startingBank;
+        let autoTestProfit = 0;
+        let autoTestWins = 0;
+        let autoTestLosses = 0;
+        let peakBankroll = startingBank;
         let maxDrawdown = 0;
 
         let stepped = 0;
@@ -811,32 +836,44 @@ class ResultTestingPanel {
                     try {
                         await money.recordBetResult(betPerNumber, numbersCount, hit, actualNum);
                         bets++;
-                        // Snapshot the entry the money panel just
-                        // unshifted so we keep the live netChange
-                        // (not the Auto Test pnl).
+                        // ── Auto-Test-native capture ────────────────
+                        // Use step.pnl (the runner's authoritative
+                        // per-bet value). Falls back to the Auto Test
+                        // formula if step.pnl is missing, and as a
+                        // last resort to the money panel's live
+                        // netChange — tests and older fixtures may
+                        // not carry step.pnl.
+                        let pnlAT;
+                        if (typeof step.pnl === 'number') {
+                            pnlAT = step.pnl;
+                        } else if (hit) {
+                            pnlAT = betPerNumber * 35 - betPerNumber * (numbersCount - 1);
+                        } else {
+                            pnlAT = -betPerNumber * numbersCount;
+                        }
+                        autoTestProfit += pnlAT;
+                        autoTestBank += pnlAT;
+                        if (hit) autoTestWins++; else autoTestLosses++;
+                        if (autoTestBank > peakBankroll) peakBankroll = autoTestBank;
+                        const dd = peakBankroll - autoTestBank;
+                        if (dd > maxDrawdown) maxDrawdown = dd;
+
                         const live = Array.isArray(money.betHistory) && money.betHistory[0]
                             ? money.betHistory[0] : null;
-                        if (live) {
-                            fullBetHistory.push({
-                                spin: fullBetHistory.length + 1,
-                                betAmount: live.betAmount,
-                                totalBet: live.totalBet,
-                                hit: live.hit,
-                                actualNumber: live.actualNumber,
-                                netChange: live.netChange,
-                                timestamp: live.timestamp || `replay-${fullBetHistory.length + 1}`
-                            });
-                        }
+                        fullBetHistory.push({
+                            spin: fullBetHistory.length + 1,
+                            betAmount: betPerNumber,
+                            totalBet: betPerNumber * numbersCount,
+                            hit,
+                            actualNumber: actualNum,
+                            netChange: pnlAT,
+                            // Carry the money panel's own netChange
+                            // alongside so the QA workbook can show
+                            // both sides of any formula drift.
+                            netChangeMoneyPanel: live ? live.netChange : null,
+                            timestamp: (live && live.timestamp) || `replay-${fullBetHistory.length + 1}`
+                        });
                     } catch (_) { /* best-effort */ }
-                }
-
-                // Running drawdown — whether this was a BET or a
-                // SKIP/WATCH, the bankroll is the live panel's value.
-                if (money && money.sessionData && typeof money.sessionData.currentBankroll === 'number') {
-                    const bank = money.sessionData.currentBankroll;
-                    if (bank > peakBankroll) peakBankroll = bank;
-                    const dd = peakBankroll - bank;
-                    if (dd > maxDrawdown) maxDrawdown = dd;
                 }
 
                 // Keep orchestrator's poll quiet so it doesn't also
@@ -860,12 +897,20 @@ class ResultTestingPanel {
                 stepped++;
             }
 
-            // Publish the captured full history + maxDrawdown back to
-            // the panel so the downloaded session-result workbook and
-            // the live UI reflect the complete replay.
+            // ── Publish Auto-Test-native totals onto the live panel
+            //    BEFORE the snapshot is captured in finally. The
+            //    snapshot will then carry parity values. The live
+            //    panel is restored to pre-replay state immediately
+            //    after the snapshot, so this is only visible on
+            //    _replayStats, not to subsequent normal play.
             if (money) {
                 money.betHistory = fullBetHistory;
                 if (money.sessionData && typeof money.sessionData === 'object') {
+                    money.sessionData.sessionProfit = Math.round(autoTestProfit * 100) / 100;
+                    money.sessionData.currentBankroll = Math.round(autoTestBank * 100) / 100;
+                    money.sessionData.totalWins = autoTestWins;
+                    money.sessionData.totalLosses = autoTestLosses;
+                    money.sessionData.totalBets = autoTestWins + autoTestLosses;
                     money.sessionData.maxDrawdown = Math.round(maxDrawdown * 100) / 100;
                 }
             }

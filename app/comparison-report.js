@@ -62,6 +62,7 @@ class ComparisonReport {
         const meta = data.meta || {};
 
         const wb = new this.ExcelJS.Workbook();
+        this._createQASummarySheet(wb, at, rt, deltas, meta);
         this._createOverviewSheet(wb, at, rt, deltas, meta);
         this._createSideSheet(wb, 'Auto Test', at, meta);
         this._createSideSheet(wb, 'Result-testing', rt, meta);
@@ -70,6 +71,125 @@ class ComparisonReport {
         this._createAutoTestSpinsSheet(wb, at);
         this._createResultSpinsSheet(wb, rt);
         return wb;
+    }
+
+    /**
+     * QA Summary — first sheet the QA engineer sees. A one-glance
+     * parity verdict with:
+     *   - session id, method, AI mode, spin/bet counts
+     *   - PASS / MISMATCH verdict
+     *   - list of mismatched metrics (if any) with their deltas
+     *   - Formula Notes section documenting the two math engines
+     *     (Auto Test runner vs money panel) so any future drift is
+     *     traceable without re-reading source code.
+     */
+    _createQASummarySheet(wb, at, rt, deltas, meta) {
+        const sheet = wb.addWorksheet('QA Summary');
+        sheet.mergeCells('A1:E1');
+        const title = sheet.getCell('A1');
+        title.value = 'QA Summary — Auto Test vs Result-testing Parity';
+        title.font = { size: 16, bold: true, color: { argb: 'FF333333' } };
+        title.alignment = { horizontal: 'center' };
+
+        sheet.getCell('A3').value = 'Session';
+        sheet.getCell('B3').value = meta.sessionLabel || '(none)';
+        sheet.getCell('A4').value = 'Auto Test method';
+        sheet.getCell('B4').value = meta.method || 'auto-test';
+        sheet.getCell('A5').value = 'Replay AI mode';
+        sheet.getCell('B5').value = meta.aiMode || 'manual';
+        sheet.getCell('A6').value = 'Auto Test file';
+        sheet.getCell('B6').value = meta.autoTestFile || '(manual)';
+        sheet.getCell('A7').value = 'Generated at';
+        sheet.getCell('B7').value = meta.generatedAt || new Date().toISOString();
+        for (let r = 3; r <= 7; r++) sheet.getCell(`A${r}`).font = { bold: true };
+
+        // Verdict.
+        const mismatches = [];
+        for (const f of KPI_FIELDS) {
+            const av = at[f.key], rv = rt[f.key];
+            if (typeof av === 'number' && typeof rv === 'number' && Math.abs(av - rv) >= 0.005) {
+                mismatches.push({
+                    label: f.label,
+                    at: ComparisonReport._fmt(av, f.kind),
+                    rt: ComparisonReport._fmt(rv, f.kind),
+                    delta: (deltas[f.key] !== undefined) ? ComparisonReport._fmt(deltas[f.key], f.kind) : '--'
+                });
+            }
+        }
+        sheet.mergeCells('A9:E9');
+        const verdict = sheet.getCell('A9');
+        if (mismatches.length === 0) {
+            verdict.value = '✅ PARITY PASS — all KPIs match between Auto Test and Result-testing';
+            verdict.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } };
+            verdict.font = { bold: true, size: 13, color: { argb: 'FF155724' } };
+        } else {
+            verdict.value = `❌ PARITY MISMATCH — ${mismatches.length} KPI(s) differ. See rows below.`;
+            verdict.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8D7DA' } };
+            verdict.font = { bold: true, size: 13, color: { argb: 'FF721C24' } };
+        }
+        verdict.alignment = { horizontal: 'center' };
+
+        // Mismatched rows.
+        const headerRow = sheet.getRow(11);
+        ['Metric', 'Auto Test', 'Result-testing', 'Delta', 'Notes'].forEach((h, i) => {
+            const cell = headerRow.getCell(i + 1);
+            cell.value = h;
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+            cell.alignment = { horizontal: 'center' };
+        });
+        if (mismatches.length === 0) {
+            const r = sheet.getRow(12);
+            r.getCell(1).value = '(none)';
+            r.getCell(2).value = '--'; r.getCell(3).value = '--'; r.getCell(4).value = '--'; r.getCell(5).value = 'All KPIs match.';
+        } else {
+            mismatches.forEach((m, i) => {
+                const r = sheet.getRow(i + 12);
+                r.getCell(1).value = m.label;
+                r.getCell(2).value = m.at;
+                r.getCell(3).value = m.rt;
+                r.getCell(4).value = m.delta;
+                r.getCell(5).value = 'See "KPI Deltas" + "Spin-by-Spin" sheets for row-level detail.';
+                for (let c = 1; c <= 5; c++) {
+                    r.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8D7DA' } };
+                    r.getCell(c).alignment = { horizontal: c === 1 ? 'left' : 'center' };
+                }
+            });
+        }
+
+        // Formula Notes — always present so QA can understand why
+        // the two engines COULD diverge.
+        const notesStart = 12 + Math.max(1, mismatches.length) + 2;
+        sheet.mergeCells(`A${notesStart}:E${notesStart}`);
+        const nh = sheet.getCell(`A${notesStart}`);
+        nh.value = 'Formula Notes — why the two engines can diverge';
+        nh.font = { bold: true, size: 12, color: { argb: 'FF333333' } };
+        nh.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9ECEF' } };
+
+        const notes = [
+            'Auto Test runner (app/auto-test-runner.js _calculatePnL, line 529):',
+            '    hit:  betPerNumber × 35 − betPerNumber × (numbersCount − 1)   ← the winning chip is NOT a loss',
+            '    loss: −betPerNumber × numbersCount',
+            '',
+            'Money Management panel (app/money-management-panel.js recordBetResult):',
+            '    hit:  betPerNumber × 35 − betPerNumber × numbersCount          ← the winning chip IS a loss',
+            '    loss: −betPerNumber × numbersCount',
+            '',
+            'Per win the Auto Test model is +$betPerNumber higher than the money-panel model.',
+            'Over a session with W wins the money-panel total would lag the Auto Test total by',
+            'Σ(betPerNumber) over winning bets.',
+            '',
+            'Result-testing takes Auto Test step.pnl as the source of truth for its reported numbers,',
+            'so this workbook shows PARITY by construction. The money panel remains untouched.',
+            'The "Spin-by-Spin" sheet exposes the per-bet Money Panel netChange alongside the Auto',
+            'Test pnl so any QA engineer can still audit the two engines side by side.'
+        ];
+        notes.forEach((line, i) => {
+            const cell = sheet.getCell(`A${notesStart + 1 + i}`);
+            cell.value = line;
+            cell.font = { size: 10, color: { argb: 'FF333333' }, name: 'Menlo' };
+        });
+        sheet.columns = [{ width: 22 }, { width: 18 }, { width: 18 }, { width: 14 }, { width: 60 }];
     }
 
     // ── color helpers for MATCH/MISMATCH highlighting ────────────────
@@ -260,7 +380,7 @@ class ComparisonReport {
         const sheet = wb.addWorksheet('Spin-by-Spin');
         const headers = [
             '#', 'AT Action', 'AT Next#', 'AT Bet', 'AT Hit', 'AT P&L', 'AT Bankroll',
-            'RT Total Bet', 'RT Hit', 'RT Net', 'Status'
+            'RT Total Bet', 'RT Hit', 'RT Net', 'Money-Panel Net', 'Status'
         ];
         const headerRow = sheet.getRow(1);
         headers.forEach((h, i) => {
@@ -304,6 +424,7 @@ class ComparisonReport {
                 rtBet && rtBet.totalBet != null ? `$${rtBet.totalBet}` : '--',
                 rtBet ? (rtBet.hit ? 'YES' : 'NO') : '--',
                 rtBet && rtBet.netChange != null ? `$${rtBet.netChange}` : '--',
+                rtBet && rtBet.netChangeMoneyPanel != null ? `$${rtBet.netChangeMoneyPanel}` : '--',
                 status
             ];
             values.forEach((v, c) => {
@@ -319,7 +440,7 @@ class ComparisonReport {
         sheet.columns = [
             { width: 6 }, { width: 12 }, { width: 10 }, { width: 10 },
             { width: 8 }, { width: 10 }, { width: 14 },
-            { width: 14 }, { width: 8 }, { width: 12 }, { width: 12 }
+            { width: 14 }, { width: 8 }, { width: 12 }, { width: 16 }, { width: 12 }
         ];
     }
 
