@@ -91,22 +91,11 @@ class MoneyManagementPanel {
                         margin-top: 8px;
                         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                     ">🟣 Strategy 3: Cautious</button>
-                <!-- Session report download (independent of bet logic) -->
-                <button id="downloadSessionReportBtn"
-                        title="Download current session as session-result-YYYY-MM-DD-HHmmss.xlsx"
-                        style="
-                            width: 100%;
-                            padding: 8px;
-                            font-size: 12px;
-                            font-weight: 600;
-                            border: 1px solid #3b82f6;
-                            border-radius: 4px;
-                            cursor: pointer;
-                            background: #3b82f6;
-                            color: white;
-                            margin-top: 8px;
-                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                        ">📊 Download Session Report</button>
+                <!-- "Download Session Report" used to live here; it has
+                     moved to the AI Prediction panel header (see
+                     result-testing-panel.js / index-3tables.html) so
+                     the money management panel stays minimal and is
+                     never mutated for report-generation purposes. -->
             </div>
 
             <div class="panel-content" id="moneyPanelContent" style="display: block;">
@@ -269,15 +258,12 @@ class MoneyManagementPanel {
             strategyBtn.addEventListener('click', () => this.toggleStrategy());
         }
 
-        // Download Session Report — writes a workbook with the same
-        // field set as the Auto Test Overview (Total Win $ / Total
-        // Loss $ / Total P&L). Filename: session-result-YYYY-MM-DD-HHmmss.xlsx.
-        // No effect on betting, bankroll, or strategy state.
-        const dlBtn = document.getElementById('downloadSessionReportBtn');
-        if (dlBtn && !dlBtn.hasListener) {
-            dlBtn.hasListener = true;
-            dlBtn.addEventListener('click', () => this.downloadSessionReport());
-        }
+        // Session report download button used to be wired here; it
+        // has moved to the AI Prediction panel so money management
+        // remains a pure bet-lifecycle UI. downloadSessionReport() is
+        // kept as a method (unchanged) for callers that may still
+        // invoke it directly, but no DOM listener points at it from
+        // within this panel any more.
     }
 
     /**
@@ -299,30 +285,7 @@ class MoneyManagementPanel {
             // accidentally mutate live session state.
             const sd = Object.assign({}, this.sessionData || {});
             const bh = Array.isArray(this.betHistory) ? this.betHistory.slice() : [];
-            // Pull Auto Test context off the Result-testing panel
-            // when a session replay was the source of the current bet
-            // history — this makes the downloaded session-result
-            // workbook self-describing (session id, Auto Test method,
-            // start idx, outcome) so it can be diffed against the
-            // Auto Test report without guessing.
-            let ctx = {};
-            try {
-                const rtp = (typeof window !== 'undefined') ? window.resultTestingPanel : null;
-                if (rtp && rtp._replayStats && rtp._replayStats.session) {
-                    const s = rtp._replayStats.session;
-                    const r = rtp._replayStats.sessionRef;
-                    ctx = {
-                        sessionLabel: r ? `S${r.strategy}-Start${r.startIdx}` : null,
-                        startIdx: r ? r.startIdx : undefined,
-                        outcome: s.outcome,
-                        totalSpins: s.totalSpins,
-                        maxDrawdown: s.maxDrawdown,
-                        method: (rtp.submitted && rtp.submitted.method) || null,
-                        autoTestFile: (rtp.submitted && rtp.submitted.testFile) || null
-                    };
-                }
-            } catch (_) { /* best-effort */ }
-            const wb = rep.generate(sd, bh, ctx);
+            const wb = rep.generate(sd, bh);
             const filename = ReportClass.buildFilename(new Date());
             return await rep.saveToFile(wb, filename);
         } catch (e) {

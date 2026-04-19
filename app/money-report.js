@@ -48,12 +48,9 @@ class MoneyReport {
      * @param {Array}  betHistory  - snapshot of MoneyManagementPanel.betHistory
      * @returns {ExcelJS.Workbook}
      */
-    generate(sessionData, betHistory, context) {
+    generate(sessionData, betHistory) {
         const wb = new this.ExcelJS.Workbook();
-        this._createOverviewSheet(wb,
-            sessionData || {},
-            Array.isArray(betHistory) ? betHistory : [],
-            context || {});
+        this._createOverviewSheet(wb, sessionData || {}, Array.isArray(betHistory) ? betHistory : []);
         this._createHistorySheet(wb, Array.isArray(betHistory) ? betHistory : []);
         return wb;
     }
@@ -105,45 +102,32 @@ class MoneyReport {
 
     // ── sheets ──────────────────────────────────────────────────────
 
-    _createOverviewSheet(workbook, sessionData, betHistory, context) {
+    _createOverviewSheet(workbook, sessionData, betHistory) {
         const sheet = workbook.addWorksheet('Overview');
-        const ctx = context || {};
 
         // Title (mirrors Auto Test layout — merged across all columns).
-        sheet.mergeCells('A1:R1');
+        sheet.mergeCells('A1:N1');
         const titleCell = sheet.getCell('A1');
         titleCell.value = 'Money Management — Session Report';
         titleCell.font = { size: 16, bold: true, color: { argb: 'FF333333' } };
         titleCell.alignment = { horizontal: 'center' };
 
-        // Metadata rows (rows 2–4). Identify the Auto Test session this
-        // report is tied to so the user can diff it against the
-        // canonical Auto Test workbook without guessing. `context` is
-        // optional; when absent we fall back to the pre-existing
-        // 2-line header.
-        sheet.getCell('A2').value = `Generated    : ${new Date().toISOString()}`;
-        sheet.getCell('A3').value = `Strategy     : ${STRATEGY_LABEL_BY_ID[sessionData.bettingStrategy] || 'Unknown'}`;
-        sheet.getCell('A4').value = `Session      : ${ctx.sessionLabel || '(live — no Auto Test session)'}`
-            + (ctx.method ? ` • method=${ctx.method}` : '')
-            + (ctx.autoTestFile ? ` • file=${ctx.autoTestFile}` : '');
+        // Metadata rows (rows 2 + 3).
+        sheet.getCell('A2').value = `Generated: ${new Date().toISOString()}`;
+        sheet.getCell('A3').value = `Strategy : ${STRATEGY_LABEL_BY_ID[sessionData.bettingStrategy] || 'Unknown'}`;
         sheet.getCell('A2').font = { size: 10, color: { argb: 'FF666666' } };
         sheet.getCell('A3').font = { size: 10, color: { argb: 'FF666666' } };
-        sheet.getCell('A4').font = { size: 10, color: { argb: 'FF666666' } };
 
-        // Header row (row 6). Columns mirror the Auto Test Overview
-        // (app/auto-test-report.js:117) plus session-identifying
-        // columns (Session / Start Idx / Outcome) so this report can
-        // be opened alongside the Auto Test workbook and diffed
-        // field-by-field without spreadsheet gymnastics.
+        // Header row (row 5). The core triple (Total Win $ / Total Loss $
+        // / Total P&L) matches the Auto Test Overview exactly — see
+        // app/auto-test-report.js _createOverviewSheet header list.
         const headers = [
-            'Session', 'Start Idx', 'Outcome',
-            'Starting Bankroll', 'Current Bankroll',
-            'Total Spins', 'Total Bets', 'Wins', 'Losses', 'Win Rate',
+            'Session', 'Starting Bankroll', 'Current Bankroll', 'Total Bets',
+            'Wins', 'Losses', 'Win Rate',
             'Total Profit', 'Total Win $', 'Total Loss $', 'Total P&L',
-            'Avg Profit', 'Max Drawdown',
-            'Strategy', 'Consecutive Losses'
+            'Avg Profit', 'Strategy', 'Consecutive Losses'
         ];
-        const headerRow = sheet.getRow(6);
+        const headerRow = sheet.getRow(5);
         headers.forEach((h, i) => {
             const cell = headerRow.getCell(i + 1);
             cell.value = h;
@@ -153,22 +137,12 @@ class MoneyReport {
             cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
         });
 
-        // Data row (row 7).
+        // Data row (row 6) — one row for the current session.
         const totals = MoneyReport._computeTotals(sessionData, betHistory);
-        const outcome = ctx.outcome
-            || (sessionData.sessionProfit > 0 ? 'WIN'
-                : sessionData.sessionProfit < 0 ? 'BUST' : 'INCOMPLETE');
-        const totalSpins = (typeof ctx.totalSpins === 'number' && ctx.totalSpins > 0)
-            ? ctx.totalSpins
-            : (sessionData.totalBets || 0);
-        const maxDD = (typeof ctx.maxDrawdown === 'number') ? ctx.maxDrawdown : 0;
         const values = [
-            ctx.sessionLabel || 'Current Session',
-            (typeof ctx.startIdx === 'number') ? ctx.startIdx : '--',
-            outcome,
+            'Current Session',
             `$${(sessionData.startingBankroll || 0).toLocaleString()}`,
             `$${(sessionData.currentBankroll || 0).toLocaleString()}`,
-            totalSpins,
             sessionData.totalBets || 0,
             sessionData.totalWins || 0,
             sessionData.totalLosses || 0,
@@ -178,39 +152,22 @@ class MoneyReport {
             `$${totals.totalLost.toLocaleString()}`,
             `$${totals.totalPL.toLocaleString()}`,
             `$${totals.avgProfit.toFixed(2)}`,
-            `$${Number(maxDD).toLocaleString()}`,
             STRATEGY_LABEL_BY_ID[sessionData.bettingStrategy] || 'Unknown',
             sessionData.consecutiveLosses || 0
         ];
-        const row = sheet.getRow(7);
+        const row = sheet.getRow(6);
         values.forEach((v, i) => {
             const cell = row.getCell(i + 1);
             cell.value = v;
             cell.alignment = { horizontal: 'center' };
             cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
         });
-        // Color-code Outcome the same way Auto Test's strategy sheet
-        // does (app/auto-test-report.js:249-259) so a quick scan
-        // matches the Auto Test report visually.
-        const outCell = row.getCell(3);
-        if (outcome === 'WIN') {
-            outCell.font = { bold: true, color: { argb: 'FF28A745' } };
-            outCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } };
-        } else if (outcome === 'BUST') {
-            outCell.font = { bold: true, color: { argb: 'FFDC3545' } };
-            outCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8D7DA' } };
-        } else {
-            outCell.font = { color: { argb: 'FF6C757D' } };
-            outCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9ECEF' } };
-        }
 
         sheet.columns = [
-            { width: 16 }, { width: 10 }, { width: 12 },
-            { width: 18 }, { width: 18 },
-            { width: 12 }, { width: 12 }, { width: 8 }, { width: 8 }, { width: 10 },
+            { width: 22 }, { width: 18 }, { width: 18 }, { width: 12 },
+            { width: 10 }, { width: 10 }, { width: 10 },
             { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 },
-            { width: 14 }, { width: 14 },
-            { width: 26 }, { width: 18 }
+            { width: 14 }, { width: 26 }, { width: 18 }
         ];
     }
 

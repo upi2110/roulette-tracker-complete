@@ -439,28 +439,31 @@ describe('U. Download comparison workbook button', () => {
 // ═══════════════════════════════════════════════════════════════════
 //  V. Clean-slate replay + strategy alignment
 // ═══════════════════════════════════════════════════════════════════
-describe('V. Clean-slate replay + strategy alignment', () => {
-    test('V1: replay aligns moneyPanel.bettingStrategy to the session strategy', async () => {
+describe('V. Sandboxed replay — live money panel is RESTORED, snapshot on _replayStats', () => {
+    // These tests lock in the isolation guarantee: the Result-testing
+    // replay mutates the live panel internally (so the bet-lifecycle
+    // code path is exercised for real), but on exit the live panel
+    // is returned to its pre-replay state. The authoritative
+    // post-replay data lives ONLY on p._replayStats.
+
+    test('V1: live bettingStrategy is RESTORED to the user\'s pre-replay choice', async () => {
         window.moneyPanel = createMoneyPanel();
         seedAIPanelContent();
-        // Live panel defaults to Strategy 3 (Cautious); the fixture
-        // session is Strategy 1. Without alignment the Money
-        // Management UI would still show "Cautious" even though the
-        // replay came from an Aggressive Auto Test run.
         window.moneyPanel.sessionData.bettingStrategy = 3;
         const p = new ResultTestingPanel();
         p.submit(makeAutoTestResult());
         p.processTabEntry('S1-Start0');
         await p.waitForReplay();
-        expect(window.moneyPanel.sessionData.bettingStrategy).toBe(1);
+        // Live panel is back to the user's Strategy 3 (Cautious) even
+        // though the replay ran under the session's Strategy 1.
+        expect(window.moneyPanel.sessionData.bettingStrategy).toBe(3);
+        // _replayStats captured the REPLAY's strategy (Strategy 1).
+        expect(p._replayStats.sessionData.bettingStrategy).toBe(1);
     });
 
-    test('V2: replay resets totals so replay profit equals session.finalProfit (not prior+replay)', async () => {
+    test('V2: live totals/bankroll/betHistory RESTORED to pre-replay values', async () => {
         window.moneyPanel = createMoneyPanel();
         seedAIPanelContent();
-        // Seed the panel with prior bets from a previous session. Before
-        // the clean-slate fix this was the root cause of the user's
-        // Auto Test $144 → Money Management $126 mismatch.
         window.moneyPanel.sessionData.totalBets = 7;
         window.moneyPanel.sessionData.totalWins = 3;
         window.moneyPanel.sessionData.totalLosses = 4;
@@ -473,17 +476,22 @@ describe('V. Clean-slate replay + strategy alignment', () => {
         p.submit(makeAutoTestResult());
         p.processTabEntry('S1-Start0');
         await p.waitForReplay();
+        // Live panel is UNCHANGED — normal play resumes exactly where
+        // the user left off.
         const sd = window.moneyPanel.sessionData;
-        // Fixture session.finalProfit = $112 ; totalBets = 5 (BET steps).
-        expect(sd.totalBets).toBe(5);
+        expect(sd.totalBets).toBe(7);
         expect(sd.totalWins).toBe(3);
-        expect(sd.totalLosses).toBe(2);
-        expect(sd.sessionProfit).toBe(112);
-        // Final bankroll = startingBankroll($4000) + profit($112).
-        expect(sd.currentBankroll).toBe(4112);
+        expect(sd.totalLosses).toBe(4);
+        expect(sd.sessionProfit).toBe(-50);
+        expect(sd.currentBankroll).toBe(3950);
+        expect(window.moneyPanel.betHistory.length).toBe(1);
+        expect(window.moneyPanel.betHistory[0].timestamp).toBe('prior');
+        // _replayStats has the replay's totals (5 BETs, $112 profit).
+        expect(p._replayStats.sessionData.totalBets).toBe(5);
+        expect(p._replayStats.sessionData.sessionProfit).toBe(112);
     });
 
-    test('V3: clean-slate replay zeroes consecutive counters before playing', async () => {
+    test('V3: consecutive counters + maxDrawdown RESTORED on live panel', async () => {
         window.moneyPanel = createMoneyPanel();
         seedAIPanelContent();
         window.moneyPanel.sessionData.consecutiveLosses = 4;
@@ -492,11 +500,25 @@ describe('V. Clean-slate replay + strategy alignment', () => {
         p.submit(makeAutoTestResult());
         p.processTabEntry('S1-Start0');
         await p.waitForReplay();
-        // After 5 replayed bets (BET-HIT, BET-LOSS, SKIP, BET-HIT, BET-LOSS, BET-HIT),
-        // consecutive counters reflect the replay only — prior 4-loss streak is
-        // gone. Last step hit=true → consecutiveWins should be 1.
-        expect(window.moneyPanel.sessionData.consecutiveWins).toBe(1);
-        expect(window.moneyPanel.sessionData.consecutiveLosses).toBe(0);
+        // Live panel is UNCHANGED.
+        expect(window.moneyPanel.sessionData.consecutiveLosses).toBe(4);
+        expect(window.moneyPanel.sessionData.consecutiveWins).toBe(0);
+        expect(window.moneyPanel.sessionData.maxDrawdown).toBeUndefined();
+        // _replayStats has the replay's final state.
+        expect(p._replayStats.sessionData.consecutiveWins).toBe(1);
+    });
+
+    test('V4: live gate flags (isSessionActive / isBettingEnabled) restored', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIPanelContent();
+        window.moneyPanel.sessionData.isSessionActive = false;
+        window.moneyPanel.sessionData.isBettingEnabled = false;
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        expect(window.moneyPanel.sessionData.isSessionActive).toBe(false);
+        expect(window.moneyPanel.sessionData.isBettingEnabled).toBe(false);
     });
 });
 
@@ -610,17 +632,19 @@ describe('X. sessionProfit matches betHistory netChange sum', () => {
         expect(sum).toBe(window.moneyPanel.sessionData.sessionProfit);
     });
 
-    test('X2: replay tracks maxDrawdown on sessionData (no longer stuck at 0)', async () => {
+    test('X2: replay captures maxDrawdown on _replayStats (live panel is not polluted)', async () => {
         window.moneyPanel = createMoneyPanel();
         seedAIPanelContent();
         const p = new ResultTestingPanel();
         p.submit(makeAutoTestResult());
         p.processTabEntry('S1-Start0');
         await p.waitForReplay();
-        // Fixture has a -$24 drawdown after the opening +$60 hit.
-        // The tracker rounds to 2dp, so expect ≥ 24 (allowing for
-        // any larger trough as the replay continues).
-        expect(window.moneyPanel.sessionData.maxDrawdown).toBeGreaterThanOrEqual(24);
+        // The replay computes drawdown live during the loop and
+        // stamps it on the captured snapshot. The LIVE money panel's
+        // sessionData does not gain a maxDrawdown field — the
+        // isolation guarantee keeps the panel untouched.
+        expect(p._replayStats.sessionData.maxDrawdown).toBeGreaterThanOrEqual(24);
+        expect(window.moneyPanel.sessionData.maxDrawdown).toBeUndefined();
     });
 
     test('X3: comparison Max Drawdown row is MATCH when fixture pnl sequence matches', async () => {
@@ -675,5 +699,115 @@ describe('Y. downloadVerificationReport writes an .xlsx workbook', () => {
         new ResultTestingPanel();
         const btn = document.getElementById('resultTestingDownloadBtn');
         expect(btn.textContent).toMatch(/\.xlsx/);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  AA. Relocated "Download Session Report" button
+// ═══════════════════════════════════════════════════════════════════
+//
+// The button used to live on the Money Management panel. It was
+// moved to the AI Prediction panel header so the Money Management
+// panel stays minimal and is never read/mutated for report
+// generation. The new button calls
+// ResultTestingPanel.downloadSessionReport which reads from
+// this._replayStats (never from the live panel).
+describe('AA. Session report button is on the AI Prediction header', () => {
+    function seedAIHeader() {
+        // Build the AI Prediction header that ai-prediction-panel.js
+        // renders in the real app. setupDOM already creates an
+        // #aiSelectionPanel shell (no .panel-header), so we ensure the
+        // header element exists whether the outer container was
+        // pre-created by setupDOM or not.
+        let sp = document.getElementById('aiSelectionPanel');
+        if (!sp) {
+            sp = document.createElement('div');
+            sp.id = 'aiSelectionPanel';
+            sp.className = 'ai-selection-panel';
+            document.body.appendChild(sp);
+        }
+        if (!sp.querySelector('.panel-header')) {
+            const hdr = document.createElement('div');
+            hdr.className = 'panel-header';
+            hdr.innerHTML = '<h3>🎯 AI Prediction - Multi-Table Selection</h3><button class="btn-toggle" id="toggleAIPanel">−</button>';
+            sp.insertBefore(hdr, sp.firstChild);
+        }
+        seedAIPanelContent();
+    }
+
+    test('AA1: button is injected into the AI panel header, starts disabled', () => {
+        seedAIHeader();
+        new ResultTestingPanel();
+        const btn = document.getElementById('aiHeaderSessionReportBtn');
+        expect(btn).not.toBeNull();
+        expect(btn.disabled).toBe(true);
+        // It lives inside the AI Prediction panel header, NOT the money panel.
+        const inAiHeader = document.querySelector('#aiSelectionPanel .panel-header #aiHeaderSessionReportBtn');
+        expect(inAiHeader).not.toBeNull();
+    });
+
+    test('AA2: button is NOT present on the Money Management panel', () => {
+        window.moneyPanel = createMoneyPanel();
+        // The legacy #downloadSessionReportBtn has been removed.
+        expect(document.getElementById('downloadSessionReportBtn')).toBeNull();
+    });
+
+    test('AA3: button enables after a successful session replay', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIHeader();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        const btn = document.getElementById('aiHeaderSessionReportBtn');
+        expect(btn.disabled).toBe(false);
+    });
+
+    test('AA4: clicking the button saves a session-result-*.xlsx via IPC', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIHeader();
+        const saved = [];
+        window.aiAPI = { saveXlsx: async (buf, name) => { saved.push(name); return true; } };
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        await p.downloadSessionReport();
+        expect(saved.length).toBe(1);
+        expect(saved[0]).toMatch(/^session-result-\d{4}-\d{2}-\d{2}-\d{6}\.xlsx$/);
+        delete window.aiAPI;
+    });
+
+    test('AA5: downloadSessionReport reads from _replayStats, never from the live money panel', async () => {
+        window.moneyPanel = createMoneyPanel();
+        seedAIHeader();
+        // Spy on the live panel to make sure downloadSessionReport
+        // does NOT touch its sessionData/betHistory during report
+        // generation.
+        let touched = false;
+        const origSd = window.moneyPanel.sessionData;
+        Object.defineProperty(window.moneyPanel, 'sessionData', {
+            configurable: true,
+            get() { touched = true; return origSd; }
+        });
+        window.aiAPI = { saveXlsx: async () => true };
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        p.processTabEntry('S1-Start0');
+        await p.waitForReplay();
+        // Reset the touched flag — the replay itself legitimately
+        // reads sessionData. We only care about what happens during
+        // downloadSessionReport.
+        touched = false;
+        await p.downloadSessionReport();
+        expect(touched).toBe(false);
+        delete window.aiAPI;
+    });
+
+    test('AA6: downloadSessionReport returns false when no replay has run', async () => {
+        seedAIHeader();
+        const p = new ResultTestingPanel();
+        p.submit(makeAutoTestResult());
+        await expect(p.downloadSessionReport()).resolves.toBe(false);
     });
 });

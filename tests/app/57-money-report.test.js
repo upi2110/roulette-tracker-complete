@@ -160,15 +160,9 @@ describe('C. Overview sheet contents', () => {
         expect(overview.name).toBe('Overview');
     });
 
-    // The MoneyReport Overview was widened to mirror the Auto Test
-    // report columns (Session / Start Idx / Outcome / Total Spins /
-    // Max Drawdown added). Header is on row 6, data on row 7, with
-    // 18 total columns. Merge range is now A1:R1.
-    const N_COLS = 18;
-
-    test('C2: header row includes Total Win $, Total Loss $, Total P&L', () => {
+    test('C2: header row (row 5) includes Total Win $, Total Loss $, Total P&L', () => {
         const headers = [];
-        for (let i = 1; i <= N_COLS; i++) headers.push(overview.getRow(6).getCell(i).value);
+        for (let i = 1; i <= 14; i++) headers.push(overview.getRow(5).getCell(i).value);
         expect(headers).toContain('Total Win $');
         expect(headers).toContain('Total Loss $');
         expect(headers).toContain('Total P&L');
@@ -176,51 +170,51 @@ describe('C. Overview sheet contents', () => {
 
     test('C3: Auto-Test-style header names are all present', () => {
         const headers = [];
-        for (let i = 1; i <= N_COLS; i++) headers.push(overview.getRow(6).getCell(i).value);
+        for (let i = 1; i <= 14; i++) headers.push(overview.getRow(5).getCell(i).value);
         for (const h of ['Session', 'Starting Bankroll', 'Current Bankroll', 'Total Bets',
                          'Wins', 'Losses', 'Win Rate', 'Total Profit', 'Avg Profit',
-                         'Strategy', 'Consecutive Losses',
-                         'Start Idx', 'Outcome', 'Total Spins', 'Max Drawdown']) {
+                         'Strategy', 'Consecutive Losses']) {
             expect(headers).toContain(h);
         }
     });
 
-    test('C4: data row carries the computed dollar totals', () => {
-        const headerRow = overview.getRow(6);
-        const dataRow = overview.getRow(7);
+    test('C4: data row (row 6) carries the computed dollar totals', () => {
+        const headerRow = overview.getRow(5);
+        const dataRow = overview.getRow(6);
         const idx = {};
-        for (let i = 1; i <= N_COLS; i++) idx[headerRow.getCell(i).value] = i;
+        for (let i = 1; i <= 14; i++) idx[headerRow.getCell(i).value] = i;
         expect(String(dataRow.getCell(idx['Total Win $']).value)).toBe('$250');
         expect(String(dataRow.getCell(idx['Total Loss $']).value)).toBe('$90');
         expect(String(dataRow.getCell(idx['Total P&L']).value)).toBe('$160');
     });
 
     test('C5: data row shows Wins / Losses / Win Rate from session data', () => {
-        const headerRow = overview.getRow(6);
-        const dataRow = overview.getRow(7);
+        const headerRow = overview.getRow(5);
+        const dataRow = overview.getRow(6);
         const idx = {};
-        for (let i = 1; i <= N_COLS; i++) idx[headerRow.getCell(i).value] = i;
+        for (let i = 1; i <= 14; i++) idx[headerRow.getCell(i).value] = i;
         expect(dataRow.getCell(idx['Wins']).value).toBe(5);
         expect(dataRow.getCell(idx['Losses']).value).toBe(3);
         expect(String(dataRow.getCell(idx['Win Rate']).value)).toMatch(/62\.5%/);
     });
 
-    test('C6: title is merged across all columns (A1:R1), matching Auto Test', () => {
-        expect(overview.mergedCells).toContain('A1:R1');
+    test('C6: title is merged across 14 columns (A1:N1), matching Auto Test', () => {
+        expect(overview.mergedCells).toContain('A1:N1');
     });
 
-    test('C7: sheet has 18 column widths set', () => {
-        expect(overview.columns.length).toBe(N_COLS);
+    test('C7: sheet has 14 column widths set', () => {
+        expect(overview.columns.length).toBe(14);
     });
 
     test('C8: strategy label reflects bettingStrategy id', () => {
         const wb3 = new MoneyReport(MockExcelJS).generate(makeSessionData({ bettingStrategy: 3 }), []);
         const wb1 = new MoneyReport(MockExcelJS).generate(makeSessionData({ bettingStrategy: 1 }), []);
+        // Value in data row column "Strategy" (we located it via headers in C5).
         const strHeader = (w) => {
             const s = w.getWorksheet('Overview');
             const headers = [];
-            for (let i = 1; i <= N_COLS; i++) headers.push(s.getRow(6).getCell(i).value);
-            return s.getRow(7).getCell(headers.indexOf('Strategy') + 1).value;
+            for (let i = 1; i <= 14; i++) headers.push(s.getRow(5).getCell(i).value);
+            return s.getRow(6).getCell(headers.indexOf('Strategy') + 1).value;
         };
         expect(String(strHeader(wb3))).toMatch(/Cautious/);
         expect(String(strHeader(wb1))).toMatch(/Aggressive/);
@@ -333,10 +327,14 @@ describe('F. Money panel Download button', () => {
         panel = createMoneyPanel();
     });
 
-    test('F1: panel renders the #downloadSessionReportBtn in the header area', () => {
-        const btn = document.getElementById('downloadSessionReportBtn');
-        expect(btn).not.toBeNull();
-        expect(btn.textContent).toMatch(/Download Session Report/);
+    // F1 + F5 were removed in the isolation refactor: the
+    // "Download Session Report" button no longer lives on the
+    // Money Management panel. It was relocated to the AI
+    // Prediction panel header (see result-testing-panel.js
+    // _injectSessionReportButton). Tests for the new button live
+    // in tests/app/59-result-testing-comparison.test.js (group AA).
+    test('F1: downloadSessionReportBtn has been removed from the money panel', () => {
+        expect(document.getElementById('downloadSessionReportBtn')).toBeNull();
     });
 
     test('F2: existing buttons (Start Betting, Strategy) remain unchanged', () => {
@@ -345,7 +343,7 @@ describe('F. Money panel Download button', () => {
         expect(document.getElementById('toggleMoneyPanel')).not.toBeNull();
     });
 
-    test('F3: downloadSessionReport() returns false gracefully when ExcelJS is missing', async () => {
+    test('F3: downloadSessionReport() method is still callable (for back-compat) and returns false without ExcelJS', async () => {
         const r = await panel.downloadSessionReport();
         expect(r).toBe(false);
     });
@@ -360,22 +358,6 @@ describe('F. Money panel Download button', () => {
         expect(ok).toBe(true);
         expect(calls.length).toBe(1);
         expect(calls[0].fn).toMatch(/^session-result-\d{4}-\d{2}-\d{2}-\d{6}\.xlsx$/);
-        delete global.ExcelJS;
-    });
-
-    test('F5: clicking the button triggers the download (end-to-end via click event)', async () => {
-        global.ExcelJS = MockExcelJS;
-        const calls = [];
-        global.window.aiAPI = {
-            saveXlsx: (buf, fn) => { calls.push(fn); return Promise.resolve(true); }
-        };
-        const btn = document.getElementById('downloadSessionReportBtn');
-        btn.click();
-        // The click-triggered downloadSessionReport is async — yield to flush it.
-        await new Promise((r) => setTimeout(r, 0));
-        await new Promise((r) => setTimeout(r, 0));
-        expect(calls.length).toBe(1);
-        expect(calls[0]).toMatch(/^session-result-/);
         delete global.ExcelJS;
     });
 });

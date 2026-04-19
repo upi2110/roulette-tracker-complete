@@ -74,7 +74,15 @@ class ResultTestingPanel {
     createUI() {
         const container = document.getElementById('aiPanelContent');
         if (!container) return;
-        if (document.getElementById('resultTestingPanel')) return; // idempotent
+        if (document.getElementById('resultTestingPanel')) {
+            // Section already built (likely by an earlier DOMContentLoaded
+            // bootstrap). The header button still needs to attach so a
+            // second construction in tests (or after a DOM reset) does
+            // not leave the AI Prediction tile without its session-report
+            // button. Injection is itself idempotent.
+            this._injectSessionReportButton();
+            return;
+        }
 
         const section = document.createElement('div');
         section.id = 'resultTestingPanel';
@@ -140,6 +148,57 @@ class ResultTestingPanel {
         } else {
             container.appendChild(section);
         }
+
+        // Inject a "Download Session Report" button into the AI
+        // Prediction tile's header, next to the title. This button
+        // used to live on the Money Management panel; it was moved
+        // here so the Money Management panel is NEVER mutated for
+        // report-generation purposes (full isolation). The button
+        // pulls data from this.#_replayStats and feeds it straight
+        // into MoneyReport — it never reads or writes the live
+        // money-panel state.
+        this._injectSessionReportButton();
+    }
+
+    /**
+     * Add a "Download Session Report" button into the AI Prediction
+     * panel's .panel-header (next to the title). Idempotent — if the
+     * button already exists, does nothing.
+     */
+    _injectSessionReportButton() {
+        if (typeof document === 'undefined') return;
+        if (document.getElementById('aiHeaderSessionReportBtn')) return;
+        // The ai-prediction-panel renders its header as
+        // .ai-selection-panel > .panel-header. Scope the lookup
+        // to that panel so we don't accidentally attach to the
+        // money panel's header (which has the same class).
+        const aiHeader = document.querySelector('#aiSelectionPanel .panel-header')
+            || document.querySelector('.ai-selection-panel .panel-header');
+        if (!aiHeader) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = 'aiHeaderSessionReportBtn';
+        btn.title = 'Download the Result-testing session as session-result-*.xlsx (uses Auto Test session replay data — never mutates Money Management)';
+        btn.textContent = '📊 Download Session Report';
+        btn.disabled = true;  // enabled after a successful session replay
+        btn.style.cssText = [
+            'margin-left:auto',
+            'margin-right:8px',
+            'padding:4px 10px',
+            'font-size:11px',
+            'font-weight:600',
+            'border:1px solid #3b82f6',
+            'border-radius:4px',
+            'background:#3b82f6',
+            'color:white',
+            'cursor:pointer'
+        ].join(';');
+        btn.addEventListener('click', () => this.downloadSessionReport());
+        // Insert before the toggle button so the session-report sits
+        // between the title and the expand/collapse icon.
+        const toggle = aiHeader.querySelector('.btn-toggle');
+        if (toggle) aiHeader.insertBefore(btn, toggle);
+        else aiHeader.appendChild(btn);
     }
 
     setupEventListeners() {
@@ -207,6 +266,8 @@ class ResultTestingPanel {
         this._replayStats = null;
         const wbBtn = document.getElementById('resultTestingWorkbookBtn');
         if (wbBtn) wbBtn.disabled = true;
+        const srBtn = document.getElementById('aiHeaderSessionReportBtn');
+        if (srBtn) srBtn.disabled = true;
 
         if (info) {
             const file = autoTestResult.testFile || 'manual';
@@ -442,20 +503,24 @@ class ResultTestingPanel {
             // Remember the ref/mode so the promise-chain below can
             // attach the snapshot after the replay actually finishes.
             this._pendingReplayCtx = { sessionRef, session, aiMode };
+            // Pass sessionRef + aiMode into replayRecordedSession so
+            // it can capture _replayStats BEFORE its finally block
+            // restores the live panel. This preserves the isolation
+            // guarantee (money panel reverts to pre-replay state)
+            // while still giving downstream reports the replay data.
             const replayP = (Array.isArray(session.steps) && session.steps.length > 0)
-                ? this._scheduleRecordedReplay(session)
+                ? this._scheduleRecordedReplay(session, { sessionRef, aiMode })
                 : this._scheduleLiveReplay(windowSpins);
-            // After the replay settles, capture the money-panel
-            // snapshot so downloadComparisonWorkbook() / the verification
-            // text can diff Auto Test vs Result-testing without a
-            // second live pass.
             this._lastReplayPromise = replayP.then((r) => {
-                try { this._captureReplayStats(sessionRef, session, aiMode); } catch (_) {}
-                // Enable the comparison workbook button now that we
-                // have both sides.
+                // Enable the comparison workbook button + the
+                // relocated "Download Session Report" button (in the
+                // AI Prediction header) now that _replayStats is
+                // populated with the replay snapshot.
                 if (typeof document !== 'undefined') {
                     const wbBtn = document.getElementById('resultTestingWorkbookBtn');
                     if (wbBtn) wbBtn.disabled = false;
+                    const srBtn = document.getElementById('aiHeaderSessionReportBtn');
+                    if (srBtn) srBtn.disabled = false;
                 }
                 return r;
             });
@@ -572,6 +637,13 @@ class ResultTestingPanel {
      */
     async replayRecordedSession(session, opts = {}) {
         const stepDelayMs = typeof opts.stepDelayMs === 'number' ? opts.stepDelayMs : 0;
+        // sessionRef + aiMode can be passed in so the replay can
+        // capture _replayStats itself (before restoring live state
+        // in the finally block). Without them, _replayStats is
+        // still captured but the label will be derived from the
+        // session object alone.
+        const sessionRef = opts.sessionRef || null;
+        const aiMode = opts.aiMode || (this.getSelectedMode ? this.getSelectedMode() : 'manual');
         if (typeof window === 'undefined') return { stepped: 0, bets: 0 };
         if (!session || !Array.isArray(session.steps) || session.steps.length === 0) {
             return { stepped: 0, bets: 0 };
@@ -607,8 +679,14 @@ class ResultTestingPanel {
                 'currentBankroll', 'startingBankroll', 'sessionProfit',
                 'totalBets', 'totalWins', 'totalLosses',
                 'consecutiveLosses', 'consecutiveWins',
-                'currentBetPerNumber', 'spinsWithBets'
+                'currentBetPerNumber', 'spinsWithBets',
+                'maxDrawdown'
             ]) {
+                // Capture every key we mutate during replay — even
+                // ones that were undefined on the live panel — so the
+                // finally restore can DELETE them rather than leaving
+                // replay-added properties behind (e.g. maxDrawdown,
+                // which the live money panel does not normally set).
                 savedState[k] = sd[k];
             }
             savedState.betHistory = Array.isArray(money.betHistory) ? money.betHistory.slice() : [];
@@ -746,18 +824,55 @@ class ResultTestingPanel {
                 }
             }
         } finally {
-            // Note: we intentionally do NOT restore totals/bankroll/
-            // betHistory after the replay — the user explicitly asked
-            // for "the money management panel reflects the Auto Test
-            // session". We DO restore the binary gates
-            // (isSessionActive / isBettingEnabled) so a subsequent
-            // live session doesn't start in an unexpected state.
-            // The saved values for totals are kept on `savedState` but
-            // only the gate flags are written back. If the user wants
-            // a full revert they can click New Session.
+            // ── ISOLATION GUARANTEE ─────────────────────────────────
+            // Result-testing must not leak its mutations into normal
+            // manual / auto / T1-strategy play. We:
+            //   1) SNAPSHOT the replay's final money-panel state into
+            //      this._replayStats — that snapshot is the single
+            //      source of truth for downstream reports
+            //      (comparison workbook, session-result workbook,
+            //      verification workbook).
+            //   2) RESTORE the live panel to the user's pre-replay
+            //      state — totals, bankroll, bet history, strategy,
+            //      consecutive counters, gate flags, maxDrawdown —
+            //      so the money-management UI resumes exactly where
+            //      the user left off before clicking Run. This is
+            //      the critical fix: historically we only restored
+            //      the gate flags, which left every other counter
+            //      stuck on the replay's finals and polluted live
+            //      play.
+            //
+            // Both halves must run under `finally` even if the bet
+            // loop throws partway through, so a mid-replay error
+            // never leaves the money panel in an inconsistent state.
             if (money && money.sessionData && typeof money.sessionData === 'object') {
-                if (typeof savedState.isSessionActive !== 'undefined') money.sessionData.isSessionActive = savedState.isSessionActive;
-                if (typeof savedState.isBettingEnabled !== 'undefined') money.sessionData.isBettingEnabled = savedState.isBettingEnabled;
+                // (1) Capture the post-replay snapshot FIRST — while
+                //     the panel still holds replay data.
+                try {
+                    this._replayStats = {
+                        sessionRef,
+                        session,
+                        aiMode,
+                        sessionData: Object.assign({}, money.sessionData),
+                        betHistory: Array.isArray(money.betHistory) ? money.betHistory.slice() : [],
+                        capturedAt: new Date().toISOString()
+                    };
+                } catch (_) { /* never let snapshot failure block restore */ }
+
+                // (2) Restore every field we saved on entry. For
+                //     keys that were `undefined` before the replay
+                //     we `delete` rather than assigning `undefined`
+                //     — this preserves the exact shape of the live
+                //     panel's sessionData (important for code that
+                //     does `in` checks or `hasOwnProperty`).
+                const sd = money.sessionData;
+                for (const k of Object.keys(savedState)) {
+                    if (k === 'betHistory') continue;
+                    const saved = savedState[k];
+                    if (typeof saved === 'undefined') { try { delete sd[k]; } catch (_) {} }
+                    else sd[k] = saved;
+                }
+                money.betHistory = savedState.betHistory || [];
                 if (typeof money.render === 'function') { try { money.render(); } catch (_) {} }
             }
         }
@@ -946,20 +1061,14 @@ class ResultTestingPanel {
      */
     _scheduleRecordedReplay(session, opts = {}) {
         return new Promise((resolve) => {
+            const run = () => this.replayRecordedSession(session, opts)
+                .then(resolve)
+                .catch(() => resolve({ stepped: 0, bets: 0, error: true }));
             if (typeof setTimeout === 'function') {
-                const tid = setTimeout(() => {
-                    _activeReplayTimers.delete(tid);
-                    this.replayRecordedSession(session, opts)
-                        .then(resolve)
-                        .catch(() => resolve({ stepped: 0, bets: 0, error: true }));
-                }, 0);
+                const tid = setTimeout(() => { _activeReplayTimers.delete(tid); run(); }, 0);
                 _activeReplayTimers.add(tid);
             } else {
-                Promise.resolve().then(() => {
-                    this.replayRecordedSession(session, opts)
-                        .then(resolve)
-                        .catch(() => resolve({ stepped: 0, bets: 0, error: true }));
-                });
+                Promise.resolve().then(run);
             }
         });
     }
@@ -1416,6 +1525,46 @@ class ResultTestingPanel {
             resultTesting,
             deltas
         };
+    }
+
+    /**
+     * Download the Money Management session report (.xlsx) for the
+     * currently-loaded Result-testing session. Pulls sessionData +
+     * betHistory from this._replayStats (NOT the live money panel),
+     * hands them to MoneyReport, and saves via the standard pipeline.
+     *
+     * This is the relocated version of the button that used to live
+     * on the Money Management panel. By sourcing from _replayStats we
+     * guarantee:
+     *   (a) the live money panel is never read or mutated during
+     *       report generation — normal manual / auto / T1 play is
+     *       never affected;
+     *   (b) the exported workbook reflects the Auto Test session the
+     *       user replayed, not whatever the live panel happens to
+     *       show.
+     *
+     * Returns false when there is nothing to download (no replay yet
+     * or no Auto Test submission).
+     */
+    async downloadSessionReport() {
+        if (typeof window === 'undefined') return false;
+        if (!this._replayStats || !this._replayStats.sessionData) return false;
+        const ExcelJS = window.ExcelJS || (typeof require === 'function' ? (() => { try { return require('exceljs'); } catch (_) { return null; } })() : null);
+        if (!ExcelJS) return false;
+        const MoneyReportCtor = (typeof window !== 'undefined' && window.MoneyReport)
+            ? window.MoneyReport
+            : ((typeof require === 'function') ? (() => { try { return require('./money-report').MoneyReport; } catch (_) { return null; } })() : null);
+        if (!MoneyReportCtor) return false;
+        try {
+            const sd = Object.assign({}, this._replayStats.sessionData);
+            const bh = Array.isArray(this._replayStats.betHistory) ? this._replayStats.betHistory.slice() : [];
+            const rep = new MoneyReportCtor(ExcelJS);
+            const wb = rep.generate(sd, bh);
+            const filename = MoneyReportCtor.buildFilename(new Date());
+            return await rep.saveToFile(wb, filename);
+        } catch (_) {
+            return false;
+        }
     }
 
     /**

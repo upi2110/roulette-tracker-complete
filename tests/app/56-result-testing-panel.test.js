@@ -1460,8 +1460,14 @@ describe('N. Real MoneyManagementPanel end-to-end replay', () => {
         expect(window.spins.length).toBe(20);
         // Await the deferred replay.
         await p.waitForReplay();
-        // Real money panel shows bets recorded during replay.
-        expect(moneyPanel.betHistory.length).toBeGreaterThan(0);
+        // ISOLATION: live money panel is restored to pre-replay state
+        // after replay finishes — the authoritative post-replay
+        // snapshot lives on p._replayStats. This guarantees the
+        // Money Management panel is never polluted by Result-testing.
+        expect(p._replayStats).not.toBeNull();
+        expect(p._replayStats.betHistory.length).toBeGreaterThan(0);
+        // Live panel's betHistory is back to pre-replay (empty array).
+        expect(moneyPanel.betHistory.length).toBe(0);
         // Comparison card still rendered.
         expect(document.getElementById('resultTestingComparison').innerHTML).toMatch(/S1-Start9/);
         // Download still works.
@@ -1715,12 +1721,20 @@ describe('Q. replayRecordedSession — session.steps is the source of truth', ()
         };
         const p = new ResultTestingPanel();
         await p.replayRecordedSession(session);
-        expect(money.sessionData.totalBets).toBe(4);
-        expect(money.sessionData.totalWins).toBe(2);
-        expect(money.sessionData.totalLosses).toBe(2);
-        // Net: +46 -24 +46 -24 = +44 → bankroll went from 4000 to 4044.
-        expect(money.sessionData.currentBankroll).toBe(4044);
-        expect(money.sessionData.sessionProfit).toBe(44);
+        // ISOLATION: live money panel is RESTORED to pre-replay state
+        // after the replay finishes — the authoritative post-replay
+        // snapshot lives on p._replayStats. This is what guarantees
+        // Result-testing does not pollute normal manual/auto/T1 play.
+        const snap = p._replayStats.sessionData;
+        expect(snap.totalBets).toBe(4);
+        expect(snap.totalWins).toBe(2);
+        expect(snap.totalLosses).toBe(2);
+        // Net: +46 -24 +46 -24 = +44 → bankroll 4000 → 4044 during replay.
+        expect(snap.currentBankroll).toBe(4044);
+        expect(snap.sessionProfit).toBe(44);
+        // Live panel is back to initial stub values (pre-replay).
+        expect(money.sessionData.totalBets).toBe(0);
+        expect(money.sessionData.currentBankroll).toBe(4000);
     });
 
     test('Q3: betHistory is overwritten with the FULL per-session bet list (not capped)', async () => {
@@ -1736,10 +1750,14 @@ describe('Q. replayRecordedSession — session.steps is the source of truth', ()
             totalSpins: 15, totalBets: 15, wins: 8, losses: 7, steps };
         const p = new ResultTestingPanel();
         await p.replayRecordedSession(session);
-        // All 15 bets should appear in betHistory — NOT the live 10-cap.
-        expect(money.betHistory.length).toBe(15);
-        expect(money.betHistory[0].actualNumber).toBe(0);
-        expect(money.betHistory[14].actualNumber).toBe(14);
+        // ISOLATION: full bet list is captured on p._replayStats.
+        // Live money.betHistory has been restored to pre-replay (empty).
+        const bh = p._replayStats.betHistory;
+        expect(bh.length).toBe(15);
+        expect(bh[0].actualNumber).toBe(0);
+        expect(bh[14].actualNumber).toBe(14);
+        // Live panel is clean.
+        expect(money.betHistory.length).toBe(0);
     });
 
     test('Q4: betHistory entries have the shape MoneyReport expects', async () => {
@@ -1751,7 +1769,8 @@ describe('Q. replayRecordedSession — session.steps is the source of truth', ()
         };
         const p = new ResultTestingPanel();
         await p.replayRecordedSession(session);
-        const bet = money.betHistory[0];
+        // Read from p._replayStats now that live panel is restored.
+        const bet = p._replayStats.betHistory[0];
         for (const k of ['spin', 'betAmount', 'totalBet', 'hit', 'actualNumber', 'netChange', 'timestamp']) {
             expect(bet).toHaveProperty(k);
         }
@@ -1789,17 +1808,23 @@ describe('Q. replayRecordedSession — session.steps is the source of truth', ()
         const p = new ResultTestingPanel();
         await p.replayRecordedSession(session);
 
-        // Now generate the workbook (same path the money-panel's
-        // Download Session Report button uses).
+        // Now generate the workbook the same way the real
+        // money-panel's Download Session Report button does — by
+        // pulling sessionData/betHistory from the Result-testing
+        // _replayStats snapshot (the live panel is restored after
+        // replay for isolation; the snapshot is the authoritative
+        // post-replay source the report reads from).
         const rep = new MoneyReport(MockExcelJS);
-        const wb = rep.generate(money.sessionData, money.betHistory);
+        const wb = rep.generate(p._replayStats.sessionData, p._replayStats.betHistory);
         const overview = wb.getWorksheet('Overview');
-        // MoneyReport Overview was expanded to mirror Auto Test columns
-        // (Session / Start Idx / Outcome / ... / Max Drawdown). Header
-        // is now on row 6, data on row 7, with 18 columns.
-        const headerRow = overview.getRow(6);
-        const headers = []; for (let i = 1; i <= 18; i++) headers.push(headerRow.getCell(i).value);
-        const dataRow = overview.getRow(7);
+        // MoneyReport Overview: header on row 5, data on row 6,
+        // 14 columns (the Auto-Test-parity 14-col layout — not the
+        // widened 18-col layout, which was reverted during the
+        // isolation refactor so the Money Management panel + its
+        // report stay untouched).
+        const headerRow = overview.getRow(5);
+        const headers = []; for (let i = 1; i <= 14; i++) headers.push(headerRow.getCell(i).value);
+        const dataRow = overview.getRow(6);
         const totalWon = String(dataRow.getCell(headers.indexOf('Total Win $') + 1).value);
         const totalLost = String(dataRow.getCell(headers.indexOf('Total Loss $') + 1).value);
         const totalPL = String(dataRow.getCell(headers.indexOf('Total P&L') + 1).value);
@@ -1860,9 +1885,11 @@ describe('Q. replayRecordedSession — session.steps is the source of truth', ()
         await p.waitForReplay();
         // recordBetResult was invoked — the recorded path ran.
         expect(money.recordBetResultCalls.length).toBeGreaterThan(0);
-        // The session's bet count matches the fixture (the fixture
-        // has some BET and SKIP steps; we just assert "more than 0"
-        // to avoid coupling to the exact shape).
-        expect(money.sessionData.totalBets).toBe(money.recordBetResultCalls.length);
+        // ISOLATION: the live money panel is RESTORED to pre-replay
+        // state on exit, so its totalBets is back to 0. The
+        // authoritative post-replay snapshot lives on p._replayStats
+        // and reflects every recordBetResult call.
+        expect(money.sessionData.totalBets).toBe(0);
+        expect(p._replayStats.sessionData.totalBets).toBe(money.recordBetResultCalls.length);
     });
 });
