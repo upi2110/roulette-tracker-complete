@@ -166,6 +166,38 @@ class AIAutoModeUI {
             engine.enable();
             if (semiFilter) semiFilter.disable();
 
+            // ── AUTO-mode parity with Auto Test runner ──
+            // Only applies to mode === 'auto'. T1-strategy branch is
+            // explicitly NOT touched (per backlog rule "do not touch
+            // T1-strategy in this task"). For AUTO we align the live
+            // engine state with what the Auto Test runner sets up per
+            // session (see app/auto-test-runner.js:143-151):
+            //   1. engine.resetSession()  — zero out accumulated
+            //      session.consecutiveSkips / sessionWinRate /
+            //      pairFilterCross so _computeConfidence starts from
+            //      a clean slate, matching the runner's pre-session
+            //      reset.
+            //   2. Save + disable retrain triggers. Runner freezes
+            //      the model for the whole backtest; live was
+            //      leaving them active, so the model could mutate
+            //      mid-session and produce divergent decisions.
+            //   3. Tell moneyPanel to use Auto-Test-parity pnl math
+            //      for the upcoming session (flag-gated so Manual /
+            //      Semi / T1 are byte-for-byte unchanged).
+            if (mode === 'auto') {
+                try {
+                    engine.resetSession();
+                    if (this._savedRetrainInterval === undefined) {
+                        this._savedRetrainInterval = engine._retrainInterval;
+                        this._savedRetrainLossStreak = engine._retrainLossStreak;
+                    }
+                    engine._retrainInterval = Infinity;
+                    engine._retrainLossStreak = Infinity;
+                } catch (_) { /* best-effort */ }
+                const mp = (typeof window !== 'undefined') ? window.moneyPanel : null;
+                if (mp) mp._useAutoTestPnl = true;
+            }
+
             if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
                 window.autoUpdateOrchestrator.setAutoMode(true);
                 // Tell the orchestrator WHICH decision policy to use
@@ -186,6 +218,8 @@ class AIAutoModeUI {
             if (engine) engine.disable();
             if (semiFilter) semiFilter.enable();
 
+            this._restoreAutoParity(engine);
+
             if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
                 window.autoUpdateOrchestrator.setAutoMode(false);
                 // Reset the decision-mode flag so a future AUTO
@@ -202,6 +236,8 @@ class AIAutoModeUI {
             this.isSemiAutoMode = false;
             if (engine) engine.disable();
             if (semiFilter) semiFilter.disable();
+
+            this._restoreAutoParity(engine);
 
             if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
                 window.autoUpdateOrchestrator.setAutoMode(false);
@@ -223,6 +259,26 @@ class AIAutoModeUI {
         }
 
         console.log(`🔄 Mode switched to ${this.currentMode.toUpperCase()}`);
+    }
+
+    /**
+     * Roll back the AUTO-mode parity tweaks applied on setMode('auto').
+     * Idempotent — safe to call from any non-AUTO path. Restores the
+     * engine's saved retrain intervals and clears the moneyPanel's
+     * Auto-Test-parity pnl flag so Manual / Semi / T1-strategy see the
+     * original behaviour.
+     */
+    _restoreAutoParity(engine) {
+        if (engine && this._savedRetrainInterval !== undefined) {
+            try {
+                engine._retrainInterval = this._savedRetrainInterval;
+                engine._retrainLossStreak = this._savedRetrainLossStreak;
+            } catch (_) { /* best-effort */ }
+            this._savedRetrainInterval = undefined;
+            this._savedRetrainLossStreak = undefined;
+        }
+        const mp = (typeof window !== 'undefined') ? window.moneyPanel : null;
+        if (mp) mp._useAutoTestPnl = false;
     }
 
     /**

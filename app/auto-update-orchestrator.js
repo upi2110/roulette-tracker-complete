@@ -111,6 +111,36 @@ class AutoUpdateOrchestrator {
 
         // 5. Execute decision
         if (decision.action === 'BET') {
+            // ── AUTO-MODE PARITY FIX ──
+            // Historically the live AUTO path placed a bet only
+            // AFTER the aiPanel → _autoTriggerPredictions (800 ms
+            // debounce) → wheel → moneyPanel.setPrediction cascade
+            // completed. If the user entered the next spin within
+            // that 800 ms window, pendingBet was still null and the
+            // bet was silently missed. The Auto Test runner has no
+            // cascade — pnl resolves on the same tick as the
+            // decision. To align live AUTO with runner timing, we
+            // push the pendingBet DIRECTLY into moneyPanel here in
+            // 'auto' decisionMode so the bet lands synchronously.
+            // The aiPanel + wheel UI updates below still run for
+            // visibility, but the bet placement no longer depends
+            // on them.
+            //
+            // Scoped to 'auto' only. 't1-strategy' keeps its
+            // existing cascade path (per backlog rule: do not touch
+            // T1 in this task). 'semi' and 'manual' never reach
+            // this function.
+            if (this.decisionMode === 'auto' && window.moneyPanel
+                && typeof window.moneyPanel.setPrediction === 'function') {
+                try {
+                    window.moneyPanel.setPrediction({
+                        numbers: decision.numbers,
+                        signal: 'BET NOW',
+                        confidence: decision.confidence
+                    });
+                } catch (_) { /* best-effort */ }
+            }
+
             // a. Clear old selections + select the chosen pair
             if (window.aiPanel) {
                 window.aiPanel.clearSelections();
@@ -120,12 +150,11 @@ class AutoUpdateOrchestrator {
             // b. Set wheel filters programmatically
             this._setWheelFilters(decision.selectedFilter);
 
-            // c. Wait for prediction cascade (debounced 800ms in aiPanel._autoTriggerPredictions)
-            // The cascade: aiPanel._handleTable3Selection() → _autoTriggerPredictions() →
-            //   getPredictions() → updatePrediction() →
-            //     rouletteWheel.updateHighlights() →
-            //       wheel._applyFilters() →
-            //         wheel._syncMoneyPanel() → moneyPanel.setPrediction()
+            // c. The prediction cascade below (aiPanel →
+            //    _autoTriggerPredictions 800 ms debounce → wheel →
+            //    moneyPanel.setPrediction) still runs for the UI,
+            //    but is no longer the primary source of pendingBet
+            //    in AUTO mode — see direct setPrediction call above.
 
         } else {
             // SKIP — clear stale UI from previous BET

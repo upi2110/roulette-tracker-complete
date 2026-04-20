@@ -30,6 +30,19 @@ class MoneyManagementPanel {
         // CRITICAL: Store the prediction we're betting on
         this.pendingBet = null; // { betAmount, numbersCount, predictedNumbers }
 
+        // When false (default) recordBetResult uses the legacy hit-pnl
+        // math. Set to true ONLY by ai-auto-mode-ui.js when entering
+        // AUTO mode, so AUTO reports match Auto Test runner. Manual,
+        // Semi, and T1-strategy modes keep the legacy math unchanged.
+        this._useAutoTestPnl = false;
+
+        // Saved engine retrain intervals when AUTO mode disables them
+        // for the live session. Restored on exit from AUTO. These live
+        // here so the money panel's session-lifecycle code can manage
+        // them without the UI layer having to remember state.
+        this._savedRetrainInterval = undefined;
+        this._savedRetrainLossStreak = undefined;
+
         this.createPanel();
         // Setup betting control button listener
         setTimeout(() => this.setupBettingControl(), 200);
@@ -459,16 +472,32 @@ class MoneyManagementPanel {
         let netChange = 0;
 
         if (hit) {
-            // Win: 35:1 on one number, lose the rest
-            const winAmount = betPerNumber * 35;
-            netChange = winAmount - totalBet;
-            
+            // pnl math for a hit. The legacy formula
+            //     netChange = 35×betPerNumber − betPerNumber×numbersCount
+            // subtracts the full stake INCLUDING the winning chip,
+            // which underreports each win by exactly $betPerNumber
+            // compared to the Auto Test runner's _calculatePnL
+            // (app/auto-test-runner.js:529 — the source of truth).
+            //
+            // To bring live AUTO mode in line with Auto Test AUTO
+            // without touching Manual / Semi / T1-strategy behaviour,
+            // the corrected formula is opt-in via `_useAutoTestPnl`.
+            // That flag is set to true by ai-auto-mode-ui.js only
+            // when setMode('auto') is active; every other mode keeps
+            // the legacy formula byte-for-byte.
+            if (this._useAutoTestPnl) {
+                netChange = betPerNumber * (36 - numbersCount);
+            } else {
+                const winAmount = betPerNumber * 35;
+                netChange = winAmount - totalBet;
+            }
+
             this.sessionData.currentBankroll += netChange;
             this.sessionData.sessionProfit += netChange;
             this.sessionData.totalWins++;
             this.sessionData.consecutiveLosses = 0;
             this.sessionData.consecutiveWins++;  // NEW: Track consecutive wins
-            
+
             console.log(`✅ HIT! Number ${actualNumber} - Won $${netChange}`);
             } else {
                 // Loss
