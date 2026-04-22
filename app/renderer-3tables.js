@@ -988,10 +988,16 @@ function renderTable1() {
             // 12 pairs × 7 cols = 84 data cols. No Dir/Actual columns.
             // Groups: 0(7) | 19(7) | P(7)+P13(7) | P+1(7)+P+1-13(7) | P-1(7)+P-1-13(7) | P+2(7)+P+2-13(7) | P-2(7)+P-2-13(7)
             const emptyCells = [];
-            const groupStarts = [7, 14, 28, 42, 56, 70]; // black pair-separator positions
-            const copairStarts = [21, 35, 49, 63, 77]; // white copair-separator positions
+            // After removing the big black pair-separators, the 5 between-pair
+            // positions now carry the pair-indicator white-placeholder stripes.
+            // Col 7 (within {0,19}) keeps its old class but it is now a no-op
+            // visually because #table1 .pair-separator is border-left:0.
+            const indicatorStarts = [14, 28, 42, 56, 70];
+            const copairStarts = [21, 35, 49, 63, 77];
             for (let c = 0; c < 84; c++) {
-                if (groupStarts.includes(c)) {
+                if (indicatorStarts.includes(c)) {
+                    emptyCells.push('<td class="pair-indicator"></td>');
+                } else if (c === 7) {
                     emptyCells.push('<td class="pair-separator"></td>');
                 } else if (copairStarts.includes(c)) {
                     emptyCells.push('<td class="copair-separator"></td>');
@@ -999,6 +1005,9 @@ function renderTable1() {
                     emptyCells.push('<td></td>');
                 }
             }
+            // End-of-row (6th pair) placeholder — <strong> content mirrors
+            // anchor cells so the cell has identical content-driven dimensions.
+            emptyCells.push('<td class="pair-end-cell anchor-cell"><strong style="visibility:hidden">0</strong></td>');
             row.innerHTML = emptyCells.join('');
             tbody.appendChild(row);
             return;
@@ -1018,13 +1027,22 @@ function renderTable1() {
             return '';
         };
 
-        const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
+        const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false, stripeLeftHit = null, stripeRightHit = null) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            // Pair-indicator stripe mode: when both stripeLeftHit and stripeRightHit
+            // are non-null, render this cell as the two-stripe pair indicator
+            // (replacing the pair-separator/copair-separator border visual).
+            // Data rows only. Scope: between-halves positions of each pair.
+            const isStripe = (stripeLeftHit !== null && stripeRightHit !== null);
             const anchorClass = 'anchor-cell' +
-                (addSeparator ? ' pair-separator' : '') +
-                (addCopairSep ? ' copair-separator' : '') +
+                (isStripe ? ' pair-indicator' : '') +
+                (!isStripe && addSeparator ? ' pair-separator' : '') +
+                (!isStripe && addCopairSep ? ' copair-separator' : '') +
                 (is13Opp ? ' opp13-cell' : '');
-            html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
+            const stripeAttrs = isStripe
+                ? ` data-left-hit="${stripeLeftHit}" data-right-hit="${stripeRightHit}"`
+                : '';
+            html.push(`<td class="${anchorClass}"${dp}${stripeAttrs}><strong>${anchorNum}</strong></td>`);
 
             const lookupRow = getLookupRow(refNum);
 
@@ -1059,26 +1077,58 @@ function renderTable1() {
             });
         };
 
+        // Pair-indicator pre-pass: compute per-block hit state (any non-XX code
+        // in the block's 3 projected positions). Used ONLY for the two-stripe
+        // visual on the between-halves separator of each of the 6 pairs.
+        // Does NOT alter table-formation or anchor logic.
+        const prevPlus1 = Math.min(prev + 1, 36);
+        const prevMinus1 = Math.max(prev - 1, 0);
+        const prevPlus2 = Math.min(prev + 2, 36);
+        const prevMinus2 = Math.max(prev - 2, 0);
+        const _blockRefs = [
+            0, 19,
+            prev, DIGIT_13_OPPOSITES[prev],
+            prevPlus1, DIGIT_13_OPPOSITES[prevPlus1],
+            prevMinus1, DIGIT_13_OPPOSITES[prevMinus1],
+            prevPlus2, DIGIT_13_OPPOSITES[prevPlus2],
+            prevMinus2, DIGIT_13_OPPOSITES[prevMinus2],
+        ];
+        const _blockHits = _blockRefs.map(r => {
+            const lr = (typeof getLookupRow === 'function') ? getLookupRow(r) : null;
+            if (!lr) return 0;
+            const ts = [lr.first, lr.second, lr.third];
+            for (const t of ts) {
+                if (isValidCode(calculatePositionCode(t, spin.actual))) return 1;
+            }
+            return 0;
+        });
+
+        // Stripes go at the END of each pair (after 0/19, after P/P-13opp, …).
+        // So they live in the left-gutter of the NEXT pair's first block
+        // (blocks 2, 4, 6, 8, 10), plus at the row's right edge for the 6th
+        // pair via row-level CSS variables (handled below).
         renderTargetGroup(0, 0, false, false, 'ref0');
         renderTargetGroup(19, 19, true, false, 'ref19');
-        renderTargetGroup(prev, prev, true, false, 'prev');
+        renderTargetGroup(prev, prev, true, false, 'prev', false, _blockHits[0], _blockHits[1]);
         renderTargetGroup(DIGIT_13_OPPOSITES[prev], DIGIT_13_OPPOSITES[prev], false, true, 'prev_13opp', true);
 
-        const prevPlus1 = Math.min(prev + 1, 36);
-        renderTargetGroup(prevPlus1, prevPlus1, true, false, 'prevPlus1');
+        renderTargetGroup(prevPlus1, prevPlus1, true, false, 'prevPlus1', false, _blockHits[2], _blockHits[3]);
         renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus1], DIGIT_13_OPPOSITES[prevPlus1], false, true, 'prevPlus1_13opp', true);
 
-        const prevMinus1 = Math.max(prev - 1, 0);
-        renderTargetGroup(prevMinus1, prevMinus1, true, false, 'prevMinus1');
+        renderTargetGroup(prevMinus1, prevMinus1, true, false, 'prevMinus1', false, _blockHits[4], _blockHits[5]);
         renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus1], DIGIT_13_OPPOSITES[prevMinus1], false, true, 'prevMinus1_13opp', true);
 
-        const prevPlus2 = Math.min(prev + 2, 36);
-        renderTargetGroup(prevPlus2, prevPlus2, true, false, 'prevPlus2');
+        renderTargetGroup(prevPlus2, prevPlus2, true, false, 'prevPlus2', false, _blockHits[6], _blockHits[7]);
         renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus2], DIGIT_13_OPPOSITES[prevPlus2], false, true, 'prevPlus2_13opp', true);
 
-        const prevMinus2 = Math.max(prev - 2, 0);
-        renderTargetGroup(prevMinus2, prevMinus2, true, false, 'prevMinus2');
+        renderTargetGroup(prevMinus2, prevMinus2, true, false, 'prevMinus2', false, _blockHits[8], _blockHits[9]);
         renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus2], DIGIT_13_OPPOSITES[prevMinus2], false, true, 'prevMinus2_13opp', true);
+
+        // End-of-row pair indicator for the 6th pair {P-2, P-2-13opp}.
+        // Mirrors the between-pair pattern exactly: anchor-cell + pair-end-cell
+        // class. Content is a hidden <strong> so the cell has the same
+        // content-driven dimensions as the anchor cells that between-pair uses.
+        html.push(`<td class="pair-end-cell anchor-cell" data-left-hit="${_blockHits[10]}" data-right-hit="${_blockHits[11]}"><strong style="visibility:hidden">0</strong></td>`);
 
         row.innerHTML = html.join('');
         tbody.appendChild(row);
@@ -1112,7 +1162,7 @@ function renderTable1() {
         // not to the pair-family selection itself.
         const T1_GREEN_EXCLUDED_PAIRS = new Set(['ref0', 'ref19']);
 
-        const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
+        const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false, asPairIndicator = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
             // Pair-match: this pair's ±1-expanded projected numbers cover ≥2
             // members of the active 5/6 set. When true, ALL cells in this
@@ -1126,8 +1176,9 @@ function renderTable1() {
             const matchCls = pairMatch ? ' t1-set-match' : '';
 
             const anchorClass = ('anchor-cell' +
-                (addSeparator ? ' pair-separator' : '') +
-                (addCopairSep ? ' copair-separator' : '') +
+                (asPairIndicator ? ' pair-indicator' : '') +
+                (!asPairIndicator && addSeparator ? ' pair-separator' : '') +
+                (!asPairIndicator && addCopairSep ? ' copair-separator' : '') +
                 (is13Opp ? ' opp13-cell' : '') +
                 matchCls).trim();
             html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
@@ -1153,24 +1204,28 @@ function renderTable1() {
 
         renderNextGroup(0, 0, false, false, 'ref0');
         renderNextGroup(19, 19, true, false, 'ref19');
-        renderNextGroup(lastSpin, lastSpin, true, false, 'prev');
+        // Blocks 2/4/6/8/10 = pair-indicator (placeholder white, matches data rows).
+        renderNextGroup(lastSpin, lastSpin, true, false, 'prev', false, true);
         renderNextGroup(DIGIT_13_OPPOSITES[lastSpin], DIGIT_13_OPPOSITES[lastSpin], false, true, 'prev_13opp', true);
 
         const plus1 = Math.min(lastSpin + 1, 36);
-        renderNextGroup(plus1, plus1, true, false, 'prevPlus1');
+        renderNextGroup(plus1, plus1, true, false, 'prevPlus1', false, true);
         renderNextGroup(DIGIT_13_OPPOSITES[plus1], DIGIT_13_OPPOSITES[plus1], false, true, 'prevPlus1_13opp', true);
 
         const minus1 = Math.max(lastSpin - 1, 0);
-        renderNextGroup(minus1, minus1, true, false, 'prevMinus1');
+        renderNextGroup(minus1, minus1, true, false, 'prevMinus1', false, true);
         renderNextGroup(DIGIT_13_OPPOSITES[minus1], DIGIT_13_OPPOSITES[minus1], false, true, 'prevMinus1_13opp', true);
 
         const plus2 = Math.min(lastSpin + 2, 36);
-        renderNextGroup(plus2, plus2, true, false, 'prevPlus2');
+        renderNextGroup(plus2, plus2, true, false, 'prevPlus2', false, true);
         renderNextGroup(DIGIT_13_OPPOSITES[plus2], DIGIT_13_OPPOSITES[plus2], false, true, 'prevPlus2_13opp', true);
 
         const minus2 = Math.max(lastSpin - 2, 0);
-        renderNextGroup(minus2, minus2, true, false, 'prevMinus2');
+        renderNextGroup(minus2, minus2, true, false, 'prevMinus2', false, true);
         renderNextGroup(DIGIT_13_OPPOSITES[minus2], DIGIT_13_OPPOSITES[minus2], false, true, 'prevMinus2_13opp', true);
+
+        // End-of-row pair-end placeholder (white) for the next-row projection.
+        html.push('<td class="pair-end-cell anchor-cell"><strong style="visibility:hidden">0</strong></td>');
 
         const nextRow = document.createElement('tr');
         nextRow.className = 'next-row';

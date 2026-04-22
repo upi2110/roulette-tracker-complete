@@ -143,9 +143,102 @@ td {
     border-left: 3px solid #fff !important;
 }
 
-/* Table 1: thinner separators to save space (84 cols) */
-#table1 .pair-separator { border-left: 4px solid #000 !important; }
+/* Table 1: remove thick black pair-separators entirely — the pair-indicator
+   stripe boxes below now serve as the visual divider between pair groups.
+   Within-pair copair-separators (P ↔ P-13opp) remain as subtle 2px white. */
+#table1 .pair-separator { border-left: 0 !important; }
 #table1 .copair-separator { border-left: 2px solid #fff !important; }
+
+/* ============================================
+   PAIR-INDICATOR (two-stripe boxes) — Table 1 ONLY
+   One indicator at the end of each of the 6 pairs:
+     - 5 positions carried by the anchor cell of the NEXT pair's first block
+       (cols 14, 28, 42, 56, 70) using left-gutter via border-left.
+     - 6th position (end of row) carried by the LAST cell of the row using
+       right-padding + right-edge pseudo-elements, driven by CSS variables
+       --end-left-color / --end-right-color set on the <tr>.
+   Each stripe is a VISIBLE box (5px wide × full row height).
+   Colors:
+     - No data-hit attribute set → WHITE (placeholder / pre-actuals).
+     - data-hit = "0"            → BLACK (all XX across the pair block).
+     - data-hit = "1"            → GREEN (any S* or O* non-XX code present).
+   ============================================ */
+#table1 .pair-indicator {
+    position: relative !important;
+    border-left: 32px solid transparent !important;  /* carves the stripe gutter */
+    z-index: 20 !important;  /* above t1-flash cells (z:10) */
+}
+/* Single ::before spanning the full 32px gutter with a 3-stop gradient:
+   [15px half-1] [2px white divider] [15px half-2] — UNCHANGED (user confirmed OK). */
+#table1 .pair-indicator::before {
+    content: '';
+    position: absolute;
+    left: -32px;
+    top: 0;
+    bottom: 0;
+    width: 32px;
+    z-index: 21;
+    pointer-events: none;
+    /* Default placeholder: both white. */
+    background: linear-gradient(to right, #fff 0 15px, #fff 15px 17px, #fff 17px 32px);
+}
+#table1 .pair-indicator[data-left-hit="0"][data-right-hit="0"]::before {
+    background: linear-gradient(to right, #000 0 15px, #fff 15px 17px, #000 17px 32px);
+}
+#table1 .pair-indicator[data-left-hit="1"][data-right-hit="0"]::before {
+    background: linear-gradient(to right, #16a34a 0 15px, #fff 15px 17px, #000 17px 32px);
+}
+#table1 .pair-indicator[data-left-hit="0"][data-right-hit="1"]::before {
+    background: linear-gradient(to right, #000 0 15px, #fff 15px 17px, #16a34a 17px 32px);
+}
+#table1 .pair-indicator[data-left-hit="1"][data-right-hit="1"]::before {
+    background: linear-gradient(to right, #16a34a 0 15px, #fff 15px 17px, #16a34a 17px 32px);
+}
+
+/* End-of-row indicator (6th pair {P-2, P-2-13opp}).
+   IDENTICAL pattern to between-pair .pair-indicator: border-LEFT carves the
+   32px stripe area BEFORE the cell's content, so the stripe sits flush against
+   the previous cell (no gap between last C column and stripe). */
+#table1 .pair-end-cell {
+    position: relative !important;
+    /* Keep the default top/bottom/right 1px grey borders so rows are visually
+       separated (same as between-pair indicator cells). Only override left. */
+    border-top: 1px solid #e8e8e8 !important;
+    border-right: 1px solid #e8e8e8 !important;
+    border-bottom: 1px solid #e8e8e8 !important;
+    border-left: 32px solid transparent !important;
+    outline: 0 !important;
+    padding: 0 !important;
+    z-index: 20 !important;
+}
+#table1 .pair-end-cell > strong {
+    font-size: 0;          /* collapse hidden <strong> to zero width */
+    line-height: 0;
+}
+#table1 .pair-end-cell::before {
+    content: '';
+    position: absolute;
+    left: -32px;
+    top: 0;
+    bottom: 0;
+    width: 32px;
+    z-index: 21;
+    pointer-events: none;
+    /* Default placeholder: both white. */
+    background: linear-gradient(to right, #fff 0 15px, #fff 15px 17px, #fff 17px 32px);
+}
+#table1 .pair-end-cell[data-left-hit="0"][data-right-hit="0"]::before {
+    background: linear-gradient(to right, #000 0 15px, #fff 15px 17px, #000 17px 32px);
+}
+#table1 .pair-end-cell[data-left-hit="1"][data-right-hit="0"]::before {
+    background: linear-gradient(to right, #16a34a 0 15px, #fff 15px 17px, #000 17px 32px);
+}
+#table1 .pair-end-cell[data-left-hit="0"][data-right-hit="1"]::before {
+    background: linear-gradient(to right, #000 0 15px, #fff 15px 17px, #16a34a 17px 32px);
+}
+#table1 .pair-end-cell[data-left-hit="1"][data-right-hit="1"]::before {
+    background: linear-gradient(to right, #16a34a 0 15px, #fff 15px 17px, #16a34a 17px 32px);
+}
 /* Table 2: slightly thinner separators (49 cols) */
 #table2 .pair-separator { border-left: 5px solid #000 !important; }
 #table2 .copair-separator { border-left: 3px solid #fff !important; }
