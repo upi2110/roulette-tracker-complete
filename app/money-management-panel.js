@@ -30,19 +30,6 @@ class MoneyManagementPanel {
         // CRITICAL: Store the prediction we're betting on
         this.pendingBet = null; // { betAmount, numbersCount, predictedNumbers }
 
-        // When false (default) recordBetResult uses the legacy hit-pnl
-        // math. Set to true ONLY by ai-auto-mode-ui.js when entering
-        // AUTO mode, so AUTO reports match Auto Test runner. Manual,
-        // Semi, and T1-strategy modes keep the legacy math unchanged.
-        this._useAutoTestPnl = false;
-
-        // Saved engine retrain intervals when AUTO mode disables them
-        // for the live session. Restored on exit from AUTO. These live
-        // here so the money panel's session-lifecycle code can manage
-        // them without the UI layer having to remember state.
-        this._savedRetrainInterval = undefined;
-        this._savedRetrainLossStreak = undefined;
-
         this.createPanel();
         // Setup betting control button listener
         setTimeout(() => this.setupBettingControl(), 200);
@@ -104,11 +91,6 @@ class MoneyManagementPanel {
                         margin-top: 8px;
                         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                     ">🟣 Strategy 3: Cautious</button>
-                <!-- "Download Session Report" used to live here; it has
-                     moved to the AI Prediction panel header (see
-                     result-testing-panel.js / index-3tables.html) so
-                     the money management panel stays minimal and is
-                     never mutated for report-generation purposes. -->
             </div>
 
             <div class="panel-content" id="moneyPanelContent" style="display: block;">
@@ -264,63 +246,12 @@ class MoneyManagementPanel {
             bettingBtn.hasListener = true;
             bettingBtn.addEventListener('click', () => this.toggleBetting());
         }
-
+        
         const strategyBtn = document.getElementById('toggleStrategyBtn');
         if (strategyBtn && !strategyBtn.hasListener) {
             strategyBtn.hasListener = true;
             strategyBtn.addEventListener('click', () => this.toggleStrategy());
         }
-
-        // Session report download button used to be wired here; it
-        // has moved to the AI Prediction panel so money management
-        // remains a pure bet-lifecycle UI. downloadSessionReport() is
-        // kept as a method (unchanged) for callers that may still
-        // invoke it directly, but no DOM listener points at it from
-        // within this panel any more.
-    }
-
-    /**
-     * Generate and save the Money Management session report. Reads a
-     * snapshot of this.sessionData + this.betHistory, hands it to the
-     * MoneyReport class (see app/money-report.js), and triggers the
-     * same save pipeline used by the Auto Test report (IPC in Electron,
-     * Blob fallback in plain browsers). Returns the save result so
-     * tests can assert success without intercepting network calls.
-     */
-    async downloadSessionReport() {
-        try {
-            const ExcelJSModule = this._getExcelJS();
-            if (!ExcelJSModule) return false;
-            const ReportClass = this._getMoneyReportClass();
-            if (!ReportClass) return false;
-            const rep = new ReportClass(ExcelJSModule);
-            // Shallow-copy snapshots so the report generation can never
-            // accidentally mutate live session state.
-            const sd = Object.assign({}, this.sessionData || {});
-            const bh = Array.isArray(this.betHistory) ? this.betHistory.slice() : [];
-            const wb = rep.generate(sd, bh);
-            const filename = ReportClass.buildFilename(new Date());
-            return await rep.saveToFile(wb, filename);
-        } catch (e) {
-            console.warn('Session report download failed:', e && e.message);
-            return false;
-        }
-    }
-
-    /** Resolve the ExcelJS module in browser, Node test, or global scope. */
-    _getExcelJS() {
-        if (typeof ExcelJS !== 'undefined') return ExcelJS;
-        if (typeof window !== 'undefined' && window.ExcelJS) return window.ExcelJS;
-        if (typeof globalThis !== 'undefined' && globalThis.ExcelJS) return globalThis.ExcelJS;
-        return null;
-    }
-
-    /** Resolve the MoneyReport class similarly. */
-    _getMoneyReportClass() {
-        if (typeof MoneyReport !== 'undefined') return MoneyReport;
-        if (typeof window !== 'undefined' && window.MoneyReport) return window.MoneyReport;
-        if (typeof globalThis !== 'undefined' && globalThis.MoneyReport) return globalThis.MoneyReport;
-        return null;
     }
 
     togglePanel() {
@@ -472,32 +403,16 @@ class MoneyManagementPanel {
         let netChange = 0;
 
         if (hit) {
-            // pnl math for a hit. The legacy formula
-            //     netChange = 35×betPerNumber − betPerNumber×numbersCount
-            // subtracts the full stake INCLUDING the winning chip,
-            // which underreports each win by exactly $betPerNumber
-            // compared to the Auto Test runner's _calculatePnL
-            // (app/auto-test-runner.js:529 — the source of truth).
-            //
-            // To bring live AUTO mode in line with Auto Test AUTO
-            // without touching Manual / Semi / T1-strategy behaviour,
-            // the corrected formula is opt-in via `_useAutoTestPnl`.
-            // That flag is set to true by ai-auto-mode-ui.js only
-            // when setMode('auto') is active; every other mode keeps
-            // the legacy formula byte-for-byte.
-            if (this._useAutoTestPnl) {
-                netChange = betPerNumber * (36 - numbersCount);
-            } else {
-                const winAmount = betPerNumber * 35;
-                netChange = winAmount - totalBet;
-            }
-
+            // Win: 35:1 on one number, lose the rest
+            const winAmount = betPerNumber * 35;
+            netChange = winAmount - totalBet;
+            
             this.sessionData.currentBankroll += netChange;
             this.sessionData.sessionProfit += netChange;
             this.sessionData.totalWins++;
             this.sessionData.consecutiveLosses = 0;
             this.sessionData.consecutiveWins++;  // NEW: Track consecutive wins
-
+            
             console.log(`✅ HIT! Number ${actualNumber} - Won $${netChange}`);
             } else {
                 // Loss
