@@ -726,6 +726,14 @@ describe('AIAutoModeUI', () => {
     // ═══════════════════════════════════════════════════════════
 
     describe('renderStatus', () => {
+        // Reset TrainingState between tests so Fix-3 tests that set an
+        // active mode do not leak into "Not trained" / "Trained" tests
+        // that assume no active mode.
+        beforeEach(() => {
+            try { require('../../app/training-state').__internal.reset(); }
+            catch (_) { /* module not loaded yet */ }
+        });
+
         test('shows trained status with pair count', () => {
             const mockEngine = {
                 isTrained: true,
@@ -802,6 +810,42 @@ describe('AIAutoModeUI', () => {
             window.aiAutoEngine = null;
             // Should not throw
             ui.renderStatus();
+        });
+
+        test('Fix 3: trained line surfaces the active TRAIN mode (not just generic pair count)', () => {
+            const TS = require('../../app/training-state');
+            TS.__internal.reset();
+            TS.setActiveMode('default');
+            const mockEngine = {
+                isTrained: true,
+                getState: jest.fn().mockReturnValue({
+                    pairModelCount: 6,
+                    sessionStats: { totalBets: 0, wins: 0, losses: 0, sessionWinRate: 0 }
+                })
+            };
+            ui.engine = mockEngine;
+            ui.renderStatus();
+            const statusEl = document.getElementById('trainingStatus');
+            // Backwards-compatible substrings ("Trained", "6 pairs") preserved.
+            expect(statusEl.textContent).toContain('Trained');
+            expect(statusEl.textContent).toContain('6 pairs');
+            // New: explicit active mode label.
+            expect(statusEl.textContent).toContain('Default mode');
+            TS.__internal.reset();
+        });
+
+        test('Fix 3: untrained engine + placeholder active mode shows "Active mode: …" (not the legacy generic line)', () => {
+            const TS = require('../../app/training-state');
+            TS.__internal.reset();
+            TS.setActiveMode('ai-mode');
+            const mockEngine = { isTrained: false };
+            ui.engine = mockEngine;
+            ui.renderStatus();
+            const statusEl = document.getElementById('trainingStatus');
+            expect(statusEl.textContent).toContain('Active mode');
+            expect(statusEl.textContent).toContain('AI-mode');
+            expect(statusEl.textContent).toContain('placeholder');
+            TS.__internal.reset();
         });
 
         test('uses window.aiAutoEngine as fallback', () => {

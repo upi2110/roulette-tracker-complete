@@ -957,9 +957,16 @@ describe('J: Constants and mappings', () => {
         expect(() => new AutoTestRunner(null)).toThrow('requires an AIAutoEngine');
     });
 
-    test('J4: constructor requires trained engine', () => {
+    test('J4: untrained engine — constructor no longer throws (deferred to runAll)', async () => {
+        // Mode Parity Fix 1: the legacy `engine.isTrained` check moved
+        // from the constructor into runAll() so the AI-trained method
+        // can run on an untrained engine. Legacy methods still get the
+        // same blocking semantics — surfaced as ENGINE_NOT_TRAINED.
         const untrained = new AIAutoEngine();
-        expect(() => new AutoTestRunner(untrained)).toThrow('must be trained');
+        expect(() => new AutoTestRunner(untrained)).not.toThrow();
+        const runner = new AutoTestRunner(untrained);
+        const r = await runner.runAll([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], { method: 'auto-test' });
+        expect(r.outcome).toBe('ENGINE_NOT_TRAINED');
     });
 });
 

@@ -169,9 +169,20 @@ describe('AutoTestRunner', () => {
             expect(() => new AutoTestRunner(undefined)).toThrow('requires an AIAutoEngine');
         });
 
-        test('throws if engine is not trained', () => {
+        test('untrained engine: constructor no longer throws (gate deferred to runAll)', () => {
             const untrained = new AIAutoEngine();
-            expect(() => new AutoTestRunner(untrained)).toThrow('must be trained');
+            // Constructor only throws on engine === null/undefined now.
+            // engine.isTrained === false is deferred to runAll() so the
+            // AI-trained method can run without legacy engine training.
+            expect(() => new AutoTestRunner(untrained)).not.toThrow();
+        });
+
+        test('untrained engine: legacy methods get ENGINE_NOT_TRAINED at runAll', async () => {
+            const untrained = new AIAutoEngine();
+            const runner = new AutoTestRunner(untrained);
+            const r = await runner.runAll([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], { method: 'auto-test' });
+            expect(r.outcome).toBe('ENGINE_NOT_TRAINED');
+            expect(r.message).toMatch(/train/i);
         });
     });
 

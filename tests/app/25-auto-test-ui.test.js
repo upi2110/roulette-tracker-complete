@@ -481,18 +481,41 @@ describe('Test Suite 25: AutoTestUI', () => {
             await ui.runTest();
 
             const content = document.getElementById('autoTestContent');
-            expect(content.innerHTML).toContain('Engine not trained');
+            // Engine missing → message changed to make the missing-engine
+            // case distinct from the untrained-engine case (Mode Parity Fix 1).
+            expect(content.innerHTML).toContain('Engine not available');
         });
 
-        test('E2: shows error when engine not trained', async () => {
+        test('E2: shows error when engine not trained — naming the required TRAIN mode', async () => {
             window.aiAutoEngine = { isTrained: false };
             ui = new AutoTestUI();
             ui.testSpins = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            // Default method is 'auto-test' which requires Default mode TRAIN.
 
             await ui.runTest();
 
             const content = document.getElementById('autoTestContent');
+            // Original substring preserved (legacy test contract).
             expect(content.innerHTML).toContain('Engine not trained');
+            // New: error names the required TRAIN mode + active mode so
+            // the user knows which dropdown to change.
+            expect(content.innerHTML).toContain('Default mode');
+            expect(content.innerHTML).toContain('Active training mode');
+        });
+
+        test('E2b: error reflects the active training mode when a placeholder TRAIN was clicked', async () => {
+            const TS = require('../../app/training-state');
+            TS.__internal.reset();
+            TS.setActiveMode('ai-mode');   // user clicked AI-mode TRAIN
+            window.aiAutoEngine = { isTrained: false };
+            ui = new AutoTestUI();
+            ui.testSpins = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            // Default method is 'auto-test' (legacy). Active is AI-mode (placeholder).
+            await ui.runTest();
+            const content = document.getElementById('autoTestContent');
+            expect(content.innerHTML).toContain('AI-mode');           // active
+            expect(content.innerHTML).toContain('Default mode');      // expected
+            TS.__internal.reset();
         });
 
         test('E3: shows error when no test data loaded', async () => {
@@ -1309,16 +1332,16 @@ describe('Test Suite 25: AutoTestUI', () => {
             expect(loadBtn.nextElementSibling).toBe(sel);
         });
 
-        test('O4: dropdown has exactly three options with the required labels (original auto-test + T1-strategy + test-strategy)', () => {
+        test('O4: dropdown has the required labels (auto-test + T1-strategy + test-strategy + AI-trained)', () => {
             ui = new AutoTestUI();
             const sel = document.getElementById('autoTestMethodSelect');
             const opts = Array.from(sel.querySelectorAll('option'));
-            expect(opts.length).toBe(3);
+            expect(opts.length).toBe(4);
             const values = opts.map(o => o.value);
             const texts = opts.map(o => o.textContent);
-            // Order doesn't matter for values/labels — all three must be present.
-            expect(values).toEqual(expect.arrayContaining(['auto-test', 'T1-strategy', 'test-strategy']));
-            expect(texts).toEqual(expect.arrayContaining(['auto-test', 'T1-strategy', 'test-strategy']));
+            // Order doesn't matter for values/labels — all four must be present.
+            expect(values).toEqual(expect.arrayContaining(['auto-test', 'T1-strategy', 'test-strategy', 'AI-trained']));
+            expect(texts).toEqual(expect.arrayContaining(['auto-test', 'T1-strategy', 'test-strategy', 'AI-trained']));
         });
 
         test('O5: dropdown labels are EXACTLY the strings requested (no whitespace / underscore drift)', () => {
@@ -1399,11 +1422,11 @@ describe('Test Suite 25: AutoTestUI', () => {
             expect(opts.batchSize).toBe(20);
         });
 
-        test('O12: AUTO_TEST_METHODS constant is exported with exactly the three labels', () => {
+        test('O12: AUTO_TEST_METHODS constant is exported with the canonical labels', () => {
             // The canonical list of method strings is exposed so callers
             // (tests and future consumers) cannot drift out of sync.
             const mod = require('../../app/auto-test-ui');
-            expect(mod.AUTO_TEST_METHODS).toEqual(['auto-test', 'T1-strategy', 'test-strategy']);
+            expect(mod.AUTO_TEST_METHODS).toEqual(['auto-test', 'T1-strategy', 'test-strategy', 'AI-trained']);
             expect(mod.AUTO_TEST_DEFAULT_METHOD).toBe('auto-test');
         });
 
@@ -1473,6 +1496,44 @@ describe('Test Suite 25: AutoTestUI', () => {
             const firstOpt = sel.querySelector('option');
             expect(firstOpt.value).toBe('auto-test');
             expect(firstOpt.textContent).toBe('auto-test');
+        });
+
+        test('O18: training badge exists, defaults to "Training: —", and lives after the button group', () => {
+            ui = new AutoTestUI();
+            const badge = document.getElementById('autoTestTrainingBadge');
+            expect(badge).not.toBeNull();
+            expect(badge.textContent).toBe('Training: —');
+            // O3 invariant — Load File still followed by the method dropdown.
+            const loadBtn = document.getElementById('autoTestLoadBtn');
+            const sel = document.getElementById('autoTestMethodSelect');
+            expect(loadBtn.nextElementSibling).toBe(sel);
+        });
+
+        test('O19: badge reflects TrainingState.getActiveMode() after a refresh', () => {
+            const TS = require('../../app/training-state');
+            TS.__internal.reset();
+            ui = new AutoTestUI();
+            // Simulate a successful default-mode training.
+            TS.setActiveMode('default');
+            ui._refreshTrainingBadge();
+            const badge = document.getElementById('autoTestTrainingBadge');
+            expect(badge.textContent).toBe('Training: Default mode');
+        });
+
+        test('O20: method/active mismatch surfaces a non-blocking warning style on the badge', () => {
+            const TS = require('../../app/training-state');
+            TS.__internal.reset();
+            ui = new AutoTestUI();
+            // Active = default, but user picks AI-trained → expected ai-mode.
+            TS.setActiveMode('default');
+            const sel = document.getElementById('autoTestMethodSelect');
+            sel.value = 'AI-trained';
+            sel.dispatchEvent(new Event('change'));
+            const badge = document.getElementById('autoTestTrainingBadge');
+            expect(badge.title.toLowerCase()).toContain('ai-mode');
+            expect(badge.title.toLowerCase()).toContain('default');
+            // Mismatch warning style applied.
+            expect(badge.style.borderColor.toLowerCase()).toContain('239');
         });
     });
 });

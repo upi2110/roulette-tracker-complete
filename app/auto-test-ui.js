@@ -15,7 +15,7 @@
 // is identical for every option. This constant exists so the canonical
 // list and default cannot drift out of sync between the UI, the
 // runner's runAll default, and the tests.
-const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test-strategy'];
+const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test-strategy', 'AI-trained'];
 const AUTO_TEST_DEFAULT_METHOD = 'auto-test';
 
 class AutoTestUI {
@@ -57,10 +57,12 @@ class AutoTestUI {
                             <option value="auto-test" selected>auto-test</option>
                             <option value="T1-strategy">T1-strategy</option>
                             <option value="test-strategy">test-strategy</option>
+                            <option value="AI-trained">AI-trained</option>
                         </select>
                         <button id="autoTestRunBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #22c55e;border-radius:5px;cursor:pointer;background:#22c55e;color:#000;" disabled>▶ Run Test</button>
                         <button id="autoTestExportBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #3b82f6;border-radius:5px;cursor:pointer;background:#3b82f6;color:white;" disabled>📊 Export Excel</button>
                         <button id="autoTestSubmitBtn" title="Send the completed Auto Test result to the Result-testing tab for manual verification" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #6366f1;border-radius:5px;cursor:pointer;background:#6366f1;color:white;" disabled>🧾 Submit-to test</button>
+                        <span id="autoTestTrainingBadge" title="Active trained mode (read from TrainingState)" style="margin-left:8px;padding:6px 8px;font-size:10px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;background:rgba(255,255,255,0.08);color:#cbd5e1;">Training: —</span>
                     </div>
                 </div>
 
@@ -125,8 +127,14 @@ class AutoTestUI {
                 // Only accept known method strings — anything else is
                 // silently ignored so we cannot leak junk into the run path.
                 if (AUTO_TEST_METHODS.includes(v)) this.testMethod = v;
+                // Refresh the Training badge so any mismatch warning
+                // updates the moment the method changes.
+                this._refreshTrainingBadge();
             });
         }
+        // Initial badge paint — read whatever active mode the registry
+        // has at construction time (typically null until the user trains).
+        this._refreshTrainingBadge();
 
         // Tab click handlers
         const tabContainer = document.getElementById('autoTestTabs');
@@ -229,9 +237,44 @@ class AutoTestUI {
      * Run the backtest.
      */
     async runTest() {
+        // Refresh the Training badge before each run so the user sees
+        // exactly which mode the run will be scored against.
+        this._refreshTrainingBadge();
         const engine = this._getEngine();
-        if (!engine || !engine.isTrained) {
-            this._showError('Engine not trained. Click TRAIN first.');
+        if (!engine) {
+            this._showError('Engine not available.');
+            return;
+        }
+        // Method-gated precondition. AI-trained Auto Test does NOT
+        // require the legacy `engine.isTrained` gate — it uses its own
+        // controller. Every other method retains the original behavior.
+        if (this.testMethod !== 'AI-trained' && !engine.isTrained) {
+            // Surface WHY the method is blocked: which TRAIN mode the
+            // method requires, and which mode is currently active. The
+            // user may have clicked TRAIN with a placeholder mode
+            // (User/AI/Hybrid) which never calls engine.train().
+            const expected = _expectedTrainingModeFor(this.testMethod);
+            const labels = {
+                'default':     'Default mode',
+                'user-mode':   'User-mode',
+                'ai-mode':     'AI-mode',
+                'hybrid-mode': 'Hybrid-mode'
+            };
+            let TS = null;
+            if (typeof require === 'function') {
+                try { TS = require('./training-state.js'); }
+                catch (_) { /* fall through */ }
+            }
+            if (!TS && typeof window !== 'undefined' && window.TrainingState) {
+                TS = window.TrainingState;
+            }
+            const active = TS ? TS.getActiveMode() : null;
+            const activeLabel = active ? (labels[active] || active) : 'none';
+            const expectedLabel = expected ? (labels[expected] || expected) : null;
+            const msg = expectedLabel
+                ? `Engine not trained. The "${this.testMethod}" method requires ${expectedLabel} training. Active training mode: ${activeLabel}. Select "${expectedLabel}" in the TRAIN dropdown and click TRAIN.`
+                : 'Engine not trained. Click TRAIN first.';
+            this._showError(msg);
             return;
         }
         if (!this.testSpins || this.testSpins.length < 5) {
@@ -678,6 +721,62 @@ class AutoTestUI {
             });
         }
     }
+
+    /**
+     * Update the Training: X badge from the mode-namespaced TrainingState
+     * registry. Read-only; never blocks a run. When the chosen Auto Test
+     * method does not align with the registry's active mode, the badge
+     * receives a non-blocking warning style and tooltip.
+     *
+     * No-op when the badge element or TrainingState module is absent.
+     */
+    _refreshTrainingBadge() {
+        const badge = (typeof document !== 'undefined')
+            ? document.getElementById('autoTestTrainingBadge') : null;
+        if (!badge) return;
+        let TS = null;
+        if (typeof require === 'function') {
+            try { TS = require('./training-state.js'); }
+            catch (_) { /* fall through */ }
+        }
+        if (!TS && typeof window !== 'undefined' && window.TrainingState) {
+            TS = window.TrainingState;
+        }
+        const active = TS ? TS.getActiveMode() : null;
+        const labels = {
+            'default':     'Default mode',
+            'user-mode':   'User-mode',
+            'ai-mode':     'AI-mode',
+            'hybrid-mode': 'Hybrid-mode'
+        };
+        badge.textContent = active
+            ? `Training: ${labels[active] || active}`
+            : 'Training: —';
+        // Method-vs-active mismatch is informational only.
+        const expected = _expectedTrainingModeFor(this.testMethod);
+        const mismatch = active && expected && active !== expected;
+        if (mismatch) {
+            badge.style.background = 'rgba(239,68,68,0.20)';
+            badge.style.borderColor = '#ef4444';
+            badge.title = `Auto Test method "${this.testMethod}" expects training mode "${expected}", but active mode is "${active}".`;
+        } else {
+            badge.style.background = 'rgba(255,255,255,0.08)';
+            badge.style.borderColor = 'rgba(255,255,255,0.3)';
+            badge.title = 'Active trained mode (read from TrainingState)';
+        }
+    }
+}
+
+/**
+ * Map an Auto Test method to the training mode that "should" have
+ * produced its model state. Returns null when the mapping is undefined
+ * (e.g. test-strategy has no opinion).
+ */
+function _expectedTrainingModeFor(method) {
+    if (method === 'AI-trained') return 'ai-mode';
+    if (method === 'auto-test')  return 'default';
+    if (method === 'T1-strategy') return 'default';
+    return null;
 }
 
 // Export for both browser and Node.js (tests)

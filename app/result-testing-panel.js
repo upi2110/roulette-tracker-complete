@@ -135,6 +135,25 @@ class ResultTestingPanel {
                             ⬇ Download comparison workbook
                         </button>
                     </div>
+                    <!-- AI-trained diagnostics — additive, hidden until AI-trained step data is present.
+                         Render-only: this section never bets, never mutates replay, never touches money panel. -->
+                    <div id="resultTestingAITrainedSection" style="display:none;margin-top:8px;">
+                        <div id="resultTestingAITrainedHeader"
+                             style="background:linear-gradient(135deg,#1e293b 0%,#334155 100%);color:#e2e8f0;padding:6px 10px;font-weight:bold;font-size:11px;border-radius:4px 4px 0 0;cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;"
+                             onclick="const n = document.getElementById('resultTestingAITrainedBody'); if (n) n.style.display = n.style.display === 'none' ? 'block' : 'none';">
+                            🧠 AI-trained diagnostics
+                            <span id="resultTestingAITrainedStepCount" style="margin-left:auto;font-size:10px;color:#94a3b8;font-weight:600;">0 steps</span>
+                        </div>
+                        <div id="resultTestingAITrainedBody"
+                             style="padding:6px;background:#0f172a;border:1px solid #334155;border-top:none;border-radius:0 0 4px 4px;display:block;">
+                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                                <label for="resultTestingAITrainedStepSelect" style="font-size:10px;color:#94a3b8;font-weight:600;">Step:</label>
+                                <select id="resultTestingAITrainedStepSelect"
+                                        style="flex:1;padding:3px 6px;font-size:10px;font-weight:600;border:1px solid #334155;border-radius:3px;background:#1e293b;color:#e2e8f0;cursor:pointer;"></select>
+                            </div>
+                            <div id="resultTestingAITrainedMount"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -180,7 +199,11 @@ class ResultTestingPanel {
         btn.id = 'aiHeaderSessionReportBtn';
         btn.title = 'Download the Result-testing session as session-result-*.xlsx (uses Auto Test session replay data — never mutates Money Management)';
         btn.textContent = '📊 Download Session Report';
-        btn.disabled = true;  // enabled after a successful session replay
+        // Enabled by default — the report can be generated from a
+        // submitted session alone (no replay required). When no session
+        // has been submitted yet, downloadSessionReport() returns false
+        // cleanly without throwing.
+        btn.disabled = false;
         btn.style.cssText = [
             'margin-left:auto',
             'margin-right:8px',
@@ -266,8 +289,12 @@ class ResultTestingPanel {
         this._replayStats = null;
         const wbBtn = document.getElementById('resultTestingWorkbookBtn');
         if (wbBtn) wbBtn.disabled = true;
+        // Session-report download is decoupled from result-testing replay.
+        // The moment a session is submitted, the user may download a
+        // session-only workbook; running replay later just upgrades the
+        // workbook to a full Auto-Test-vs-replay comparison.
         const srBtn = document.getElementById('aiHeaderSessionReportBtn');
-        if (srBtn) srBtn.disabled = true;
+        if (srBtn) srBtn.disabled = false;
 
         if (info) {
             const file = autoTestResult.testFile || 'manual';
@@ -288,7 +315,141 @@ class ResultTestingPanel {
         const modeSel = document.getElementById('resultTestingModeSelect');
         if (modeSel) modeSel.value = this.selectedMode;
 
+        // Hand AI-trained step data (if any) to the additive diagnostics
+        // section. Render-only — never affects replay or money panel.
+        try { this.refreshAITrainedDiagnostics(autoTestResult); }
+        catch (_) { /* best-effort */ }
+
         return true;
+    }
+
+    // ── AI-trained diagnostics (render-only) ─────────────────────────
+    //
+    // Mounts a SECOND AIPredictionPanelCore instance inside the
+    // result-testing collapsible. Driven by hovered/selected step
+    // selection. The first instance lives in the AI-mode tab; this
+    // one is fully isolated and never feeds money-panel betting logic.
+
+    /**
+     * Refresh the AI-trained diagnostics section from a submitted
+     * Auto Test result. Picks the first session that contains any
+     * `step.aiTrained` payload and exposes its steps to the panel.
+     * Falls through silently when no AI-trained data exists.
+     */
+    refreshAITrainedDiagnostics(autoTestResult) {
+        const section = (typeof document !== 'undefined')
+            ? document.getElementById('resultTestingAITrainedSection') : null;
+        const select = (typeof document !== 'undefined')
+            ? document.getElementById('resultTestingAITrainedStepSelect') : null;
+        const countEl = (typeof document !== 'undefined')
+            ? document.getElementById('resultTestingAITrainedStepCount') : null;
+        if (!section || !select) return false;
+
+        const steps = this._collectAITrainedSteps(autoTestResult);
+        this._aiTrainedSteps = steps;
+
+        if (!steps.length) {
+            section.style.display = 'none';
+            select.innerHTML = '';
+            if (countEl) countEl.textContent = '0 steps';
+            this._destroyAITrainedDiagPanel();
+            return false;
+        }
+
+        section.style.display = 'block';
+        if (countEl) countEl.textContent = `${steps.length} step${steps.length === 1 ? '' : 's'}`;
+
+        // Build the step dropdown options.
+        select.innerHTML = '';
+        steps.forEach((s, i) => {
+            const opt = document.createElement('option');
+            const phase = (s.aiTrained && s.aiTrained.phase) || '—';
+            const action = (s.aiTrained && s.aiTrained.action) || '—';
+            opt.value = String(i);
+            opt.textContent = `#${i + 1}  spin=${s.spinIdx != null ? s.spinIdx : '?'}  ${phase}/${action}`;
+            select.appendChild(opt);
+        });
+        // Wire the change listener once.
+        if (!select._aiTrainedHandlerWired) {
+            select.addEventListener('change', () => {
+                const i = parseInt(select.value, 10);
+                this.selectAITrainedStep(Number.isInteger(i) ? i : 0);
+            });
+            select._aiTrainedHandlerWired = true;
+        }
+
+        this._mountAITrainedDiagPanel();
+        this.selectAITrainedStep(0);
+        return true;
+    }
+
+    /**
+     * Render the diagnostics for the step at index `i`. Pulls the
+     * payload straight from `step.aiTrained` — never from `step.numbers`
+     * — so shadow-only numbers are fed in via `shadowNumbers` and
+     * remain non-bettable in the renderer (Step 5 Phase 1 invariant).
+     */
+    selectAITrainedStep(i) {
+        if (!this._aiTrainedDiagPanel || !Array.isArray(this._aiTrainedSteps)) return false;
+        const step = this._aiTrainedSteps[i];
+        if (!step || !step.aiTrained) return false;
+        try { this._aiTrainedDiagPanel.render(step.aiTrained); }
+        catch (_) { return false; }
+        const select = document.getElementById('resultTestingAITrainedStepSelect');
+        if (select) select.value = String(i);
+        return true;
+    }
+
+    _collectAITrainedSteps(autoTestResult) {
+        const out = [];
+        if (!autoTestResult || typeof autoTestResult !== 'object') return out;
+        const visit = (session) => {
+            if (!session || !Array.isArray(session.steps)) return;
+            for (const step of session.steps) {
+                if (step && step.aiTrained) out.push(step);
+            }
+        };
+        // Top-level sessions array (replay format)
+        if (Array.isArray(autoTestResult.sessions)) autoTestResult.sessions.forEach(visit);
+        // Strategy-grouped buckets (Auto Test report format)
+        if (autoTestResult.strategies && typeof autoTestResult.strategies === 'object') {
+            Object.values(autoTestResult.strategies).forEach(bucket => {
+                if (bucket && Array.isArray(bucket.sessions)) bucket.sessions.forEach(visit);
+            });
+        }
+        // Single-session shape (defensive)
+        if (out.length === 0 && Array.isArray(autoTestResult.steps)) visit(autoTestResult);
+        return out;
+    }
+
+    _mountAITrainedDiagPanel() {
+        if (this._aiTrainedDiagPanel) return this._aiTrainedDiagPanel;
+        const mount = (typeof document !== 'undefined')
+            ? document.getElementById('resultTestingAITrainedMount') : null;
+        if (!mount) return null;
+        let CoreCtor = null;
+        if (typeof require === 'function') {
+            try { CoreCtor = require('./ai-prediction-panel-core.js').AIPredictionPanelCore; }
+            catch (_) { /* fall through */ }
+        }
+        if (!CoreCtor && typeof AIPredictionPanelCore !== 'undefined') {
+            CoreCtor = AIPredictionPanelCore;
+        }
+        if (!CoreCtor) return null;
+        try {
+            this._aiTrainedDiagPanel = new CoreCtor(mount, {
+                title: 'AI-trained replay',
+                mode: 'full'
+            });
+        } catch (_) { return null; }
+        return this._aiTrainedDiagPanel;
+    }
+
+    _destroyAITrainedDiagPanel() {
+        if (this._aiTrainedDiagPanel && typeof this._aiTrainedDiagPanel.destroy === 'function') {
+            try { this._aiTrainedDiagPanel.destroy(); } catch (_) { /* best-effort */ }
+        }
+        this._aiTrainedDiagPanel = null;
     }
 
     /**
@@ -357,6 +518,54 @@ class ResultTestingPanel {
         const bucket = this.submitted.strategies[ref.strategy];
         if (!bucket || !Array.isArray(bucket.sessions)) return null;
         return bucket.sessions.find(s => s && s.startIdx === ref.startIdx) || null;
+    }
+
+    /**
+     * Pick the first available session in the submission. Used as a
+     * fallback by buildComparisonData() so the "Download Session Report"
+     * button can produce a session-only workbook directly after a
+     * completed Auto Test, with no result-testing replay required.
+     *
+     * @returns {{ref:{strategy:number, startIdx:number}, session:object}|null}
+     */
+    _pickFirstAvailableSession() {
+        if (!this.submitted) return null;
+        // 1) Top-level sessions array (some submission shapes use this).
+        if (Array.isArray(this.submitted.sessions) && this.submitted.sessions.length > 0) {
+            const s = this.submitted.sessions[0];
+            if (s) {
+                return {
+                    ref: {
+                        strategy: typeof s.strategy === 'number' ? s.strategy : 1,
+                        startIdx: typeof s.startIdx === 'number' ? s.startIdx : 0
+                    },
+                    session: s
+                };
+            }
+        }
+        // 2) Strategy-grouped buckets (canonical Auto Test report shape).
+        if (this.submitted.strategies && typeof this.submitted.strategies === 'object') {
+            const strategyKeys = Object.keys(this.submitted.strategies)
+                .map(k => Number(k))
+                .filter(n => Number.isFinite(n))
+                .sort((a, b) => a - b);
+            for (const key of strategyKeys) {
+                const bucket = this.submitted.strategies[key];
+                if (bucket && Array.isArray(bucket.sessions) && bucket.sessions.length > 0) {
+                    const s = bucket.sessions[0];
+                    if (s) {
+                        return {
+                            ref: {
+                                strategy: key,
+                                startIdx: typeof s.startIdx === 'number' ? s.startIdx : 0
+                            },
+                            session: s
+                        };
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -1702,10 +1911,21 @@ class ResultTestingPanel {
      * no last-loaded session).
      */
     buildComparisonData(explicitRef) {
-        const ref = explicitRef || this._parseSessionLabel(this.lastTabLoaded);
-        if (!ref || !this.submitted) return null;
-        const session = this.findSession(ref);
-        if (!session) return null;
+        if (!this.submitted) return null;
+        // Resolve a session ref. Order of preference:
+        //   1. Caller-supplied explicit ref (used by replay code paths).
+        //   2. The last tab the user loaded (set by processTabEntry).
+        //   3. The first session present in the submission — this is the
+        //      session-only fallback that powers "Download Session Report"
+        //      directly after a completed session, with no replay required.
+        let ref = explicitRef || this._parseSessionLabel(this.lastTabLoaded);
+        let session = ref ? this.findSession(ref) : null;
+        if (!session) {
+            const fallback = this._pickFirstAvailableSession();
+            if (!fallback) return null;
+            ref = fallback.ref;
+            session = fallback.session;
+        }
         const aiMode = (this._replayStats && this._replayStats.aiMode) || this.getSelectedMode();
         const autoTest = this._buildAutoTestSide(ref, session);
         const resultTesting = this._buildResultTestingSide(ref, aiMode);

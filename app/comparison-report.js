@@ -70,6 +70,11 @@ class ComparisonReport {
         this._createSpinBySpinSheet(wb, at, rt);
         this._createAutoTestSpinsSheet(wb, at);
         this._createResultSpinsSheet(wb, rt);
+        // AI-trained audit — append-only. Only added when the run's
+        // method is 'AI-trained'. Legacy workbooks are byte-identical.
+        if (meta && meta.method === 'AI-trained') {
+            this._createAITrainedAuditSheet(wb, at, rt, meta);
+        }
         return wb;
     }
 
@@ -513,6 +518,126 @@ class ComparisonReport {
             });
         });
         sheet.columns = [{ width: 6 }, { width: 12 }, { width: 12 }, { width: 8 }, { width: 10 }, { width: 14 }, { width: 26 }];
+    }
+
+    /**
+     * AI-trained audit — append-only diagnostic sheet.
+     * Only invoked when meta.method === 'AI-trained'. Summarises the
+     * AI-trained layer's decision counts, shadow outcomes, retrain
+     * events, protection entries, and terminate flag, drawn from the
+     * `aiTrainedSummary` attached by the runner.
+     */
+    _createAITrainedAuditSheet(wb, at, rt, meta) {
+        const sheet = wb.addWorksheet('AI-trained audit');
+
+        const summary = (at && at.aiTrainedSummary)
+            || (rt && rt.aiTrainedSummary)
+            || {};
+        const decisions = summary.decisions || {};
+        const phases = summary.phases || {};
+
+        // Title
+        sheet.mergeCells('A1:C1');
+        const title = sheet.getCell('A1');
+        title.value = 'AI-trained Audit';
+        title.font = { size: 14, bold: true };
+        title.alignment = { horizontal: 'center' };
+
+        sheet.getCell('A2').value = `Session: ${meta.sessionLabel || '(none)'}`;
+        sheet.getCell('A3').value = `Method : ${meta.method || 'AI-trained'}`;
+
+        const writeHeader = (rowIdx, labels) => {
+            const row = sheet.getRow(rowIdx);
+            labels.forEach((h, i) => {
+                const cell = row.getCell(i + 1);
+                cell.value = h;
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+                cell.alignment = { horizontal: 'center' };
+            });
+        };
+        const writeKV = (rowIdx, k, v) => {
+            const row = sheet.getRow(rowIdx);
+            row.getCell(1).value = k;
+            row.getCell(2).value = v;
+            row.getCell(2).alignment = { horizontal: 'center' };
+        };
+
+        // ── Session totals (from aiTrainedSummary) ──
+        writeHeader(5, ['Metric', 'Value']);
+        let r = 6;
+        const pct = (x) => (typeof x === 'number')
+            ? `${Math.round(Math.max(0, Math.min(1, x)) * 100)}%`
+            : '--';
+        writeKV(r++, 'Spins seen',        summary.spinsSeen != null ? summary.spinsSeen : '--');
+        writeKV(r++, 'AI-trained spins',  summary.aiTrainedSpins != null ? summary.aiTrainedSpins : '--');
+        writeKV(r++, 'Bets',              summary.bets != null ? summary.bets : '--');
+        writeKV(r++, 'Bet hits',          summary.betHits != null ? summary.betHits : '--');
+        writeKV(r++, 'Bet misses',        summary.betMisses != null ? summary.betMisses : '--');
+        writeKV(r++, 'Bet hit rate',      pct(summary.betHitRate));
+        writeKV(r++, 'Shadows seen',      summary.shadowsSeen != null ? summary.shadowsSeen : '--');
+        writeKV(r++, 'Shadow hits',       summary.shadowsHit != null ? summary.shadowsHit : '--');
+        writeKV(r++, 'Shadow hit rate',   pct(summary.shadowHitRate));
+        writeKV(r++, 'Terminated',        summary.terminated ? 'YES' : 'NO');
+        const spinsBlockEnd = r;
+
+        // ── Action counts ──
+        const actionStart = spinsBlockEnd + 1;
+        writeHeader(actionStart, ['Action', 'Count']);
+        const actionNames = ['WAIT', 'BET', 'SHADOW_PREDICT', 'RETRAIN', 'PROTECTION', 'TERMINATE_SESSION'];
+        actionNames.forEach((a, i) => {
+            writeKV(actionStart + 1 + i, a, decisions[a] != null ? decisions[a] : 0);
+        });
+
+        // ── Phase counts ──
+        const phaseStart = actionStart + actionNames.length + 2;
+        writeHeader(phaseStart, ['Phase', 'Count']);
+        const phaseNames = ['WARMUP', 'SHADOW', 'EARLY', 'STABILISING', 'ACTIVE', 'RECOVERY', 'PROTECTION'];
+        phaseNames.forEach((p, i) => {
+            writeKV(phaseStart + 1 + i, p, phases[p] != null ? phases[p] : 0);
+        });
+
+        // ── Protection entries ──
+        const protStart = phaseStart + phaseNames.length + 2;
+        writeHeader(protStart, ['Protection #', 'Spin Idx', 'Reason', 'Cooldown']);
+        const protEntries = Array.isArray(summary.protectionEntries) ? summary.protectionEntries : [];
+        if (protEntries.length === 0) {
+            const row = sheet.getRow(protStart + 1);
+            row.getCell(1).value = '--';
+            row.getCell(2).value = '--';
+            row.getCell(3).value = 'no protection entries';
+            row.getCell(4).value = '--';
+        } else {
+            protEntries.forEach((e, i) => {
+                const row = sheet.getRow(protStart + 1 + i);
+                row.getCell(1).value = i + 1;
+                row.getCell(2).value = e && e.idx != null ? e.idx : '--';
+                row.getCell(3).value = e && e.reason ? String(e.reason) : '--';
+                row.getCell(4).value = e && e.cooldown != null ? e.cooldown : '--';
+            });
+        }
+
+        // ── Retrain events ──
+        const retrainStart = protStart + Math.max(1, protEntries.length) + 2;
+        writeHeader(retrainStart, ['Retrain #', 'Spin Idx', 'Loss Streak']);
+        const retrainEvents = Array.isArray(summary.retrainEvents) ? summary.retrainEvents : [];
+        if (retrainEvents.length === 0) {
+            const row = sheet.getRow(retrainStart + 1);
+            row.getCell(1).value = '--';
+            row.getCell(2).value = '--';
+            row.getCell(3).value = 'no retrain events';
+        } else {
+            retrainEvents.forEach((e, i) => {
+                const row = sheet.getRow(retrainStart + 1 + i);
+                row.getCell(1).value = i + 1;
+                row.getCell(2).value = e && e.idx != null ? e.idx : '--';
+                row.getCell(3).value = e && e.lossStreak != null ? e.lossStreak : '--';
+            });
+        }
+
+        sheet.columns = [
+            { width: 22 }, { width: 14 }, { width: 28 }, { width: 12 }
+        ];
     }
 
     static _deltaStatus(atVal, rtVal) {

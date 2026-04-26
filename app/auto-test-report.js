@@ -320,7 +320,15 @@ class AutoTestReport {
         backCell.alignment = { horizontal: 'center' };
 
         // Headers (row 3)
+        // Legacy columns 1..12 are fixed and must not shift. AI-trained
+        // sessions append optional columns 13..16 (Phase, AI Action,
+        // AI Conf%, Shadow?). Non-AI-trained sessions never add them.
+        const hasAITrained = Array.isArray(session.steps)
+            && session.steps.some(s => s && s.aiTrained);
         const headers = ['Step', 'Spin#', 'Next#', 'Action', 'Pair', 'Filter', 'Numbers', 'Conf%', 'Bet/Num', 'Hit', 'P&L', 'Bankroll'];
+        if (hasAITrained) {
+            headers.push('Phase', 'AI Action', 'AI Conf%', 'Shadow?');
+        }
         const headerRow = sheet.getRow(3);
         headers.forEach((h, i) => {
             const cell = headerRow.getCell(i + 1);
@@ -373,6 +381,31 @@ class AutoTestReport {
                 step.pnl !== 0 ? `$${step.pnl}` : '--',
                 `$${step.bankroll.toLocaleString()}`
             ];
+            // AI-trained append-only columns. Only populated when the
+            // session carries any AI-trained step; legacy sessions see
+            // no change in column count.
+            if (hasAITrained) {
+                const ai = step.aiTrained;
+                if (ai) {
+                    values.push(
+                        ai.phase || '--',
+                        ai.action || '--',
+                        (typeof ai.confidence === 'number')
+                            ? `${Math.round(ai.confidence * 100)}%`
+                            : '--',
+                        (ai.action === 'SHADOW_PREDICT')
+                            ? (ai.shadowHit === true ? 'HIT'
+                              : ai.shadowHit === false ? 'MISS'
+                              : 'PENDING')
+                            : '--'
+                    );
+                } else {
+                    // WATCH / REANALYZE rows in an AI-trained session —
+                    // no per-step AI payload; blank placeholders keep
+                    // the column grid rectangular.
+                    values.push('--', '--', '--', '--');
+                }
+            }
             values.forEach((v, i) => {
                 const cell = row.getCell(i + 1);
                 cell.value = v;
@@ -416,12 +449,21 @@ class AutoTestReport {
             }
         });
 
-        // Column widths
-        sheet.columns = [
+        // Column widths — legacy 12, plus 4 optional AI-trained columns.
+        const columnWidths = [
             { width: 6 }, { width: 8 }, { width: 8 }, { width: 8 },
             { width: 14 }, { width: 18 }, { width: 10 }, { width: 8 },
             { width: 10 }, { width: 6 }, { width: 10 }, { width: 12 }
         ];
+        if (hasAITrained) {
+            columnWidths.push(
+                { width: 12 }, // Phase
+                { width: 14 }, // AI Action
+                { width: 10 }, // AI Conf%
+                { width: 10 }  // Shadow?
+            );
+        }
+        sheet.columns = columnWidths;
 
         return sheet;
     }

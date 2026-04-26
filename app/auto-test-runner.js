@@ -60,9 +60,13 @@ class AutoTestRunner {
         if (!engine) {
             throw new Error('AutoTestRunner requires an AIAutoEngine instance');
         }
-        if (!engine.isTrained) {
-            throw new Error('Engine must be trained before running tests');
-        }
+        // Defer the legacy `engine.isTrained` check from constructor to
+        // runAll(). The AI-trained method does NOT consume engine pair
+        // models / sequence model and so does not need the engine to be
+        // trained. Every other method still gets the same precondition,
+        // surfaced inside runAll() as a clear ENGINE_NOT_TRAINED row so
+        // callers see the same error semantics as before.
+        this._engineMaybeUntrained = !engine.isTrained;
         this.engine = engine;
 
         // Session parameters — tunable via constructor or setSessionConfig()
@@ -114,6 +118,62 @@ class AutoTestRunner {
             ? options.method
             : 'auto-test';
         this._currentMethod = method;
+
+        // Mode-isolation opt-in gate. The caller may pass
+        // `expectedTrainingMode` to assert that Auto Test is being run
+        // against the model state produced by a specific TRAIN-mode.
+        // If the registry's active mode does not match, the run is
+        // aborted with a clear `WRONG_TRAINING_MODE` outcome and zero
+        // sessions are executed.
+        //
+        // When the field is absent / null / empty string, the gate is
+        // bypassed entirely and behavior is byte-identical to today.
+        // Method-gated `engine.isTrained` precondition. AI-trained does
+        // not consume engine internals, so it bypasses the legacy gate.
+        // Every other method gets the same blocking semantics as before
+        // — surfaced as ENGINE_NOT_TRAINED instead of a constructor throw.
+        if (this._engineMaybeUntrained && method !== 'AI-trained') {
+            return {
+                testFile,
+                method,
+                totalTestSpins: testSpins ? testSpins.length : 0,
+                trainedOn: 'N/A',
+                timestamp: new Date().toISOString(),
+                outcome: 'ENGINE_NOT_TRAINED',
+                message: `Engine must be trained before running "${method}". Click TRAIN (Default mode) first.`,
+                strategies: {},
+                overall: null
+            };
+        }
+
+        const expectedTrainingMode = (typeof options.expectedTrainingMode === 'string' && options.expectedTrainingMode)
+            ? options.expectedTrainingMode
+            : null;
+        if (expectedTrainingMode) {
+            let TS = null;
+            try {
+                if (typeof require === 'function') TS = require('./training-state.js');
+            } catch (_) { /* fall through */ }
+            if (!TS && typeof window !== 'undefined' && window.TrainingState) {
+                TS = window.TrainingState;
+            }
+            const activeTrainingMode = TS ? TS.getActiveMode() : null;
+            if (activeTrainingMode !== expectedTrainingMode) {
+                return {
+                    testFile,
+                    method,
+                    totalTestSpins: testSpins ? testSpins.length : 0,
+                    trainedOn: 'N/A',
+                    timestamp: new Date().toISOString(),
+                    expectedTrainingMode,
+                    activeTrainingMode,
+                    outcome: 'WRONG_TRAINING_MODE',
+                    message: `Trained mode "${activeTrainingMode || 'none'}" does not match expected "${expectedTrainingMode}" — Auto Test aborted.`,
+                    strategies: {},
+                    overall: null
+                };
+            }
+        }
 
         if (!testSpins || testSpins.length < 5) {
             return {
@@ -216,6 +276,22 @@ class AutoTestRunner {
 
         const steps = [];
 
+        // AI-trained feedback boundary: reset the per-engine controller
+        // and the adapter's prior-decision slot at each session start.
+        // Scoped to 'AI-trained' so 'auto-test' and 'T1-strategy' paths
+        // are byte-identical to before this change.
+        if (this._currentMethod === 'AI-trained') {
+            try {
+                const mod = (typeof require === 'function') ? require('./ai-trained-strategy.js') : null;
+                if (mod && typeof mod.resetAITrainedStrategy === 'function') {
+                    mod.resetAITrainedStrategy(this.engine);
+                } else if (typeof resetAITrainedStrategy === 'function') {
+                    resetAITrainedStrategy(this.engine);
+                }
+            } catch (_) { /* best-effort */ }
+            this._lastAITrained = null;
+        }
+
         // ── PHASE 1: WATCH (3 spins — observe only) ──
         for (let w = 0; w < 3 && (startIdx + w) < testSpins.length; w++) {
             const wi = startIdx + w;
@@ -284,7 +360,7 @@ class AutoTestRunner {
                     : 'unknown';
                 this.engine.recordResult(refKey, decision.selectedFilter || 'both_both', hit, nextActual, decision.numbers);
 
-                steps.push({
+                steps.push(Object.assign({
                     spinIdx: i,
                     spinNumber: testSpins[i],
                     nextNumber: nextActual,
@@ -299,7 +375,7 @@ class AutoTestRunner {
                     pnl,
                     bankroll: sessionState.bankroll,
                     cumulativeProfit: sessionState.profit
-                });
+                }, decision.aiTrained ? { aiTrained: decision.aiTrained } : {}));
 
                 // Check WIN
                 if (sessionState.profit >= TARGET_PROFIT) {
@@ -342,7 +418,7 @@ class AutoTestRunner {
                 sessionState.totalSkips++;
                 this.engine.recordSkip();
 
-                steps.push({
+                steps.push(Object.assign({
                     spinIdx: i,
                     spinNumber: testSpins[i],
                     nextNumber: testSpins[i + 1],
@@ -357,7 +433,7 @@ class AutoTestRunner {
                     pnl: 0,
                     bankroll: sessionState.bankroll,
                     cumulativeProfit: sessionState.profit
-                });
+                }, decision.aiTrained ? { aiTrained: decision.aiTrained } : {}));
             }
         }
 
@@ -370,7 +446,7 @@ class AutoTestRunner {
      */
     _buildSessionResult(startIdx, strategy, outcome, state, steps) {
         const nonBetActions = steps.filter(s => s.action === 'WATCH' || s.action === 'REANALYZE').length;
-        return {
+        const result = {
             startIdx,
             strategy,
             outcome,
@@ -387,6 +463,21 @@ class AutoTestRunner {
             reanalyzeCount: state.reanalyzeCount || 0,
             steps
         };
+        // AI-trained-only additions. Attached via Object.assign so legacy
+        // method outputs keep their exact key set and ordering.
+        if (this._currentMethod === 'AI-trained') {
+            try {
+                const loggerMod = (typeof require === 'function') ? require('./ai-trained-logger.js') : null;
+                const aggregate = loggerMod
+                    ? loggerMod.aggregateAITrainedSteps
+                    : (typeof aggregateAITrainedSteps === 'function' ? aggregateAITrainedSteps : null);
+                if (aggregate) {
+                    result.method = 'AI-trained';
+                    result.aiTrainedSummary = aggregate(steps);
+                }
+            } catch (_) { /* best-effort — legacy output unaffected */ }
+        }
+        return result;
     }
 
     // T2 Flash Simulation — delegates to engine.simulateT2FlashAndNumbers()
@@ -414,6 +505,9 @@ class AutoTestRunner {
         // identical to before the T1-strategy feature was added.
         if (this._currentMethod === 'T1-strategy' && typeof _decideT1Strategy === 'function') {
             return _decideT1Strategy(this.engine, testSpins, idx);
+        }
+        if (this._currentMethod === 'AI-trained') {
+            return this._aiTrainedAdapter(testSpins, idx);
         }
 
         const skipResult = (reason) => {
@@ -504,6 +598,122 @@ class AutoTestRunner {
         }
 
         return skipResult(`Low confidence ${confidence}% < ${effectiveThreshold}%`);
+    }
+
+    // ───────────────────────────────────────────────────────────
+    //  AI-trained adapter (Phase 1, Step 3)
+    //  Thin, method-gated. Delegates all logic to AITrainedController
+    //  via decideAITrainedStrategy(). Maps WAIT / SHADOW_PREDICT /
+    //  PROTECTION / TERMINATE_SESSION to the runner's 'SKIP' action
+    //  so they are never treated as bets (no P&L, no bankroll change).
+    //  BET passes through with controller-capped (<=12) numbers.
+    //  The original controller decision is preserved under `aiTrained`.
+    // ───────────────────────────────────────────────────────────
+    _aiTrainedAdapter(testSpins, idx) {
+        const strategyMod = (typeof require === 'function')
+            ? (function(){ try { return require('./ai-trained-strategy.js'); } catch(_) { return null; } })()
+            : null;
+        const decide = strategyMod
+            ? strategyMod.decideAITrainedStrategy
+            : (typeof decideAITrainedStrategy === 'function' ? decideAITrainedStrategy : null);
+
+        if (!decide) {
+            return {
+                action: 'SKIP',
+                selectedPair: null,
+                selectedFilter: null,
+                numbers: [],
+                confidence: 0,
+                reason: 'AI-trained strategy unavailable'
+            };
+        }
+
+        // Resolve the prior AI-trained decision before producing a new
+        // one. The decision at prior.idx predicts testSpins[prior.idx+1];
+        // when this adapter runs at idx, that outcome is observable.
+        this._resolvePriorAITrainedDecision(testSpins, idx, strategyMod);
+
+        const aiDecision = decide(this.engine, testSpins, idx);
+
+        // Track the new decision so the NEXT adapter call can resolve it.
+        // The reference we store is the SAME object that will be written
+        // into step.aiTrained (see BET/SKIP push sites). Mutations here
+        // (e.g. shadowHit write-back) propagate into the step log.
+        this._lastAITrained = { idx, decision: aiDecision };
+        const confidencePct = Math.round((aiDecision.confidence || 0) * 100);
+
+        if (aiDecision.action === 'BET') {
+            return {
+                action: 'BET',
+                selectedPair: null,        // AI-trained never uses user pairs
+                selectedFilter: null,
+                numbers: aiDecision.numbers,
+                confidence: confidencePct,
+                reason: `AI-trained ${aiDecision.phase}: ${aiDecision.reason}`,
+                aiTrained: aiDecision
+            };
+        }
+
+        // WAIT, SHADOW_PREDICT, PROTECTION, TERMINATE_SESSION, RETRAIN
+        // are all non-bets from the runner's point of view.
+        return {
+            action: 'SKIP',
+            selectedPair: null,
+            selectedFilter: null,
+            numbers: [],
+            confidence: confidencePct,
+            reason: `AI-trained ${aiDecision.phase} ${aiDecision.action}: ${aiDecision.reason}`,
+            aiTrained: aiDecision
+        };
+    }
+
+    /**
+     * Feed the prior AI-trained decision's outcome back into the cached
+     * controller. Called from `_aiTrainedAdapter` at the top of every
+     * tick. The decision at prior.idx predicts testSpins[prior.idx + 1];
+     * when the adapter runs at idx, that cell is observable.
+     *
+     * - Prior BET  → controller.recordResult({hit, actual, ...})
+     * - Prior SHADOW_PREDICT → controller.recordShadow({actual, ...}),
+     *                          and write `shadowHit` back onto the
+     *                          stored decision so the step log carries it.
+     * - WAIT / PROTECTION / RETRAIN / TERMINATE_SESSION → no-op.
+     */
+    _resolvePriorAITrainedDecision(testSpins, idx, strategyMod) {
+        const prior = this._lastAITrained;
+        if (!prior || !prior.decision) return;
+        const outcomeIdx = prior.idx + 1;
+        // Guard: the outcome must be observable at or before the current tick.
+        if (outcomeIdx >= testSpins.length || outcomeIdx > idx) {
+            return;
+        }
+        const actual = testSpins[outcomeIdx];
+
+        // Resolve the controller instance from the strategy module's
+        // per-engine cache. Falls back to a no-op if the strategy module
+        // is not loaded (e.g. stubbed tests).
+        const getCtrl = strategyMod && strategyMod.__internal && strategyMod.__internal._getController;
+        const controller = getCtrl ? getCtrl(this.engine) : null;
+
+        const action = prior.decision.action;
+        if (action === 'BET') {
+            const nums = Array.isArray(prior.decision.numbers) ? prior.decision.numbers : [];
+            const hit = nums.includes(actual);
+            if (controller && typeof controller.recordResult === 'function') {
+                controller.recordResult({ idx: prior.idx, hit, actual, decision: prior.decision });
+            }
+        } else if (action === 'SHADOW_PREDICT') {
+            const shadowNums = Array.isArray(prior.decision.shadowNumbers) ? prior.decision.shadowNumbers : [];
+            const shadowHit = shadowNums.includes(actual);
+            if (controller && typeof controller.recordShadow === 'function') {
+                controller.recordShadow({ idx: prior.idx, actual, decision: prior.decision });
+            }
+            // Mutate the SAME object that was stored in step.aiTrained
+            // so the audit log carries the resolved flag.
+            prior.decision.shadowHit = shadowHit;
+        }
+        // WAIT / PROTECTION / RETRAIN / TERMINATE_SESSION carry no outcome.
+        this._lastAITrained = null;
     }
 
     // ═══════════════════════════════════════════════════════════

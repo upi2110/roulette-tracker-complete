@@ -15,9 +15,17 @@ class AutoUpdateOrchestrator {
         // Which decision policy to use when autoMode is on:
         //   'auto'        → window.aiAutoEngine.decide() (default pipeline)
         //   't1-strategy' → window.decideT1Strategy(engine, spinsArr, idx)
+        //   'ai-trained'  → window.aiTrainedController.decide(spinsArr, idx)
         // T1-strategy reuses the exact helper from app/t1-strategy.js
         // that Auto Test's runner uses. No T1 algorithm duplication.
+        // ai-trained uses the System AI Adaptive Training controller;
+        // it does NOT require the heuristic engine to be enabled.
         this.decisionMode = 'auto';
+
+        // Live AI-trained feedback — stores the most recent decision so
+        // the next spin can resolve it (recordResult for BET, recordShadow
+        // for SHADOW_PREDICT). Separate from the Auto Test controller cache.
+        this._lastAITrainedLive = null;
 
         console.log('🔧 Auto-Update Orchestrator initialized');
     }
@@ -38,8 +46,10 @@ class AutoUpdateOrchestrator {
                     this.startSessionFirst();
                 }
 
-                if (this.autoMode && window.aiAutoEngine && window.aiAutoEngine.isEnabled) {
-                    // AUTO MODE: Engine makes all decisions
+                const aiTrainedActive = this.autoMode && this.decisionMode === 'ai-trained';
+                const engineAutoActive = this.autoMode && window.aiAutoEngine && window.aiAutoEngine.isEnabled;
+                if (aiTrainedActive || engineAutoActive) {
+                    // AUTO / T1-strategy / AI-trained: system makes the decision.
                     this.handleAutoMode();
                 } else {
                     // MANUAL MODE: Load pairs for user selection
@@ -70,8 +80,12 @@ class AutoUpdateOrchestrator {
     async handleAutoMode() {
         console.log('🤖 AUTO MODE: Processing new spin...');
 
-        // 1. Load pairs (populates getAIDataV6)
-        this.loadPairsForManualSelection();
+        // 1. Load pairs (populates getAIDataV6). Skipped for ai-trained
+        //    since that path does NOT use user-defined pairs and does
+        //    not read table projections.
+        if (this.decisionMode !== 'ai-trained') {
+            this.loadPairsForManualSelection();
+        }
 
         // Small delay to ensure table3DisplayProjections is populated
         await new Promise(r => setTimeout(r, 150));
@@ -81,8 +95,45 @@ class AutoUpdateOrchestrator {
         //    through to the engine's default pipeline. The T1 helper
         //    lives in app/t1-strategy.js and is the same one Auto Test
         //    uses, so both paths share a single source of T1 logic.
+        //    ai-trained routes through window.aiTrainedController.
         let decision;
-        if (this.decisionMode === 't1-strategy' && typeof window.decideT1Strategy === 'function') {
+        if (this.decisionMode === 'ai-trained' && window.aiTrainedController
+                && typeof window.aiTrainedController.decide === 'function') {
+            const spinsArr = Array.isArray(window.spins)
+                ? window.spins
+                    .map(s => (s && typeof s.actual === 'number') ? s.actual : null)
+                    .filter(n => n !== null)
+                : [];
+            const idx = Math.max(0, spinsArr.length - 1);
+
+            // Resolve the prior AI-trained decision against the newly
+            // revealed outcome BEFORE generating the next decision. The
+            // controller's counters thus evolve one spin at a time,
+            // mirroring the Auto Test runner's feedback timing.
+            this._resolvePriorAITrainedLive(spinsArr);
+
+            const aiDecision = window.aiTrainedController.decide(spinsArr, idx);
+            // Store for the NEXT tick's feedback resolver. The reference
+            // stored is the same object the AI-mode tab renders and the
+            // decision envelope carries under `aiTrained`, so any
+            // shadowHit write-back is visible to every consumer.
+            this._lastAITrainedLive = { idx, decision: aiDecision };
+            // Adapt to the orchestrator's BET/SKIP contract. WAIT,
+            // SHADOW_PREDICT, PROTECTION, TERMINATE_SESSION, RETRAIN
+            // are all non-bets: no money-panel setPrediction, no
+            // wheel filter change, no UI pair selection.
+            const isBet = (aiDecision.action === 'BET');
+            decision = {
+                action: isBet ? 'BET' : 'SKIP',
+                selectedPair: null,
+                selectedFilter: null,
+                numbers: isBet ? aiDecision.numbers : [],
+                confidence: Math.round((aiDecision.confidence || 0) * 100),
+                reason: `AI-trained ${aiDecision.phase} ${aiDecision.action}: ${aiDecision.reason}`,
+                aiTrained: aiDecision
+            };
+            console.log('🤖 AI-TRAINED DECISION:', decision);
+        } else if (this.decisionMode === 't1-strategy' && typeof window.decideT1Strategy === 'function') {
             const spinsArr = Array.isArray(window.spins)
                 ? window.spins
                     .map(s => (s && typeof s.actual === 'number') ? s.actual : null)
@@ -98,11 +149,15 @@ class AutoUpdateOrchestrator {
 
         // 3. Store decision on engine for feedback loop
         // money-management-panel reads this after bet resolves to call engine.recordResult()
-        window.aiAutoEngine.lastDecision = decision.action === 'BET' ? {
-            selectedPair: decision.selectedPair,
-            selectedFilter: decision.selectedFilter,
-            numbers: decision.numbers
-        } : null;
+        // Skipped for ai-trained: the heuristic engine is not involved
+        // and its lastDecision state must not be mutated by this path.
+        if (this.decisionMode !== 'ai-trained' && window.aiAutoEngine) {
+            window.aiAutoEngine.lastDecision = decision.action === 'BET' ? {
+                selectedPair: decision.selectedPair,
+                selectedFilter: decision.selectedFilter,
+                numbers: decision.numbers
+            } : null;
+        }
 
         // 4. Update UI
         if (window.aiAutoModeUI) {
@@ -130,7 +185,8 @@ class AutoUpdateOrchestrator {
             // existing cascade path (per backlog rule: do not touch
             // T1 in this task). 'semi' and 'manual' never reach
             // this function.
-            if (this.decisionMode === 'auto' && window.moneyPanel
+            if ((this.decisionMode === 'auto' || this.decisionMode === 'ai-trained')
+                && window.moneyPanel
                 && typeof window.moneyPanel.setPrediction === 'function') {
                 try {
                     window.moneyPanel.setPrediction({
@@ -141,14 +197,18 @@ class AutoUpdateOrchestrator {
                 } catch (_) { /* best-effort */ }
             }
 
-            // a. Clear old selections + select the chosen pair
-            if (window.aiPanel) {
+            // a. Clear old selections + select the chosen pair.
+            //    AI-trained does NOT use user-defined pairs, so skip.
+            if (this.decisionMode !== 'ai-trained' && window.aiPanel) {
                 window.aiPanel.clearSelections();
                 window.aiPanel._handleTable3Selection(decision.selectedPair, true);
             }
 
-            // b. Set wheel filters programmatically
-            this._setWheelFilters(decision.selectedFilter);
+            // b. Set wheel filters programmatically.
+            //    AI-trained has no selectedFilter, so skip.
+            if (this.decisionMode !== 'ai-trained') {
+                this._setWheelFilters(decision.selectedFilter);
+            }
 
             // c. The prediction cascade below (aiPanel →
             //    _autoTriggerPredictions 800 ms debounce → wheel →
@@ -157,8 +217,13 @@ class AutoUpdateOrchestrator {
             //    in AUTO mode — see direct setPrediction call above.
 
         } else {
-            // SKIP — clear stale UI from previous BET
-            window.aiAutoEngine.recordSkip();
+            // SKIP — clear stale UI from previous BET.
+            // AI-trained maintains its own state; never touch engine
+            // session counters from this path.
+            if (this.decisionMode !== 'ai-trained' && window.aiAutoEngine
+                    && typeof window.aiAutoEngine.recordSkip === 'function') {
+                window.aiAutoEngine.recordSkip();
+            }
             if (window.aiPanel) {
                 window.aiPanel.clearSelections();
             }
@@ -244,8 +309,61 @@ class AutoUpdateOrchestrator {
      * flow in an unreachable state.
      */
     setDecisionMode(mode) {
-        this.decisionMode = (mode === 't1-strategy') ? 't1-strategy' : 'auto';
+        const prev = this.decisionMode;
+        if (mode === 't1-strategy') this.decisionMode = 't1-strategy';
+        else if (mode === 'ai-trained') this.decisionMode = 'ai-trained';
+        else this.decisionMode = 'auto';
+        // Drop any queued AI-trained feedback when leaving ai-trained,
+        // so a later re-entry cannot misattribute an old decision to a
+        // freshly arrived spin.
+        if (prev === 'ai-trained' && this.decisionMode !== 'ai-trained') {
+            this._lastAITrainedLive = null;
+        }
         console.log(`🤖 Decision mode → ${this.decisionMode}`);
+    }
+
+    /**
+     * Feed the prior AI-trained live decision's outcome back into the
+     * window.aiTrainedController. The decision at prior.idx predicts
+     * the spin at prior.idx + 1; once that cell appears in spinsArr,
+     * it is the observable outcome.
+     *
+     * - Prior BET → recordResult({hit, actual, ...})
+     * - Prior SHADOW_PREDICT → recordShadow({actual, ...}) + shadowHit write-back
+     * - WAIT / RETRAIN / PROTECTION / TERMINATE_SESSION → no-op
+     *
+     * Never touches the heuristic engine's session counters.
+     */
+    _resolvePriorAITrainedLive(spinsArr) {
+        const prior = this._lastAITrainedLive;
+        if (!prior || !prior.decision) return;
+        const outcomeIdx = prior.idx + 1;
+        if (!Array.isArray(spinsArr) || outcomeIdx >= spinsArr.length) return;
+        const actual = spinsArr[outcomeIdx];
+        const ctrl = (typeof window !== 'undefined') ? window.aiTrainedController : null;
+        if (!ctrl) { this._lastAITrainedLive = null; return; }
+
+        const action = prior.decision.action;
+        if (action === 'BET') {
+            const nums = Array.isArray(prior.decision.numbers) ? prior.decision.numbers : [];
+            const hit = nums.includes(actual);
+            if (typeof ctrl.recordResult === 'function') {
+                try { ctrl.recordResult({ idx: prior.idx, hit, actual, decision: prior.decision }); }
+                catch (_) { /* best-effort */ }
+            }
+        } else if (action === 'SHADOW_PREDICT') {
+            const shadowNums = Array.isArray(prior.decision.shadowNumbers) ? prior.decision.shadowNumbers : [];
+            const shadowHit = shadowNums.includes(actual);
+            if (typeof ctrl.recordShadow === 'function') {
+                try { ctrl.recordShadow({ idx: prior.idx, actual, decision: prior.decision }); }
+                catch (_) { /* best-effort */ }
+            }
+            // Mutate the SAME object referenced by the AI-mode tab render
+            // so the live diagnostics carry the resolved flag.
+            prior.decision.shadowHit = shadowHit;
+        }
+        // WAIT / PROTECTION / RETRAIN / TERMINATE_SESSION carry no outcome.
+        this._lastAITrainedLive = null;
     }
 
     async startSessionFirst() {
@@ -281,6 +399,7 @@ class AutoUpdateOrchestrator {
         this.lastSpinCount = 0;
         this.sessionStarted = false;
         this.autoMode = false;
+        this._lastAITrainedLive = null;
         console.log('🔄 Auto-update orchestrator reset');
     }
 }
