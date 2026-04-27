@@ -262,7 +262,10 @@ class AutoTestUI {
             };
             let TS = null;
             if (typeof require === 'function') {
-                try { TS = require('./training-state.js'); }
+                // Step 3 cutover: prefer the new training/ folder.
+                // Browser still uses window.TrainingState set by the
+                // app/ <script> tag.
+                try { TS = require('../training/training-state.js'); }
                 catch (_) { /* fall through */ }
             }
             if (!TS && typeof window !== 'undefined' && window.TrainingState) {
@@ -736,7 +739,8 @@ class AutoTestUI {
         if (!badge) return;
         let TS = null;
         if (typeof require === 'function') {
-            try { TS = require('./training-state.js'); }
+            // Step 3 cutover: prefer the new training/ folder.
+            try { TS = require('../training/training-state.js'); }
             catch (_) { /* fall through */ }
         }
         if (!TS && typeof window !== 'undefined' && window.TrainingState) {

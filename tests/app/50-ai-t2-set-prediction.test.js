@@ -9,7 +9,7 @@
  */
 
 const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, T2_PAIR_KEYS, T2_PAIR_REFNUM } = require('../../app/ai-auto-engine');
-const { SemiAutoFilter, SA_SET0, SA_SET5, SA_SET6, SA_ZERO, SA_NINE, SA_POS, SA_NEG } = require('../../app/semi-auto-filter');
+const { SemiAutoFilter, SA_SET0, SA_SET5, SA_SET6, SA_ZERO, SA_NINE, SA_POS, SA_NEG } = require('../../strategies/semi-auto/semi-auto-filter');
 const fs = require('fs');
 const pathMod = require('path');
 

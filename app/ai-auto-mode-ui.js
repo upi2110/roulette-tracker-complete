@@ -654,7 +654,11 @@ class AIAutoModeUI {
     _readActiveTrainingMode() {
         let TS = null;
         if (typeof require === 'function') {
-            try { TS = require('./training-state.js'); }
+            // Step 2 cutover: prefer the new training/ folder over the
+            // app/ original. Browser still loads app/ via <script> tags
+            // for the window mirror; Node tests resolve through this
+            // require path.
+            try { TS = require('../training/training-state.js'); }
             catch (_) { /* fall through */ }
         }
         if (!TS && typeof window !== 'undefined' && window.TrainingState) {
@@ -684,7 +688,10 @@ class AIAutoModeUI {
 
         let routerApi = null;
         if (typeof require === 'function') {
-            try { routerApi = require('./training-router.js'); }
+            // Step 2 cutover: prefer the new training/ folder over the
+            // app/ original. Browser still uses window.TrainingRouter
+            // populated by the app/ script tag.
+            try { routerApi = require('../training/training-router.js'); }
             catch (_) { /* fall through to window */ }
         }
         if (!routerApi && typeof window !== 'undefined' && window.TrainingRouter) {
@@ -836,7 +843,8 @@ class AIAutoModeUI {
             try {
                 let TS = null;
                 if (typeof require === 'function') {
-                    try { TS = require('./training-state.js'); }
+                    // Step 2 cutover: prefer the new training/ folder.
+                    try { TS = require('../training/training-state.js'); }
                     catch (_) { /* fall through */ }
                 }
                 if (!TS && typeof window !== 'undefined' && window.TrainingState) {
@@ -1018,7 +1026,11 @@ class AIAutoModeUI {
         // Strategy cache (Auto Test side).
         let strategyMod = null;
         if (typeof require === 'function') {
-            try { strategyMod = require('./ai-trained-strategy.js'); }
+            // Step 6 cutover: prefer the new strategies/ai-trained/ folder
+            // so the WeakMap we wipe here is the SAME WeakMap the runner
+            // (also cut over in Step 5) reads from. Without this, TRAIN-mode
+            // changes would silently fail to clear the runner's cache.
+            try { strategyMod = require('../strategies/ai-trained/ai-trained-strategy.js'); }
             catch (_) { /* fall through */ }
         }
         if (!strategyMod && typeof window !== 'undefined' && window.AITrainedStrategyAPI) {

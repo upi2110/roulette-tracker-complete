@@ -5,7 +5,7 @@
  * validates data (already in chronological order), and converts to spin format.
  */
 
-const { AIDataLoader } = require('../../app/ai-data-loader');
+const { AIDataLoader } = require('../../training/data-loader/ai-data-loader');
 
 describe('AIDataLoader', () => {
     let loader;

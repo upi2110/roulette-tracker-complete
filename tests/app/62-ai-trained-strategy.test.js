@@ -5,13 +5,13 @@
 const {
     decideAITrainedStrategy,
     resetAITrainedStrategy
-} = require('../../app/ai-trained-strategy.js');
+} = require('../../strategies/ai-trained/ai-trained-strategy.js');
 const {
     AITrainedController,
     PHASE,
     ACTION,
     MAX_BET_NUMBERS
-} = require('../../app/ai-trained-controller.js');
+} = require('../../strategies/ai-trained/ai-trained-controller.js');
 
 const SAMPLE_SPINS = [
     17, 34, 6, 27, 13, 36, 11, 30, 8, 23,
@@ -86,7 +86,7 @@ describe('decideAITrainedStrategy — determinism', () => {
         const c = decideAITrainedStrategy(engine, SAMPLE_SPINS, 5);
         expect(c).toBeTruthy();
         // Inject synthetic losses into the cached controller.
-        const cached = require('../../app/ai-trained-strategy.js')
+        const cached = require('../../strategies/ai-trained/ai-trained-strategy.js')
             .__internal._getController(engine);
         for (let i = 0; i < 10; i++) {
             cached.recordResult({ idx: 10 + i, hit: false, actual: 0, decision: fakeBet });

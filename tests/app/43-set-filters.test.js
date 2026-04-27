@@ -10,7 +10,7 @@
  */
 
 const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, EUROPEAN_WHEEL } = require('../../app/ai-auto-engine');
-const { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SA_SET0, SA_SET5, SA_SET6, SEMI_FILTER_COMBOS, SEMI_MIN_NUMBERS } = require('../../app/semi-auto-filter');
+const { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SA_SET0, SA_SET5, SA_SET6, SEMI_FILTER_COMBOS, SEMI_MIN_NUMBERS } = require('../../strategies/semi-auto/semi-auto-filter');
 
 // ── Helpers ───────────────────────────────────────────────────
 const SET_0 = new Set([0, 26, 19, 2, 34, 13, 30, 10, 16, 20, 9, 29, 12]);

@@ -504,7 +504,9 @@ describe('Test Suite 25: AutoTestUI', () => {
         });
 
         test('E2b: error reflects the active training mode when a placeholder TRAIN was clicked', async () => {
-            const TS = require('../../app/training-state');
+            // Step 3 cutover: auto-test-ui.js reads from training/.
+            const TS = require('../../training/training-state');
+            try { require('../../training/training-state').__internal.reset(); } catch (_) {}
             TS.__internal.reset();
             TS.setActiveMode('ai-mode');   // user clicked AI-mode TRAIN
             window.aiAutoEngine = { isTrained: false };
@@ -1510,7 +1512,9 @@ describe('Test Suite 25: AutoTestUI', () => {
         });
 
         test('O19: badge reflects TrainingState.getActiveMode() after a refresh', () => {
-            const TS = require('../../app/training-state');
+            // Step 3 cutover: auto-test-ui.js reads from training/.
+            const TS = require('../../training/training-state');
+            try { require('../../training/training-state').__internal.reset(); } catch (_) {}
             TS.__internal.reset();
             ui = new AutoTestUI();
             // Simulate a successful default-mode training.
@@ -1521,7 +1525,9 @@ describe('Test Suite 25: AutoTestUI', () => {
         });
 
         test('O20: method/active mismatch surfaces a non-blocking warning style on the badge', () => {
-            const TS = require('../../app/training-state');
+            // Step 3 cutover: auto-test-ui.js reads from training/.
+            const TS = require('../../training/training-state');
+            try { require('../../training/training-state').__internal.reset(); } catch (_) {}
             TS.__internal.reset();
             ui = new AutoTestUI();
             // Active = default, but user picks AI-trained → expected ai-mode.

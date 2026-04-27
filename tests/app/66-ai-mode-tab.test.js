@@ -12,9 +12,9 @@
  *   - re-invocation is a no-op (idempotent mount)
  */
 
-const { mountAIModeTab } = require('../../app/ai-mode-tab.js');
+const { mountAIModeTab } = require('../../ui/ai-mode-tab/ai-mode-tab.js');
 const { AIPredictionPanelCore } = require('../../app/ai-prediction-panel-core.js');
-const { AITrainedController, ACTION, PHASE } = require('../../app/ai-trained-controller.js');
+const { AITrainedController, ACTION, PHASE } = require('../../strategies/ai-trained/ai-trained-controller.js');
 
 // jsdom harness used by suite 23 / 64
 function setupAutoModeDOM() {

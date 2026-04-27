@@ -10,11 +10,14 @@ const {
     AITrainedController,
     ACTION,
     PHASE
-} = require('../../app/ai-trained-controller.js');
+} = require('../../strategies/ai-trained/ai-trained-controller.js');
 const {
     resetAITrainedStrategy,
     __internal: strategyInternal
-} = require('../../app/ai-trained-strategy.js');
+// Step 5 cutover: auto-test-runner.js now resolves from
+// strategies/ai-trained/. Tests that pre-seed the strategy cache must
+// write to the same module instance the runner reads from.
+} = require('../../strategies/ai-trained/ai-trained-strategy.js');
 
 // 80-spin sequence derived from the European wheel — enough for multiple
 // session windows and for the AI-trained controller to progress through
@@ -98,7 +101,8 @@ describe('Step 3 — feedback resolution calls recordResult / recordShadow', () 
         // decide() always emits BET with a known single number. This
         // survives the session-start reset (which only clears the
         // WeakMap cache — the new factory returns our scripted instance).
-        const sm = require('../../app/ai-trained-strategy.js');
+        // Step 5 cutover: same module the runner now uses.
+        const sm = require('../../strategies/ai-trained/ai-trained-strategy.js');
         const origGet = sm.__internal._getController;
         let scripted;
         const factory = (eng, opts) => {
@@ -153,7 +157,8 @@ describe('Step 3 — feedback resolution calls recordResult / recordShadow', () 
         expect(resolved.length).toBeGreaterThan(0);
 
         // Controller shadow counters should also have advanced.
-        const sm = require('../../app/ai-trained-strategy.js');
+        // Step 5 cutover: same module the runner now uses.
+        const sm = require('../../strategies/ai-trained/ai-trained-strategy.js');
         const controller = sm.__internal._getController(engine);
         expect(controller.state.shadowsSeen).toBeGreaterThan(0);
     });
@@ -169,7 +174,8 @@ describe('Step 3 — feedback resolution calls recordResult / recordShadow', () 
         const runner = new AutoTestRunner(engine);
         runner._currentMethod = 'AI-trained';
 
-        const sm = require('../../app/ai-trained-strategy.js');
+        // Step 5 cutover: same module the runner now uses.
+        const sm = require('../../strategies/ai-trained/ai-trained-strategy.js');
         // Replace the cached controller AFTER any reset is done; we'll
         // also stub _resolvePriorAITrainedDecision to avoid touching
         // the WeakMap entry between calls.

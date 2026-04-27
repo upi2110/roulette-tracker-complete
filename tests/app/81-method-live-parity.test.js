@@ -14,18 +14,18 @@
  */
 
 const { AutoTestRunner, TEST_REFKEY_TO_PAIR_NAME } = require('../../app/auto-test-runner.js');
-const { decideT1Strategy } = require('../../app/t1-strategy.js');
+const { decideT1Strategy } = require('../../strategies/t1/t1-strategy.js');
 const {
     AITrainedController,
     ACTION,
     PHASE,
     MAX_BET_NUMBERS
-} = require('../../app/ai-trained-controller.js');
+} = require('../../strategies/ai-trained/ai-trained-controller.js');
 const {
     decideAITrainedStrategy,
     resetAITrainedStrategy,
     resetAITrainedStrategyAll
-} = require('../../app/ai-trained-strategy.js');
+} = require('../../strategies/ai-trained/ai-trained-strategy.js');
 
 const SAMPLE_SPINS = [
     17, 34, 6, 27, 13, 36, 11, 30, 8, 23,

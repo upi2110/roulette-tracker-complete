@@ -3,9 +3,9 @@
  * (null-engine slot + per-engine WeakMap entries).
  */
 
-const sm = require('../../app/ai-trained-strategy.js');
+const sm = require('../../strategies/ai-trained/ai-trained-strategy.js');
 const { decideAITrainedStrategy, resetAITrainedStrategy, resetAITrainedStrategyAll, __internal } = sm;
-const { ACTION } = require('../../app/ai-trained-controller.js');
+const { ACTION } = require('../../strategies/ai-trained/ai-trained-controller.js');
 
 const SAMPLE = [17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20];
 

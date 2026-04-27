@@ -10,9 +10,16 @@
  */
 
 const { AutoTestRunner } = require('../../app/auto-test-runner.js');
-const TrainingState = require('../../app/training-state.js');
+// Step 3 cutover: auto-test-runner.js reads training-state from
+// training/. Use that as the primary handle and also reset the legacy
+// app/ module so neither leaks state across tests.
+const TrainingState = require('../../training/training-state.js');
+const _legacyTS = require('../../training/training-state.js');
 
-beforeEach(() => TrainingState.__internal.reset());
+beforeEach(() => {
+    TrainingState.__internal.reset();
+    _legacyTS.__internal.reset();
+});
 
 function makeStubEngine(overrides) {
     return Object.assign({

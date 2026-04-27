@@ -180,7 +180,8 @@ describe('click routing', () => {
 describe('mode-isolation reset hooks', () => {
     test('TRAIN-mode change wipes AI-trained controller and strategy cache', () => {
         const ui = new AIAutoModeUI();
-        const sm = require('../../app/ai-trained-strategy.js');
+        // Step 6 cutover: ai-auto-mode-ui.js now reads from strategies/.
+        const sm = require('../../strategies/ai-trained/ai-trained-strategy.js');
         const spyAll = jest.spyOn(sm, 'resetAITrainedStrategyAll');
         const ctrl = { resetSession: jest.fn() };
         window.aiTrainedController = ctrl;
@@ -197,7 +198,8 @@ describe('mode-isolation reset hooks', () => {
 
     test('TRAIN click wipes AI-trained state regardless of selected mode', async () => {
         const ui = new AIAutoModeUI();
-        const sm = require('../../app/ai-trained-strategy.js');
+        // Step 6 cutover: ai-auto-mode-ui.js now reads from strategies/.
+        const sm = require('../../strategies/ai-trained/ai-trained-strategy.js');
         const spyAll = jest.spyOn(sm, 'resetAITrainedStrategyAll');
         const ctrl = { resetSession: jest.fn() };
         window.aiTrainedController = ctrl;
@@ -220,8 +222,11 @@ describe('mode-isolation reset hooks', () => {
     test('default-mode click status carries active-mode label and run number', async () => {
         const ui = new AIAutoModeUI();
         jest.spyOn(ui, 'startTraining').mockImplementation(async () => 'ok');
-        const TrainingState = require('../../app/training-state.js');
+        // Step 2 cutover: reset BOTH old and new TrainingState so neither
+        // leaks (ai-auto-mode-ui.js now reads/writes training/).
+        const TrainingState = require('../../training/training-state.js');
         TrainingState.__internal.reset();
+        try { require('../../training/training-state.js').__internal.reset(); } catch (_) {}
         await ui.runSelectedTraining();
         const status = document.getElementById('trainingStatus');
         // Mode-specific synopsis must always identify Default mode and
@@ -233,8 +238,11 @@ describe('mode-isolation reset hooks', () => {
 
     test('AI-mode click status reads "Active mode: AI-mode (run #1) (placeholder)"', async () => {
         const ui = new AIAutoModeUI();
-        const TrainingState = require('../../app/training-state.js');
+        // Step 2 cutover: reset BOTH old and new TrainingState so neither
+        // leaks (ai-auto-mode-ui.js now reads/writes training/).
+        const TrainingState = require('../../training/training-state.js');
         TrainingState.__internal.reset();
+        try { require('../../training/training-state.js').__internal.reset(); } catch (_) {}
         const sel = document.getElementById('trainingModeSelect');
         sel.value = 'ai-mode';
         sel.dispatchEvent(new Event('change'));
@@ -247,8 +255,11 @@ describe('mode-isolation reset hooks', () => {
 
     test('direct engine.train(...) bypassing runSelectedTraining publishes the default synopsis + banner', () => {
         const ui = new AIAutoModeUI();
-        const TrainingState = require('../../app/training-state.js');
+        // Step 2 cutover: reset BOTH old and new TrainingState so neither
+        // leaks (ai-auto-mode-ui.js now reads/writes training/).
+        const TrainingState = require('../../training/training-state.js');
         TrainingState.__internal.reset();
+        try { require('../../training/training-state.js').__internal.reset(); } catch (_) {}
         // Real engine ref so the monkey-patch installs (not a jest mock).
         const engine = {
             train: function (sessions) {
@@ -283,8 +294,11 @@ describe('mode-isolation reset hooks', () => {
     test('Fix 2: progress text shows mode + run number after each click', async () => {
         const ui = new AIAutoModeUI();
         jest.spyOn(ui, 'startTraining').mockImplementation(async () => 'ok');
-        const TrainingState = require('../../app/training-state.js');
+        // Step 2 cutover: reset BOTH old and new TrainingState so neither
+        // leaks (ai-auto-mode-ui.js now reads/writes training/).
+        const TrainingState = require('../../training/training-state.js');
         TrainingState.__internal.reset();
+        try { require('../../training/training-state.js').__internal.reset(); } catch (_) {}
 
         const progress = document.getElementById('trainingProgressText');
 
@@ -313,8 +327,11 @@ describe('mode-isolation reset hooks', () => {
     test('Fix 2: repeated default clicks show distinct run numbers (not stale text)', async () => {
         const ui = new AIAutoModeUI();
         jest.spyOn(ui, 'startTraining').mockImplementation(async () => 'ok');
-        const TrainingState = require('../../app/training-state.js');
+        // Step 2 cutover: reset BOTH old and new TrainingState so neither
+        // leaks (ai-auto-mode-ui.js now reads/writes training/).
+        const TrainingState = require('../../training/training-state.js');
         TrainingState.__internal.reset();
+        try { require('../../training/training-state.js').__internal.reset(); } catch (_) {}
 
         const progress = document.getElementById('trainingProgressText');
         await ui.runSelectedTraining();

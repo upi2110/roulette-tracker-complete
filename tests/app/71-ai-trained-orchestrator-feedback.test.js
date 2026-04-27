@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { AITrainedController, ACTION, PHASE } =
-    require('../../app/ai-trained-controller.js');
+    require('../../strategies/ai-trained/ai-trained-controller.js');
 
 function loadOrchestratorClass() {
     const src = fs.readFileSync(

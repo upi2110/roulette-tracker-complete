@@ -6,7 +6,7 @@
  * from same table as last spin actual.
  */
 
-const { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SA_SET0, SA_SET5, SA_SET6, SEMI_FILTER_COMBOS, SEMI_MIN_NUMBERS } = require('../../app/semi-auto-filter');
+const { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SA_SET0, SA_SET5, SA_SET6, SEMI_FILTER_COMBOS, SEMI_MIN_NUMBERS } = require('../../strategies/semi-auto/semi-auto-filter');
 
 describe('SemiAutoFilter', () => {
     let filter;

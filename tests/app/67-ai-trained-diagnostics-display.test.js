@@ -20,7 +20,7 @@ const {
     ACTION,
     PHASE,
     MAX_BET_NUMBERS
-} = require('../../app/ai-trained-controller.js');
+} = require('../../strategies/ai-trained/ai-trained-controller.js');
 
 function mount(opts) {
     const host = document.createElement('div');

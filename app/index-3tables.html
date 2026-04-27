@@ -257,9 +257,11 @@
 </div>
 
 <!-- Load all JavaScript files IN CORRECT ORDER -->
-<script src="table-lookup.js"></script>
+<!-- table-lookup now loaded from canonical roulette-wheel/. -->
+<script src="../roulette-wheel/table-lookup.js"></script>
 <script src="renderer-3tables.js"></script>
-<script src="ai-data-loader.js"></script>
+<!-- ai-data-loader now loaded from canonical training/data-loader/. -->
+<script src="../training/data-loader/ai-data-loader.js"></script>
 <script src="ai-sequence-model.js"></script>
 <script src="ai-auto-engine.js"></script>
 <script src="auto-update-orchestrator.js"></script>
@@ -267,10 +269,14 @@
 <script src="roulette-wheel.js"></script>
 <script src="ai-prediction-panel.js"></script>
 <script src="ai-prediction-panel-core.js"></script>
-<script src="ai-mode-tab.js"></script>
-<script src="training-state.js"></script>
-<script src="training-router.js"></script>
-<script src="semi-auto-filter.js"></script>
+<!-- ai-mode-tab now loaded from canonical ui/ai-mode-tab/. -->
+<script src="../ui/ai-mode-tab/ai-mode-tab.js"></script>
+<!-- Browser migration (Stage A+D): training family loads from training/.
+     app/training-{state,router}.js are now Node-only compatibility shims. -->
+<script src="../training/training-state.js"></script>
+<script src="../training/training-router.js"></script>
+<!-- semi-auto-filter now loaded from canonical strategies/semi-auto/. -->
+<script src="../strategies/semi-auto/semi-auto-filter.js"></script>
 <script src="ai-auto-mode-ui.js"></script>
 <script src="money-report.js"></script>
 <script src="money-management-panel.js"></script>
@@ -279,10 +285,15 @@
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
 <!-- Auto Test Module -->
-<script src="t1-strategy.js"></script>
-<script src="ai-trained-controller.js"></script>
-<script src="ai-trained-strategy.js"></script>
-<script src="ai-trained-logger.js"></script>
+<!-- t1-strategy now loaded from canonical strategies/t1/. -->
+<script src="../strategies/t1/t1-strategy.js"></script>
+<!-- Browser migration: ai-trained family loads from strategies/ai-trained/.
+     Old app/ai-trained-*.js files remain on disk as fallbacks for any
+     Node-side caller that has not been cut over. Globals exposed are
+     identical (verified by parity suite 83). -->
+<script src="../strategies/ai-trained/ai-trained-controller.js"></script>
+<script src="../strategies/ai-trained/ai-trained-strategy.js"></script>
+<script src="../strategies/ai-trained/ai-trained-logger.js"></script>
 <script src="auto-test-runner.js"></script>
 <script src="auto-test-report.js"></script>
 <script src="auto-test-ui.js"></script>

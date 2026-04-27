@@ -7,7 +7,7 @@ const {
     aggregateAITrainedSteps,
     PHASES,
     ACTIONS
-} = require('../../app/ai-trained-logger.js');
+} = require('../../strategies/ai-trained/ai-trained-logger.js');
 
 function baseDiag(overrides) {
     return Object.assign({

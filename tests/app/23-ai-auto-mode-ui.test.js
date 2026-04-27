@@ -730,7 +730,12 @@ describe('AIAutoModeUI', () => {
         // active mode do not leak into "Not trained" / "Trained" tests
         // that assume no active mode.
         beforeEach(() => {
-            try { require('../../app/training-state').__internal.reset(); }
+            // Step 2 cutover: ai-auto-mode-ui.js now requires from
+            // training/ — reset both registries so neither leaks state
+            // into renderStatus() reads.
+            try { require('../../training/training-state').__internal.reset(); }
+            catch (_) { /* module not loaded yet */ }
+            try { require('../../training/training-state').__internal.reset(); }
             catch (_) { /* module not loaded yet */ }
         });
 
@@ -813,7 +818,8 @@ describe('AIAutoModeUI', () => {
         });
 
         test('Fix 3: trained line surfaces the active TRAIN mode (not just generic pair count)', () => {
-            const TS = require('../../app/training-state');
+            // Step 2 cutover: ai-auto-mode-ui.js reads from training/.
+            const TS = require('../../training/training-state');
             TS.__internal.reset();
             TS.setActiveMode('default');
             const mockEngine = {
@@ -835,7 +841,8 @@ describe('AIAutoModeUI', () => {
         });
 
         test('Fix 3: untrained engine + placeholder active mode shows "Active mode: …" (not the legacy generic line)', () => {
-            const TS = require('../../app/training-state');
+            // Step 2 cutover: ai-auto-mode-ui.js reads from training/.
+            const TS = require('../../training/training-state');
             TS.__internal.reset();
             TS.setActiveMode('ai-mode');
             const mockEngine = { isTrained: false };

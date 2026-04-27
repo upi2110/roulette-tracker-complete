@@ -1392,7 +1392,7 @@ describe('True Learning AI — v2 Adaptive System', () => {
     // ═══════════════════════════════════════════════════════════
 
     describe('P: Semi-Auto Filter Sign Bias', () => {
-        const { SemiAutoFilter, SA_POS, SA_NEG, SA_ZERO, SA_NINE } = require('../../app/semi-auto-filter');
+        const { SemiAutoFilter, SA_POS, SA_NEG, SA_ZERO, SA_NINE } = require('../../strategies/semi-auto/semi-auto-filter');
 
         test('P1: SA_POS has 19 members, SA_NEG has 18 (same imbalance)', () => {
             expect(SA_POS.size).toBe(19);

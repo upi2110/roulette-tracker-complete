@@ -2,7 +2,7 @@
  * TrainingState — pure mode-namespaced registry.
  */
 
-const TS = require('../../app/training-state.js');
+const TS = require('../../training/training-state.js');
 const {
     TRAINING_STATE_MODES,
     getStore, setStore, clearStore, hasStore,

@@ -34,7 +34,7 @@ const {
     T1_SET_0, T1_SET_5, T1_SET_6,
     T1_ELIGIBLE_PAIRS, T1_BET_SIZE,
     _t1CarryForward, _t1TrimToSize
-} = require('../../app/t1-strategy');
+} = require('../../strategies/t1/t1-strategy');
 
 // Load the real getLookupRow to feed into the mock engine.
 const fs = require('fs');

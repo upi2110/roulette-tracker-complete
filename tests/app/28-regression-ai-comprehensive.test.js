@@ -26,8 +26,8 @@
 
 const { AISequenceModel, SEQ_ZERO, SEQ_NINE, SEQ_POS, SEQ_NEG, SEQ_FILTER_COMBOS } = require('../../app/ai-sequence-model');
 const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, EUROPEAN_WHEEL } = require('../../app/ai-auto-engine');
-const { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SEMI_FILTER_COMBOS } = require('../../app/semi-auto-filter');
-const { AIDataLoader } = require('../../app/ai-data-loader');
+const { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SEMI_FILTER_COMBOS } = require('../../strategies/semi-auto/semi-auto-filter');
+const { AIDataLoader } = require('../../training/data-loader/ai-data-loader');
 
 // Make AISequenceModel available globally for AIAutoEngine constructor
 beforeAll(() => {

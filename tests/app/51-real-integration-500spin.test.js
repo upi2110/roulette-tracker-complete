@@ -99,7 +99,7 @@ beforeAll(() => {
     AIAutoEngine = engineModule.AIAutoEngine;
 
     // Load semi-auto filter
-    const filterPath = path.join(__dirname, '..', '..', 'app', 'semi-auto-filter.js');
+    const filterPath = path.join(__dirname, '..', '..', 'strategies', 'semi-auto', 'semi-auto-filter.js');
     const filterModule = require(filterPath);
     SemiAutoFilter = filterModule.SemiAutoFilter;
 

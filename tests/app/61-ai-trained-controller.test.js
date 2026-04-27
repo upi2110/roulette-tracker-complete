@@ -7,7 +7,7 @@ const {
     PHASE,
     ACTION,
     MAX_BET_NUMBERS
-} = require('../../app/ai-trained-controller.js');
+} = require('../../strategies/ai-trained/ai-trained-controller.js');
 
 const SAMPLE_SPINS = [
     17, 34, 6, 27, 13, 36, 11, 30, 8, 23,

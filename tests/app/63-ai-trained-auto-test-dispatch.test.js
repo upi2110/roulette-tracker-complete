@@ -19,7 +19,7 @@ const {
     ACTION,
     PHASE,
     MAX_BET_NUMBERS
-} = require('../../app/ai-trained-controller.js');
+} = require('../../strategies/ai-trained/ai-trained-controller.js');
 
 const SAMPLE_SPINS = [
     17, 34, 6, 27, 13, 36, 11, 30, 8, 23,
@@ -58,14 +58,18 @@ describe('Step 3 — dropdown / method allowlist', () => {
         expect(html).toMatch(/<option value="AI-trained">AI-trained<\/option>/);
     });
 
-    test('index-3tables.html loads ai-trained-controller.js and ai-trained-strategy.js before auto-test-runner.js', () => {
+    test('index-3tables.html loads ai-trained-controller.js and ai-trained-strategy.js from strategies/ before auto-test-runner.js', () => {
         const html = fs.readFileSync(
             path.join(__dirname, '../../app/index-3tables.html'),
             'utf8'
         );
-        const controllerIdx = html.indexOf('ai-trained-controller.js');
-        const strategyIdx = html.indexOf('ai-trained-strategy.js');
-        const runnerIdx = html.indexOf('auto-test-runner.js');
+        // After the browser script-tag migration, the canonical paths
+        // are under strategies/ai-trained/. Tighten the assertion so it
+        // documents the new reality instead of merely matching a
+        // substring that the new path happens to contain.
+        const controllerIdx = html.indexOf('strategies/ai-trained/ai-trained-controller.js');
+        const strategyIdx   = html.indexOf('strategies/ai-trained/ai-trained-strategy.js');
+        const runnerIdx     = html.indexOf('auto-test-runner.js');
         expect(controllerIdx).toBeGreaterThan(-1);
         expect(strategyIdx).toBeGreaterThan(-1);
         expect(runnerIdx).toBeGreaterThan(-1);

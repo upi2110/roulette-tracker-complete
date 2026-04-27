@@ -7,8 +7,8 @@ const {
     TRAINING_DEFAULT_MODE,
     TRAINING_MODE_META,
     runTraining
-} = require('../../app/training-router.js');
-const TrainingState = require('../../app/training-state.js');
+} = require('../../training/training-router.js');
+const TrainingState = require('../../training/training-state.js');
 
 beforeEach(() => TrainingState.__internal.reset());
 

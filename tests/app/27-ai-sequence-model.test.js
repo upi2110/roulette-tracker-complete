@@ -709,7 +709,7 @@ describe('AISequenceModel', () => {
     // ═════════════════════════════════════════════════════
 
     describe('Semi-Auto Integration', () => {
-        const { SemiAutoFilter } = require('../../app/semi-auto-filter');
+        const { SemiAutoFilter } = require('../../strategies/semi-auto/semi-auto-filter');
 
         test('Q1: setSequenceModel stores model', () => {
             const filter = new SemiAutoFilter();

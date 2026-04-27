@@ -28,7 +28,8 @@ try {
     // Node path — test harnesses load this file via require().
     if (typeof module !== 'undefined' && module.exports && typeof require === 'function') {
         // eslint-disable-next-line global-require
-        _decideT1Strategy = require('./t1-strategy').decideT1Strategy;
+        // Stage B: canonical T1 helper lives under strategies/t1/.
+        _decideT1Strategy = require('../strategies/t1/t1-strategy').decideT1Strategy;
     }
 } catch (_) { /* browser path handled below */ }
 if (!_decideT1Strategy && typeof window !== 'undefined' && typeof window.decideT1Strategy === 'function') {
@@ -152,7 +153,8 @@ class AutoTestRunner {
         if (expectedTrainingMode) {
             let TS = null;
             try {
-                if (typeof require === 'function') TS = require('./training-state.js');
+                // Step 3 cutover: prefer the new training/ folder.
+                if (typeof require === 'function') TS = require('../training/training-state.js');
             } catch (_) { /* fall through */ }
             if (!TS && typeof window !== 'undefined' && window.TrainingState) {
                 TS = window.TrainingState;
@@ -282,7 +284,9 @@ class AutoTestRunner {
         // are byte-identical to before this change.
         if (this._currentMethod === 'AI-trained') {
             try {
-                const mod = (typeof require === 'function') ? require('./ai-trained-strategy.js') : null;
+                // Step 5 cutover: prefer the new strategies/ai-trained/ folder.
+                // Browser still loads app/ via <script> tags for window.*.
+                const mod = (typeof require === 'function') ? require('../strategies/ai-trained/ai-trained-strategy.js') : null;
                 if (mod && typeof mod.resetAITrainedStrategy === 'function') {
                     mod.resetAITrainedStrategy(this.engine);
                 } else if (typeof resetAITrainedStrategy === 'function') {
@@ -467,7 +471,8 @@ class AutoTestRunner {
         // method outputs keep their exact key set and ordering.
         if (this._currentMethod === 'AI-trained') {
             try {
-                const loggerMod = (typeof require === 'function') ? require('./ai-trained-logger.js') : null;
+                // Step 5 cutover: prefer the new strategies/ai-trained/ folder.
+                const loggerMod = (typeof require === 'function') ? require('../strategies/ai-trained/ai-trained-logger.js') : null;
                 const aggregate = loggerMod
                     ? loggerMod.aggregateAITrainedSteps
                     : (typeof aggregateAITrainedSteps === 'function' ? aggregateAITrainedSteps : null);
@@ -611,7 +616,8 @@ class AutoTestRunner {
     // ───────────────────────────────────────────────────────────
     _aiTrainedAdapter(testSpins, idx) {
         const strategyMod = (typeof require === 'function')
-            ? (function(){ try { return require('./ai-trained-strategy.js'); } catch(_) { return null; } })()
+            // Step 5 cutover: prefer the new strategies/ai-trained/ folder.
+            ? (function(){ try { return require('../strategies/ai-trained/ai-trained-strategy.js'); } catch(_) { return null; } })()
             : null;
         const decide = strategyMod
             ? strategyMod.decideAITrainedStrategy

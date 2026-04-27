@@ -22,7 +22,7 @@ const path = require('path');
 const {
     AITrainedController,
     ACTION
-} = require('../../app/ai-trained-controller.js');
+} = require('../../strategies/ai-trained/ai-trained-controller.js');
 
 // ─── UI: reuse the harness pattern from suite 23 ────────────────────────
 

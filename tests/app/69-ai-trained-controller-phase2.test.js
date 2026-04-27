@@ -8,10 +8,10 @@ const {
     AITrainedController,
     PHASE,
     ACTION
-} = require('../../app/ai-trained-controller.js');
+} = require('../../strategies/ai-trained/ai-trained-controller.js');
 const {
     aggregateAITrainedSteps
-} = require('../../app/ai-trained-logger.js');
+} = require('../../strategies/ai-trained/ai-trained-logger.js');
 
 const SAMPLE = [
     17, 34, 6, 27, 13, 36, 11, 30, 8, 23,
