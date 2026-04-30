@@ -29,7 +29,7 @@ try {
     if (typeof module !== 'undefined' && module.exports && typeof require === 'function') {
         // eslint-disable-next-line global-require
         // Stage B: canonical T1 helper lives under strategies/t1/.
-        _decideT1Strategy = require('../strategies/t1/t1-strategy').decideT1Strategy;
+        _decideT1Strategy = require('../../strategies/t1/t1-strategy').decideT1Strategy;
     }
 } catch (_) { /* browser path handled below */ }
 if (!_decideT1Strategy && typeof window !== 'undefined' && typeof window.decideT1Strategy === 'function') {
@@ -118,7 +118,19 @@ class AutoTestRunner {
         const method = typeof options.method === 'string' && options.method
             ? options.method
             : 'auto-test';
-        this._currentMethod = method;
+        // 'manual' is exposed in the Auto Test dropdown so the user
+        // can run a side-by-side comparison against a live session.
+        // The user picks which strategy actually generates predictions
+        // via the manual-section sub-dropdown; we route through that
+        // strategy's pipeline while still reporting the run as 'manual'.
+        // Falls back to 'AI-trained' for back-compat with older callers
+        // that did not pass `manualStrategy`.
+        const KNOWN_MANUAL_STRATS = ['auto-test', 'T1-strategy', 'test-strategy', 'AI-trained'];
+        const requestedManualStrat = (typeof options.manualStrategy === 'string' && KNOWN_MANUAL_STRATS.includes(options.manualStrategy))
+            ? options.manualStrategy
+            : 'AI-trained';
+        this._currentMethod  = (method === 'manual') ? requestedManualStrat : method;
+        this._reportedMethod = method;
 
         // Mode-isolation opt-in gate. The caller may pass
         // `expectedTrainingMode` to assert that Auto Test is being run
@@ -133,7 +145,12 @@ class AutoTestRunner {
         // not consume engine internals, so it bypasses the legacy gate.
         // Every other method gets the same blocking semantics as before
         // — surfaced as ENGINE_NOT_TRAINED instead of a constructor throw.
-        if (this._engineMaybeUntrained && method !== 'AI-trained') {
+        // Use the *effective* method (manual → resolved sub-strategy) so a
+        // manual run targeting AI-trained correctly bypasses the legacy
+        // engine.isTrained gate. Without this, manual→AI-trained returns
+        // ENGINE_NOT_TRAINED with empty strategies and the renderer
+        // crashes on result.strategies[1].summary.
+        if (this._engineMaybeUntrained && this._currentMethod !== 'AI-trained') {
             return {
                 testFile,
                 method,
@@ -154,7 +171,7 @@ class AutoTestRunner {
             let TS = null;
             try {
                 // Step 3 cutover: prefer the new training/ folder.
-                if (typeof require === 'function') TS = require('../training/training-state.js');
+                if (typeof require === 'function') TS = require('../../training/training-state.js');
             } catch (_) { /* fall through */ }
             if (!TS && typeof window !== 'undefined' && window.TrainingState) {
                 TS = window.TrainingState;
@@ -286,7 +303,7 @@ class AutoTestRunner {
             try {
                 // Step 5 cutover: prefer the new strategies/ai-trained/ folder.
                 // Browser still loads app/ via <script> tags for window.*.
-                const mod = (typeof require === 'function') ? require('../strategies/ai-trained/ai-trained-strategy.js') : null;
+                const mod = (typeof require === 'function') ? require('../../strategies/ai-trained/ai-trained-strategy.js') : null;
                 if (mod && typeof mod.resetAITrainedStrategy === 'function') {
                     mod.resetAITrainedStrategy(this.engine);
                 } else if (typeof resetAITrainedStrategy === 'function') {
@@ -472,7 +489,7 @@ class AutoTestRunner {
         if (this._currentMethod === 'AI-trained') {
             try {
                 // Step 5 cutover: prefer the new strategies/ai-trained/ folder.
-                const loggerMod = (typeof require === 'function') ? require('../strategies/ai-trained/ai-trained-logger.js') : null;
+                const loggerMod = (typeof require === 'function') ? require('../../strategies/ai-trained/ai-trained-logger.js') : null;
                 const aggregate = loggerMod
                     ? loggerMod.aggregateAITrainedSteps
                     : (typeof aggregateAITrainedSteps === 'function' ? aggregateAITrainedSteps : null);
@@ -617,7 +634,7 @@ class AutoTestRunner {
     _aiTrainedAdapter(testSpins, idx) {
         const strategyMod = (typeof require === 'function')
             // Step 5 cutover: prefer the new strategies/ai-trained/ folder.
-            ? (function(){ try { return require('../strategies/ai-trained/ai-trained-strategy.js'); } catch(_) { return null; } })()
+            ? (function(){ try { return require('../../strategies/ai-trained/ai-trained-strategy.js'); } catch(_) { return null; } })()
             : null;
         const decide = strategyMod
             ? strategyMod.decideAITrainedStrategy

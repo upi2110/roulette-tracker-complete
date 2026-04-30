@@ -13,7 +13,7 @@
  */
 
 const { mountAIModeTab } = require('../../ui/ai-mode-tab/ai-mode-tab.js');
-const { AIPredictionPanelCore } = require('../../app/ai-prediction-panel-core.js');
+const { AIPredictionPanelCore } = require('../../ui/ai-prediction-panel/ai-prediction-panel-core.js');
 const { AITrainedController, ACTION, PHASE } = require('../../strategies/ai-trained/ai-trained-controller.js');
 
 // jsdom harness used by suite 23 / 64

@@ -5,7 +5,7 @@
  * can observe the exact cell values and column count.
  */
 
-const { AutoTestReport } = require('../../app/auto-test-report');
+const { AutoTestReport } = require('../../reports/auto-test-report/auto-test-report');
 
 // Minimal ExcelJS mock — just enough to observe header cells, data
 // cells, and `sheet.columns` assignment.
@@ -82,7 +82,7 @@ function run(session, strategyNum = 1) {
 }
 
 const LEGACY_HEADERS = ['Step', 'Spin#', 'Next#', 'Action', 'Pair', 'Filter',
-    'Numbers', 'Conf%', 'Bet/Num', 'Hit', 'P&L', 'Bankroll'];
+    'Numbers', 'Predicted Numbers', 'Conf%', 'Bet/Num', 'Hit', 'P&L', 'Bankroll'];
 const AI_HEADERS = ['Phase', 'AI Action', 'AI Conf%', 'Shadow?'];
 
 function readHeaderRow(sheet, maxCols) {
@@ -97,7 +97,7 @@ function readHeaderRow(sheet, maxCols) {
 }
 
 describe('Step 5 — legacy sessions are byte-identical', () => {
-    test('auto-test session: exactly 12 columns, headers unchanged', () => {
+    test('auto-test session: exactly 13 columns, headers unchanged', () => {
         const session = {
             startIdx: 0, strategy: 'Aggressive', outcome: 'INCOMPLETE',
             finalBankroll: 4000, finalProfit: 0, totalSpins: 2,
@@ -111,10 +111,10 @@ describe('Step 5 — legacy sessions are byte-identical', () => {
         };
         const sheet = run(session);
         expect(readHeaderRow(sheet, 20)).toEqual(LEGACY_HEADERS);
-        expect(sheet.columns.length).toBe(12);
+        expect(sheet.columns.length).toBe(13);
     });
 
-    test('T1-strategy session: exactly 12 columns, no AI-trained cells', () => {
+    test('T1-strategy session: exactly 13 columns, no AI-trained cells', () => {
         const session = {
             startIdx: 3, strategy: 'Aggressive', outcome: 'WIN',
             finalBankroll: 4100, finalProfit: 100, totalSpins: 5,
@@ -128,14 +128,17 @@ describe('Step 5 — legacy sessions are byte-identical', () => {
         };
         const sheet = run(session);
         expect(readHeaderRow(sheet, 20)).toEqual(LEGACY_HEADERS);
-        // No cells written beyond column 12 in the header row.
-        expect(sheet.getRow(3).cells[13]).toBeUndefined();
-        expect(sheet.columns.length).toBe(12);
+        // No cells written beyond the legacy 13-column block in the
+        // header row (Predicted Numbers added at col 8 → 13 legacy
+        // cols total). AI append-only columns (14..17) only present
+        // for AI-trained sessions.
+        expect(sheet.getRow(3).cells[14]).toBeUndefined();
+        expect(sheet.columns.length).toBe(13);
     });
 });
 
 describe('Step 5 — AI-trained sessions get 4 append-only columns', () => {
-    test('headers include Phase, AI Action, AI Conf%, Shadow? at positions 13..16', () => {
+    test('headers include Phase, AI Action, AI Conf%, Shadow? at positions 14..17', () => {
         const session = {
             startIdx: 0, strategy: 'Aggressive', outcome: 'INCOMPLETE',
             finalBankroll: 4000, finalProfit: 0, totalSpins: 4,
@@ -150,9 +153,9 @@ describe('Step 5 — AI-trained sessions get 4 append-only columns', () => {
         };
         const sheet = run(session);
         const headers = readHeaderRow(sheet, 20);
-        expect(headers.slice(0, 12)).toEqual(LEGACY_HEADERS);
-        expect(headers.slice(12)).toEqual(AI_HEADERS);
-        expect(sheet.columns.length).toBe(16);
+        expect(headers.slice(0, 13)).toEqual(LEGACY_HEADERS);
+        expect(headers.slice(13)).toEqual(AI_HEADERS);
+        expect(sheet.columns.length).toBe(17);
     });
 
     test('cell values for AI rows populate all 4 AI columns correctly', () => {
@@ -169,22 +172,23 @@ describe('Step 5 — AI-trained sessions get 4 append-only columns', () => {
         };
         const sheet = run(session);
 
-        // Data rows begin at row 4.
+        // Data rows begin at row 4. AI columns are at positions
+        // 14..17 (after Predicted Numbers was added at col 8).
         const row1 = sheet.getRow(4);  // WAIT
-        expect(row1.cells[13].value).toBe('ACTIVE');
-        expect(row1.cells[14].value).toBe('WAIT');
-        expect(row1.cells[15].value).toBe('70%');
-        expect(row1.cells[16].value).toBe('--');  // not SHADOW
+        expect(row1.cells[14].value).toBe('ACTIVE');
+        expect(row1.cells[15].value).toBe('WAIT');
+        expect(row1.cells[16].value).toBe('70%');
+        expect(row1.cells[17].value).toBe('--');  // not SHADOW
 
         const row2 = sheet.getRow(5);  // SHADOW_PREDICT
-        expect(row2.cells[14].value).toBe('SHADOW_PREDICT');
+        expect(row2.cells[15].value).toBe('SHADOW_PREDICT');
         // shadowHit comes from i%2===0 → i=1 → false → 'MISS'
-        expect(['HIT', 'MISS', 'PENDING']).toContain(row2.cells[16].value);
+        expect(['HIT', 'MISS', 'PENDING']).toContain(row2.cells[17].value);
 
         const row3 = sheet.getRow(6);  // BET
-        expect(row3.cells[14].value).toBe('BET');
-        expect(row3.cells[15].value).toBe('70%');
-        expect(row3.cells[16].value).toBe('--');
+        expect(row3.cells[15].value).toBe('BET');
+        expect(row3.cells[16].value).toBe('70%');
+        expect(row3.cells[17].value).toBe('--');
     });
 
     test('non-AI rows in an AI-trained session (WATCH) get blank placeholders, not missing cells', () => {
@@ -200,8 +204,8 @@ describe('Step 5 — AI-trained sessions get 4 append-only columns', () => {
         };
         const sheet = run(session);
         const watchRow = sheet.getRow(4);
-        // columns 13..16 exist and are '--'
-        for (let c = 13; c <= 16; c++) {
+        // columns 14..17 exist and are '--'
+        for (let c = 14; c <= 17; c++) {
             expect(watchRow.cells[c]).toBeDefined();
             expect(watchRow.cells[c].value).toBe('--');
         }
@@ -221,8 +225,8 @@ describe('Step 5 — AI-trained sessions get 4 append-only columns', () => {
             steps: [mk(0), mk(0.5), mk(1)]
         };
         const sheet = run(session);
-        expect(sheet.getRow(4).cells[15].value).toBe('0%');
-        expect(sheet.getRow(5).cells[15].value).toBe('50%');
-        expect(sheet.getRow(6).cells[15].value).toBe('100%');
+        expect(sheet.getRow(4).cells[16].value).toBe('0%');
+        expect(sheet.getRow(5).cells[16].value).toBe('50%');
+        expect(sheet.getRow(6).cells[16].value).toBe('100%');
     });
 });

@@ -9,7 +9,7 @@
  *   - Falsy values ('' / null) treated as "no gate".
  */
 
-const { AutoTestRunner } = require('../../app/auto-test-runner.js');
+const { AutoTestRunner } = require('../../services/auto-test-runner/auto-test-runner.js');
 // Step 3 cutover: auto-test-runner.js reads training-state from
 // training/. Use that as the primary handle and also reset the legacy
 // app/ module so neither leaks state across tests.

@@ -17,7 +17,7 @@
 
 const { setupDOM, createMoneyPanel } = require('../test-setup');
 const { ResultTestingPanel } = require('../../app/result-testing-panel');
-const { ComparisonReport, KPI_FIELDS } = require('../../app/comparison-report');
+const { ComparisonReport, KPI_FIELDS } = require('../../reports/comparison-report/comparison-report');
 
 // ── Minimal ExcelJS mock (same shape as 57-money-report) ────────────
 class MockCell { constructor() { this.value = null; this.font = {}; this.fill = {}; this.alignment = {}; this.border = {}; } }
@@ -117,11 +117,19 @@ describe('R. buildComparisonData', () => {
         expect(p.buildComparisonData()).toBeNull();
     });
 
-    test('R2: returns null when the last tab was not a session id', () => {
+    test('R2: when the last tab is not a session id, falls back to the first available session', () => {
+        // The buildComparisonData() contract was updated: instead of
+        // returning null when lastTabLoaded is non-sessiony, it now
+        // falls back to the first session present in the submission
+        // so "Download Session Report" works directly after a run
+        // without requiring the user to first click a session tab.
         const p = new ResultTestingPanel();
         p.submit(makeAutoTestResult());
         p.lastTabLoaded = 'overview';
-        expect(p.buildComparisonData()).toBeNull();
+        const c = p.buildComparisonData();
+        expect(c).not.toBeNull();
+        // The fallback session is the first session in the submission.
+        expect(c.meta.sessionLabel).toBe('S1-Start0');
     });
 
     test('R3: returns both Auto Test and Result-testing blocks after a session replay', async () => {
@@ -737,12 +745,17 @@ describe('AA. Session report button is on the AI Prediction header', () => {
         seedAIPanelContent();
     }
 
-    test('AA1: button is injected into the AI panel header, starts disabled', () => {
+    test('AA1: button is injected into the AI panel header, starts enabled', () => {
+        // Contract changed: the button is now enabled by default —
+        // a session report can be generated from a submitted session
+        // alone (no replay required). When nothing has been submitted
+        // yet, downloadSessionReport() simply returns false without
+        // throwing instead of relying on a disabled-state gate.
         seedAIHeader();
         new ResultTestingPanel();
         const btn = document.getElementById('aiHeaderSessionReportBtn');
         expect(btn).not.toBeNull();
-        expect(btn.disabled).toBe(true);
+        expect(btn.disabled).toBe(false);
         // It lives inside the AI Prediction panel header, NOT the money panel.
         const inAiHeader = document.querySelector('#aiSelectionPanel .panel-header #aiHeaderSessionReportBtn');
         expect(inAiHeader).not.toBeNull();
@@ -780,77 +793,79 @@ describe('AA. Session report button is on the AI Prediction header', () => {
         delete window.aiAPI;
     });
 
+    // Helper to locate a KPI row in the ComparisonReport Overview
+    // sheet (header on row 7, KPI rows from row 8). Returns the value
+    // string in the requested column index (1=Metric, 2=Auto Test,
+    // 3=Result-testing, 4=Delta, 5=Status).
+    function readOverviewKPI(sheet, label, col) {
+        for (let i = 8; i <= 30; i++) {
+            const r = sheet.getRow(i);
+            if (String(r.getCell(1).value) === label) {
+                return String(r.getCell(col).value);
+            }
+        }
+        return null;
+    }
+
     test('AA4c: REAL ExcelJS buffer round-trips the profit (not $0)', async () => {
-        // End-to-end guard with the REAL exceljs package — the other
-        // tests use a mock that shares state with whatever we wrote,
-        // so they cannot catch a serialization bug or a stale-read
-        // of sessionData. Here we generate a real .xlsx byte buffer,
-        // parse it back, and read the Total Profit cell.
+        // End-to-end guard with the REAL exceljs package. Now that
+        // downloadSessionReport reuses ComparisonReport, the workbook
+        // carries a side-by-side Overview sheet. We write a real buffer,
+        // parse it back, and read the Result-testing P&L / Final Profit.
         const ExcelJSReal = require('exceljs');
-        const { MoneyReport } = require('../../app/money-report');
+        window.ExcelJS = ExcelJSReal;
         window.moneyPanel = createMoneyPanel();
         seedAIHeader();
         const p = new ResultTestingPanel();
         p.submit(makeAutoTestResult());
         p.processTabEntry('S1-Start0');
         await p.waitForReplay();
-        const sd = Object.assign({}, p._replayStats.sessionData);
-        const bh = p._replayStats.betHistory.slice();
         // Sanity: the snapshot itself has non-zero profit.
-        expect(sd.sessionProfit).toBe(112);
-        expect(bh.length).toBe(5);
+        expect(p._replayStats.sessionData.sessionProfit).toBe(112);
+        expect(p._replayStats.betHistory.length).toBe(5);
 
-        const rep = new MoneyReport(ExcelJSReal);
-        const wb = rep.generate(sd, bh);
+        const data = p.buildComparisonData();
+        expect(data).not.toBeNull();
+        const rep = new ComparisonReport(ExcelJSReal);
+        const wb = rep.generate(data);
         const buf = await wb.xlsx.writeBuffer();
         expect(buf.byteLength).toBeGreaterThan(1000);
 
-        // Parse the buffer back and confirm the Total Profit cell
-        // holds the replay profit, NOT "$0".
         const wb2 = new ExcelJSReal.Workbook();
         await wb2.xlsx.load(buf);
-        const s = wb2.getWorksheet('Overview');
-        const headerRow = s.getRow(5);
-        const headers = [];
-        for (let i = 1; i <= 14; i++) headers.push(headerRow.getCell(i).value);
-        const dataRow = s.getRow(6);
-        const profit = String(dataRow.getCell(headers.indexOf('Total Profit') + 1).value);
-        const totalPL = String(dataRow.getCell(headers.indexOf('Total P&L') + 1).value);
-        expect(profit).toMatch(/112/);
-        expect(totalPL).toMatch(/112/);
+        const overview = wb2.getWorksheet('Overview');
+        const rtPL = readOverviewKPI(overview, 'Total P&L', 3);
+        const rtFinalProfit = readOverviewKPI(overview, 'Final Profit', 3);
+        expect(rtPL).toMatch(/112/);
+        expect(rtFinalProfit).toMatch(/112/);
+        delete window.ExcelJS;
     }, 30000);
 
     test('AA4b: generated workbook carries the replay profit (NOT $0)', async () => {
         // Regression guard: the user reported the session-result xlsx
-        // showed $0 profit. Root cause — _replayStats had a valid
-        // snapshot but we had never exercised the full workbook
-        // content in a test. This test generates the workbook in
-        // memory and reads the Overview sheet cell values directly.
-        const { MoneyReport } = require('../../app/money-report');
+        // showed $0 profit. Now that downloadSessionReport reuses
+        // ComparisonReport, this test exercises the same path in
+        // memory and reads the Overview sheet's Result-testing column
+        // directly to confirm the replayed profit propagated.
         window.moneyPanel = createMoneyPanel();
         seedAIHeader();
         const p = new ResultTestingPanel();
         p.submit(makeAutoTestResult());
         p.processTabEntry('S1-Start0');
         await p.waitForReplay();
-        // Build the workbook the exact same way
-        // ResultTestingPanel.downloadSessionReport does.
-        const rep = new MoneyReport(MockExcelJS);
-        const sd = Object.assign({}, p._replayStats.sessionData);
-        const bh = p._replayStats.betHistory.slice();
-        const wb = rep.generate(sd, bh);
-        const s = wb.getWorksheet('Overview');
-        const headers = [];
-        for (let i = 1; i <= 14; i++) headers.push(s.getRow(5).getCell(i).value);
-        const dataRow = s.getRow(6);
-        const profit = String(dataRow.getCell(headers.indexOf('Total Profit') + 1).value);
-        const totalPL = String(dataRow.getCell(headers.indexOf('Total P&L') + 1).value);
-        const totalBets = dataRow.getCell(headers.indexOf('Total Bets') + 1).value;
-        // Fixture session has 5 BET steps with net $112. Assert non-zero.
-        expect(totalBets).toBe(5);
-        expect(profit).not.toBe('$0');
-        expect(totalPL).not.toBe('$0');
-        expect(totalPL).toMatch(/112/);
+        const data = p.buildComparisonData();
+        expect(data).not.toBeNull();
+        const rep = new ComparisonReport(MockExcelJS);
+        const wb = rep.generate(data);
+        const overview = wb.getWorksheet('Overview');
+        const rtTotalBets = readOverviewKPI(overview, 'Total Bets', 3);
+        const rtPL = readOverviewKPI(overview, 'Total P&L', 3);
+        const rtFinalProfit = readOverviewKPI(overview, 'Final Profit', 3);
+        // Fixture session has 5 BET steps with net $112.
+        expect(rtTotalBets).toMatch(/5/);
+        expect(rtPL).not.toBe('$0');
+        expect(rtFinalProfit).not.toBe('$0');
+        expect(rtPL).toMatch(/112/);
     });
 
     test('AA5: downloadSessionReport reads from _replayStats, never from the live money panel', async () => {

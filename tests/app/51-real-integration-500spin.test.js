@@ -21,7 +21,7 @@ const { setupDOM, loadRendererFunctions, createMoneyPanel } = require('../test-s
 // ── Helper: load AIPredictionPanel class via eval (browser script, no module.exports) ──
 function loadAIPanelClass() {
     const src = fs.readFileSync(
-        path.join(__dirname, '..', '..', 'app', 'ai-prediction-panel.js'),
+        path.join(__dirname, '..', '..', 'ui', 'ai-prediction-panel', 'ai-prediction-panel.js'),
         'utf-8'
     );
 
@@ -94,7 +94,7 @@ beforeAll(() => {
     global.NEGATIVE_NUMS = new Set([21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35]);
 
     // Load AI engine
-    const enginePath = path.join(__dirname, '..', '..', 'app', 'ai-auto-engine.js');
+    const enginePath = path.join(__dirname, '..', '..', 'services', 'ai-auto-engine', 'ai-auto-engine.js');
     const engineModule = require(enginePath);
     AIAutoEngine = engineModule.AIAutoEngine;
 

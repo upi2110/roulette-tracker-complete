@@ -325,7 +325,7 @@ class AutoTestReport {
         // AI Conf%, Shadow?). Non-AI-trained sessions never add them.
         const hasAITrained = Array.isArray(session.steps)
             && session.steps.some(s => s && s.aiTrained);
-        const headers = ['Step', 'Spin#', 'Next#', 'Action', 'Pair', 'Filter', 'Numbers', 'Conf%', 'Bet/Num', 'Hit', 'P&L', 'Bankroll'];
+        const headers = ['Step', 'Spin#', 'Next#', 'Action', 'Pair', 'Filter', 'Numbers', 'Predicted Numbers', 'Conf%', 'Bet/Num', 'Hit', 'P&L', 'Bankroll'];
         if (hasAITrained) {
             headers.push('Phase', 'AI Action', 'AI Conf%', 'Shadow?');
         }
@@ -367,6 +367,14 @@ class AutoTestReport {
                 hitLabel = '--';
             }
 
+            // Full predicted-numbers list per row — lets the user
+            // manually verify each BET decision row-by-row. Falls
+            // back to '--' for non-BET rows or when the runner did
+            // not stamp the list (legacy fixtures).
+            const predictedList = (step.action === 'BET' && Array.isArray(step.predictedNumbers) && step.predictedNumbers.length > 0)
+                ? step.predictedNumbers.slice().sort((a, b) => a - b).join(', ')
+                : '--';
+
             const values = [
                 idx + 1,
                 step.spinNumber,
@@ -375,6 +383,7 @@ class AutoTestReport {
                 pairLabel,
                 filterLabel,
                 numsLabel,
+                predictedList,
                 confLabel,
                 betLabel,
                 hitLabel,
@@ -430,16 +439,18 @@ class AutoTestReport {
                 }
             }
 
-            // Color the P&L cell
-            const pnlCell = row.getCell(11);
+            // Color the P&L cell. P&L is at column 12 after the
+            // Predicted Numbers column was added at col 8.
+            const pnlCell = row.getCell(12);
             if (step.pnl > 0) {
                 pnlCell.font = { bold: true, color: { argb: 'FF28A745' } };
             } else if (step.pnl < 0) {
                 pnlCell.font = { bold: true, color: { argb: 'FFDC3545' } };
             }
 
-            // Color the Hit cell
-            const hitCell = row.getCell(10);
+            // Color the Hit cell. Hit is at column 11 after the
+            // Predicted Numbers column was added at col 8.
+            const hitCell = row.getCell(11);
             if (step.action === 'BET') {
                 if (step.hit) {
                     hitCell.font = { bold: true, color: { argb: 'FF28A745' } };
@@ -449,11 +460,14 @@ class AutoTestReport {
             }
         });
 
-        // Column widths — legacy 12, plus 4 optional AI-trained columns.
+        // Column widths — 13 legacy columns (Predicted Numbers added
+        // at col 8, width 40 to fit the comma-separated list), plus
+        // 4 optional AI-trained columns.
         const columnWidths = [
             { width: 6 }, { width: 8 }, { width: 8 }, { width: 8 },
-            { width: 14 }, { width: 18 }, { width: 10 }, { width: 8 },
-            { width: 10 }, { width: 6 }, { width: 10 }, { width: 12 }
+            { width: 14 }, { width: 18 }, { width: 10 }, { width: 40 },
+            { width: 8 }, { width: 10 }, { width: 6 }, { width: 10 },
+            { width: 12 }
         ];
         if (hasAITrained) {
             columnWidths.push(

@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { AutoTestRunner } = require('../../app/auto-test-runner.js');
+const { AutoTestRunner } = require('../../services/auto-test-runner/auto-test-runner.js');
 const {
     AITrainedController,
     ACTION,
@@ -44,7 +44,7 @@ function makeStubEngine() {
 describe('Step 3 — dropdown / method allowlist', () => {
     test('AUTO_TEST_METHODS in auto-test-ui.js includes AI-trained', () => {
         const src = fs.readFileSync(
-            path.join(__dirname, '../../app/auto-test-ui.js'),
+            path.join(__dirname, '../../ui/auto-test-ui/auto-test-ui.js'),
             'utf8'
         );
         expect(src).toMatch(/AUTO_TEST_METHODS\s*=\s*\[[^\]]*'AI-trained'[^\]]*\]/);
@@ -52,7 +52,7 @@ describe('Step 3 — dropdown / method allowlist', () => {
 
     test('HTML dropdown includes an AI-trained <option>', () => {
         const html = fs.readFileSync(
-            path.join(__dirname, '../../app/auto-test-ui.js'),
+            path.join(__dirname, '../../ui/auto-test-ui/auto-test-ui.js'),
             'utf8'
         );
         expect(html).toMatch(/<option value="AI-trained">AI-trained<\/option>/);

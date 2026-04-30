@@ -12,7 +12,7 @@ let AutoUpdateOrchestrator;
 
 function loadOrchestratorClass() {
     const src = fs.readFileSync(
-        path.join(__dirname, '..', '..', 'app', 'auto-update-orchestrator.js'),
+        path.join(__dirname, '..', '..', 'services', 'auto-update-orchestrator', 'auto-update-orchestrator.js'),
         'utf-8'
     );
 
@@ -305,7 +305,7 @@ describe('AutoUpdateOrchestrator - setupListeners()', () => {
         // to re-create an instance that uses the real (now-faked) setInterval.
         // We do this by reloading the class with the global setInterval exposed.
         const src = fs.readFileSync(
-            path.join(__dirname, '..', '..', 'app', 'auto-update-orchestrator.js'),
+            path.join(__dirname, '..', '..', 'services', 'auto-update-orchestrator', 'auto-update-orchestrator.js'),
             'utf-8'
         );
 
@@ -461,7 +461,7 @@ describe('AutoUpdateOrchestrator - handleAutoMode() lastDecision', () => {
     beforeEach(() => {
         // Load with real setTimeout (handleAutoMode uses await setTimeout(150))
         const src = fs.readFileSync(
-            path.join(__dirname, '..', '..', 'app', 'auto-update-orchestrator.js'),
+            path.join(__dirname, '..', '..', 'services', 'auto-update-orchestrator', 'auto-update-orchestrator.js'),
             'utf-8'
         );
         const wrappedCode = `

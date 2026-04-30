@@ -327,24 +327,42 @@ class MoneyManagementPanel {
             console.log('Previous spin count:', this.lastSpinCount);
             console.log('Current spin count:', currentCount);
 
-            // Check if we had a pending bet
+            // Check if we had a pending bet.
+            //
+            // PARITY GUARD (off-by-one fix):
+            // The orchestrator stamps pendingBet.placedAtSpinCount with
+            // window.spins.length at decision time. The Auto Test
+            // runner decides AFTER seeing N spins and resolves on
+            // spin N+1, so we mirror that here: only resolve once the
+            // CURRENT spin count has advanced past the stamp. If the
+            // orchestrator decided on the same spin we just observed,
+            // defer — the bet will resolve when the NEXT spin lands.
             if (this.pendingBet && this.pendingBet.betAmount > 0) {
-                const hit = this.pendingBet.predictedNumbers.includes(actualNumber);
+                const stamp = (typeof this.pendingBet.placedAtSpinCount === 'number')
+                    ? this.pendingBet.placedAtSpinCount : -Infinity;
+                if (currentCount <= stamp) {
+                    // Decision was made on this same spin. Wait for
+                    // the next one.
+                    console.log(`⏳ Pending bet held (placedAt=${stamp}, current=${currentCount}); resolves on next spin.`);
+                } else {
+                    const hit = this.pendingBet.predictedNumbers.includes(actualNumber);
 
-                console.log('Pending bet:', this.pendingBet);
-                console.log('Predicted numbers:', this.pendingBet.predictedNumbers);
-                console.log('Actual number:', actualNumber);
-                console.log('Hit?', hit);
+                    console.log('Pending bet:', this.pendingBet);
+                    console.log('Predicted numbers:', this.pendingBet.predictedNumbers);
+                    console.log('Actual number:', actualNumber);
+                    console.log('Hit?', hit);
 
-                this.recordBetResult(
-                    this.pendingBet.betAmount,
-                    this.pendingBet.numbersCount,
-                    hit,
-                    actualNumber
-                );
+                    this.recordBetResult(
+                        this.pendingBet.betAmount,
+                        this.pendingBet.numbersCount,
+                        hit,
+                        actualNumber,
+                        this.pendingBet.predictedNumbers
+                    );
 
-                // Clear the pending bet
-                this.pendingBet = null;
+                    // Clear the pending bet
+                    this.pendingBet = null;
+                }
             } else {
                 console.log('⚠️ No pending bet to check');
             }
@@ -386,7 +404,7 @@ class MoneyManagementPanel {
         this.render();
     }
 
-    async recordBetResult(betPerNumber, numbersCount, hit, actualNumber) {
+    async recordBetResult(betPerNumber, numbersCount, hit, actualNumber, predictedNumbers) {
         const totalBet = betPerNumber * numbersCount;
 
         this.sessionData.totalBets++;
@@ -403,8 +421,14 @@ class MoneyManagementPanel {
         let netChange = 0;
 
         if (hit) {
-            // Win: 35:1 on one number, lose the rest
-            const winAmount = betPerNumber * 35;
+            // Win: 35:1 on one number, lose the rest.
+            // AUTO-mode parity: when ai-auto-mode-ui.js sets
+            // _useAutoTestPnl=true, mirror the auto-test runner's
+            // _calculatePnL formula (b*36 − b*n = b*(36-n)) so the live
+            // panel and Auto Test agree on per-win P&L. Manual / Semi /
+            // T1 paths leave the flag false and keep the legacy
+            // b*(35-n) formula byte-for-byte.
+            const winAmount = this._useAutoTestPnl ? betPerNumber * 36 : betPerNumber * 35;
             netChange = winAmount - totalBet;
             
             this.sessionData.currentBankroll += netChange;
@@ -517,7 +541,11 @@ class MoneyManagementPanel {
         console.log(`💵 Next bet amount: $${this.sessionData.currentBetPerNumber}/number`);
 
 
-        // Add to history
+        // Add to history.
+        // predictedNumbers comes from the caller's pendingBet so the
+        // bet history carries the full predicted-numbers list per row
+        // — needed for manual verification of the session report
+        // against an Auto Test reference run.
         this.betHistory.unshift({
             spin: this.sessionData.totalBets,
             betAmount: betPerNumber,
@@ -525,12 +553,17 @@ class MoneyManagementPanel {
             hit: hit,
             actualNumber: actualNumber,
             netChange: netChange,
+            predictedNumbers: Array.isArray(predictedNumbers) ? predictedNumbers.slice() : [],
             timestamp: new Date().toLocaleTimeString()
         });
 
-        // Keep only last 10 bets
-        if (this.betHistory.length > 10) {
-            this.betHistory = this.betHistory.slice(0, 10);
+        // Keep up to 1000 bets so the downloaded session report
+        // captures the full session even on long manual runs (the UI
+        // panel still renders all rows but a typical verification
+        // session is well under this cap). Previously truncated to 10
+        // which silently dropped data from the report.
+        if (this.betHistory.length > 1000) {
+            this.betHistory = this.betHistory.slice(0, 1000);
         }
 
         this.render();
@@ -757,12 +790,64 @@ class MoneyManagementPanel {
 
         // Only store pending bet if betting is ENABLED
         if (this.sessionData.isBettingEnabled) {
+            // Capture the spin count at decision time so the spin
+            // listener defers resolution until the NEXT spin arrives.
+            // This mirrors the Auto Test runner's timing: decide after
+            // observing N spins → resolve on spin N+1. Without this
+            // stamp the bet would resolve immediately on the same spin
+            // that triggered the orchestrator's decision.
+            const placedAtSpinCount = (typeof prediction.placedAtSpinCount === 'number')
+                ? prediction.placedAtSpinCount
+                : (Array.isArray(window.spins) ? window.spins.length : 0);
+
+            // ── RACE-CONDITION GUARD ──
+            // The orchestrator's setInterval (500ms) and the money
+            // panel's spin listener (200ms) can fire in either order
+            // when a new spin arrives. If the orchestrator wins the
+            // race, it calls setPrediction here BEFORE the spin
+            // listener has resolved the previous pendingBet. The
+            // previous pendingBet is then overwritten with a new
+            // stamp matching the new spin count, and the spin
+            // listener defers it (currentCount === stamp). The bet
+            // is silently lost. To prevent that, resolve any stale
+            // pendingBet right here against the spin that would have
+            // resolved it (window.spins[oldStamp].actual = the spin
+            // entered AFTER the old trigger).
+            const old = this.pendingBet;
+            const liveSpins = Array.isArray(window.spins) ? window.spins : null;
+            if (old
+                && old.betAmount > 0
+                && typeof old.placedAtSpinCount === 'number'
+                && old.placedAtSpinCount < placedAtSpinCount
+                && liveSpins
+                && liveSpins[old.placedAtSpinCount]) {
+                const resolutionEntry = liveSpins[old.placedAtSpinCount];
+                const resolutionActual = (resolutionEntry && typeof resolutionEntry.actual === 'number')
+                    ? resolutionEntry.actual : null;
+                if (resolutionActual !== null) {
+                    const hit = old.predictedNumbers.includes(resolutionActual);
+                    console.log(`🧹 Resolving stale pendingBet (placedAt=${old.placedAtSpinCount}) against actual=${resolutionActual} BEFORE accepting new prediction.`);
+                    // Synchronously resolve. recordBetResult is async
+                    // but its synchronous side-effects (spinsWithBets,
+                    // betHistory, sessionProfit) all complete before
+                    // any await — sufficient to keep totals accurate.
+                    this.recordBetResult(
+                        old.betAmount,
+                        old.numbersCount,
+                        hit,
+                        resolutionActual,
+                        old.predictedNumbers
+                    );
+                }
+            }
+
             this.pendingBet = {
                 betAmount: betAmount,
                 numbersCount: prediction.numbers.length,
                 predictedNumbers: prediction.numbers,
                 signal: prediction.signal,
-                confidence: prediction.confidence
+                confidence: prediction.confidence,
+                placedAtSpinCount
             };
             console.log('💰 Pending bet stored:', {
                 betPerNumber: betAmount,

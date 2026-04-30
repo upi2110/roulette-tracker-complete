@@ -17,7 +17,7 @@ const { AITrainedController, ACTION, PHASE } =
 
 function loadOrchestratorClass() {
     const src = fs.readFileSync(
-        path.join(__dirname, '..', '..', 'app', 'auto-update-orchestrator.js'),
+        path.join(__dirname, '..', '..', 'services', 'auto-update-orchestrator', 'auto-update-orchestrator.js'),
         'utf-8'
     );
     const wrappedCode = `

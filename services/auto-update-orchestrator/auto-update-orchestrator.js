@@ -104,35 +104,94 @@ class AutoUpdateOrchestrator {
                     .map(s => (s && typeof s.actual === 'number') ? s.actual : null)
                     .filter(n => n !== null)
                 : [];
-            const idx = Math.max(0, spinsArr.length - 1);
 
-            // Resolve the prior AI-trained decision against the newly
-            // revealed outcome BEFORE generating the next decision. The
-            // controller's counters thus evolve one spin at a time,
-            // mirroring the Auto Test runner's feedback timing.
-            this._resolvePriorAITrainedLive(spinsArr);
+            // ── PHASE 1 GUARD: WATCH (first 3 spins, observe only) ──
+            // The Auto Test runner does NOT consult the controller for
+            // the first 3 spins (auto-test-runner.js:299-318 pushes
+            // WATCH placeholders without calling decide()). The
+            // controller therefore has internal state advanced by ~3
+            // fewer calls in AT than in live by the time the first
+            // BET-eligible decision is made. Live mode must mirror
+            // this exactly: skip controller.decide() while
+            // spinsArr.length <= 3 and emit a WATCH-equivalent SKIP.
+            // Without this guard, every per-spin confidence and phase
+            // transition is shifted one step earlier in live, causing
+            // the live BET to fire one spin before AT's BET does and
+            // every downstream decision/strategy adjustment to drift.
+            if (spinsArr.length <= 3) {
+                const aiDecision = {
+                    action: 'WAIT',
+                    phase: 'WARMUP',
+                    numbers: [],
+                    confidence: 0,
+                    reason: 'WATCH phase placeholder (parity with auto-test runner)',
+                    diagnostics: {
+                        entropy: 0, conflict: 0, historianMatch: 0,
+                        clusterStrength: 0, driftScore: 0,
+                        lossStreak: 0, ghostWin: false,
+                        spinIndex: spinsArr.length - 1,
+                        spinsSeen: spinsArr.length
+                    },
+                    reasoning: { signals: [], rejected: [] }
+                };
+                this._lastAITrainedLive = null;
+                decision = {
+                    action: 'SKIP',
+                    selectedPair: null,
+                    selectedFilter: null,
+                    numbers: [],
+                    confidence: 0,
+                    reason: 'AI-trained WATCH phase (placeholder, no controller call)',
+                    aiTrained: aiDecision
+                };
+                console.log('🤖 AI-TRAINED WATCH (skip controller.decide()):', decision);
+            } else {
+                const idx = Math.max(0, spinsArr.length - 1);
 
-            const aiDecision = window.aiTrainedController.decide(spinsArr, idx);
-            // Store for the NEXT tick's feedback resolver. The reference
-            // stored is the same object the AI-mode tab renders and the
-            // decision envelope carries under `aiTrained`, so any
-            // shadowHit write-back is visible to every consumer.
-            this._lastAITrainedLive = { idx, decision: aiDecision };
-            // Adapt to the orchestrator's BET/SKIP contract. WAIT,
-            // SHADOW_PREDICT, PROTECTION, TERMINATE_SESSION, RETRAIN
-            // are all non-bets: no money-panel setPrediction, no
-            // wheel filter change, no UI pair selection.
-            const isBet = (aiDecision.action === 'BET');
-            decision = {
-                action: isBet ? 'BET' : 'SKIP',
-                selectedPair: null,
-                selectedFilter: null,
-                numbers: isBet ? aiDecision.numbers : [],
-                confidence: Math.round((aiDecision.confidence || 0) * 100),
-                reason: `AI-trained ${aiDecision.phase} ${aiDecision.action}: ${aiDecision.reason}`,
-                aiTrained: aiDecision
-            };
-            console.log('🤖 AI-TRAINED DECISION:', decision);
+                // Resolve the prior AI-trained decision against the newly
+                // revealed outcome BEFORE generating the next decision. The
+                // controller's counters thus evolve one spin at a time,
+                // mirroring the Auto Test runner's feedback timing.
+                this._resolvePriorAITrainedLive(spinsArr);
+
+                // ── PARITY-WITH-AUTO-TEST SLICE ──
+                // The Auto Test runner reaches the controller via the
+                // strategy adapter (`decideAITrainedStrategy`) which
+                // calls `controller.decide(testSpins.slice(0, idx), idx)`
+                // — i.e. the spins STRICTLY BEFORE the just-revealed
+                // outcome at idx. Live mode previously called
+                // `controller.decide(spinsArr, idx)` directly, passing
+                // ONE EXTRA spin (the just-entered outcome) into the
+                // controller's diagnostic windows. That extra spin
+                // shifts entropy/historianMatch/driftScore by one
+                // step, which makes live confidence and decisions
+                // diverge from the Auto Test report on the same input.
+                // We mirror the adapter exactly here so AT and LIVE
+                // produce byte-identical decisions for the same
+                // (spinsArr, idx) pair.
+                const history = spinsArr.slice(0, idx);
+                const aiDecision = window.aiTrainedController.decide(history, idx);
+                // Store for the NEXT tick's feedback resolver. The reference
+                // stored is the same object the AI-mode tab renders and the
+                // decision envelope carries under `aiTrained`, so any
+                // shadowHit write-back is visible to every consumer.
+                this._lastAITrainedLive = { idx, decision: aiDecision };
+                // Adapt to the orchestrator's BET/SKIP contract. WAIT,
+                // SHADOW_PREDICT, PROTECTION, TERMINATE_SESSION, RETRAIN
+                // are all non-bets: no money-panel setPrediction, no
+                // wheel filter change, no UI pair selection.
+                const isBet = (aiDecision.action === 'BET');
+                decision = {
+                    action: isBet ? 'BET' : 'SKIP',
+                    selectedPair: null,
+                    selectedFilter: null,
+                    numbers: isBet ? aiDecision.numbers : [],
+                    confidence: Math.round((aiDecision.confidence || 0) * 100),
+                    reason: `AI-trained ${aiDecision.phase} ${aiDecision.action}: ${aiDecision.reason}`,
+                    aiTrained: aiDecision
+                };
+                console.log('🤖 AI-TRAINED DECISION:', decision);
+            }
         } else if (this.decisionMode === 't1-strategy' && typeof window.decideT1Strategy === 'function') {
             const spinsArr = Array.isArray(window.spins)
                 ? window.spins
@@ -189,12 +248,73 @@ class AutoUpdateOrchestrator {
                 && window.moneyPanel
                 && typeof window.moneyPanel.setPrediction === 'function') {
                 try {
+                    // ── PARITY-WITH-RUNNER OFF-BY-ONE FIX ──
+                    // The Auto Test runner decides AFTER seeing N spins
+                    // and resolves the bet on spin N+1. To mirror that
+                    // exactly in live mode, we stamp pendingBet with
+                    // the spin count at decision time. The money panel
+                    // only resolves the bet once spins.length advances
+                    // past this stamp — i.e. on the NEXT spin the user
+                    // enters, not the spin that triggered the decision.
+                    // Without this stamp, moneyPanel.setupSpinListener
+                    // resolves the bet immediately on the same spin
+                    // that caused the orchestrator to decide BET,
+                    // shifting every bet outcome by one spin.
+                    const placedAtSpinCount = Array.isArray(window.spins)
+                        ? window.spins.length : 0;
                     window.moneyPanel.setPrediction({
                         numbers: decision.numbers,
                         signal: 'BET NOW',
-                        confidence: decision.confidence
+                        confidence: decision.confidence,
+                        placedAtSpinCount
                     });
                 } catch (_) { /* best-effort */ }
+            }
+
+            // AI-trained: also notify the roulette wheel for visibility.
+            // AUTO/T1 reach the wheel via the cascade below
+            // (aiPanel._handleTable3Selection → _autoTriggerPredictions →
+            // getPredictions → wheel.updateHighlights). AI-trained skips
+            // that cascade because it has no user-pair / wheel-filter
+            // contract — but the user still expects to see the predicted
+            // numbers highlighted on the wheel AND the AI prediction
+            // panel populated. The wheel's _applyFilters → _syncAIPanel
+            // cascade fans the prediction out to both UIs, but only when
+            // the call passes a real anchor structure (empty anchors/
+            // loose results in nothing rendered). We compute the anchor
+            // structure from decision.numbers via the existing
+            // calculateWheelAnchors helper so the wheel and panel both
+            // light up. Read-only with respect to the AI-trained
+            // controller — no decision logic, money math, or controller
+            // state is touched.
+            if (this.decisionMode === 'ai-trained'
+                && window.rouletteWheel
+                && typeof window.rouletteWheel.updateHighlights === 'function') {
+                try {
+                    const nums = Array.isArray(decision.numbers) ? decision.numbers : [];
+                    let anchors = [], loose = nums.slice(), anchorGroups = [];
+                    if (typeof window.calculateWheelAnchors === 'function' && nums.length > 0) {
+                        try {
+                            const r = window.calculateWheelAnchors(nums);
+                            anchors      = r.anchors      || [];
+                            loose        = r.loose        || [];
+                            anchorGroups = r.anchorGroups || [];
+                        } catch (_) {
+                            // Fall back to "all numbers as loose" — wheel
+                            // renders loose with the same highlight as
+                            // primary numbers.
+                            loose = nums.slice();
+                        }
+                    }
+                    window.rouletteWheel.updateHighlights(
+                        anchors, loose, anchorGroups, [],
+                        {
+                            numbers: nums,
+                            signal: 'BET NOW',
+                            confidence: decision.confidence
+                        }
+                    );
+                } catch (_) { /* best-effort, never break the decision */ }
             }
 
             // a. Clear old selections + select the chosen pair.
@@ -230,7 +350,40 @@ class AutoUpdateOrchestrator {
             if (window.rouletteWheel && typeof window.rouletteWheel.clearHighlights === 'function') {
                 window.rouletteWheel.clearHighlights();
             }
-            if (window.moneyPanel) {
+            // ── PARITY GUARD ──
+            // Do NOT null out window.moneyPanel.pendingBet here
+            // unconditionally. If the previous spin placed a BET that
+            // hasn't been resolved yet (placedAtSpinCount === current
+            // spin count, awaiting the next spin), nulling it would
+            // silently destroy that bet — exactly the bug AT does NOT
+            // have, since the AT runner records the bet immediately on
+            // testSpins[i+1]. Resolve any stale pendingBet first; only
+            // clear when there is genuinely nothing to resolve and
+            // the prior decision was actually a non-bet.
+            if (window.moneyPanel && window.moneyPanel.pendingBet) {
+                const pb = window.moneyPanel.pendingBet;
+                const liveSpins = Array.isArray(window.spins) ? window.spins : null;
+                const currentCount = liveSpins ? liveSpins.length : 0;
+                if (typeof pb.placedAtSpinCount === 'number'
+                    && pb.placedAtSpinCount < currentCount
+                    && liveSpins
+                    && liveSpins[pb.placedAtSpinCount]) {
+                    const resolutionEntry = liveSpins[pb.placedAtSpinCount];
+                    const resolutionActual = (resolutionEntry && typeof resolutionEntry.actual === 'number')
+                        ? resolutionEntry.actual : null;
+                    if (resolutionActual !== null && Array.isArray(pb.predictedNumbers)) {
+                        const hit = pb.predictedNumbers.includes(resolutionActual);
+                        try {
+                            window.moneyPanel.recordBetResult(
+                                pb.betAmount,
+                                pb.numbersCount,
+                                hit,
+                                resolutionActual,
+                                pb.predictedNumbers
+                            );
+                        } catch (_) { /* best-effort */ }
+                    }
+                }
                 window.moneyPanel.pendingBet = null;
             }
             console.log('🤖 AUTO: Skipped this spin (UI cleared)');
@@ -343,26 +496,36 @@ class AutoUpdateOrchestrator {
         const ctrl = (typeof window !== 'undefined') ? window.aiTrainedController : null;
         if (!ctrl) { this._lastAITrainedLive = null; return; }
 
+        // ─── PARITY-WITH-AUTO-TEST GATE ─────────────────────────────
+        // The Auto Test runner cannot reach the controller's per-engine
+        // cache from the Electron renderer (its `require()` for the
+        // strategy module returns null because the strategy is loaded
+        // via <script> tag, not CommonJS). As a result, AT never feeds
+        // hit/miss outcomes back into the controller — its lossStreak
+        // stays at 0 forever, and AT never enters RETRAIN/RECOVERY.
+        //
+        // To give the user 100% parity between AT and LIVE on the same
+        // spin sequence, LIVE must also NOT feed outcomes back into the
+        // controller. We keep the shadowHit write-back (cosmetic, for
+        // diagnostics rendering) and the bookkeeping reset, but skip
+        // the actual recordResult / recordShadow calls.
+        //
+        // If you ever re-enable controller feedback in LIVE, also add a
+        // global fallback in the Auto Test runner's
+        // _resolvePriorAITrainedDecision to read
+        // globalThis.AITrainedStrategyAPI.__internal._getController
+        // when require() returns null, otherwise the divergence returns.
         const action = prior.decision.action;
-        if (action === 'BET') {
-            const nums = Array.isArray(prior.decision.numbers) ? prior.decision.numbers : [];
-            const hit = nums.includes(actual);
-            if (typeof ctrl.recordResult === 'function') {
-                try { ctrl.recordResult({ idx: prior.idx, hit, actual, decision: prior.decision }); }
-                catch (_) { /* best-effort */ }
-            }
-        } else if (action === 'SHADOW_PREDICT') {
+        if (action === 'SHADOW_PREDICT') {
             const shadowNums = Array.isArray(prior.decision.shadowNumbers) ? prior.decision.shadowNumbers : [];
             const shadowHit = shadowNums.includes(actual);
-            if (typeof ctrl.recordShadow === 'function') {
-                try { ctrl.recordShadow({ idx: prior.idx, actual, decision: prior.decision }); }
-                catch (_) { /* best-effort */ }
-            }
             // Mutate the SAME object referenced by the AI-mode tab render
             // so the live diagnostics carry the resolved flag.
             prior.decision.shadowHit = shadowHit;
         }
-        // WAIT / PROTECTION / RETRAIN / TERMINATE_SESSION carry no outcome.
+        // BET / WAIT / PROTECTION / RETRAIN / TERMINATE_SESSION carry no
+        // controller-state side-effects in parity mode.
+        void ctrl; void actual;
         this._lastAITrainedLive = null;
     }
 

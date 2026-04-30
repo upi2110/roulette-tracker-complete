@@ -26,8 +26,8 @@ const path = require('path');
 const { setupDOM, createMoneyPanel } = require('../test-setup');
 
 // Load the real engine + runner (they share identical decision code).
-const { AIAutoEngine } = require('../../app/ai-auto-engine');
-const { AutoTestRunner } = require('../../app/auto-test-runner');
+const { AIAutoEngine } = require('../../services/ai-auto-engine/ai-auto-engine');
+const { AutoTestRunner } = require('../../services/auto-test-runner/auto-test-runner');
 
 // ── Helpers ─────────────────────────────────────────────────────────
 function makeTrainedEngine(opts = {}) {
@@ -66,7 +66,7 @@ describe('AA. Decision parity (engine vs runner on same stream)', () => {
         // engine.decide() has no blacklist either, so the two
         // pipelines agree by "neither uses it".
         const fs = require('fs');
-        const src = fs.readFileSync(path.join(__dirname, '../../app/auto-test-runner.js'), 'utf8');
+        const src = fs.readFileSync(path.join(__dirname, '../../services/auto-test-runner/auto-test-runner.js'), 'utf8');
         const callSite = src.match(/this\._simulateDecision\(testSpins,\s*\w+\)/);
         expect(callSite).not.toBeNull();
         // Two-arg call (no blacklist).
@@ -179,8 +179,10 @@ describe('DD. moneyPanel._useAutoTestPnl flips pnl math only for AUTO', () => {
         const mp = createMoneyPanel();
         mp.sessionData.isSessionActive = true;
         mp.sessionData.isBettingEnabled = true;
-        // Auto Test runner: betPerNumber × (36 − numbersCount)
-        // With b=2, count=12 → 2 × 24 = 48.
+        // Auto Test runner _calculatePnL: betPerNumber × 36 − betPerNumber × numbersCount
+        // = b*(36-n). With b=2, count=12 → 2 × 24 = 48.
+        // Honored when the live panel's _useAutoTestPnl flag is true,
+        // which ai-auto-mode-ui.js sets only on AUTO entry.
         mp._useAutoTestPnl = true;
         await mp.recordBetResult(2, 12, true, 5);
         expect(mp.betHistory[0].netChange).toBe(48);
@@ -228,7 +230,7 @@ describe('EE. orchestrator handleAutoMode synchronous setPrediction on AUTO BET'
     function loadOrch() {
         setupDOM();
         const fs = require('fs');
-        const src = fs.readFileSync(path.join(__dirname, '../../app/auto-update-orchestrator.js'), 'utf8');
+        const src = fs.readFileSync(path.join(__dirname, '../../services/auto-update-orchestrator/auto-update-orchestrator.js'), 'utf8');
         return eval(`(function(){ ${src}; return AutoUpdateOrchestrator; })()`);
     }
 

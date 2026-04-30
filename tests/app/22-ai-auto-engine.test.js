@@ -5,7 +5,7 @@
  * skip logic, session adaptation, mode control, and real-time decisions.
  */
 
-const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, PAIR_NAME_TO_REFKEY } = require('../../app/ai-auto-engine');
+const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, PAIR_NAME_TO_REFKEY } = require('../../services/ai-auto-engine/ai-auto-engine');
 
 // ── Mock renderer functions ──
 // These replicate enough of the real logic for engine training/decisions
@@ -2384,7 +2384,7 @@ describe('AIAutoEngine', () => {
     describe('Z: sequence model integration', () => {
         // Make AISequenceModel available globally so engine constructor finds it
         beforeAll(() => {
-            const { AISequenceModel } = require('../../app/ai-sequence-model');
+            const { AISequenceModel } = require('../../models/ai-sequence-model/ai-sequence-model');
             global.AISequenceModel = AISequenceModel;
         });
         afterAll(() => { delete global.AISequenceModel; });

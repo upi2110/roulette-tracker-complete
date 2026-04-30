@@ -187,7 +187,7 @@ describe('Filter Sync: Function existence checks', () => {
 
     test('ai-prediction-panel.js has updateFilteredDisplay method', () => {
         const src = fs.readFileSync(
-            path.join(__dirname, '..', '..', 'app', 'ai-prediction-panel.js'),
+            path.join(__dirname, '..', '..', 'ui', 'ai-prediction-panel', 'ai-prediction-panel.js'),
             'utf-8'
         );
         expect(src).toContain('updateFilteredDisplay(filteredPrediction)');
@@ -210,7 +210,7 @@ describe('Filter Sync: Function existence checks', () => {
 describe('Filter Sync: AI Panel signal update', () => {
     test('updateFilteredDisplay updates signalIndicator text', () => {
         const src = fs.readFileSync(
-            path.join(__dirname, '..', '..', 'app', 'ai-prediction-panel.js'),
+            path.join(__dirname, '..', '..', 'ui', 'ai-prediction-panel', 'ai-prediction-panel.js'),
             'utf-8'
         );
         // Verify updateFilteredDisplay updates the signal

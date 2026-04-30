@@ -977,11 +977,16 @@ describe('Q. Bankroll and Win/Loss Accounting', () => {
         expect(panel.sessionData.consecutiveWins).toBe(0);
     });
 
-    test('Q6: Bet history limited to 10 entries', async () => {
+    test('Q6: Bet history bounded (cap raised to 1000 for long sessions)', async () => {
         for (let i = 0; i < 15; i++) {
             await panel.recordBetResult(5, 12, false, 15);
         }
-        expect(panel.betHistory.length).toBeLessThanOrEqual(10);
+        // Cap was raised from 10 → 1000 so the downloaded session
+        // report captures the full bet history of long manual runs.
+        // The cap still exists; this test asserts the bound holds
+        // and that 15 inserts (well below 1000) are all retained.
+        expect(panel.betHistory.length).toBeLessThanOrEqual(1000);
+        expect(panel.betHistory.length).toBe(15);
     });
 });
 

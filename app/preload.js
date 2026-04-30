@@ -65,6 +65,21 @@ contextBridge.exposeInMainWorld('aiAPI', {
     },
 
     /**
+     * Append a single line to the per-session frontend log file.
+     * Used by the renderer-side console patch in app/logger.js so
+     * every console.log/info/warn/error from the renderer is mirrored
+     * into logs/frontend/YYYY-MM-DD/HH-MM-SS-session.log alongside the
+     * backend session log.
+     */
+    async appendLog(line) {
+        try {
+            return await ipcRenderer.invoke('append-frontend-log', line);
+        } catch (_) {
+            return false;
+        }
+    },
+
+    /**
      * Test connection to AI server
      */
     async testConnection() {

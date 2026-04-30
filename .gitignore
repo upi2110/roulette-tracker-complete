@@ -52,3 +52,9 @@ build/
 *.pem
 *.key
 
+
+# =========================
+# Local agent / IDE / runtime
+# =========================
+.claude/
+logs/

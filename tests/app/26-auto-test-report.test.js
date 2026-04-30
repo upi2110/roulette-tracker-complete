@@ -7,7 +7,7 @@
  * Uses a mock ExcelJS to avoid needing the real library in tests.
  */
 
-const { AutoTestReport, STRATEGY_LABELS } = require('../../app/auto-test-report');
+const { AutoTestReport, STRATEGY_LABELS } = require('../../reports/auto-test-report/auto-test-report');
 
 // ── Mock ExcelJS ──
 // Provides just enough API surface to test report generation
@@ -590,6 +590,9 @@ describe('AutoTestReport', () => {
         });
 
         test('has correct header row', () => {
+            // Layout: Step(1) Spin#(2) Next#(3) Action(4) Pair(5)
+            // Filter(6) Numbers(7) Predicted Numbers(8) Conf%(9)
+            // Bet/Num(10) Hit(11) P&L(12) Bankroll(13).
             const session = createMockSession(0, 1, 'WIN', 100, 20);
             const workbook = new MockWorkbook();
             const sheet = report._createSessionSheet(workbook, session, 1);
@@ -597,8 +600,9 @@ describe('AutoTestReport', () => {
             const headerRow = sheet.getRow(3);
             expect(headerRow.getCell(1).value).toBe('Step');
             expect(headerRow.getCell(4).value).toBe('Action');
-            expect(headerRow.getCell(11).value).toBe('P&L');
-            expect(headerRow.getCell(12).value).toBe('Bankroll');
+            expect(headerRow.getCell(8).value).toBe('Predicted Numbers');
+            expect(headerRow.getCell(12).value).toBe('P&L');
+            expect(headerRow.getCell(13).value).toBe('Bankroll');
         });
 
         test('populates step data', () => {
@@ -618,8 +622,10 @@ describe('AutoTestReport', () => {
             const workbook = new MockWorkbook();
             const sheet = report._createSessionSheet(workbook, session, 1);
 
-            // Row 4 = first step (BET, pnl=60)
-            const pnlCell = sheet.getRow(4).getCell(11);
+            // Row 4 = first step (BET, pnl=60). P&L is now col 12
+            // (was 11; Predicted Numbers added at col 8 shifts later
+            // columns by 1).
+            const pnlCell = sheet.getRow(4).getCell(12);
             expect(pnlCell.font.color.argb).toBe('FF28A745');
         });
 
@@ -628,8 +634,8 @@ describe('AutoTestReport', () => {
             const workbook = new MockWorkbook();
             const sheet = report._createSessionSheet(workbook, session, 1);
 
-            // Row 6 = third step (BET, pnl=-12)
-            const pnlCell = sheet.getRow(6).getCell(11);
+            // Row 6 = third step (BET, pnl=-12). P&L now at col 12.
+            const pnlCell = sheet.getRow(6).getCell(12);
             expect(pnlCell.font.color.argb).toBe('FFDC3545');
         });
 
@@ -638,8 +644,9 @@ describe('AutoTestReport', () => {
             const workbook = new MockWorkbook();
             const sheet = report._createSessionSheet(workbook, session, 1);
 
-            // Row 4 = first step (hit=true)
-            const hitCell = sheet.getRow(4).getCell(10);
+            // Row 4 = first step (hit=true). Hit now at col 11
+            // (was 10; shifted by Predicted Numbers insertion).
+            const hitCell = sheet.getRow(4).getCell(11);
             expect(hitCell.value).toBe('YES');
             expect(hitCell.font.color.argb).toBe('FF28A745');
         });
@@ -649,8 +656,8 @@ describe('AutoTestReport', () => {
             const workbook = new MockWorkbook();
             const sheet = report._createSessionSheet(workbook, session, 1);
 
-            // Row 6 = third step (hit=false)
-            const hitCell = sheet.getRow(6).getCell(10);
+            // Row 6 = third step (hit=false). Hit now at col 11.
+            const hitCell = sheet.getRow(6).getCell(11);
             expect(hitCell.value).toBe('NO');
             expect(hitCell.font.color.argb).toBe('FFDC3545');
         });
@@ -660,12 +667,12 @@ describe('AutoTestReport', () => {
             const workbook = new MockWorkbook();
             const sheet = report._createSessionSheet(workbook, session, 1);
 
-            // Row 5 = second step (SKIP)
+            // Row 5 = second step (SKIP). Hit now at col 11 (was 10).
             const row5 = sheet.getRow(5);
             expect(row5.getCell(4).value).toBe('SKIP');
             expect(row5.getCell(5).value).toBe('--');
             expect(row5.getCell(6).value).toBe('--');
-            expect(row5.getCell(10).value).toBe('--');
+            expect(row5.getCell(11).value).toBe('--');
         });
 
         test('has ← Back hyperlink to strategy sheet', () => {

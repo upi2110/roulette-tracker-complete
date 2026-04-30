@@ -14,7 +14,7 @@
 const {
     AIPredictionPanelCore,
     PHASE_ORDER
-} = require('../../app/ai-prediction-panel-core.js');
+} = require('../../ui/ai-prediction-panel/ai-prediction-panel-core.js');
 const {
     AITrainedController,
     ACTION,

@@ -13,7 +13,7 @@
  *   - test-strategy   → alias of auto-test (no live counterpart) — documented
  */
 
-const { AutoTestRunner, TEST_REFKEY_TO_PAIR_NAME } = require('../../app/auto-test-runner.js');
+const { AutoTestRunner, TEST_REFKEY_TO_PAIR_NAME } = require('../../services/auto-test-runner/auto-test-runner.js');
 const { decideT1Strategy } = require('../../strategies/t1/t1-strategy.js');
 const {
     AITrainedController,

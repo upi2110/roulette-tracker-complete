@@ -36,7 +36,7 @@ let R;
 
 beforeAll(() => {
     const lookupSrc = fs.readFileSync(
-        pathMod.join(__dirname, '..', '..', 'app', 'table-lookup.js'),
+        pathMod.join(__dirname, '..', '..', 'roulette-wheel', 'table-lookup.js'),
         'utf-8'
     );
     const fn = new Function(lookupSrc + '\nglobalThis.getLookupRow = getLookupRow;');

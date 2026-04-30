@@ -18,7 +18,7 @@ let R;
 
 beforeAll(() => {
     // Load table-lookup.js globals
-    const lookupSrc = fs.readFileSync(pathMod.join(__dirname, '..', '..', 'app', 'table-lookup.js'), 'utf-8');
+    const lookupSrc = fs.readFileSync(pathMod.join(__dirname, '..', '..', 'roulette-wheel', 'table-lookup.js'), 'utf-8');
     const fn = new Function(lookupSrc + '\nglobalThis.getLookupRow = getLookupRow;');
     fn();
 });

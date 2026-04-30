@@ -13,9 +13,9 @@
  * I. Integration — full session with risk management
  */
 
-const { AutoTestRunner, TEST_REFKEY_TO_PAIR_NAME, STRATEGY_NAMES } = require('../../app/auto-test-runner');
-const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS } = require('../../app/ai-auto-engine');
-const { AutoTestReport, STRATEGY_LABELS } = require('../../app/auto-test-report');
+const { AutoTestRunner, TEST_REFKEY_TO_PAIR_NAME, STRATEGY_NAMES } = require('../../services/auto-test-runner/auto-test-runner');
+const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS } = require('../../services/ai-auto-engine/ai-auto-engine');
+const { AutoTestReport, STRATEGY_LABELS } = require('../../reports/auto-test-report/auto-test-report');
 
 // ── Mock renderer functions ──
 const WHEEL_STANDARD = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
@@ -498,7 +498,9 @@ describe('Risk Management — Max Bet Cap + Loss Streak Reset', () => {
             for (let r = 1; r <= 20; r++) {
                 const row = detailSheet.getRow(r);
                 const actionCell = row.getCell(4);
-                const betCell = row.getCell(9);
+                // Bet/Num is at column 10 after the Predicted Numbers
+                // column was added at col 8 in the per-session sheet.
+                const betCell = row.getCell(10);
                 if (actionCell.value === 'BET RESET') {
                     expect(betCell.value).toBe('$2');
                 }

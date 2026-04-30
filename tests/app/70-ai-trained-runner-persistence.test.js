@@ -5,7 +5,7 @@
  * plus snapshot regression for 'auto-test' step shape (no aiTrained field).
  */
 
-const { AutoTestRunner } = require('../../app/auto-test-runner.js');
+const { AutoTestRunner } = require('../../services/auto-test-runner/auto-test-runner.js');
 const {
     AITrainedController,
     ACTION,

@@ -83,7 +83,7 @@ function loadRouletteWheel() {
 }
 
 function loadOrchestrator() {
-    let src = fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'auto-update-orchestrator.js'), 'utf-8');
+    let src = fs.readFileSync(path.join(__dirname, '..', '..', 'services', 'auto-update-orchestrator', 'auto-update-orchestrator.js'), 'utf-8');
     // Remove DOMContentLoaded listener and global instance creation
     src = src.replace(/document\.addEventListener\('DOMContentLoaded'[\s\S]*?\}\);/g, '');
     src = src.replace(/const autoUpdateOrchestrator = new AutoUpdateOrchestrator\(\);/, '');
@@ -103,7 +103,7 @@ function loadOrchestrator() {
 }
 
 function loadAIIntegration() {
-    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'ai-integration.js'), 'utf-8');
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'services', 'ai-integration', 'ai-integration.js'), 'utf-8');
     const wrappedCode = `
         (function() {
             const console = globalThis.console;

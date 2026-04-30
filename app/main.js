@@ -28,6 +28,65 @@ function createWindow() {
         mainWindow.webContents.reloadIgnoringCache();
     });
 
+    // ── Session log infrastructure ──
+    // Per-session frontend + backend logs under
+    //   logs/{frontend|backend}/YYYY-MM-DD/HH-MM-SS-session.log
+    // Auto-purges any subdirectory older than 24h on startup.
+    const LOGS_ROOT = path.join(__dirname, '..', 'logs');
+    const _now = new Date();
+    const _pad = (n) => String(n).padStart(2, '0');
+    const _ymd = `${_now.getFullYear()}-${_pad(_now.getMonth()+1)}-${_pad(_now.getDate())}`;
+    const _hms = `${_pad(_now.getHours())}-${_pad(_now.getMinutes())}-${_pad(_now.getSeconds())}`;
+    const SESSION_FE_LOG = path.join(LOGS_ROOT, 'frontend', _ymd, `${_hms}-session.log`);
+    const SESSION_BE_LOG = path.join(LOGS_ROOT, 'backend',  _ymd, `${_hms}-session.log`);
+    try {
+        fs.mkdirSync(path.dirname(SESSION_FE_LOG), { recursive: true });
+        fs.mkdirSync(path.dirname(SESSION_BE_LOG), { recursive: true });
+    } catch (e) { console.warn('Log dir create failed:', e.message); }
+    const _purgeOld = (root) => {
+        try {
+            if (!fs.existsSync(root)) return;
+            for (const channel of fs.readdirSync(root)) {
+                const channelPath = path.join(root, channel);
+                if (!fs.statSync(channelPath).isDirectory()) continue;
+                for (const dayDir of fs.readdirSync(channelPath)) {
+                    const dayPath = path.join(channelPath, dayDir);
+                    if (!fs.statSync(dayPath).isDirectory()) continue;
+                    const ageMs = Date.now() - fs.statSync(dayPath).mtimeMs;
+                    if (ageMs > 24 * 3600 * 1000) {
+                        fs.rmSync(dayPath, { recursive: true, force: true });
+                        console.log('[logs] purged old log dir:', dayPath);
+                    }
+                }
+            }
+        } catch (e) { console.warn('[logs] purge error:', e.message); }
+    };
+    _purgeOld(LOGS_ROOT);
+
+    const _appendBackend = (line) => {
+        try { fs.appendFileSync(SESSION_BE_LOG, line + '\n', 'utf-8'); } catch (_) {}
+    };
+    // Mirror backend console output into the backend log file so every
+    // ipc/file event is captured. Idempotent — only patch once.
+    if (!console.__patchedForSessionLog) {
+        const orig = { log: console.log, info: console.info, warn: console.warn, error: console.error };
+        const _fmt = (level, args) => `[${new Date().toISOString()}] ${level} ${args.map(a => typeof a === 'string' ? a : (() => { try { return JSON.stringify(a); } catch (_) { return String(a); } })()).join(' ')}`;
+        console.log   = (...a) => { _appendBackend(_fmt('LOG  ', a));   orig.log.apply(console, a); };
+        console.info  = (...a) => { _appendBackend(_fmt('INFO ', a));   orig.info.apply(console, a); };
+        console.warn  = (...a) => { _appendBackend(_fmt('WARN ', a));   orig.warn.apply(console, a); };
+        console.error = (...a) => { _appendBackend(_fmt('ERROR', a));   orig.error.apply(console, a); };
+        console.__patchedForSessionLog = true;
+    }
+    console.log(`[logs] backend session log: ${SESSION_BE_LOG}`);
+    console.log(`[logs] frontend session log: ${SESSION_FE_LOG}`);
+
+    // IPC handler: frontend forwards every console.* line through
+    // aiAPI.appendLog → this handler appends to the frontend log file.
+    ipcMain.handle('append-frontend-log', async (event, line) => {
+        try { fs.appendFileSync(SESSION_FE_LOG, String(line) + '\n', 'utf-8'); } catch (_) {}
+        return true;
+    });
+
     // IPC handler: append flash diagnostic log to project folder
     ipcMain.handle('write-flash-log', async (event, data) => {
         const logPath = path.join(__dirname, 'flash-debug.log');

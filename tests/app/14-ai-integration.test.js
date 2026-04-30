@@ -15,7 +15,7 @@ const path = require('path');
 // ---------------------------------------------------------------
 function loadAIIntegration() {
     const src = fs.readFileSync(
-        path.join(__dirname, '..', '..', 'app', 'ai-integration.js'),
+        path.join(__dirname, '..', '..', 'services', 'ai-integration', 'ai-integration.js'),
         'utf-8'
     );
 

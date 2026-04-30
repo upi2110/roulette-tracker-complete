@@ -9,9 +9,9 @@
  * 85+ tests across sections A-N
  */
 
-const { AutoTestRunner, TEST_REFKEY_TO_PAIR_NAME, STRATEGY_NAMES } = require('../../app/auto-test-runner');
-const { AutoTestReport, STRATEGY_LABELS } = require('../../app/auto-test-report');
-const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS } = require('../../app/ai-auto-engine');
+const { AutoTestRunner, TEST_REFKEY_TO_PAIR_NAME, STRATEGY_NAMES } = require('../../services/auto-test-runner/auto-test-runner');
+const { AutoTestReport, STRATEGY_LABELS } = require('../../reports/auto-test-report/auto-test-report');
+const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS } = require('../../services/ai-auto-engine/ai-auto-engine');
 
 // ── Renderer mocks ──
 const WHEEL_STANDARD = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];

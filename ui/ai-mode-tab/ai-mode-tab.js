@@ -15,7 +15,7 @@
 
     let Core;
     if (typeof module !== 'undefined' && module.exports) {
-        Core = require('../../app/ai-prediction-panel-core.js').AIPredictionPanelCore;
+        Core = require('../ai-prediction-panel/ai-prediction-panel-core.js').AIPredictionPanelCore;
     } else if (globalRef && globalRef.AIPredictionPanelCore) {
         Core = globalRef.AIPredictionPanelCore;
     }

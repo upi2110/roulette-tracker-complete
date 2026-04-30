@@ -30,7 +30,7 @@ describe('FIX #1: toggleBetting calls getPredictions correctly', () => {
 
     test('ai-prediction-panel.js has getPredictions method', () => {
         const src = fs.readFileSync(
-            path.join(__dirname, '..', '..', 'app', 'ai-prediction-panel.js'),
+            path.join(__dirname, '..', '..', 'ui', 'ai-prediction-panel', 'ai-prediction-panel.js'),
             'utf-8'
         );
         expect(src).toContain('getPredictions');
@@ -92,7 +92,7 @@ describe('FIX #3: Orchestrator reference matches global', () => {
             'utf-8'
         );
         const orchSrc = fs.readFileSync(
-            path.join(__dirname, '..', '..', 'app', 'auto-update-orchestrator.js'),
+            path.join(__dirname, '..', '..', 'services', 'auto-update-orchestrator', 'auto-update-orchestrator.js'),
             'utf-8'
         );
 

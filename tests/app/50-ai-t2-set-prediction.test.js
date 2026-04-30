@@ -8,7 +8,7 @@
  *   - Semi-auto filter set prediction
  */
 
-const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, T2_PAIR_KEYS, T2_PAIR_REFNUM } = require('../../app/ai-auto-engine');
+const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, T2_PAIR_KEYS, T2_PAIR_REFNUM } = require('../../services/ai-auto-engine/ai-auto-engine');
 const { SemiAutoFilter, SA_SET0, SA_SET5, SA_SET6, SA_ZERO, SA_NINE, SA_POS, SA_NEG } = require('../../strategies/semi-auto/semi-auto-filter');
 const fs = require('fs');
 const pathMod = require('path');
@@ -106,7 +106,7 @@ function expandAnchorsToBetNumbers(purple, green) {
 // Load real lookup table
 let LOOKUP_TABLE;
 beforeAll(() => {
-    const lookupSrc = fs.readFileSync(pathMod.join(__dirname, '..', '..', 'app', 'table-lookup.js'), 'utf-8');
+    const lookupSrc = fs.readFileSync(pathMod.join(__dirname, '..', '..', 'roulette-wheel', 'table-lookup.js'), 'utf-8');
     const fn = new Function(lookupSrc + '\nglobalThis.getLookupRow = getLookupRow;');
     fn();
 

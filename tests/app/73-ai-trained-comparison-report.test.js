@@ -8,7 +8,7 @@
  *     shadows, protection, retrain, terminated).
  */
 
-const { ComparisonReport } = require('../../app/comparison-report');
+const { ComparisonReport } = require('../../reports/comparison-report/comparison-report');
 
 class MockCell { constructor() { this.value = null; this.font = {}; this.fill = {}; this.alignment = {}; } }
 class MockRow { constructor() { this._cells = {}; } getCell(i) { if (!this._cells[i]) this._cells[i] = new MockCell(); return this._cells[i]; } }

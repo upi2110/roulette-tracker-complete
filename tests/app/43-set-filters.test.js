@@ -9,7 +9,7 @@
  * Integrated as a third filter dimension (checkboxes) alongside table/sign (radios).
  */
 
-const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, EUROPEAN_WHEEL } = require('../../app/ai-auto-engine');
+const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, REFKEY_TO_PAIR_NAME, EUROPEAN_WHEEL } = require('../../services/ai-auto-engine/ai-auto-engine');
 const { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SA_SET0, SA_SET5, SA_SET6, SEMI_FILTER_COMBOS, SEMI_MIN_NUMBERS } = require('../../strategies/semi-auto/semi-auto-filter');
 
 // ── Helpers ───────────────────────────────────────────────────

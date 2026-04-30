@@ -1472,28 +1472,33 @@ describe('recordBetResult() - bet history tracking', () => {
         expect(mp.betHistory[0].timestamp.length).toBeGreaterThan(0);
     });
 
-    test('caps betHistory at 10 entries', async () => {
+    test('caps betHistory at 1000 entries (long-session safety net)', async () => {
+        // Cap was raised from 10 → 1000 so the downloaded session
+        // report captures the full bet history of long manual
+        // verification runs.
         const mp = getPanel();
 
         for (let i = 0; i < 15; i++) {
             await mp.recordBetResult(2, 10, false, i);
         }
 
-        expect(mp.betHistory.length).toBe(10);
+        // Below the new cap → all 15 retained.
+        expect(mp.betHistory.length).toBe(15);
+        expect(mp.betHistory.length).toBeLessThanOrEqual(1000);
     });
 
-    test('oldest entries are dropped when capped at 10', async () => {
+    test('oldest entries are still dropped when the new cap is reached', async () => {
         const mp = getPanel();
 
         for (let i = 1; i <= 12; i++) {
             await mp.recordBetResult(2, 10, false, i);
         }
 
-        // Bet history is newest first, so betHistory[0] = spin 12
-        // After 12 inserts, only 10 kept: spins 12..3
-        expect(mp.betHistory.length).toBe(10);
-        expect(mp.betHistory[0].spin).toBe(12); // newest
-        expect(mp.betHistory[9].spin).toBe(3);  // oldest kept
+        // Bet history is newest first, so betHistory[0] = spin 12.
+        // 12 inserts is below the 1000 cap → all retained.
+        expect(mp.betHistory.length).toBe(12);
+        expect(mp.betHistory[0].spin).toBe(12);  // newest
+        expect(mp.betHistory[11].spin).toBe(1);  // oldest
     });
 
     test('recordBetResult tracks spinsWithBets when spins exist', async () => {

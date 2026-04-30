@@ -9,7 +9,7 @@
  */
 
 const { setupDOM } = require('../test-setup');
-const { AutoTestUI } = require('../../app/auto-test-ui');
+const { AutoTestUI } = require('../../ui/auto-test-ui/auto-test-ui');
 
 // ── Helpers ──
 
@@ -1427,7 +1427,7 @@ describe('Test Suite 25: AutoTestUI', () => {
         test('O12: AUTO_TEST_METHODS constant is exported with the canonical labels', () => {
             // The canonical list of method strings is exposed so callers
             // (tests and future consumers) cannot drift out of sync.
-            const mod = require('../../app/auto-test-ui');
+            const mod = require('../../ui/auto-test-ui/auto-test-ui');
             expect(mod.AUTO_TEST_METHODS).toEqual(['auto-test', 'T1-strategy', 'test-strategy', 'AI-trained']);
             expect(mod.AUTO_TEST_DEFAULT_METHOD).toBe('auto-test');
         });

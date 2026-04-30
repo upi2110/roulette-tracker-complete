@@ -682,13 +682,19 @@ describe('Bet History', () => {
         expect(mp.betHistory[1].actualNumber).toBe(15);
     });
 
-    test('Bet history caps at 10 entries', async () => {
+    test('Bet history caps at 1000 entries (long-session safety net)', async () => {
+        // Cap was raised from 10 → 1000 so the downloaded session
+        // report captures the full bet history of long manual
+        // verification runs. The cap still exists to prevent
+        // unbounded growth.
         const mp = createPanel();
 
         for (let i = 0; i < 15; i++) {
             await mp.recordBetResult(2, 10, false, i);
         }
 
-        expect(mp.betHistory.length).toBe(10);
+        // Below the cap → all 15 entries retained.
+        expect(mp.betHistory.length).toBe(15);
+        expect(mp.betHistory.length).toBeLessThanOrEqual(1000);
     });
 });

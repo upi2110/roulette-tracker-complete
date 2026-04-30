@@ -6,7 +6,7 @@
  * 70% confidence threshold before committing to a prediction.
  */
 
-const { AISequenceModel, SEQ_ZERO, SEQ_NINE, SEQ_POS, SEQ_NEG, SEQ_FILTER_COMBOS, SEQ_CONFIDENCE_THRESHOLD } = require('../../app/ai-sequence-model');
+const { AISequenceModel, SEQ_ZERO, SEQ_NINE, SEQ_POS, SEQ_NEG, SEQ_FILTER_COMBOS, SEQ_CONFIDENCE_THRESHOLD } = require('../../models/ai-sequence-model/ai-sequence-model');
 
 // Helper: repeating pattern session
 function makeSession(pattern, repeats) {
@@ -648,7 +648,7 @@ describe('AISequenceModel', () => {
     // ═════════════════════════════════════════════════════
 
     describe('Engine Integration', () => {
-        const { AIAutoEngine } = require('../../app/ai-auto-engine');
+        const { AIAutoEngine } = require('../../services/ai-auto-engine/ai-auto-engine');
 
         test('P1: engine constructor creates sequenceModel', () => {
             const engine = new AIAutoEngine();

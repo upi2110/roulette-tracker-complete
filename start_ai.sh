@@ -70,6 +70,40 @@ if [ -n "$EXISTING_PID" ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════
+#  FORCE FRESH FRONTEND CODE
+#  Electron caches parsed JS in v8 code-cache + a regular HTTP
+#  cache. When we edit app/*.js / strategies/**/*.js / services/**/*.js
+#  on disk, a still-running renderer (or even a stopped-then-restarted
+#  one with a warm cache) can keep serving the OLD parsed bundle —
+#  which is what caused the AT-vs-LIVE divergence we just chased.
+#  Belt-and-braces: kill any leftover Electron, then nuke the cache
+#  dirs the renderer reads from before launching.
+# ═══════════════════════════════════════════════════════════════
+echo "  Killing any leftover Electron processes…"
+pkill -f "Electron.app/Contents/MacOS/Electron" 2>/dev/null
+pkill -f "node_modules/electron/dist" 2>/dev/null
+# Anything still holding app/main.js open as the entry point
+pkill -f "electron .*app/main.js" 2>/dev/null
+sleep 1
+
+APP_NAME="european-roulette-tracker-complete"
+USERDATA_DIR="$HOME/Library/Application Support/$APP_NAME"
+if [ -d "$USERDATA_DIR" ]; then
+    echo "  Clearing Electron renderer caches under:"
+    echo "    $USERDATA_DIR"
+    # Wipe every cache the renderer might read parsed JS from.
+    # Local Storage / IndexedDB are NOT removed so user state survives.
+    rm -rf "$USERDATA_DIR/Cache" \
+           "$USERDATA_DIR/Code Cache" \
+           "$USERDATA_DIR/GPUCache" \
+           "$USERDATA_DIR/DawnCache" \
+           "$USERDATA_DIR/DawnGraphiteCache" \
+           "$USERDATA_DIR/DawnWebGPUCache" \
+           "$USERDATA_DIR/Service Worker" \
+           "$USERDATA_DIR/blob_storage" 2>/dev/null
+fi
+
+# ═══════════════════════════════════════════════════════════════
 #  START BACKEND (background)
 # ═══════════════════════════════════════════════════════════════
 echo "════════════════════════════════════════════════════════════════"
@@ -134,7 +168,14 @@ else
 fi
 echo ""
 
-$ELECTRON_CMD app/main.js
+# --disable-http-cache : never serve cached HTTP responses (we load
+#                        local file:// scripts but Chromium still
+#                        consults the cache for some resources).
+# --disable-gpu-shader-disk-cache : not relevant to JS but cheap to keep
+#                        the renderer fully cold.
+# Together with the cache wipe above this guarantees that every launch
+# re-parses every <script src=...> from disk.
+$ELECTRON_CMD --disable-http-cache --disable-gpu-shader-disk-cache app/main.js
 
 # ═══════════════════════════════════════════════════════════════
 #  CLEANUP — frontend closed, stop backend too

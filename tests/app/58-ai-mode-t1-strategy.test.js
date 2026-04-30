@@ -226,7 +226,7 @@ describe('D. Orchestrator dispatch', () => {
     // setInterval listener.
     const fs = require('fs');
     const path = require('path');
-    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'auto-update-orchestrator.js'), 'utf-8');
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'services', 'auto-update-orchestrator', 'auto-update-orchestrator.js'), 'utf-8');
 
     function loadOrchestrator() {
         const origSetInterval = global.setInterval;

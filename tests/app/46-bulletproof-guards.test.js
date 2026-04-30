@@ -11,7 +11,7 @@ const pathMod = require('path');
 let R;
 beforeAll(() => {
     // Load table-lookup.js globals (needed by renderTable1/2 called from render() in resetAll)
-    const lookupSrc = fs.readFileSync(pathMod.join(__dirname, '..', '..', 'app', 'table-lookup.js'), 'utf-8');
+    const lookupSrc = fs.readFileSync(pathMod.join(__dirname, '..', '..', 'roulette-wheel', 'table-lookup.js'), 'utf-8');
     const fn = new Function(lookupSrc + '\nglobalThis.getLookupRow = getLookupRow;\nglobalThis.getColumnForPositionCode = typeof getColumnForPositionCode !== "undefined" ? getColumnForPositionCode : null;');
     fn();
 
@@ -351,7 +351,7 @@ describe('D. AI Panel Error Isolation', () => {
     beforeAll(() => {
         const fs = require('fs');
         const p = require('path');
-        const src = fs.readFileSync(p.join(__dirname, '..', '..', 'app', 'ai-prediction-panel.js'), 'utf-8');
+        const src = fs.readFileSync(p.join(__dirname, '..', '..', 'ui', 'ai-prediction-panel', 'ai-prediction-panel.js'), 'utf-8');
         const wrappedCode = `
             (function() {
                 const _mockEl = () => ({

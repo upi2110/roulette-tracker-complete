@@ -16,7 +16,7 @@ let getLookupRow, getColumnForPositionCode, getProjectionFromLookup, LOOKUP_TABL
 
 function loadTableLookup() {
     const src = fs.readFileSync(
-        path.join(__dirname, '..', '..', 'app', 'table-lookup.js'),
+        path.join(__dirname, '..', '..', 'roulette-wheel', 'table-lookup.js'),
         'utf-8'
     );
     const wrappedCode = `

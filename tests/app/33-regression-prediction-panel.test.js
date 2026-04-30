@@ -32,7 +32,7 @@ function loadAIPanelClass() {
     R = loadRendererFunctions();
 
     const src = fs.readFileSync(
-        path.join(__dirname, '..', '..', 'app', 'ai-prediction-panel.js'),
+        path.join(__dirname, '..', '..', 'ui', 'ai-prediction-panel', 'ai-prediction-panel.js'),
         'utf-8'
     );
 

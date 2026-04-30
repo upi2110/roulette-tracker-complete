@@ -13,8 +13,8 @@
 const fs = require('fs');
 const path = require('path');
 const { setupDOM, loadRendererFunctions } = require('../test-setup');
-const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS } = require('../../app/ai-auto-engine');
-const { AISequenceModel } = require('../../app/ai-sequence-model');
+const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS } = require('../../services/ai-auto-engine/ai-auto-engine');
+const { AISequenceModel } = require('../../models/ai-sequence-model/ai-sequence-model');
 const { SemiAutoFilter } = require('../../strategies/semi-auto/semi-auto-filter');
 
 let R;

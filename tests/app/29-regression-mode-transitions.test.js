@@ -12,8 +12,8 @@
  * H. Data integrity — Number sets across all components
  */
 
-const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS } = require('../../app/ai-auto-engine');
-const { AISequenceModel, SEQ_ZERO, SEQ_NINE, SEQ_POS, SEQ_NEG } = require('../../app/ai-sequence-model');
+const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS } = require('../../services/ai-auto-engine/ai-auto-engine');
+const { AISequenceModel, SEQ_ZERO, SEQ_NINE, SEQ_POS, SEQ_NEG } = require('../../models/ai-sequence-model/ai-sequence-model');
 const { SemiAutoFilter, SA_ZERO, SA_NINE, SEMI_FILTER_COMBOS } = require('../../strategies/semi-auto/semi-auto-filter');
 const { AIDataLoader } = require('../../training/data-loader/ai-data-loader');
 const fs = require('fs');
@@ -72,7 +72,7 @@ function loadAutoModeUIClass() {
 /** Load AutoUpdateOrchestrator class via eval */
 function loadOrchestratorClass() {
     const src = fs.readFileSync(
-        path.join(__dirname, '..', '..', 'app', 'auto-update-orchestrator.js'),
+        path.join(__dirname, '..', '..', 'services', 'auto-update-orchestrator', 'auto-update-orchestrator.js'),
         'utf-8'
     );
     const wrappedCode = `

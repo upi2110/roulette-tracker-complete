@@ -443,7 +443,7 @@ describe('SemiAutoFilter', () => {
     });
 
     test('I2: with confident sequence model, favors predicted filter', () => {
-        const { AISequenceModel } = require('../../app/ai-sequence-model');
+        const { AISequenceModel } = require('../../models/ai-sequence-model/ai-sequence-model');
         const mockModel = new AISequenceModel({ minSamples: 1 });
         // Override scoreFilterCombos to return confident zero prediction
         mockModel.isTrained = true;
@@ -472,7 +472,7 @@ describe('SemiAutoFilter', () => {
     });
 
     test('I3: with NOT confident sequence model, avoids double-restrictive filters', () => {
-        const { AISequenceModel } = require('../../app/ai-sequence-model');
+        const { AISequenceModel } = require('../../models/ai-sequence-model/ai-sequence-model');
         const mockModel = new AISequenceModel({ minSamples: 1 });
         mockModel.isTrained = true;
         mockModel.scoreFilterCombos = () => ({
@@ -503,7 +503,7 @@ describe('SemiAutoFilter', () => {
 
     test('I4: setSequenceModel correctly stores and clears model', () => {
         expect(filter.sequenceModel).toBeNull();
-        const { AISequenceModel } = require('../../app/ai-sequence-model');
+        const { AISequenceModel } = require('../../models/ai-sequence-model/ai-sequence-model');
         const model = new AISequenceModel();
         filter.setSequenceModel(model);
         expect(filter.sequenceModel).toBe(model);

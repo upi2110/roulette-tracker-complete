@@ -24,8 +24,8 @@
 // IMPORTS
 // ═══════════════════════════════════════════════════════════════
 
-const { AISequenceModel, SEQ_ZERO, SEQ_NINE, SEQ_POS, SEQ_NEG, SEQ_FILTER_COMBOS } = require('../../app/ai-sequence-model');
-const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, EUROPEAN_WHEEL } = require('../../app/ai-auto-engine');
+const { AISequenceModel, SEQ_ZERO, SEQ_NINE, SEQ_POS, SEQ_NEG, SEQ_FILTER_COMBOS } = require('../../models/ai-sequence-model/ai-sequence-model');
+const { AIAutoEngine, FILTER_COMBOS, PAIR_REFKEYS, EUROPEAN_WHEEL } = require('../../services/ai-auto-engine/ai-auto-engine');
 const { SemiAutoFilter, SA_ZERO, SA_NINE, SA_POS, SA_NEG, SEMI_FILTER_COMBOS } = require('../../strategies/semi-auto/semi-auto-filter');
 const { AIDataLoader } = require('../../training/data-loader/ai-data-loader');
 
@@ -1027,7 +1027,7 @@ describe('L. Orchestrator — SKIP Clears UI State', () => {
         const fs = require('fs');
         const pathMod = require('path');
         const src = fs.readFileSync(
-            pathMod.join(__dirname, '..', '..', 'app', 'auto-update-orchestrator.js'),
+            pathMod.join(__dirname, '..', '..', 'services', 'auto-update-orchestrator', 'auto-update-orchestrator.js'),
             'utf-8'
         );
         const wrappedCode = `

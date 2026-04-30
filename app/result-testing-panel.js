@@ -3,7 +3,7 @@
 // app/ai-auto-mode-ui.js (setMode accepts any of these) plus the new
 // 't1-strategy' mode added in commit 2fa70c2b. Exposed so tests and
 // downstream callers never hard-code the list.
-const RESULT_TESTING_MODES = ['manual', 'semi', 'auto', 't1-strategy'];
+const RESULT_TESTING_MODES = ['manual', 'semi', 'auto', 't1-strategy', 'ai-trained'];
 const RESULT_TESTING_DEFAULT_MODE = 'manual';
 
 // Module-level Set of in-flight replay setTimeout ids. Used so tests
@@ -115,6 +115,7 @@ class ResultTestingPanel {
                             <option value="semi">semi</option>
                             <option value="auto">auto</option>
                             <option value="t1-strategy">T1-strategy</option>
+                            <option value="ai-trained">AI-trained</option>
                         </select>
                         <button id="resultTestingRunBtn" type="button"
                                 style="padding:4px 10px;font-size:11px;font-weight:700;border:1px solid #6366f1;border-radius:3px;background:#6366f1;color:white;cursor:pointer;">
@@ -1965,7 +1966,135 @@ class ResultTestingPanel {
      */
     async downloadSessionReport() {
         if (typeof window === 'undefined') return false;
-        const data = this.buildComparisonData();
+        // Try the comparison-data path first (works after a Result-
+        // testing replay or whenever this.submitted is populated).
+        let data = this.buildComparisonData();
+        // Live-session fallback: when the user is running a live
+        // AI-trained / AUTO / T1 session without going through
+        // Submit-to-test, this.submitted is undefined and
+        // buildComparisonData() returns null. The user still wants a
+        // session report of the live run. Build a minimal
+        // comparisonData object directly from window.moneyPanel so the
+        // ComparisonReport workbook's Result-testing column carries
+        // the live session totals. The Auto-Test column stays empty
+        // (correct — there was no Auto Test run to compare against).
+        if (!data) {
+            const mp = window.moneyPanel;
+            const liveBh = mp && Array.isArray(mp.betHistory) ? mp.betHistory : null;
+            if (mp && mp.sessionData && liveBh && liveBh.length > 0) {
+                let totalWon = 0, totalLost = 0;
+                for (const b of liveBh) {
+                    const nc = b && typeof b.netChange === 'number' ? b.netChange : 0;
+                    if (nc > 0) totalWon += nc; else if (nc < 0) totalLost += -nc;
+                }
+                const sd = mp.sessionData;
+                const decided = (sd.totalWins || 0) + (sd.totalLosses || 0);
+                const winRate = decided > 0 ? (sd.totalWins || 0) / decided : 0;
+                const liveAiMode = window.aiAutoModeUI ? window.aiAutoModeUI.currentMode : 'manual';
+
+                // Build a per-spin history for the AT-side spin sheets
+                // so the workbook's Spin-by-Spin / Auto Test Spins
+                // sheets aren't empty in live-only mode. Each entry
+                // mirrors the runner's step shape: action (WATCH for
+                // first 3 spins; BET if the spin landed on a recorded
+                // bet; SKIP otherwise), nextNumber (the wheel value
+                // entered), and bet/pnl/predictedNumbers when present.
+                // betHistory is stored newest-first (`unshift`); we
+                // reverse to chronological so the index aligns with
+                // sessionData.spinsWithBets.
+                const liveBhChrono = liveBh.slice().reverse();
+                const spinsWithBets = Array.isArray(sd.spinsWithBets) ? sd.spinsWithBets : [];
+                const spinsArr = Array.isArray(window.spins) ? window.spins : [];
+                let runningBank = (typeof sd.startingBankroll === 'number') ? sd.startingBankroll : 4000;
+                const liveSpinHistory = spinsArr.map((s, idx) => {
+                    const stepNum = idx + 1;
+                    const actual = (s && typeof s.actual === 'number') ? s.actual
+                                  : (typeof s === 'number' ? s : null);
+                    const isWatch = idx < 3;
+                    // sessionData.spinsWithBets stores 1-indexed spin
+                    // counts at the moment a bet was placed. Match
+                    // chronological betHistory entry by position.
+                    const betPos = spinsWithBets.indexOf(stepNum);
+                    const bet = betPos >= 0 ? liveBhChrono[betPos] : null;
+                    if (bet) {
+                        runningBank += (typeof bet.netChange === 'number' ? bet.netChange : 0);
+                        return {
+                            step: stepNum,
+                            action: 'BET',
+                            spinNumber: stepNum - 1,
+                            nextNumber: actual,
+                            selectedPair: null,
+                            selectedFilter: null,
+                            betPerNumber: bet.betAmount,
+                            numbersCount: Array.isArray(bet.predictedNumbers) ? bet.predictedNumbers.length : null,
+                            predictedNumbers: Array.isArray(bet.predictedNumbers) ? bet.predictedNumbers.slice() : [],
+                            hit: !!bet.hit,
+                            pnl: typeof bet.netChange === 'number' ? bet.netChange : 0,
+                            bankroll: runningBank,
+                            confidence: null
+                        };
+                    }
+                    return {
+                        step: stepNum,
+                        action: isWatch ? 'WATCH' : 'SKIP',
+                        spinNumber: stepNum - 1,
+                        nextNumber: actual,
+                        selectedPair: null,
+                        selectedFilter: null,
+                        predictedNumbers: [],
+                        numbersCount: 0,
+                        betPerNumber: null,
+                        hit: undefined,
+                        pnl: 0,
+                        bankroll: runningBank,
+                        confidence: null
+                    };
+                });
+
+                data = {
+                    meta: {
+                        sessionLabel: '(live)',
+                        autoTestFile: '(live)',
+                        method: liveAiMode || 'manual',
+                        aiMode: liveAiMode || 'manual',
+                        generatedAt: new Date().toISOString()
+                    },
+                    // Auto-Test side mirrors the live spin stream so the
+                    // Spin-by-Spin / Auto Test Spins sheets render a
+                    // full per-spin log (33 / 34 / N rows) rather than
+                    // empty header-only sheets. The KPI block stays
+                    // empty (no real Auto Test ran) so Overview rows
+                    // continue to show '--' on the AT column.
+                    autoTest: {
+                        sessionLabel: '(live)',
+                        aiMode: liveAiMode || 'manual',
+                        spinHistory: liveSpinHistory
+                    },
+                    resultTesting: {
+                        sessionLabel: '(live)',
+                        aiMode: liveAiMode || 'manual',
+                        totalSpins: spinsArr.length || (sd.totalBets || 0),
+                        totalBets: sd.totalBets || 0,
+                        wins: sd.totalWins || 0,
+                        losses: sd.totalLosses || 0,
+                        winRate,
+                        maxDrawdown: typeof sd.maxDrawdown === 'number' ? sd.maxDrawdown : 0,
+                        finalProfit: typeof sd.sessionProfit === 'number' ? sd.sessionProfit : (totalWon - totalLost),
+                        finalBankroll: typeof sd.currentBankroll === 'number' ? sd.currentBankroll : 0,
+                        totalWon: Math.round(totalWon * 100) / 100,
+                        totalLost: Math.round(totalLost * 100) / 100,
+                        totalPL: Math.round((totalWon - totalLost) * 100) / 100,
+                        // Bet history is stored newest-first by the
+                        // money panel; surface it chronologically in
+                        // the report so users read top-down through
+                        // the session's actual order.
+                        betHistory: liveBhChrono,
+                        ran: true
+                    },
+                    deltas: {}
+                };
+            }
+        }
         if (!data) return false;
         const ExcelJS = window.ExcelJS || (typeof require === 'function' ? (() => { try { return require('exceljs'); } catch (_) { return null; } })() : null);
         if (!ExcelJS) return false;
@@ -1986,11 +2115,15 @@ class ResultTestingPanel {
         // work. The MoneyReport buildFilename helper still owns
         // that filename format — we borrow it so the date stamp
         // format is identical across all three downloads.
-        const NameCtor = (typeof window.MoneyReport === 'function') ? window.MoneyReport
-            : ((typeof require === 'function') ? (() => { try { return require('./money-report').MoneyReport; } catch (_) { return null; } })() : null);
-        const filename = (NameCtor && typeof NameCtor.buildFilename === 'function')
-            ? NameCtor.buildFilename(new Date())
-            : `session-result-${Date.now()}.xlsx`;
+        // Build filename inline — the legacy MoneyReport.buildFilename
+        // helper owned the dated `session-result-YYYY-MM-DD-HHMMSS.xlsx`
+        // format and no longer exists in the tree. We mirror that
+        // format here so tooling that filters by prefix continues to
+        // work and the user-facing filename stays deterministic.
+        const _d = new Date();
+        const _pad = (n) => String(n).padStart(2, '0');
+        const _stamp = `${_d.getFullYear()}-${_pad(_d.getMonth() + 1)}-${_pad(_d.getDate())}-${_pad(_d.getHours())}${_pad(_d.getMinutes())}${_pad(_d.getSeconds())}`;
+        const filename = `session-result-${_stamp}.xlsx`;
         try {
             const rep = new Ctor(ExcelJS);
             const wb = rep.generate(data);

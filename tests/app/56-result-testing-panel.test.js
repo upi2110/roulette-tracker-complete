@@ -494,7 +494,7 @@ describe('H. Defensive handling', () => {
 //  I. Auto Test UI integration (Submit-to test button)
 // ═══════════════════════════════════════════════════════════════════
 describe('I. AutoTestUI ↔ ResultTestingPanel hand-off', () => {
-    const { AutoTestUI } = require('../../app/auto-test-ui');
+    const { AutoTestUI } = require('../../ui/auto-test-ui/auto-test-ui');
 
     beforeEach(() => {
         // Make sure the Auto Test container exists for createUI.
@@ -883,15 +883,17 @@ describe('L. Mode dropdown (user override for replay)', () => {
         window.aiAutoModeUI = { setMode: (m) => setCalls.push(m) };
     });
 
-    test('L1: dropdown exists with exactly the four supported modes', () => {
+    test('L1: dropdown exists with exactly the five supported modes', () => {
         new ResultTestingPanel();
         const sel = document.getElementById('resultTestingModeSelect');
         expect(sel).not.toBeNull();
         expect(sel.tagName).toBe('SELECT');
         const values = Array.from(sel.querySelectorAll('option')).map(o => o.value);
         // Order matters only visually — enforce presence + count.
-        expect(values).toEqual(expect.arrayContaining(['manual', 'semi', 'auto', 't1-strategy']));
-        expect(values.length).toBe(4);
+        // 'ai-trained' was added so the Result-testing panel can label
+        // replays driven by the AI-trained controller.
+        expect(values).toEqual(expect.arrayContaining(['manual', 'semi', 'auto', 't1-strategy', 'ai-trained']));
+        expect(values.length).toBe(5);
     });
 
     test('L2: fresh panel seeds the dropdown to the default mode', () => {
@@ -1780,8 +1782,8 @@ describe('Q. replayRecordedSession — session.steps is the source of truth', ()
         expect(bet.totalBet).toBe(24);
     });
 
-    test('Q5: the exported money-report workbook carries the real totals after a recorded replay', async () => {
-        const { MoneyReport } = require('../../app/money-report');
+    test('Q5: the exported comparison workbook carries the real totals after a recorded replay', async () => {
+        const { ComparisonReport } = require('../../reports/comparison-report/comparison-report');
         // Minimal ExcelJS mock re-used from 57-money-report.
         class MockCell { constructor(){this.value=null;this.font={};this.fill={};this.alignment={};this.border={};}}
         class MockRow { constructor(){this._c={};} getCell(i){if(!this._c[i])this._c[i]=new MockCell();return this._c[i];}}
@@ -1808,26 +1810,40 @@ describe('Q. replayRecordedSession — session.steps is the source of truth', ()
         const p = new ResultTestingPanel();
         await p.replayRecordedSession(session);
 
-        // Now generate the workbook the same way the real
-        // money-panel's Download Session Report button does — by
-        // pulling sessionData/betHistory from the Result-testing
-        // _replayStats snapshot (the live panel is restored after
-        // replay for isolation; the snapshot is the authoritative
-        // post-replay source the report reads from).
-        const rep = new MoneyReport(MockExcelJS);
-        const wb = rep.generate(p._replayStats.sessionData, p._replayStats.betHistory);
+        // Now generate the workbook via ComparisonReport — the same
+        // path ResultTestingPanel.downloadSessionReport() uses since
+        // the legacy MoneyReport module was removed. We build the
+        // comparisonData object from _buildResultTestingSide so the
+        // assertion focuses on workbook shape parity (Result-testing
+        // column reflects replayed totals) without needing a prior
+        // submit() call.
+        const rt = p._buildResultTestingSide(null, 'manual');
+        const comparisonData = {
+            meta: { sessionLabel: '(test)', method: 'auto-test', aiMode: 'manual', generatedAt: new Date().toISOString() },
+            autoTest: {},
+            resultTesting: rt,
+            deltas: {}
+        };
+        const rep = new ComparisonReport(MockExcelJS);
+        const wb = rep.generate(comparisonData);
         const overview = wb.getWorksheet('Overview');
-        // MoneyReport Overview: header on row 5, data on row 6,
-        // 14 columns (the Auto-Test-parity 14-col layout — not the
-        // widened 18-col layout, which was reverted during the
-        // isolation refactor so the Money Management panel + its
-        // report stay untouched).
-        const headerRow = overview.getRow(5);
-        const headers = []; for (let i = 1; i <= 14; i++) headers.push(headerRow.getCell(i).value);
-        const dataRow = overview.getRow(6);
-        const totalWon = String(dataRow.getCell(headers.indexOf('Total Win $') + 1).value);
-        const totalLost = String(dataRow.getCell(headers.indexOf('Total Loss $') + 1).value);
-        const totalPL = String(dataRow.getCell(headers.indexOf('Total P&L') + 1).value);
+        // ComparisonReport Overview: header on row 7
+        //   ['Metric', 'Auto Test', 'Result-testing', 'Delta', 'Status']
+        // KPI rows start at row 8 in KPI_FIELDS order.
+        // We locate each row by its column-A label and read the
+        // Result-testing column (column 3).
+        function findRowValue(label, col) {
+            for (let i = 8; i <= 8 + 20; i++) {
+                const r = overview.getRow(i);
+                if (String(r.getCell(1).value) === label) {
+                    return String(r.getCell(col).value);
+                }
+            }
+            return null;
+        }
+        const totalWon = findRowValue('Total Win $', 3);
+        const totalLost = findRowValue('Total Loss $', 3);
+        const totalPL = findRowValue('Total P&L', 3);
         // Positive sum = 46+46 = 92. Negative sum = 24. P&L = 68.
         expect(totalWon).toContain('92');
         expect(totalLost).toContain('24');

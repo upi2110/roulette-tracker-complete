@@ -3,7 +3,7 @@
  * Render-only, container-scoped, safe to mount multiple times.
  */
 
-const { AIPredictionPanelCore } = require('../../app/ai-prediction-panel-core.js');
+const { AIPredictionPanelCore } = require('../../ui/ai-prediction-panel/ai-prediction-panel-core.js');
 const { AITrainedController, ACTION, PHASE, MAX_BET_NUMBERS } =
     require('../../strategies/ai-trained/ai-trained-controller.js');
 

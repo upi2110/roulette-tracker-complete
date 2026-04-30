@@ -15,7 +15,7 @@
 // is identical for every option. This constant exists so the canonical
 // list and default cannot drift out of sync between the UI, the
 // runner's runAll default, and the tests.
-const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test-strategy', 'AI-trained'];
+const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test-strategy', 'AI-trained', 'manual'];
 const AUTO_TEST_DEFAULT_METHOD = 'auto-test';
 
 class AutoTestUI {
@@ -49,15 +49,16 @@ class AutoTestUI {
         container.innerHTML = `
             <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border-radius:10px;border:2px solid #0f3460;overflow:hidden;">
                 <!-- Header -->
-                <div id="autoTestHeader" style="background:linear-gradient(135deg,#e94560 0%,#0f3460 100%);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;">
+                <div id="autoTestHeader" style="background:linear-gradient(135deg,#e94560 0%,#0f3460 100%);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
                     <h3 style="margin:0;color:white;font-size:14px;font-weight:700;">🧪 AUTO TEST</h3>
-                    <div style="display:flex;gap:8px;">
+                    <div style="display:flex;gap:8px;align-items:center;">
                         <button id="autoTestLoadBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">📂 Load File</button>
                         <select id="autoTestMethodSelect" title="Auto Test method" style="padding:6px 8px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">
                             <option value="auto-test" selected>auto-test</option>
                             <option value="T1-strategy">T1-strategy</option>
                             <option value="test-strategy">test-strategy</option>
                             <option value="AI-trained">AI-trained</option>
+                            <option value="manual">manual</option>
                         </select>
                         <button id="autoTestRunBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #22c55e;border-radius:5px;cursor:pointer;background:#22c55e;color:#000;" disabled>▶ Run Test</button>
                         <button id="autoTestExportBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #3b82f6;border-radius:5px;cursor:pointer;background:#3b82f6;color:white;" disabled>📊 Export Excel</button>
@@ -69,11 +70,24 @@ class AutoTestUI {
                 <!-- File info + manual input -->
                 <div style="padding:8px 16px;border-bottom:1px solid #0f3460;">
                     <div id="autoTestFileInfo" style="font-size:11px;color:#94a3b8;margin-bottom:4px;">No test data loaded</div>
-                    <details style="color:#94a3b8;font-size:10px;">
-                        <summary style="cursor:pointer;">Or paste numbers manually</summary>
-                        <textarea id="autoTestManualInput" placeholder="Paste spin numbers (one per line, oldest first)" style="width:100%;height:60px;margin-top:4px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:4px;font-size:10px;padding:4px;resize:vertical;"></textarea>
-                        <button id="autoTestParseBtn" style="margin-top:4px;padding:4px 10px;font-size:10px;border:1px solid #64748b;border-radius:3px;cursor:pointer;background:#334155;color:#e2e8f0;">Parse Input</button>
-                    </details>
+                    <div id="autoTestManualSection" style="display:none;color:#cbd5e1;font-size:11px;margin-top:4px;">
+                        <div style="margin-bottom:4px;font-weight:600;color:#fbbf24;">✏️ Manual entry — paste or type spin numbers below (oldest first), then click Parse Input</div>
+                        <div style="margin:4px 0 6px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <label for="autoTestManualStrategy" style="color:#fbbf24;font-weight:600;">Strategy:</label>
+                            <select id="autoTestManualStrategy" title="Which strategy should generate predictions for the manual run" style="padding:4px 8px;font-size:11px;font-weight:600;border:1px solid #fbbf24;border-radius:4px;background:#1e293b;color:#e2e8f0;">
+                                <option value="auto-test">auto-test</option>
+                                <option value="T1-strategy">T1-strategy</option>
+                                <option value="test-strategy">test-strategy</option>
+                                <option value="AI-trained" selected>AI-trained</option>
+                            </select>
+                            <span style="color:#94a3b8;font-size:10px;">(predictions will be generated using this strategy so you can compare against a live session)</span>
+                        </div>
+                        <textarea id="autoTestManualInput" placeholder="e.g.&#10;17&#10;32&#10;5&#10;28&#10;...&#10;(commas, spaces, or newlines all work)" style="width:100%;height:120px;background:#1e293b;color:#e2e8f0;border:1px solid #fbbf24;border-radius:4px;font-size:12px;padding:6px;resize:vertical;font-family:monospace;"></textarea>
+                        <div style="margin-top:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <button id="autoTestParseBtn" style="padding:6px 14px;font-size:11px;font-weight:700;border:1px solid #fbbf24;border-radius:4px;cursor:pointer;background:#fbbf24;color:#000;">Parse Input</button>
+                            <span id="autoTestManualStatus" style="font-size:11px;color:#94a3b8;"></span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Progress -->
@@ -130,8 +144,11 @@ class AutoTestUI {
                 // Refresh the Training badge so any mismatch warning
                 // updates the moment the method changes.
                 this._refreshTrainingBadge();
+                this._applyMethodVisibility();
             });
         }
+        // Apply initial show/hide for manual-entry section based on default method.
+        this._applyMethodVisibility();
         // Initial badge paint — read whatever active mode the registry
         // has at construction time (typically null until the user trains).
         this._refreshTrainingBadge();
@@ -180,12 +197,51 @@ class AutoTestUI {
      */
     parseManualInput() {
         const textarea = document.getElementById('autoTestManualInput');
+        const status   = document.getElementById('autoTestManualStatus');
+        const fileInfo = document.getElementById('autoTestFileInfo');
+        const runBtn   = document.getElementById('autoTestRunBtn');
+
+        const setStatus = (msg, color) => {
+            if (status) {
+                status.textContent = msg;
+                status.style.color = color || '#94a3b8';
+            }
+            if (fileInfo) fileInfo.textContent = msg;
+        };
+
         if (!textarea || !textarea.value.trim()) {
-            const fileInfo = document.getElementById('autoTestFileInfo');
-            if (fileInfo) fileInfo.textContent = 'No input to parse';
+            setStatus('⚠️ No input to parse — paste numbers above first', '#f87171');
             return;
         }
-        this._parseAndStore(textarea.value, 'manual-input');
+
+        // Lenient tokenizer — split on anything that is not a digit, then
+        // keep entries that fall in the valid roulette range (0-36). This
+        // accepts newlines, commas, spaces, tabs, and mixed delimiters,
+        // which the strict line-based loader rejects.
+        const raw = textarea.value;
+        const tokens = raw.split(/[^0-9]+/).filter(t => t.length > 0);
+        const spins = [];
+        const bad   = [];
+        for (const t of tokens) {
+            const n = parseInt(t, 10);
+            if (Number.isFinite(n) && n >= 0 && n <= 36) spins.push(n);
+            else bad.push(t);
+        }
+
+        if (spins.length === 0) {
+            setStatus(`❌ Parse error: no valid spin numbers found (0-36)`, '#f87171');
+            this.testSpins = null;
+            if (runBtn) runBtn.disabled = true;
+            return;
+        }
+
+        this.testSpins    = spins;
+        this.testFileName = 'manual-input';
+        if (runBtn) runBtn.disabled = false;
+
+        const skipped = bad.length ? ` (skipped ${bad.length} invalid token${bad.length === 1 ? '' : 's'})` : '';
+        setStatus(`✅ Parsed ${spins.length} spin${spins.length === 1 ? '' : 's'} — ready to Run Test${skipped}`, '#22c55e');
+        console.log(`✅ Manual input parsed: ${spins.length} spins${skipped}`);
     }
 
     /**
@@ -248,12 +304,21 @@ class AutoTestUI {
         // Method-gated precondition. AI-trained Auto Test does NOT
         // require the legacy `engine.isTrained` gate — it uses its own
         // controller. Every other method retains the original behavior.
-        if (this.testMethod !== 'AI-trained' && !engine.isTrained) {
+        //
+        // 'manual' is a router: the user picks the real strategy via the
+        // sub-dropdown. Resolve the *effective* method for gating so a
+        // manual run targeting AI-trained is not blocked by isTrained.
+        let effectiveMethod = this.testMethod;
+        if (effectiveMethod === 'manual' && typeof document !== 'undefined') {
+            const sel = document.getElementById('autoTestManualStrategy');
+            if (sel && sel.value) effectiveMethod = sel.value;
+        }
+        if (effectiveMethod !== 'AI-trained' && !engine.isTrained) {
             // Surface WHY the method is blocked: which TRAIN mode the
             // method requires, and which mode is currently active. The
             // user may have clicked TRAIN with a placeholder mode
             // (User/AI/Hybrid) which never calls engine.train().
-            const expected = _expectedTrainingModeFor(this.testMethod);
+            const expected = _expectedTrainingModeFor(effectiveMethod);
             const labels = {
                 'default':     'Default mode',
                 'user-mode':   'User-mode',
@@ -265,7 +330,7 @@ class AutoTestUI {
                 // Step 3 cutover: prefer the new training/ folder.
                 // Browser still uses window.TrainingState set by the
                 // app/ <script> tag.
-                try { TS = require('../training/training-state.js'); }
+                try { TS = require('../../training/training-state.js'); }
                 catch (_) { /* fall through */ }
             }
             if (!TS && typeof window !== 'undefined' && window.TrainingState) {
@@ -274,8 +339,11 @@ class AutoTestUI {
             const active = TS ? TS.getActiveMode() : null;
             const activeLabel = active ? (labels[active] || active) : 'none';
             const expectedLabel = expected ? (labels[expected] || expected) : null;
+            const methodLabel = (this.testMethod === 'manual')
+                ? `manual → ${effectiveMethod}`
+                : this.testMethod;
             const msg = expectedLabel
-                ? `Engine not trained. The "${this.testMethod}" method requires ${expectedLabel} training. Active training mode: ${activeLabel}. Select "${expectedLabel}" in the TRAIN dropdown and click TRAIN.`
+                ? `Engine not trained. The "${methodLabel}" method requires ${expectedLabel} training. Active training mode: ${activeLabel}. Select "${expectedLabel}" in the TRAIN dropdown and click TRAIN.`
                 : 'Engine not trained. Click TRAIN first.';
             this._showError(msg);
             return;
@@ -305,12 +373,23 @@ class AutoTestUI {
             // future consumers can branch on the method. The runner echoes
             // it onto result.method. Current behaviour of 'test-strategy'
             // is unchanged — this is pass-through plumbing only.
+            // When method='manual', the user picks which strategy should
+            // generate predictions via the sub-dropdown. Pass that through
+            // as `manualStrategy` so the runner can dispatch to the
+            // matching decision pipeline while still reporting the run as
+            // 'manual' on the result.
+            let manualStrategy = null;
+            if (this.testMethod === 'manual' && typeof document !== 'undefined') {
+                const sel = document.getElementById('autoTestManualStrategy');
+                if (sel && sel.value) manualStrategy = sel.value;
+            }
             this.result = await runner.runAll(
                 this.testSpins,
                 {
                     testFile: this.testFileName || 'manual',
                     batchSize: 20,
-                    method: this.testMethod
+                    method: this.testMethod,
+                    manualStrategy: manualStrategy
                 },
                 (pct, msg) => this.updateProgress(pct, msg)
             );
@@ -468,6 +547,24 @@ class AutoTestUI {
     renderOverview(result) {
         const content = document.getElementById('autoTestContent');
         if (!content) return;
+
+        // Defensive: if the runner returned a degraded result (e.g.
+        // ENGINE_NOT_TRAINED, WRONG_TRAINING_MODE) the strategies map is
+        // empty and overall is null. Surface the message instead of
+        // crashing on result.strategies[num].summary.
+        const hasStrategies = result && result.strategies
+            && result.strategies[1] && result.strategies[1].summary
+            && result.strategies[2] && result.strategies[2].summary
+            && result.strategies[3] && result.strategies[3].summary;
+        if (!hasStrategies) {
+            const reason = (result && (result.message || result.outcome)) || 'No strategy data returned';
+            content.innerHTML = `
+                <div style="padding:16px;border:1px solid #f59e0b;border-radius:6px;background:rgba(245,158,11,0.08);color:#fbbf24;font-size:12px;">
+                    <div style="font-weight:700;margin-bottom:6px;">⚠️ Auto Test did not produce results</div>
+                    <div style="color:#e2e8f0;">${reason}</div>
+                </div>`;
+            return;
+        }
 
         const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious' };
         const colors = { 1: '#28a745', 2: '#007bff', 3: '#6f42c1' };
@@ -733,6 +830,22 @@ class AutoTestUI {
      *
      * No-op when the badge element or TrainingState module is absent.
      */
+    /**
+     * Show the manual-entry section and hide the Load-File button when
+     * the user picks the 'manual' method from the header dropdown. For
+     * every other method the manual section collapses and Load File
+     * comes back. Safe to call before the DOM is fully painted — every
+     * lookup is null-guarded.
+     */
+    _applyMethodVisibility() {
+        if (typeof document === 'undefined') return;
+        const isManual = (this.testMethod === 'manual');
+        const manualSec = document.getElementById('autoTestManualSection');
+        const loadBtn   = document.getElementById('autoTestLoadBtn');
+        if (manualSec) manualSec.style.display = isManual ? 'block' : 'none';
+        if (loadBtn)   loadBtn.style.display   = isManual ? 'none'  : '';
+    }
+
     _refreshTrainingBadge() {
         const badge = (typeof document !== 'undefined')
             ? document.getElementById('autoTestTrainingBadge') : null;
@@ -740,7 +853,7 @@ class AutoTestUI {
         let TS = null;
         if (typeof require === 'function') {
             // Step 3 cutover: prefer the new training/ folder.
-            try { TS = require('../training/training-state.js'); }
+            try { TS = require('../../training/training-state.js'); }
             catch (_) { /* fall through */ }
         }
         if (!TS && typeof window !== 'undefined' && window.TrainingState) {
