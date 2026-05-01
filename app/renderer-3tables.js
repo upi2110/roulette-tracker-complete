@@ -2311,6 +2311,43 @@ function _flashPairCell(row, dataPair, hitCellType) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  TABLE 3 — DATA-DRIVEN COLUMN CONFIG (slice 2e-1)
+// ═══════════════════════════════════════════════════════════════════
+//
+// T3 differs from T1/T2 — each pair-group renders 5 cells:
+//   Ref / POS / 13opp-Ref / POS / PRJ
+// (the 13opp half is INSIDE the group, with a single shared PRJ
+// projection column for both halves). T3 also has Dir + Actual
+// fixed columns at the start. Slice 2e-1 captures the existing 6
+// pair-groups (prev, prevPlus1, prevMinus1, prevPlus2, prevMinus2,
+// prevPrev) — slice 2e-2 will reorder + add 4 new prevPrev-based
+// pair-groups (PP+1, PP-1, PP+2, PP-2) per the user's "Option A"
+// answer.
+//
+// Differences from T1/T2 configs:
+//   - engineRefKey  (snake_case): used to index into the
+//                   calculateReferences() output object that T3's
+//                   renderer relies on (refs.prev_plus_1 etc).
+//                   Mirrors PAIR_REFKEYS.
+//   - dataPair      (camelCase):  used for `data-pair` attribute /
+//                   pair-clickable selection — same convention as
+//                   T1/T2.
+//   - label13       header label for the 13-opposite half of the
+//                   pair-group ("P-13o", "PP+1-13o", ...).
+//   - prefix        same vocabulary as T1/T2 (pair-separator,
+//                   none, etc). Slice 2e-1 keeps every group's
+//                   first cell as pair-separator so the visual
+//                   match the previous hardcoded form.
+const T3_COLUMN_GROUPS = [
+    {key:'prev',       engineRefKey:'prev',         cssClass:'set-3', label:'P',   label13:'P-13o',   dataPair:'prev',       prefix:'pair-separator'},
+    {key:'prevPlus1',  engineRefKey:'prev_plus_1',  cssClass:'set-4', label:'P+1', label13:'P+1-13o', dataPair:'prevPlus1',  prefix:'pair-separator'},
+    {key:'prevMinus1', engineRefKey:'prev_minus_1', cssClass:'set-5', label:'P-1', label13:'P-1-13o', dataPair:'prevMinus1', prefix:'pair-separator'},
+    {key:'prevPlus2',  engineRefKey:'prev_plus_2',  cssClass:'set-6', label:'P+2', label13:'P+2-13o', dataPair:'prevPlus2',  prefix:'pair-separator'},
+    {key:'prevMinus2', engineRefKey:'prev_minus_2', cssClass:'set-7', label:'P-2', label13:'P-2-13o', dataPair:'prevMinus2', prefix:'pair-separator'},
+    {key:'prevPrev',   engineRefKey:'prev_prev',    cssClass:'set-8', label:'PP',  label13:'PP-13o',  dataPair:'prevPrev',   prefix:'pair-separator'},
+];
+
 // TABLE 3 - FIXED: Position codes + Visual separators
 function renderTable3() {
     // Clear any existing flash pulse interval before rebuilding DOM
@@ -2345,11 +2382,27 @@ function renderTable3() {
         const row = document.createElement('tr');
         
         if (prev === null) {
-            // 6 pairs × 5 cols = 30 data cols. Separator at start of each pair except first.
+            // First-row placeholder — N pair groups × 5 cells. Anchor
+            // (cell 0) of each group carries the prefix class from the
+            // config. For the 6-group T3 in slice 2e-1, anchor positions
+            // 0,5,10,15,20,25 with pair-separator on every group —
+            // byte-equivalent to the previous `if (c % 5 === 0 && c > 0)`
+            // placeholder loop (which separator-skipped only c=0; here
+            // we keep every group's first cell as pair-separator to
+            // match the BODY rows where every group also has a
+            // separator on its Ref cell).
             const emptyCells = [];
-            for (let c = 0; c < 30; c++) {
-                if (c % 5 === 0 && c > 0) {
-                    emptyCells.push('<td class="pair-separator"></td>');
+            const totalCells = T3_COLUMN_GROUPS.length * 5;
+            for (let c = 0; c < totalCells; c++) {
+                const groupIdx = Math.floor(c / 5);
+                const cellIdx  = c % 5;
+                if (cellIdx === 0) {
+                    const grp = T3_COLUMN_GROUPS[groupIdx];
+                    if (grp.prefix === 'pair-separator' && groupIdx > 0) {
+                        emptyCells.push('<td class="pair-separator"></td>');
+                    } else {
+                        emptyCells.push('<td></td>');
+                    }
                 } else {
                     emptyCells.push('<td></td>');
                 }
@@ -2363,11 +2416,17 @@ function renderTable3() {
         } else {
             const refs = calculateReferences(prev, prevPrev || prev);
             
+            // Slice 2e-1: derive the per-pair `data` and `projections`
+            // maps from T3_COLUMN_GROUPS instead of a hardcoded refKey
+            // list. Each entry's engineRefKey indexes into the
+            // calculateReferences() output. Same per-cell math as
+            // before — no formation change.
             const data = {};
-            ['prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev'].forEach(refKey => {
+            T3_COLUMN_GROUPS.forEach(grp => {
+                const refKey = grp.engineRefKey;
                 const refNum = refs[refKey];
                 const ref13Opp = DIGIT_13_OPPOSITES[refNum];
-                
+
                 data[refKey] = {
                     ref: refNum,
                     ref13Opp: ref13Opp,
@@ -2375,26 +2434,27 @@ function renderTable3() {
                     pair13Opp: calculatePositionCode(ref13Opp, spin.actual)
                 };
             });
-            
+
             const projections = {};
-            
+
             if (idx > 1) {
                 const prevSpin = spins[idx - 1];
                 const prevPrevSpin = spins[idx - 2].actual;
                 const prevRefs = calculateReferences(prevPrevSpin, idx > 2 ? spins[idx - 3].actual : prevPrevSpin);
-                
-                ['prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev'].forEach(refKey => {
+
+                T3_COLUMN_GROUPS.forEach(grp => {
+                    const refKey = grp.engineRefKey;
                     const prevRefNum = prevRefs[refKey];
                     const prevRef13Opp = DIGIT_13_OPPOSITES[prevRefNum];
-                    
+
                     const prevPair = calculatePositionCode(prevRefNum, prevSpin.actual);
                     const prevPair13 = calculatePositionCode(prevRef13Opp, prevSpin.actual);
                     const usePosCode = prevPair !== 'XX' ? prevPair : prevPair13;
-                    
+
                     const { purple, green } = generateAnchors(refs[refKey], DIGIT_13_OPPOSITES[refs[refKey]], usePosCode);
                     const betNumbers = expandAnchorsToBetNumbers(purple, green);
                     const isHit = betNumbers.includes(spin.actual);
-                    
+
                     projections[refKey] = { purple, green, betNumbers, isHit };
                 });
             }
@@ -2434,40 +2494,30 @@ function renderTable3() {
                 return `<td class="${cls}" data-pair="${dataPairAttr}">${formatPos(posCode)}</td>`;
             };
 
+            // Slice 2e-1: drive the 5-cell-per-group HTML from
+            // T3_COLUMN_GROUPS instead of a 30-line hardcoded template
+            // literal. Each iteration emits the same Ref / POS / 13Ref
+            // / POS / PRJ sequence, with the Ref cell carrying
+            // pair-separator (kept on every group as in the previous
+            // form, including the first one). Output is byte-equivalent
+            // for the existing 6 groups.
+            const groupHtml = T3_COLUMN_GROUPS.map(grp => {
+                const refKey = grp.engineRefKey;
+                const dp = grp.dataPair;
+                return `
+                    <td class="${cellClass(refKey, 'pair', true)}" data-pair="${dp}">${data[refKey].ref}</td>
+                    ${posCell(refKey, 'pair')}
+                    <td class="${cellClass(refKey, 'pair13Opp')}" data-pair="${dp}">${data[refKey].ref13Opp}</td>
+                    ${posCell(refKey, 'pair13Opp')}
+                    <td class="${projClass(refKey)}" data-pair="${dp}">${projHtml(refKey)}</td>
+                `;
+            }).join('');
+
             const _actColor2 = _T3_POS.has(spin.actual) ? '#22c55e' : _T3_NEG.has(spin.actual) ? '#ef4444' : '#94a3b8';
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
                 <td style="color:${_actColor2}"><strong>${spin.actual}</strong></td>
-                <td class="${cellClass('prev', 'pair', true)}" data-pair="prev">${data.prev.ref}</td>
-                ${posCell('prev', 'pair')}
-                <td class="${cellClass('prev', 'pair13Opp')}" data-pair="prev">${data.prev.ref13Opp}</td>
-                ${posCell('prev', 'pair13Opp')}
-                <td class="${projClass('prev')}" data-pair="prev">${projHtml('prev')}</td>
-                <td class="${cellClass('prev_plus_1', 'pair', true)}" data-pair="prevPlus1">${data.prev_plus_1.ref}</td>
-                ${posCell('prev_plus_1', 'pair')}
-                <td class="${cellClass('prev_plus_1', 'pair13Opp')}" data-pair="prevPlus1">${data.prev_plus_1.ref13Opp}</td>
-                ${posCell('prev_plus_1', 'pair13Opp')}
-                <td class="${projClass('prev_plus_1')}" data-pair="prevPlus1">${projHtml('prev_plus_1')}</td>
-                <td class="${cellClass('prev_minus_1', 'pair', true)}" data-pair="prevMinus1">${data.prev_minus_1.ref}</td>
-                ${posCell('prev_minus_1', 'pair')}
-                <td class="${cellClass('prev_minus_1', 'pair13Opp')}" data-pair="prevMinus1">${data.prev_minus_1.ref13Opp}</td>
-                ${posCell('prev_minus_1', 'pair13Opp')}
-                <td class="${projClass('prev_minus_1')}" data-pair="prevMinus1">${projHtml('prev_minus_1')}</td>
-                <td class="${cellClass('prev_plus_2', 'pair', true)}" data-pair="prevPlus2">${data.prev_plus_2.ref}</td>
-                ${posCell('prev_plus_2', 'pair')}
-                <td class="${cellClass('prev_plus_2', 'pair13Opp')}" data-pair="prevPlus2">${data.prev_plus_2.ref13Opp}</td>
-                ${posCell('prev_plus_2', 'pair13Opp')}
-                <td class="${projClass('prev_plus_2')}" data-pair="prevPlus2">${projHtml('prev_plus_2')}</td>
-                <td class="${cellClass('prev_minus_2', 'pair', true)}" data-pair="prevMinus2">${data.prev_minus_2.ref}</td>
-                ${posCell('prev_minus_2', 'pair')}
-                <td class="${cellClass('prev_minus_2', 'pair13Opp')}" data-pair="prevMinus2">${data.prev_minus_2.ref13Opp}</td>
-                ${posCell('prev_minus_2', 'pair13Opp')}
-                <td class="${projClass('prev_minus_2')}" data-pair="prevMinus2">${projHtml('prev_minus_2')}</td>
-                <td class="${cellClass('prev_prev', 'pair', true)}" data-pair="prevPrev">${data.prev_prev.ref}</td>
-                ${posCell('prev_prev', 'pair')}
-                <td class="${cellClass('prev_prev', 'pair13Opp')}" data-pair="prevPrev">${data.prev_prev.ref13Opp}</td>
-                ${posCell('prev_prev', 'pair13Opp')}
-                <td class="${projClass('prev_prev')}" data-pair="prevPrev">${projHtml('prev_prev')}</td>
+                ${groupHtml}
             `;
         }
 
@@ -2510,26 +2560,30 @@ function renderTable3() {
         const lastDirection = spins[spins.length - 1].direction;
         const nextDirection = lastDirection === 'C' ? 'AC' : 'C';
         
+        // Slice 2e-1: derive NEXT row data + projections from
+        // T3_COLUMN_GROUPS instead of a hardcoded refKey list.
         const data = {};
-        ['prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev'].forEach(refKey => {
+        T3_COLUMN_GROUPS.forEach(grp => {
+            const refKey = grp.engineRefKey;
             const refNum = refs[refKey];
             const ref13Opp = DIGIT_13_OPPOSITES[refNum];
             data[refKey] = { ref: refNum, ref13Opp: ref13Opp };
         });
-        
+
         const prevSpin = spins[spins.length - 1];
         const prevPrevSpin = spins[spins.length - 2].actual;
         const prevRefs = calculateReferences(prevPrevSpin, spins.length > 2 ? spins[spins.length - 3].actual : prevPrevSpin);
-        
+
         const nextProjections = {};
-        ['prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev'].forEach(refKey => {
+        T3_COLUMN_GROUPS.forEach(grp => {
+            const refKey = grp.engineRefKey;
             const prevRefNum = prevRefs[refKey];
             const prevRef13Opp = DIGIT_13_OPPOSITES[prevRefNum];
-            
+
             const prevPair = calculatePositionCode(prevRefNum, prevSpin.actual);
             const prevPair13 = calculatePositionCode(prevRef13Opp, prevSpin.actual);
             const usePosCode = prevPair !== 'XX' ? prevPair : prevPair13;
-            
+
             const { purple, green } = generateAnchors(refs[refKey], DIGIT_13_OPPOSITES[refs[refKey]], usePosCode);
             nextProjections[refKey] = { purple, green };
         });
@@ -2545,41 +2599,27 @@ function renderTable3() {
             return `<div>${purpleHtml}</div>${p.green.length > 0 ? '<div>' + greenHtml + '</div>' : ''}`;
         };
         
+        // Slice 2e-1: NEXT row driven from T3_COLUMN_GROUPS. Same
+        // 5-cell-per-group pattern as the previous hardcoded form,
+        // including pair-separator on every group's Ref cell.
+        const nextGroupHtml = T3_COLUMN_GROUPS.map(grp => {
+            const refKey = grp.engineRefKey;
+            const dp = grp.dataPair;
+            return `
+                <td class="pair-separator" data-pair="${dp}">${data[refKey].ref}</td>
+                <td data-pair="${dp}">-</td>
+                <td data-pair="${dp}">${data[refKey].ref13Opp}</td>
+                <td data-pair="${dp}">-</td>
+                <td class="col-prj" data-pair="${dp}">${nextProjHtml(refKey)}</td>
+            `;
+        }).join('');
+
         const nextRow = document.createElement('tr');
         nextRow.className = 'next-row';
         nextRow.innerHTML = `
             <td class="dir-${nextDirection.toLowerCase()}">${nextDirection}</td>
             <td><strong>NEXT</strong></td>
-            <td class="pair-separator" data-pair="prev">${data.prev.ref}</td>
-            <td data-pair="prev">-</td>
-            <td data-pair="prev">${data.prev.ref13Opp}</td>
-            <td data-pair="prev">-</td>
-            <td class="col-prj" data-pair="prev">${nextProjHtml('prev')}</td>
-            <td class="pair-separator" data-pair="prevPlus1">${data.prev_plus_1.ref}</td>
-            <td data-pair="prevPlus1">-</td>
-            <td data-pair="prevPlus1">${data.prev_plus_1.ref13Opp}</td>
-            <td data-pair="prevPlus1">-</td>
-            <td class="col-prj" data-pair="prevPlus1">${nextProjHtml('prev_plus_1')}</td>
-            <td class="pair-separator" data-pair="prevMinus1">${data.prev_minus_1.ref}</td>
-            <td data-pair="prevMinus1">-</td>
-            <td data-pair="prevMinus1">${data.prev_minus_1.ref13Opp}</td>
-            <td data-pair="prevMinus1">-</td>
-            <td class="col-prj" data-pair="prevMinus1">${nextProjHtml('prev_minus_1')}</td>
-            <td class="pair-separator" data-pair="prevPlus2">${data.prev_plus_2.ref}</td>
-            <td data-pair="prevPlus2">-</td>
-            <td data-pair="prevPlus2">${data.prev_plus_2.ref13Opp}</td>
-            <td data-pair="prevPlus2">-</td>
-            <td class="col-prj" data-pair="prevPlus2">${nextProjHtml('prev_plus_2')}</td>
-            <td class="pair-separator" data-pair="prevMinus2">${data.prev_minus_2.ref}</td>
-            <td data-pair="prevMinus2">-</td>
-            <td data-pair="prevMinus2">${data.prev_minus_2.ref13Opp}</td>
-            <td data-pair="prevMinus2">-</td>
-            <td class="col-prj" data-pair="prevMinus2">${nextProjHtml('prev_minus_2')}</td>
-            <td class="pair-separator" data-pair="prevPrev">${data.prev_prev.ref}</td>
-            <td data-pair="prevPrev">-</td>
-            <td data-pair="prevPrev">${data.prev_prev.ref13Opp}</td>
-            <td data-pair="prevPrev">-</td>
-            <td class="col-prj" data-pair="prevPrev">${nextProjHtml('prev_prev')}</td>
+            ${nextGroupHtml}
         `;
         
         tbody.appendChild(nextRow);
