@@ -43,7 +43,16 @@ const TEST_REFKEY_TO_PAIR_NAME = {
     'prev_minus_1': 'prevMinus1',
     'prev_plus_2': 'prevPlus2',
     'prev_minus_2': 'prevMinus2',
-    'prev_prev': 'prevPrev'
+    'prev_prev': 'prevPrev',
+    // NEW (slice 2a) — must mirror REFKEY_TO_PAIR_NAME in
+    // services/ai-auto-engine/ai-auto-engine.js. The Auto Test
+    // runner uses this map to label step rows by pair name; if it
+    // diverges from the engine's map, the AT report's "Pair" column
+    // will fall back to the raw refKey for the new pairs.
+    'prev_prev_plus_1':  'prevPrevPlus1',
+    'prev_prev_minus_1': 'prevPrevMinus1',
+    'prev_prev_plus_2':  'prevPrevPlus2',
+    'prev_prev_minus_2': 'prevPrevMinus2'
 };
 
 

@@ -57,8 +57,20 @@ const FILTER_COMBOS = [
     { key: 'both_both_set6',         table: 'both',     sign: 'both',     set: 'set6' },
 ];
 
-// Pair refKeys (same as renderer-3tables.js)
-const PAIR_REFKEYS = ['prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev'];
+// Pair refKeys (same as renderer-3tables.js).
+//
+// The trailing four (`prev_prev_plus_1` … `prev_prev_minus_2`) were
+// added in slice 2a to power the new PP±1 / PP±2 column groups in
+// T1/T2/T3. They are computed by `calculateReferences()` in
+// app/renderer-3tables.js using the SAME edge-case rules as the
+// existing prev-based refs, just applied to `prevPrev` instead of
+// `prev`. Engine training, flash detection and projection scoring
+// pick them up automatically because every loop in this file
+// iterates `PAIR_REFKEYS`.
+const PAIR_REFKEYS = [
+    'prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev',
+    'prev_prev_plus_1', 'prev_prev_minus_1', 'prev_prev_plus_2', 'prev_prev_minus_2'
+];
 
 // Map refKey → dataPair attribute (same as _PAIR_REFKEY_TO_DATA_PAIR)
 const REFKEY_TO_PAIR_NAME = {
@@ -67,7 +79,12 @@ const REFKEY_TO_PAIR_NAME = {
     'prev_minus_1': 'prevMinus1',
     'prev_plus_2': 'prevPlus2',
     'prev_minus_2': 'prevMinus2',
-    'prev_prev': 'prevPrev'
+    'prev_prev': 'prevPrev',
+    // NEW (slice 2a) — prevPrev-based ± 1 / ± 2 pairs
+    'prev_prev_plus_1':  'prevPrevPlus1',
+    'prev_prev_minus_1': 'prevPrevMinus1',
+    'prev_prev_plus_2':  'prevPrevPlus2',
+    'prev_prev_minus_2': 'prevPrevMinus2'
 };
 
 // Reverse mapping

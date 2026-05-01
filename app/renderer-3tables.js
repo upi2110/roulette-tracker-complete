@@ -562,7 +562,8 @@ function calculateWheelAnchors(numbers) {
 
 function calculateReferences(prev, prevPrev) {
     const refs = { prev, prev_prev: prevPrev };
-    
+
+    // ── prev-based refs (UNCHANGED — heart of table formation) ──
     if (prev === 36) {
         refs.prev_plus_1 = 35;
         refs.prev_plus_2 = 34;
@@ -579,7 +580,31 @@ function calculateReferences(prev, prevPrev) {
         refs.prev_minus_1 = Math.max(prev - 1, 0);
         refs.prev_minus_2 = Math.max(prev - 2, 0);
     }
-    
+
+    // ── prevPrev-based refs (NEW — mirrors the prev branch above
+    //    exactly, applied to the one-back spin instead of current).
+    //    Powers the new PP+1 / PP-1 / PP+2 / PP-2 column groups added
+    //    to T1/T2/T3 in slice 2b+. Engine pair-model auto-picks these
+    //    up via PAIR_REFKEYS in services/ai-auto-engine/. Returns
+    //    NaN if prevPrev is null/undefined (matches the existing
+    //    contract for prev — callers must guard `idx >= 2`).
+    if (prevPrev === 36) {
+        refs.prev_prev_plus_1 = 35;
+        refs.prev_prev_plus_2 = 34;
+        refs.prev_prev_minus_1 = 35;
+        refs.prev_prev_minus_2 = 34;
+    } else if (prevPrev === 0) {
+        refs.prev_prev_minus_1 = 10;
+        refs.prev_prev_minus_2 = 9;
+        refs.prev_prev_plus_1 = 1;
+        refs.prev_prev_plus_2 = 2;
+    } else {
+        refs.prev_prev_plus_1 = Math.min(prevPrev + 1, 36);
+        refs.prev_prev_plus_2 = Math.min(prevPrev + 2, 36);
+        refs.prev_prev_minus_1 = Math.max(prevPrev - 1, 0);
+        refs.prev_prev_minus_2 = Math.max(prevPrev - 2, 0);
+    }
+
     return refs;
 }
 
