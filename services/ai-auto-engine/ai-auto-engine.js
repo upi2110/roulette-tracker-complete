@@ -876,10 +876,29 @@ class AIAutoEngine {
         let t3Numbers = [];
         let t3BestPair = null;
 
+        // Slice 2g: restrict pair scoring to only the families the user
+        // has marked visible in the global pair-family dropdown.
+        // window.getVisiblePairFamilies() (set up in renderer-3tables.js)
+        // returns a Set of camelCase pair names — we map each refKey
+        // through REFKEY_TO_PAIR_NAME to compare. When the function
+        // isn't available (Node tests / non-browser callers) we don't
+        // filter — backtests retain full pair coverage. The map is
+        // empty / undefined gracefully — fall through to legacy
+        // behaviour. Only applies inside live decide(); the Auto Test
+        // runner uses _simulateDecision which is intentionally NOT
+        // filtered (backtests need to score every pair).
+        const _visibleFamilies = (typeof window !== 'undefined' && typeof window.getVisiblePairFamilies === 'function')
+            ? window.getVisiblePairFamilies()
+            : null;
+
         if (flashingPairs.size > 0) {
             const t3Candidates = [];
             for (const [refKey, flashInfo] of flashingPairs) {
                 const pairName = REFKEY_TO_PAIR_NAME[refKey] || refKey;
+                // Slice 2g filter: skip pairs whose family is hidden.
+                if (_visibleFamilies && _visibleFamilies.size > 0 && !_visibleFamilies.has(pairName)) {
+                    continue;
+                }
                 const projection = this._computeProjectionForPair(plainSpins, idx, refKey);
                 if (projection && projection.numbers.length > 0) {
                     t3Candidates.push({ refKey, pairName, numbers: projection.numbers, data: projection });

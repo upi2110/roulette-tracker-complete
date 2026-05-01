@@ -1048,6 +1048,18 @@ function _persistVisiblePairFamilies(set) {
 // to keep localStorage + UI count badge + tables in sync.
 let _visiblePairFamilies = _loadVisiblePairFamilies();
 
+// Slice 2g: expose the visible-families Set on window so the engine
+// (services/ai-auto-engine/ai-auto-engine.js) can restrict its pair
+// scoring to only the families the user has chosen to display. The
+// engine reads `window.getVisiblePairFamilies()` and filters
+// flashingPairs before computing the best pair / projection.
+// Always returns a fresh Set copy so callers can't mutate state.
+if (typeof window !== 'undefined') {
+    window.getVisiblePairFamilies = function() {
+        return new Set(_visiblePairFamilies);
+    };
+}
+
 function _setVisiblePairFamilies(set) {
     _visiblePairFamilies = new Set(set);
     _persistVisiblePairFamilies(_visiblePairFamilies);
