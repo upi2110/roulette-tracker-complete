@@ -898,10 +898,33 @@ function resetAll() {
     }
 }
 
+/**
+ * Snap each `.grid-wrapper` to its bottom row after a render() pass.
+ *
+ * Background: each renderTable*() does `tbody.innerHTML = ''` and then
+ * repopulates from the full `spins` array (no more 8-row clip). When
+ * the tbody is wiped the wrapper's scrollHeight collapses and the
+ * browser clamps scrollTop to a low value. After the repopulate runs
+ * scrollTop is effectively reset to 0 — the OLDEST row would be on
+ * screen, hiding the newest entry just placed.
+ *
+ * Snapping to bottom restores the "latest row always visible" feel
+ * the previous 8-row clip used to give for free. The user can still
+ * scroll up between spin entries to read older rows; the next render
+ * will snap back to the newest row.
+ */
+function _scrollGridWrapperToBottom(wrapperId) {
+    const w = document.getElementById(wrapperId);
+    if (w) w.scrollTop = w.scrollHeight;
+}
+
 function render() {
     renderTable1();
     renderTable2();
     renderTable3();
+    _scrollGridWrapperToBottom('gridWrapper1');
+    _scrollGridWrapperToBottom('gridWrapper2');
+    _scrollGridWrapperToBottom('gridWrapper3');
     document.getElementById('info').textContent = `Spins: ${spins.length}`;
 
     // Re-trigger AI predictions after tables update (only if 3+ spins and pairs selected)
@@ -916,7 +939,13 @@ function renderTable1() {
     const tbody = document.getElementById('table1Body');
     tbody.innerHTML = '';
 
-    const startIdx = Math.max(0, spins.length - 8);
+    // Render the full history; the .grid-wrapper handles scrolling.
+    // Previously this clipped to the last 8 rows, which made older
+    // spins invisible. The display cap was a UI choice, not part of
+    // the formation/anchor/flash logic — those still operate on the
+    // full `spins` array (passed through to _computeT1FlashTargets
+    // unchanged below).
+    const startIdx = 0;
     const visibleSpins = spins.slice(startIdx);
 
     // ── T1 Anchor Flash Computation ──
@@ -1265,7 +1294,10 @@ function renderTable2() {
     const tbody = document.getElementById('table2Body');
     tbody.innerHTML = '';
 
-    const startIdx = Math.max(0, spins.length - 8);
+    // Render the full history; .grid-wrapper handles scrolling.
+    // See renderTable1 for the rationale — this used to clip to the
+    // last 8 rows. Formation logic untouched.
+    const startIdx = 0;
     const visibleSpins = spins.slice(startIdx);
 
     // ── T2 Anchor Flash Computation ──
@@ -1960,8 +1992,11 @@ function renderTable3() {
 
     const tbody = document.getElementById('table3Body');
     tbody.innerHTML = '';
-    
-    const startIdx = Math.max(0, spins.length - 8);
+
+    // Render the full history; .grid-wrapper handles scrolling.
+    // See renderTable1 for the rationale — this used to clip to the
+    // last 8 rows. Formation logic untouched.
+    const startIdx = 0;
     const visibleSpins = spins.slice(startIdx);
 
     // Pre-compute ±1 flash targets BEFORE building DOM rows.

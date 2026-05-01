@@ -67,12 +67,41 @@ h1 { color: #2c3e50; margin-bottom: 12px; text-align: center; font-size: 16px; }
     font-weight: 700;
     color: #34495e;
 }
-.grid-wrapper { 
-    overflow-x: auto; 
-    max-height: 320px; 
-    overflow-y: auto; 
-    border: 1px solid #ddd; 
+.grid-wrapper {
+    overflow-x: auto;
+    /* Smaller cap so the per-table scrollbar appears even with a
+       modest spin history (was 320px → only became scrollable past
+       ~20 rows). 200px shows ~10-12 rows before scrolling kicks in,
+       which keeps each table a fixed visual size and lets the user
+       scroll OLD rows independently of the page-level scrollbar. */
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
     width: 100%;
+    /* Reserve scrollbar gutter so the column widths don't jump when
+       the bar appears on a freshly-grown table. */
+    scrollbar-gutter: stable;
+}
+
+/* Force the scrollbar to be visible at all times (default macOS
+   auto-hide makes users think there's no scroll affordance).
+   Webkit-only — gracefully ignored on browsers that don't support
+   it. Works in Electron's Chromium renderer. */
+.grid-wrapper::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+.grid-wrapper::-webkit-scrollbar-track {
+    background: #f0f0f0;
+    border-radius: 4px;
+}
+.grid-wrapper::-webkit-scrollbar-thumb {
+    background: #b0b0b0;
+    border-radius: 4px;
+    border: 1px solid #f0f0f0;
+}
+.grid-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #888;
 }
 
 /* Tables - COMPACT but READABLE */
