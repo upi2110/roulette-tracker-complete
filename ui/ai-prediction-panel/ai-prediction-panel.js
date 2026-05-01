@@ -185,10 +185,20 @@ class AIPredictionPanel {
             'ref0': '0', 'ref0_13opp': '0-13OPP',
             'ref19': '19', 'ref19_13opp': '19-13OPP',
             'prev': 'P', 'prevPlus1': 'P+1', 'prevMinus1': 'P-1',
-            'prevPlus2': 'P+2', 'prevMinus2': 'P-2', 'prevPrev': 'P-PREV',
+            'prevPlus2': 'P+2', 'prevMinus2': 'P-2', 'prevPrev': 'PP',
             'prev_13opp': 'P-13OPP', 'prevPlus1_13opp': 'P+1-13OPP',
             'prevMinus1_13opp': 'P-1-13OPP', 'prevPlus2_13opp': 'P+2-13OPP',
-            'prevMinus2_13opp': 'P-2-13OPP'
+            'prevMinus2_13opp': 'P-2-13OPP',
+            // Slice 2d-2: new prevPrev-based pairs (and PP·13).
+            'prevPrev_13opp':       'PP-13OPP',
+            'prevPrevPlus1':        'PP+1',
+            'prevPrevPlus1_13opp':  'PP+1-13OPP',
+            'prevPrevMinus1':       'PP-1',
+            'prevPrevMinus1_13opp': 'PP-1-13OPP',
+            'prevPrevPlus2':        'PP+2',
+            'prevPrevPlus2_13opp':  'PP+2-13OPP',
+            'prevPrevMinus2':       'PP-2',
+            'prevPrevMinus2_13opp': 'PP-2-13OPP'
         };
 
         // Table 3
@@ -210,11 +220,16 @@ class AIPredictionPanel {
             })
             .map(k => ({ key: k, display: pairDisplayNames[k] || k, data: t1Next[k] }));
 
-        // Table 2 (hide 13OPP pairs — too many to work with)
+        // Slice 2d-2: T2 now displays 13OPP halves alongside their main
+        // pairs (matches T1's 22-column layout). The previous "hide
+        // 13OPP pairs from Table 2" filter would silently make those
+        // checkboxes/clicks unavailable; removed. Same exclusion as T1
+        // for ref0_13opp / ref19_13opp (those don't appear in the
+        // projection data anyway).
         const t2Next = tableData.table2NextProjections || {};
         this.table2Pairs = Object.keys(t2Next)
             .filter(k => {
-                if (k.endsWith('_13opp')) return false; // Hide 13OPP pairs from Table 2
+                if (k === 'ref0_13opp' || k === 'ref19_13opp') return false;
                 const d = t2Next[k];
                 return d && (d.first?.numbers?.length > 0 || d.second?.numbers?.length > 0 || d.third?.numbers?.length > 0);
             })
@@ -241,7 +256,10 @@ class AIPredictionPanel {
     }
 
     _getPairColor(pairKey) {
-        // Unified color map across all 3 tables
+        // Unified color map across all 3 tables.
+        // Slice 2d-2: extended for the new prevPrev-based pairs and
+        // prevPrev_13opp. Each pair-group shares its color with its
+        // 13OPP half so they read as a single visual family.
         const colorMap = {
             'ref0': '#dc2626', 'ref0_13opp': '#dc2626',
             'ref19': '#ea580c', 'ref19_13opp': '#ea580c',
@@ -250,7 +268,12 @@ class AIPredictionPanel {
             'prevMinus1': '#0d9488', 'prevMinus1_13opp': '#0d9488',
             'prevPlus2': '#2563eb', 'prevPlus2_13opp': '#2563eb',
             'prevMinus2': '#7c3aed', 'prevMinus2_13opp': '#7c3aed',
-            'prevPrev': '#db2777'
+            'prevPrev': '#db2777', 'prevPrev_13opp': '#db2777',
+            // New PP-based pair-groups (palette mirrors styles-3tables.css):
+            'prevPrevPlus1':        '#be123c', 'prevPrevPlus1_13opp':  '#be123c', // rose
+            'prevPrevMinus1':       '#4d7c0f', 'prevPrevMinus1_13opp': '#4d7c0f', // lime
+            'prevPrevPlus2':        '#155e75', 'prevPrevPlus2_13opp':  '#155e75', // cyan
+            'prevPrevMinus2':       '#3730a3', 'prevPrevMinus2_13opp': '#3730a3'  // indigo
         };
         return colorMap[pairKey] || '#64748b';
     }

@@ -250,6 +250,11 @@ function getTable1NextProjections() {
     if (spins.length < 1) return {};
 
     const lastSpin = spins[spins.length - 1].actual;
+    // Slice 2d-2: prevPrev needed for the new PP-based pairs so the
+    // AI prediction panel sees them as available pairs and clicks
+    // can select them. Null-safe — pairs return undefined entries
+    // and the panel filters them out.
+    const prevPrev = spins.length >= 2 ? spins[spins.length - 2].actual : null;
     const projections = {};
 
     const pairs = {
@@ -261,6 +266,13 @@ function getTable1NextProjections() {
         prevPlus2:  Math.min(lastSpin + 2, 36),
         prevMinus2: Math.max(lastSpin - 2, 0)
     };
+    if (prevPrev !== null) {
+        pairs.prevPrev       = prevPrev;
+        pairs.prevPrevPlus1  = Math.min(prevPrev + 1, 36);
+        pairs.prevPrevMinus1 = Math.max(prevPrev - 1, 0);
+        pairs.prevPrevPlus2  = Math.min(prevPrev + 2, 36);
+        pairs.prevPrevMinus2 = Math.max(prevPrev - 2, 0);
+    }
 
     Object.entries(pairs).forEach(([pairKey, refNum]) => {
         const ref13Opp = DIGIT_13_OPPOSITES[refNum];
@@ -304,6 +316,8 @@ function getTable2NextProjections() {
     if (spins.length < 1) return {};
 
     const lastSpin = spins[spins.length - 1].actual;
+    // Slice 2d-2: prevPrev needed for the new PP-based pairs.
+    const prevPrev = spins.length >= 2 ? spins[spins.length - 2].actual : null;
     const projections = {};
 
     const pairs = {
@@ -315,6 +329,13 @@ function getTable2NextProjections() {
         prevPlus2:  Math.min(lastSpin + 2, 36),
         prevMinus2: Math.max(lastSpin - 2, 0)
     };
+    if (prevPrev !== null) {
+        pairs.prevPrev       = prevPrev;
+        pairs.prevPrevPlus1  = Math.min(prevPrev + 1, 36);
+        pairs.prevPrevMinus1 = Math.max(prevPrev - 1, 0);
+        pairs.prevPrevPlus2  = Math.min(prevPrev + 2, 36);
+        pairs.prevPrevMinus2 = Math.max(prevPrev - 2, 0);
+    }
 
     Object.entries(pairs).forEach(([pairKey, refNum]) => {
         const ref13Opp = DIGIT_13_OPPOSITES[refNum];
@@ -1506,17 +1527,80 @@ function renderTable1() {
 // the prefix vocabulary is just 'none' for the first group and
 // 'pair-separator' for every subsequent group, matching the
 // original `if (c % 7 === 0 && c > 0)` placeholder loop.
+// Slice 2d-2: T2 extended to the 22-column layout matching T1.
+// Adds 15 new column groups: 13OPP halves for the 6 prev-based
+// pairs, plus PP, PP·13, and the 4 prevPrev-based pair-groups
+// (each with a 13OPP half). Same colors as T1 — every refKey
+// gets the same color in T2 as in T1 (per user spec "same pair,
+// same colour across all the tables").
 const T2_COLUMN_GROUPS = [
-    {key:'ref0',       computeRef:()=>0,                   cssClass:'set-1', label:'0',   dataPair:'ref0',       is13Opp:false, prefix:'none'},
-    {key:'ref19',      computeRef:()=>19,                  cssClass:'set-2', label:'19',  dataPair:'ref19',      is13Opp:false, prefix:'pair-separator'},
-    {key:'prev',       computeRef:(p)=>p,                  cssClass:'set-3', label:'P',   dataPair:'prev',       is13Opp:false, prefix:'pair-separator'},
-    {key:'prevPlus1',  computeRef:(p)=>Math.min(p+1, 36),  cssClass:'set-4', label:'P+1', dataPair:'prevPlus1',  is13Opp:false, prefix:'pair-separator'},
-    {key:'prevMinus1', computeRef:(p)=>Math.max(p-1, 0),   cssClass:'set-5', label:'P-1', dataPair:'prevMinus1', is13Opp:false, prefix:'pair-separator'},
-    {key:'prevPlus2',  computeRef:(p)=>Math.min(p+2, 36),  cssClass:'set-6', label:'P+2', dataPair:'prevPlus2',  is13Opp:false, prefix:'pair-separator'},
-    {key:'prevMinus2', computeRef:(p)=>Math.max(p-2, 0),   cssClass:'set-7', label:'P-2', dataPair:'prevMinus2', is13Opp:false, prefix:'pair-separator'},
+    {key:'ref0',                    computeRef:()=>0,                                                              cssClass:'set-1',  label:'0',         dataPair:'ref0',                    is13Opp:false, prefix:'none'},
+    {key:'ref19',                   computeRef:()=>19,                                                             cssClass:'set-2',  label:'19',        dataPair:'ref19',                   is13Opp:false, prefix:'pair-separator'},
+
+    {key:'prevPlus1',               computeRef:(p)=>Math.min(p+1, 36),                                             cssClass:'set-4',  label:'P+1',       dataPair:'prevPlus1',               is13Opp:false, prefix:'pair-separator'},
+    {key:'prevPlus1_13opp',         computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+1, 36)],                         cssClass:'set-4',  label:'P+1-13OPP', dataPair:'prevPlus1_13opp',         is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevMinus1',              computeRef:(p)=>Math.max(p-1, 0),                                              cssClass:'set-5',  label:'P-1',       dataPair:'prevMinus1',              is13Opp:false, prefix:'pair-separator'},
+    {key:'prevMinus1_13opp',        computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-1, 0)],                          cssClass:'set-5',  label:'P-1-13OPP', dataPair:'prevMinus1_13opp',        is13Opp:true,  prefix:'copair-separator'},
+
+    {key:'prevPrevPlus1',           computeRef:(p, pp)=>pp==null?null:Math.min(pp+1, 36),                          cssClass:'set-9',  label:'PP+1',      dataPair:'prevPrevPlus1',           is13Opp:false, prefix:'pair-separator'},
+    {key:'prevPrevPlus1_13opp',     computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.min(pp+1, 36)],      cssClass:'set-9',  label:'PP+1-13OPP',dataPair:'prevPrevPlus1_13opp',     is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrevMinus1',          computeRef:(p, pp)=>pp==null?null:Math.max(pp-1, 0),                           cssClass:'set-10', label:'PP-1',      dataPair:'prevPrevMinus1',          is13Opp:false, prefix:'pair-separator'},
+    {key:'prevPrevMinus1_13opp',    computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.max(pp-1, 0)],       cssClass:'set-10', label:'PP-1-13OPP',dataPair:'prevPrevMinus1_13opp',    is13Opp:true,  prefix:'copair-separator'},
+
+    {key:'prev',                    computeRef:(p)=>p,                                                             cssClass:'set-3',  label:'P',         dataPair:'prev',                    is13Opp:false, prefix:'pair-separator'},
+    {key:'prev_13opp',              computeRef:(p)=>DIGIT_13_OPPOSITES[p],                                         cssClass:'set-3',  label:'P-13OPP',   dataPair:'prev_13opp',              is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrev',                computeRef:(p, pp)=>pp==null?null:pp,                                          cssClass:'set-8',  label:'PP',        dataPair:'prevPrev',                is13Opp:false, prefix:'pair-separator'},
+    {key:'prevPrev_13opp',          computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[pp],                      cssClass:'set-8',  label:'PP-13OPP',  dataPair:'prevPrev_13opp',          is13Opp:true,  prefix:'copair-separator'},
+
+    {key:'prevPlus2',               computeRef:(p)=>Math.min(p+2, 36),                                             cssClass:'set-6',  label:'P+2',       dataPair:'prevPlus2',               is13Opp:false, prefix:'pair-separator'},
+    {key:'prevPlus2_13opp',         computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+2, 36)],                         cssClass:'set-6',  label:'P+2-13OPP', dataPair:'prevPlus2_13opp',         is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevMinus2',              computeRef:(p)=>Math.max(p-2, 0),                                              cssClass:'set-7',  label:'P-2',       dataPair:'prevMinus2',               is13Opp:false, prefix:'pair-separator'},
+    {key:'prevMinus2_13opp',        computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-2, 0)],                          cssClass:'set-7',  label:'P-2-13OPP', dataPair:'prevMinus2_13opp',        is13Opp:true,  prefix:'copair-separator'},
+
+    {key:'prevPrevPlus2',           computeRef:(p, pp)=>pp==null?null:Math.min(pp+2, 36),                          cssClass:'set-11', label:'PP+2',      dataPair:'prevPrevPlus2',           is13Opp:false, prefix:'pair-separator'},
+    {key:'prevPrevPlus2_13opp',     computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.min(pp+2, 36)],      cssClass:'set-11', label:'PP+2-13OPP',dataPair:'prevPrevPlus2_13opp',     is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrevMinus2',          computeRef:(p, pp)=>pp==null?null:Math.max(pp-2, 0),                           cssClass:'set-12', label:'PP-2',      dataPair:'prevPrevMinus2',          is13Opp:false, prefix:'pair-separator'},
+    {key:'prevPrevMinus2_13opp',    computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.max(pp-2, 0)],       cssClass:'set-12', label:'PP-2-13OPP',dataPair:'prevPrevMinus2_13opp',    is13Opp:true,  prefix:'copair-separator'},
 ];
 
+/**
+ * Generate T2's <thead> from T2_COLUMN_GROUPS. Same shape as
+ * _renderTable1Head — see that function's comment for the
+ * design rationale. Idempotent.
+ */
+function _renderTable2Head() {
+    const head = document.getElementById('table2Head');
+    if (!head) return;
+
+    const SUB_LABELS = ['Ref', '1st', 'C', '2nd', 'C', '3rd', 'C'];
+
+    const row1Cells = T2_COLUMN_GROUPS.map(grp => {
+        const sepCls = grp.prefix === 'pair-separator'   ? ' pair-separator'
+                     : grp.prefix === 'copair-separator' ? ' copair-separator'
+                     : '';
+        return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" colspan="7" data-pair="${grp.dataPair}">${grp.label}</th>`;
+    }).join('');
+
+    const row2Cells = T2_COLUMN_GROUPS.map(grp => {
+        return SUB_LABELS.map((lbl, sIdx) => {
+            let sepCls = '';
+            if (sIdx === 0) {
+                if (grp.prefix === 'pair-separator')        sepCls = ' pair-separator';
+                else if (grp.prefix === 'copair-separator') sepCls = ' copair-separator';
+            }
+            return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}">${lbl}</th>`;
+        }).join('');
+    }).join('');
+
+    head.innerHTML = `<tr>${row1Cells}</tr><tr>${row2Cells}</tr>`;
+}
+
 function renderTable2() {
+    // Build / refresh thead from T2_COLUMN_GROUPS. Same pattern as
+    // renderTable1 — slice 2f's dropdown will trigger a re-render
+    // to pick up filtered groups.
+    _renderTable2Head();
+
     const tbody = document.getElementById('table2Body');
     tbody.innerHTML = '';
 
@@ -1582,12 +1666,20 @@ function renderTable2() {
             return '';
         };
 
-        const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '') => {
+        const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            // Slice 2d-2: copair-separator class supported so the new
+            // 13OPP halves of each pair-group can render the subtle
+            // white-border within-pair divider, while the main halves
+            // keep the bold pair-separator border.
             const anchorClass = 'anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
+                (addCopairSep ? ' copair-separator' : '') +
                 (is13Opp ? ' opp13-cell' : '');
-            html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
+            // Blank the cell content when refNum is null (new
+            // prevPrev-based groups on a session shorter than 2 spins).
+            const _anchorContent = (anchorNum === null || anchorNum === undefined || Number.isNaN(anchorNum)) ? '' : anchorNum;
+            html.push(`<td class="${anchorClass}"${dp}><strong>${_anchorContent}</strong></td>`);
 
             const lookupRow = getLookupRow(refNum);
 
@@ -1622,18 +1714,16 @@ function renderTable2() {
             });
         };
 
-        // Slice 2d-1: drive cells from T2_COLUMN_GROUPS instead of the
-        // previous 7 hand-written renderTargetGroup() calls. Each
-        // entry's prefix dictates whether the anchor cell gets a
-        // pair-separator (for groups after the first). Identical
-        // output to the previous form for the 7 existing groups.
-        // prevPrev not used by current entries' computeRef (all are
-        // prev-only or static); passed for forward-compat with 2d-2.
+        // Drive cells from T2_COLUMN_GROUPS. Slice 2d-2: separate the
+        // pair-separator (between pair-groups) from the copair-separator
+        // (between main and 13OPP within a pair-group) so the new
+        // 13OPP halves render with the subtle within-pair divider.
         const prevPrevForRow = idx >= 2 ? spins[idx - 2].actual : null;
         T2_COLUMN_GROUPS.forEach((grp) => {
             const refNum = grp.computeRef(prev, prevPrevForRow);
-            const addSeparator = (grp.prefix === 'pair-separator' || grp.prefix === 'copair-separator');
-            renderTargetGroup(refNum, refNum, addSeparator, grp.is13Opp, grp.dataPair);
+            const addSeparator = (grp.prefix === 'pair-separator');
+            const addCopairSep = (grp.prefix === 'copair-separator');
+            renderTargetGroup(refNum, refNum, addSeparator, grp.is13Opp, grp.dataPair, addCopairSep);
         });
 
         row.innerHTML = html.join('');
@@ -1644,12 +1734,15 @@ function renderTable2() {
         const lastSpin = spins[spins.length - 1].actual;
         const html = [];
 
-        const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '') => {
+        const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            // Slice 2d-2: copair-separator support; null-handling.
             const anchorClass = 'anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
+                (addCopairSep ? ' copair-separator' : '') +
                 (is13Opp ? ' opp13-cell' : '');
-            html.push(`<td class="${anchorClass}"${dp}><strong>${anchorNum}</strong></td>`);
+            const _anchorContent = (anchorNum === null || anchorNum === undefined || Number.isNaN(anchorNum)) ? '' : anchorNum;
+            html.push(`<td class="${anchorClass}"${dp}><strong>${_anchorContent}</strong></td>`);
 
             const lookupRow = getLookupRow(refNum);
 
@@ -1670,14 +1763,15 @@ function renderTable2() {
             });
         };
 
-        // Slice 2d-1: NEXT row driven from T2_COLUMN_GROUPS. Same
-        // arguments the previous 7 hand-written calls produced for
-        // the existing 7 groups.
+        // NEXT row driven from T2_COLUMN_GROUPS. Slice 2d-2: separate
+        // pair-separator and copair-separator the same way the data
+        // row above does.
         const prevPrevForNext = (spins.length >= 2) ? spins[spins.length - 2].actual : null;
         T2_COLUMN_GROUPS.forEach((grp) => {
             const refNum = grp.computeRef(lastSpin, prevPrevForNext);
-            const addSeparator = (grp.prefix === 'pair-separator' || grp.prefix === 'copair-separator');
-            renderNextGroup(refNum, refNum, addSeparator, grp.is13Opp, grp.dataPair);
+            const addSeparator = (grp.prefix === 'pair-separator');
+            const addCopairSep = (grp.prefix === 'copair-separator');
+            renderNextGroup(refNum, refNum, addSeparator, grp.is13Opp, grp.dataPair, addCopairSep);
         });
 
         const nextRow = document.createElement('tr');
@@ -1923,30 +2017,28 @@ function _writeFlashDiagnostics(lines) {
 const _T1_VALID_CODES = new Set(['S+0', 'SL+1', 'SR+1', 'O+0', 'OL+1', 'OR+1']);
 const _T2_VALID_CODES = new Set(['S+0', 'SL+1', 'SR+1', 'SL+2', 'SR+2', 'O+0', 'OL+1', 'OR+1', 'OL+2', 'OR+2']);
 
-const _T1_PAIR_DEFS = [
-    { dataPair: 'ref0', getRefNum: () => 0 },
-    { dataPair: 'ref19', getRefNum: () => 19 },
-    { dataPair: 'prev', getRefNum: (prev) => prev },
-    { dataPair: 'prev_13opp', getRefNum: (prev) => DIGIT_13_OPPOSITES[prev] },
-    { dataPair: 'prevPlus1', getRefNum: (prev) => Math.min(prev + 1, 36) },
-    { dataPair: 'prevPlus1_13opp', getRefNum: (prev) => DIGIT_13_OPPOSITES[Math.min(prev + 1, 36)] },
-    { dataPair: 'prevMinus1', getRefNum: (prev) => Math.max(prev - 1, 0) },
-    { dataPair: 'prevMinus1_13opp', getRefNum: (prev) => DIGIT_13_OPPOSITES[Math.max(prev - 1, 0)] },
-    { dataPair: 'prevPlus2', getRefNum: (prev) => Math.min(prev + 2, 36) },
-    { dataPair: 'prevPlus2_13opp', getRefNum: (prev) => DIGIT_13_OPPOSITES[Math.min(prev + 2, 36)] },
-    { dataPair: 'prevMinus2', getRefNum: (prev) => Math.max(prev - 2, 0) },
-    { dataPair: 'prevMinus2_13opp', getRefNum: (prev) => DIGIT_13_OPPOSITES[Math.max(prev - 2, 0)] },
-];
-
-const _T2_PAIR_DEFS = [
-    { dataPair: 'ref0', getRefNum: () => 0 },
-    { dataPair: 'ref19', getRefNum: () => 19 },
-    { dataPair: 'prev', getRefNum: (prev) => prev },
-    { dataPair: 'prevPlus1', getRefNum: (prev) => Math.min(prev + 1, 36) },
-    { dataPair: 'prevMinus1', getRefNum: (prev) => Math.max(prev - 1, 0) },
-    { dataPair: 'prevPlus2', getRefNum: (prev) => Math.min(prev + 2, 36) },
-    { dataPair: 'prevMinus2', getRefNum: (prev) => Math.max(prev - 2, 0) },
-];
+// Slice 2d-2: derive pair-defs for flash detection from the column-
+// group configs so the new prevPrev-based pairs (PP+1, PP-1, PP, etc.)
+// auto-participate in golden-highlight scanning. Previously these were
+// hardcoded sister-arrays that had to be kept in lockstep with the
+// renderer's call sequence — a footgun that caused the new pairs to
+// silently miss flash detection in slice 2b2 / 2d-2.
+//
+// computeRef accepts (prev, prevPrev); _computeAnchorFlashTargets
+// passes both. Returning null for null-prevPrev rows produces no
+// lookup-row, so the flash scan correctly treats those as no-hit.
+function _t1PairDefs() {
+    return T1_COLUMN_GROUPS.map(g => ({
+        dataPair: g.dataPair,
+        getRefNum: g.computeRef
+    }));
+}
+function _t2PairDefs() {
+    return T2_COLUMN_GROUPS.map(g => ({
+        dataPair: g.dataPair,
+        getRefNum: g.computeRef
+    }));
+}
 
 /**
  * Core flash computation for Tables 1 & 2.
@@ -1969,12 +2061,17 @@ function _computeAnchorFlashTargets(allSpins, startIdx, visibleCount, pairDefs, 
         if (spinIdx === 0) continue;  // idx 0 is the empty header row
 
         const prev = allSpins[spinIdx - 1].actual;
+        // Slice 2d-2: prevPrev needed by new prevPrev-based pair computeRefs.
+        // Returns null for spinIdx=1 (no spin before prev); the new pairs'
+        // computeRef returns null for null-prevPrev, getLookupRow then
+        // returns null, and the row is treated as no-hit for those pairs.
+        const prevPrev = spinIdx >= 2 ? allSpins[spinIdx - 2].actual : null;
         const actual = allSpins[spinIdx].actual;
 
         const pairHits = {};  // { dataPair: Set<anchorIdx> }
 
         pairDefs.forEach(({ dataPair, getRefNum }) => {
-            const refNum = getRefNum(prev);
+            const refNum = getRefNum(prev, prevPrev);
             const lookupRow = getLookupRow(refNum);
             if (!lookupRow) {
                 pairHits[dataPair] = new Set();
@@ -2032,11 +2129,11 @@ function _computeAnchorFlashTargets(allSpins, startIdx, visibleCount, pairDefs, 
 }
 
 function _computeT1FlashTargets(allSpins, startIdx, visibleCount) {
-    return _computeAnchorFlashTargets(allSpins, startIdx, visibleCount, _T1_PAIR_DEFS, _T1_VALID_CODES);
+    return _computeAnchorFlashTargets(allSpins, startIdx, visibleCount, _t1PairDefs(), _T1_VALID_CODES);
 }
 
 function _computeT2FlashTargets(allSpins, startIdx, visibleCount) {
-    return _computeAnchorFlashTargets(allSpins, startIdx, visibleCount, _T2_PAIR_DEFS, _T2_VALID_CODES);
+    return _computeAnchorFlashTargets(allSpins, startIdx, visibleCount, _t2PairDefs(), _T2_VALID_CODES);
 }
 
 /**
