@@ -70,6 +70,13 @@ class AutoTestUI {
                     </div>
                 </div>
 
+                <!-- Per-method parameters area. Visibility / contents are
+                     swapped by _renderMethodParams() based on the method
+                     dropdown. Methods that do not declare params keep
+                     this row hidden so the original UI is untouched and
+                     the runner falls back to its built-in defaults. -->
+                <div id="autoTestMethodParams" style="display:none;padding:6px 16px;border-bottom:1px solid #0f3460;background:rgba(15,52,96,0.35);"></div>
+
                 <!-- File info + manual input -->
                 <div style="padding:8px 16px;border-bottom:1px solid #0f3460;">
                     <div id="autoTestFileInfo" style="font-size:11px;color:#94a3b8;margin-bottom:4px;">No test data loaded</div>
@@ -108,6 +115,7 @@ class AutoTestUI {
                         <button class="auto-test-tab" data-tab="strategy1" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 1</button>
                         <button class="auto-test-tab" data-tab="strategy2" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 2</button>
                         <button class="auto-test-tab" data-tab="strategy3" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 3</button>
+                        <button class="auto-test-tab" data-tab="strategy4" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 4</button>
                     </div>
                 </div>
 
@@ -148,10 +156,14 @@ class AutoTestUI {
                 // updates the moment the method changes.
                 this._refreshTrainingBadge();
                 this._applyMethodVisibility();
+                this._renderMethodParams();
             });
         }
         // Apply initial show/hide for manual-entry section based on default method.
         this._applyMethodVisibility();
+        // Initial paint of the per-method parameters row (empty for the
+        // default method; populated when the user picks 'test').
+        this._renderMethodParams();
         // Initial badge paint — read whatever active mode the registry
         // has at construction time (typically null until the user trains).
         this._refreshTrainingBadge();
@@ -558,7 +570,8 @@ class AutoTestUI {
         const hasStrategies = result && result.strategies
             && result.strategies[1] && result.strategies[1].summary
             && result.strategies[2] && result.strategies[2].summary
-            && result.strategies[3] && result.strategies[3].summary;
+            && result.strategies[3] && result.strategies[3].summary
+            && result.strategies[4] && result.strategies[4].summary;
         if (!hasStrategies) {
             const reason = (result && (result.message || result.outcome)) || 'No strategy data returned';
             content.innerHTML = `
@@ -569,12 +582,12 @@ class AutoTestUI {
             return;
         }
 
-        const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious' };
-        const colors = { 1: '#28a745', 2: '#007bff', 3: '#6f42c1' };
+        const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious', 4: '🛡️ Defensive' };
+        const colors = { 1: '#28a745', 2: '#007bff', 3: '#6f42c1', 4: '#0f766e' };
 
         let bestStrategy = 1;
         let bestWinRate = 0;
-        for (const num of [1, 2, 3]) {
+        for (const num of [1, 2, 3, 4]) {
             const wr = result.strategies[num].summary.winRate;
             if (wr > bestWinRate) { bestWinRate = wr; bestStrategy = num; }
         }
@@ -597,11 +610,15 @@ class AutoTestUI {
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Total P&L</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Avg Spins</th>
                         <th style="padding:6px;text-align:center;border:1px solid #334155;">Max Spins</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;" title="Longest run of consecutive SKIPs in any session">Max Skip Streak</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;" title="Longest losing streak in any session">Max Loss Streak</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;" title="Longest winning streak in any session">Max Win Streak</th>
+                        <th style="padding:6px;text-align:center;border:1px solid #334155;" title="Largest peak-to-trough drop across any session">Max DD $</th>
                     </tr>
                 </thead>
                 <tbody>`;
 
-        for (const num of [1, 2, 3]) {
+        for (const num of [1, 2, 3, 4]) {
             const s = result.strategies[num].summary;
             const isBest = num === bestStrategy && bestWinRate > 0;
             const rowBg = isBest ? 'rgba(34,197,94,0.1)' : 'transparent';
@@ -624,6 +641,10 @@ class AutoTestUI {
                     <td style="padding:6px;text-align:center;border:1px solid #334155;font-weight:700;color:${totalPL >= 0 ? '#22c55e' : '#ef4444'};" data-field="totalPL">$${totalPL.toFixed(0)}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;">${s.avgSpinsToWin || '--'}</td>
                     <td style="padding:6px;text-align:center;border:1px solid #334155;color:${(s.maxSpinsToWin || 0) > 50 ? '#f59e0b' : '#94a3b8'};">${s.maxSpinsToWin || '--'}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:#f59e0b;">${s.maxConsecutiveSkips || 0}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:#ef4444;">${s.maxConsecutiveLosses || 0}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:#22c55e;">${s.maxConsecutiveWins || 0}</td>
+                    <td style="padding:6px;text-align:center;border:1px solid #334155;color:#ef4444;">$${(s.maxDrawdown || 0).toFixed(0)}</td>
                 </tr>`;
         }
 
@@ -631,7 +652,7 @@ class AutoTestUI {
 
         // Bar charts
         html += '<div style="margin-top:16px;">';
-        for (const num of [1, 2, 3]) {
+        for (const num of [1, 2, 3, 4]) {
             const s = result.strategies[num].summary;
             const total = s.totalSessions || 1;
             const winPct = (s.wins / total * 100).toFixed(0);
@@ -676,6 +697,12 @@ class AutoTestUI {
             <div style="margin-bottom:12px;font-size:11px;color:#94a3b8;">
                 Sessions: ${s.totalSessions} | Wins: ${s.wins} | Busts: ${s.busts} | Win Rate: ${(s.winRate * 100).toFixed(1)}%
             </div>
+            <div style="margin-bottom:12px;font-size:11px;color:#cbd5e1;display:flex;gap:14px;flex-wrap:wrap;">
+                <span title="Longest run of consecutive SKIPs in any session">⏭️ Max Skip Streak: <b style="color:#f59e0b;">${s.maxConsecutiveSkips || 0}</b></span>
+                <span title="Longest losing streak in any session">❌ Max Loss Streak: <b style="color:#ef4444;">${s.maxConsecutiveLosses || 0}</b></span>
+                <span title="Longest winning streak in any session">✅ Max Win Streak: <b style="color:#22c55e;">${s.maxConsecutiveWins || 0}</b></span>
+                <span title="Largest peak-to-trough drop across any session">📉 Max Drawdown: <b style="color:#ef4444;">$${(s.maxDrawdown || 0).toFixed(0)}</b></span>
+            </div>
             <div style="max-height:400px;overflow-y:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:10px;">
                 <thead>
@@ -688,6 +715,9 @@ class AutoTestUI {
                         <th style="padding:4px;border:1px solid #334155;">Win%</th>
                         <th style="padding:4px;border:1px solid #334155;">Profit</th>
                         <th style="padding:4px;border:1px solid #334155;">Drawdown</th>
+                        <th style="padding:4px;border:1px solid #334155;" title="Longest consecutive SKIPs">Skip Strk</th>
+                        <th style="padding:4px;border:1px solid #334155;" title="Longest consecutive losses">Loss Strk</th>
+                        <th style="padding:4px;border:1px solid #334155;" title="Longest consecutive wins">Win Strk</th>
                     </tr>
                 </thead>
                 <tbody>`;
@@ -707,6 +737,9 @@ class AutoTestUI {
                     <td style="padding:4px;text-align:center;border:1px solid #334155;">${(session.winRate * 100).toFixed(0)}%</td>
                     <td style="padding:4px;text-align:center;border:1px solid #334155;color:${profitColor};">$${session.finalProfit.toFixed(0)}</td>
                     <td style="padding:4px;text-align:center;border:1px solid #334155;">$${session.maxDrawdown.toFixed(0)}</td>
+                    <td style="padding:4px;text-align:center;border:1px solid #334155;color:#f59e0b;">${session.maxConsecutiveSkips || 0}</td>
+                    <td style="padding:4px;text-align:center;border:1px solid #334155;color:#ef4444;">${session.maxConsecutiveLosses || 0}</td>
+                    <td style="padding:4px;text-align:center;border:1px solid #334155;color:#22c55e;">${session.maxConsecutiveWins || 0}</td>
                 </tr>`;
         });
 
@@ -847,6 +880,72 @@ class AutoTestUI {
         const loadBtn   = document.getElementById('autoTestLoadBtn');
         if (manualSec) manualSec.style.display = isManual ? 'block' : 'none';
         if (loadBtn)   loadBtn.style.display   = isManual ? 'none'  : '';
+    }
+
+    /**
+     * Per-method parameters area. Populates #autoTestMethodParams based
+     * on the currently selected method. Methods with no declared params
+     * keep the row hidden so the runner falls back to its built-in
+     * defaults — i.e. when no params are exposed, behaviour is unchanged
+     * from before this UI existed.
+     *
+     * Currently wired:
+     *   - 'test' → "include grey numbers" checkbox. Mirrored with the
+     *     AI-panel checkbox via window.strategyLabIncludeGrey + the
+     *     'strategyLabIncludeGreyChanged' window event so all three UIs
+     *     (AI panel, wheel panel, Auto Test panel) stay in sync.
+     */
+    _renderMethodParams() {
+        if (typeof document === 'undefined') return;
+        const host = document.getElementById('autoTestMethodParams');
+        if (!host) return;
+
+        if (this.testMethod === 'test') {
+            const cur = (typeof window !== 'undefined' && typeof window.strategyLabIncludeGrey === 'boolean')
+                ? window.strategyLabIncludeGrey : true;
+            host.style.display = '';
+            host.innerHTML = `
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:#cbd5e1;">
+                    <span style="color:#14b8a6;font-weight:700;">🧪 Strategy-Lab params:</span>
+                    <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #14b8a6;border-radius:4px;background:rgba(20,184,166,0.1);">
+                        <input type="checkbox" id="autoTestParamGrey" ${cur ? 'checked' : ''}> include grey numbers
+                    </label>
+                    <span style="color:#94a3b8;font-size:10px;">(applied to lab + live; unticked filters greys out of the bet)</span>
+                </div>`;
+            const cb = document.getElementById('autoTestParamGrey');
+            if (cb) {
+                // Stay in sync if another UI (AI panel, wheel panel)
+                // toggles the same setting while this row is visible.
+                if (typeof window !== 'undefined') {
+                    const onChanged = (e) => {
+                        const v = !!(e && e.detail && e.detail.value);
+                        if (cb.checked !== v) cb.checked = v;
+                    };
+                    if (this._autoTestParamGreyListener) {
+                        window.removeEventListener('strategyLabIncludeGreyChanged', this._autoTestParamGreyListener);
+                    }
+                    this._autoTestParamGreyListener = onChanged;
+                    window.addEventListener('strategyLabIncludeGreyChanged', onChanged);
+                }
+                cb.addEventListener('change', () => {
+                    if (typeof window !== 'undefined') {
+                        window.strategyLabIncludeGrey = !!cb.checked;
+                        if (window.autoTestRunner) {
+                            window.autoTestRunner._strategyLabIncludeGrey = !!cb.checked;
+                        }
+                        try { localStorage.setItem('strategyLab.includeGrey', cb.checked ? '1' : '0'); } catch (_) {}
+                        // Tell the other mirrored UIs (AI panel, wheel
+                        // panel) to refresh their checkbox state.
+                        try {
+                            window.dispatchEvent(new CustomEvent('strategyLabIncludeGreyChanged', { detail: { value: !!cb.checked } }));
+                        } catch (_) {}
+                    }
+                });
+            }
+        } else {
+            host.style.display = 'none';
+            host.innerHTML = '';
+        }
     }
 
     _refreshTrainingBadge() {

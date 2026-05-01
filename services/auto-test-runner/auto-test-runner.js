@@ -145,6 +145,25 @@ class AutoTestRunner {
         this._currentMethod  = (method === 'manual') ? requestedManualStrat : method;
         this._reportedMethod = method;
 
+        // Strategy-Lab parity: if the include-grey flag wasn't already
+        // set on this runner (e.g. AI panel mirrored it when the user
+        // toggled the checkbox), pull the latest value from window /
+        // localStorage so the lab matches what live would do today.
+        if (typeof this._strategyLabIncludeGrey !== 'boolean') {
+            if (typeof window !== 'undefined' && typeof window.strategyLabIncludeGrey === 'boolean') {
+                this._strategyLabIncludeGrey = window.strategyLabIncludeGrey;
+            } else {
+                try {
+                    const saved = (typeof localStorage !== 'undefined')
+                        ? localStorage.getItem('strategyLab.includeGrey')
+                        : null;
+                    this._strategyLabIncludeGrey = (saved === '0') ? false : true;
+                } catch (_) {
+                    this._strategyLabIncludeGrey = true;
+                }
+            }
+        }
+
         // Mode-isolation opt-in gate. The caller may pass
         // `expectedTrainingMode` to assert that Auto Test is being run
         // against the model state produced by a specific TRAIN-mode.
@@ -217,12 +236,13 @@ class AutoTestRunner {
                 strategies: {
                     1: { sessions: [], summary: this._emptyStrategySummary() },
                     2: { sessions: [], summary: this._emptyStrategySummary() },
-                    3: { sessions: [], summary: this._emptyStrategySummary() }
+                    3: { sessions: [], summary: this._emptyStrategySummary() },
+                    4: { sessions: [], summary: this._emptyStrategySummary() }
                 }
             };
         }
 
-        const allSessions = { 1: [], 2: [], 3: [] };
+        const allSessions = { 1: [], 2: [], 3: [], 4: [] };
 
         // Total work: each starting position × 3 strategies
         // We need at least 4 spins from startIdx, so max start = testSpins.length - 5
@@ -237,10 +257,39 @@ class AutoTestRunner {
         this.engine._retrainInterval = Infinity;
         this.engine._retrainLossStreak = Infinity;
 
+        // ── PAIR MODEL SNAPSHOT ──
+        // Without this, every BET inside a session calls
+        // engine.recordResult() which mutates pairModels[refKey].hitRate.
+        // Two consecutive Auto Test runs (e.g. include-grey ON vs OFF)
+        // therefore start from different baseline hit-rates, which leads
+        // Strategy-Lab's selectBestPair() to lock a different pair on
+        // session #1 of run #2 — making the runs incomparable.
+        // We deep-snapshot pairModels here and restore after the batch
+        // so every run starts from the same trained baseline regardless
+        // of what previous runs did to the in-memory model.
+        let _pairModelsSnapshot = null;
+        try {
+            if (this.engine.pairModels) {
+                _pairModelsSnapshot = JSON.parse(JSON.stringify(this.engine.pairModels));
+            }
+        } catch (_) { /* best-effort */ }
+        const _restorePairModels = () => {
+            if (_pairModelsSnapshot && this.engine.pairModels) {
+                for (const k of Object.keys(_pairModelsSnapshot)) {
+                    this.engine.pairModels[k] = JSON.parse(JSON.stringify(_pairModelsSnapshot[k]));
+                }
+            }
+        };
+
         for (let startIdx = 0; startIdx <= maxStart; startIdx++) {
             for (const strategy of [1, 2, 3, 4]) {
                 // Reset engine session between simulations
                 this.engine.resetSession();
+                // Restore the trained pair-model baseline so each
+                // session's selectBestPair sees identical hit-rates.
+                // Without this, run-to-run pair selection drifts as
+                // recordResult mutates the model across sessions.
+                _restorePairModels();
 
                 const result = this._runSession(testSpins, startIdx, strategy);
                 allSessions[strategy].push(result);
@@ -259,6 +308,10 @@ class AutoTestRunner {
         // Restore live retrain settings
         this.engine._retrainInterval = savedRetrainInterval;
         this.engine._retrainLossStreak = savedRetrainLossStreak;
+        // Restore the original trained pair-model so the live engine
+        // is in the same state the user trained it in (Auto Test runs
+        // must not leave the live model mutated).
+        _restorePairModels();
 
         const result = {
             testFile,
@@ -269,7 +322,8 @@ class AutoTestRunner {
             strategies: {
                 1: { sessions: allSessions[1], summary: this._computeSummary(allSessions[1]) },
                 2: { sessions: allSessions[2], summary: this._computeSummary(allSessions[2]) },
-                3: { sessions: allSessions[3], summary: this._computeSummary(allSessions[3]) }
+                3: { sessions: allSessions[3], summary: this._computeSummary(allSessions[3]) },
+                4: { sessions: allSessions[4], summary: this._computeSummary(allSessions[4]) }
             }
         };
 
@@ -301,12 +355,25 @@ class AutoTestRunner {
             losses: 0,
             consecutiveLosses: 0,
             consecutiveWins: 0,
+            // Streak peaks captured per session for the report.
+            maxConsecutiveLosses: 0,
+            maxConsecutiveWins: 0,
+            consecutiveSkips: 0,
+            maxConsecutiveSkips: 0,
             maxDrawdown: 0,
             peakProfit: 0,
             reanalyzeCount: 0
         };
 
         const steps = [];
+
+        // Strategy-Lab pair lock-in: clear the previous session's locked
+        // pair so the next session re-picks based on current pairModels
+        // hit-rates. Per spec: "we don't change once we select. we use
+        // the same thing until we finish the session".
+        if (this._currentMethod === 'test') {
+            this._lockedTestPair = null;
+        }
 
         // AI-trained feedback boundary: reset the per-engine controller
         // and the adapter's prior-decision slot at each session start.
@@ -371,6 +438,15 @@ class AutoTestRunner {
                     sessionState.losses++;
                     sessionState.consecutiveLosses++;
                     sessionState.consecutiveWins = 0;
+                }
+                // A BET breaks any active SKIP streak.
+                sessionState.consecutiveSkips = 0;
+                // Track peak streaks for the session report.
+                if (sessionState.consecutiveLosses > sessionState.maxConsecutiveLosses) {
+                    sessionState.maxConsecutiveLosses = sessionState.consecutiveLosses;
+                }
+                if (sessionState.consecutiveWins > sessionState.maxConsecutiveWins) {
+                    sessionState.maxConsecutiveWins = sessionState.consecutiveWins;
                 }
 
                 // Track peak and drawdown
@@ -450,6 +526,10 @@ class AutoTestRunner {
             } else {
                 // SKIP
                 sessionState.totalSkips++;
+                sessionState.consecutiveSkips++;
+                if (sessionState.consecutiveSkips > sessionState.maxConsecutiveSkips) {
+                    sessionState.maxConsecutiveSkips = sessionState.consecutiveSkips;
+                }
                 this.engine.recordSkip();
 
                 steps.push(Object.assign({
@@ -494,6 +574,11 @@ class AutoTestRunner {
             winRate: state.totalBets > 0 ? state.wins / state.totalBets : 0,
             maxDrawdown: state.maxDrawdown,
             peakProfit: state.peakProfit,
+            // Per-session peak streaks. Max[Consecutive]{Skips,Losses,Wins}
+            // are the longest run of that action within this session.
+            maxConsecutiveSkips: state.maxConsecutiveSkips || 0,
+            maxConsecutiveLosses: state.maxConsecutiveLosses || 0,
+            maxConsecutiveWins: state.maxConsecutiveWins || 0,
             reanalyzeCount: state.reanalyzeCount || 0,
             steps
         };
@@ -543,6 +628,41 @@ class AutoTestRunner {
         }
         if (this._currentMethod === 'AI-trained') {
             return this._aiTrainedAdapter(testSpins, idx);
+        }
+
+        // ── Strategy-Lab ('test' method) ──
+        // Locked-pair pair-intersection strategy. The strategy is the
+        // SAME module used in live mode (decisionMode='test'), so backtest
+        // results are guaranteed to match what live would do for the same
+        // input. Pair is locked at session start (see _runSession reset)
+        // and reused for every spin in the session.
+        if (this._currentMethod === 'test') {
+            const SL = (typeof require === 'function')
+                ? (function () { try { return require('../../strategies/strategy-lab/strategy-lab.js'); } catch (_) { return null; } }())
+                : (typeof window !== 'undefined' ? window.StrategyLab : null);
+            if (!SL) {
+                return {
+                    action: 'SKIP',
+                    selectedPair: null,
+                    selectedFilter: null,
+                    numbers: [],
+                    confidence: 0,
+                    reason: 'Strategy-Lab module not loaded'
+                };
+            }
+            // Lock the pair lazily on the first decision in this session.
+            // _runSession resets _lockedTestPair at the start of each
+            // session, so a fresh pick happens per session.
+            if (!this._lockedTestPair) {
+                this._lockedTestPair = SL.selectBestPair(this.engine);
+            }
+            return SL.decideStrategyLab(this.engine, testSpins, idx, {
+                lockedPairRefKey: this._lockedTestPair,
+                includeGrey: (typeof this._strategyLabIncludeGrey === 'boolean')
+                    ? this._strategyLabIncludeGrey
+                    : true,
+                greyNumbers: [] // V1: AT has no grey-number computation yet.
+            });
         }
 
         const skipResult = (reason) => {
@@ -907,6 +1027,13 @@ class AutoTestRunner {
         // Max drawdown across all sessions
         const maxDrawdown = Math.max(0, ...sessions.map(s => s.maxDrawdown));
 
+        // Worst-case streaks across every session in this strategy. These
+        // give the user a quick read on how brutal the worst session got
+        // — e.g. a 50-spin skip streak or a 12-loss losing streak.
+        const maxConsecutiveSkips  = Math.max(0, ...sessions.map(s => s.maxConsecutiveSkips || 0));
+        const maxConsecutiveLosses = Math.max(0, ...sessions.map(s => s.maxConsecutiveLosses || 0));
+        const maxConsecutiveWins   = Math.max(0, ...sessions.map(s => s.maxConsecutiveWins || 0));
+
         // Best/worst session
         let bestSession = { startIdx: 0, finalProfit: -Infinity };
         let worstSession = { startIdx: 0, finalProfit: Infinity };
@@ -933,6 +1060,9 @@ class AutoTestRunner {
             totalLost: Math.round(totalLost * 100) / 100,
             avgProfit: Math.round(avgProfit * 100) / 100,
             maxDrawdown: Math.round(maxDrawdown * 100) / 100,
+            maxConsecutiveSkips,
+            maxConsecutiveLosses,
+            maxConsecutiveWins,
             bestSession,
             worstSession
         };
@@ -956,6 +1086,9 @@ class AutoTestRunner {
             totalLost: 0,
             avgProfit: 0,
             maxDrawdown: 0,
+            maxConsecutiveSkips: 0,
+            maxConsecutiveLosses: 0,
+            maxConsecutiveWins: 0,
             bestSession: { startIdx: 0, finalProfit: 0 },
             worstSession: { startIdx: 0, finalProfit: 0 }
         };

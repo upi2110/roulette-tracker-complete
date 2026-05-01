@@ -105,7 +105,7 @@ class ResultTestingPanel {
                     <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap;">
                         <label for="resultTestingTabInput" style="font-weight:600;color:#3730a3;">Tab:</label>
                         <input id="resultTestingTabInput" type="text" placeholder="e.g. S1-Start9 or strategy1"
-                               title="Enter a session id (S1-Start9) or a tab name (overview / strategy1..3)"
+                               title="Enter a session id (S1-Start9) or a tab name (overview / strategy1..4)"
                                style="flex:1;min-width:160px;padding:4px 6px;border:1px solid #a5b4fc;border-radius:3px;font-size:11px;"/>
                         <label for="resultTestingModeSelect" style="font-weight:600;color:#3730a3;">Mode:</label>
                         <select id="resultTestingModeSelect"
@@ -482,6 +482,7 @@ class ResultTestingPanel {
         if (t === 'strategy1' || t === 's1' || t === '1') return 'strategy1';
         if (t === 'strategy2' || t === 's2' || t === '2') return 'strategy2';
         if (t === 'strategy3' || t === 's3' || t === '3') return 'strategy3';
+        if (t === 'strategy4' || t === 's4' || t === '4') return 'strategy4';
         return null;
     }
 
@@ -621,7 +622,7 @@ class ResultTestingPanel {
         //      matches, we replay the EXACT session: load only that
         //      session's spin window, switch to Manual, and render a
         //      session-level comparison card.
-        //  (2) Generic tab name ("overview" / "strategy1..3" / numeric
+        //  (2) Generic tab name ("overview" / "strategy1..4" / numeric
         //      synonyms). Pre-existing behaviour — kept for
         //      backwards compatibility of the previous tests.
         const sessionRef = this.resolveSessionRef(raw);
@@ -765,7 +766,7 @@ class ResultTestingPanel {
         // ── Fallback: generic tab name branch ────────────────────────
         const tabName = this.resolveTabName(raw);
         if (!tabName) {
-            if (msg) msg.textContent = '⚠ Enter a session id (e.g. S1-Start9) or tab name (overview / strategy1 / strategy2 / strategy3).';
+            if (msg) msg.textContent = '⚠ Enter a session id (e.g. S1-Start9) or tab name (overview / strategy1 / strategy2 / strategy3 / strategy4).';
             return { ok: false, error: 'invalid-tab' };
         }
 
@@ -1596,6 +1597,7 @@ class ResultTestingPanel {
             pushRow('Strategy 1', res.strategies && res.strategies[1] && res.strategies[1].summary);
             pushRow('Strategy 2', res.strategies && res.strategies[2] && res.strategies[2].summary);
             pushRow('Strategy 3', res.strategies && res.strategies[3] && res.strategies[3].summary);
+            pushRow('Strategy 4', res.strategies && res.strategies[4] && res.strategies[4].summary);
         } else {
             const n = parseInt(tabName.replace(/\D/g, ''), 10);
             if (Number.isFinite(n) && res.strategies && res.strategies[n]) {
@@ -1716,7 +1718,7 @@ class ResultTestingPanel {
         }
 
         if (res.strategies) {
-            for (const k of [1, 2, 3]) {
+            for (const k of [1, 2, 3, 4]) {
                 const s = res.strategies[k] && res.strategies[k].summary;
                 if (!s) continue;
                 lines.push(`Strategy ${k}: sessions=${s.totalSessions || 0} wins=${s.wins || 0} busts=${s.busts || 0} pnl=$${(s.totalProfit || 0).toLocaleString()}`);

@@ -201,6 +201,54 @@ class AutoUpdateOrchestrator {
             const idx = spinsArr.length - 1;
             decision = window.decideT1Strategy(window.aiAutoEngine, spinsArr, idx);
             console.log('🤖 T1-STRATEGY DECISION:', decision);
+        } else if (this.decisionMode === 'test' && window.StrategyLab) {
+            // Strategy-Lab live path. Same module as Auto Test
+            // (method='test'), so a backtest of the current session would
+            // produce identical decisions for the same spin history.
+            const spinsArr = Array.isArray(window.spins)
+                ? window.spins
+                    .map(s => (s && typeof s.actual === 'number') ? s.actual : null)
+                    .filter(n => n !== null)
+                : [];
+            const idx = spinsArr.length - 1;
+
+            // Lock the pair on first live decision in this session.
+            // Cleared by setDecisionMode() and on session reset.
+            if (!this._strategyLabLockedPair) {
+                this._strategyLabLockedPair = window.StrategyLab.selectBestPair(window.aiAutoEngine);
+            }
+
+            // Grey numbers: the wheel exposes its own primary vs grey
+            // split. We pull the current grey set from the wheel so the
+            // user's "include grey" toggle has the same source-of-truth
+            // they see on screen. Empty if wheel not available.
+            let greyNumbers = [];
+            const w = window.rouletteWheel;
+            if (w) {
+                if (Array.isArray(w.extraLoose)) {
+                    greyNumbers = greyNumbers.concat(w.extraLoose);
+                }
+                if (Array.isArray(w.extraAnchorGroups)) {
+                    for (const g of w.extraAnchorGroups) {
+                        if (Array.isArray(g)) greyNumbers = greyNumbers.concat(g);
+                        else if (g && Array.isArray(g.numbers)) greyNumbers = greyNumbers.concat(g.numbers);
+                    }
+                }
+            }
+
+            const includeGrey = (typeof window.strategyLabIncludeGrey === 'boolean')
+                ? window.strategyLabIncludeGrey
+                : true;
+
+            decision = window.StrategyLab.decideStrategyLab(
+                window.aiAutoEngine, spinsArr, idx,
+                {
+                    lockedPairRefKey: this._strategyLabLockedPair,
+                    includeGrey: includeGrey,
+                    greyNumbers: greyNumbers
+                }
+            );
+            console.log('🧪 STRATEGY-LAB DECISION:', decision);
         } else {
             decision = window.aiAutoEngine.decide();
             console.log('🤖 AUTO DECISION:', decision);
@@ -319,9 +367,26 @@ class AutoUpdateOrchestrator {
 
             // a. Clear old selections + select the chosen pair.
             //    AI-trained does NOT use user-defined pairs, so skip.
+            //    Strategy-Lab ('test'): clear, then programmatically
+            //    select the locked pair across T1, T2 (pair half +
+            //    13-opp half) and T3 so V6's intersection produces the
+            //    bet — matching the spec "select pair from T1, same
+            //    pair + 13-opp from T2, same pair from T3".
             if (this.decisionMode !== 'ai-trained' && window.aiPanel) {
                 window.aiPanel.clearSelections();
-                window.aiPanel._handleTable3Selection(decision.selectedPair, true);
+                if (this.decisionMode === 'test') {
+                    const pair = decision.selectedPair;
+                    if (pair) {
+                        try { window.aiPanel._handleTable3Selection(pair, true); } catch (_) {}
+                        try { window.aiPanel._handleTable12PairToggle('table1', pair, true); } catch (_) {}
+                        try { window.aiPanel._handleTable12PairToggle('table2', pair, true); } catch (_) {}
+                        // T2 13-opposite half — uses pair-key suffix '_13opp'
+                        // per the renderer's table2NextProjections shape.
+                        try { window.aiPanel._handleTable12PairToggle('table2', pair + '_13opp', true); } catch (_) {}
+                    }
+                } else {
+                    window.aiPanel._handleTable3Selection(decision.selectedPair, true);
+                }
             }
 
             // b. Set wheel filters programmatically.
@@ -465,12 +530,18 @@ class AutoUpdateOrchestrator {
         const prev = this.decisionMode;
         if (mode === 't1-strategy') this.decisionMode = 't1-strategy';
         else if (mode === 'ai-trained') this.decisionMode = 'ai-trained';
+        else if (mode === 'test') this.decisionMode = 'test';
         else this.decisionMode = 'auto';
         // Drop any queued AI-trained feedback when leaving ai-trained,
         // so a later re-entry cannot misattribute an old decision to a
         // freshly arrived spin.
         if (prev === 'ai-trained' && this.decisionMode !== 'ai-trained') {
             this._lastAITrainedLive = null;
+        }
+        // Strategy-Lab: clear the locked pair when leaving 'test' so a
+        // future re-entry re-picks based on the latest pairModels.
+        if (prev === 'test' && this.decisionMode !== 'test') {
+            this._strategyLabLockedPair = null;
         }
         console.log(`🤖 Decision mode → ${this.decisionMode}`);
     }

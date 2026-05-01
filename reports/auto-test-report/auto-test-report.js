@@ -10,7 +10,8 @@
 const STRATEGY_LABELS = {
     1: 'Strategy 1 - Aggressive',
     2: 'Strategy 2 - Conservative',
-    3: 'Strategy 3 - Cautious'
+    3: 'Strategy 3 - Cautious',
+    4: 'Strategy 4 - Defensive'
 };
 
 class AutoTestReport {
@@ -40,7 +41,7 @@ class AutoTestReport {
 
         // Build map of ALL detail sheet names (for hyperlinks in strategy sheets)
         const detailSheetMap = {};
-        for (const strategyNum of [1, 2, 3]) {
+        for (const strategyNum of [1, 2, 3, 4]) {
             const data = result.strategies[strategyNum];
             if (!data || data.sessions.length === 0) continue;
             for (const session of data.sessions) {
@@ -50,7 +51,7 @@ class AutoTestReport {
         }
 
         // Sheet 2-4: One per strategy (with hyperlinks to detail tabs)
-        for (const strategyNum of [1, 2, 3]) {
+        for (const strategyNum of [1, 2, 3, 4]) {
             const data = result.strategies[strategyNum];
             if (data && data.sessions.length > 0) {
                 this._createStrategySheet(workbook, strategyNum, data, detailSheetMap);
@@ -58,7 +59,7 @@ class AutoTestReport {
         }
 
         // Sheet 5+: Session detail sheets for EVERY session (in order)
-        for (const strategyNum of [1, 2, 3]) {
+        for (const strategyNum of [1, 2, 3, 4]) {
             const data = result.strategies[strategyNum];
             if (!data || data.sessions.length === 0) continue;
             for (const session of data.sessions) {
@@ -96,7 +97,7 @@ class AutoTestReport {
         const sheet = workbook.addWorksheet('Overview');
 
         // Title — merged across all data columns (A..N = 14 cols)
-        sheet.mergeCells('A1:N1');
+        sheet.mergeCells('A1:Q1');
         const titleCell = sheet.getCell('A1');
         titleCell.value = 'Auto Test Report';
         titleCell.font = { size: 16, bold: true, color: { argb: 'FF333333' } };
@@ -114,7 +115,7 @@ class AutoTestReport {
         //   Total Loss $ — gross sum of all losing bet stakes (abs value)
         //   Total P&L    — net = Total Win $ − Total Loss $
         // All existing columns are preserved in their previous positions.
-        const headers = ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Total Profit', 'Total Win $', 'Total Loss $', 'Total P&L', 'Avg Profit', 'Avg Spins', 'Max Spins', 'Max Drawdown'];
+        const headers = ['Strategy', 'Sessions', 'Wins', 'Busts', 'Incomplete', 'Win Rate', 'Total Profit', 'Total Win $', 'Total Loss $', 'Total P&L', 'Avg Profit', 'Avg Spins', 'Max Spins', 'Max Drawdown', 'Max Skip Streak', 'Max Loss Streak', 'Max Win Streak'];
         const headerRow = sheet.getRow(5);
         headers.forEach((h, i) => {
             const cell = headerRow.getCell(i + 1);
@@ -131,7 +132,7 @@ class AutoTestReport {
         });
 
         // Data rows (6-8)
-        for (const strategyNum of [1, 2, 3]) {
+        for (const strategyNum of [1, 2, 3, 4]) {
             const summary = result.strategies[strategyNum].summary;
             const row = sheet.getRow(5 + strategyNum);
             // Dollar totals — defensive fallback to 0 if an older summary
@@ -155,7 +156,10 @@ class AutoTestReport {
                 `$${summary.avgProfit.toFixed(2)}`,
                 summary.avgSpinsToWin,
                 summary.maxSpinsToWin || '--',
-                `$${summary.maxDrawdown.toFixed(2)}`
+                `$${summary.maxDrawdown.toFixed(2)}`,
+                summary.maxConsecutiveSkips || 0,
+                summary.maxConsecutiveLosses || 0,
+                summary.maxConsecutiveWins || 0
             ];
             values.forEach((v, i) => {
                 const cell = row.getCell(i + 1);

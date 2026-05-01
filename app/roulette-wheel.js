@@ -89,8 +89,20 @@ class RouletteWheel {
         panel.className = 'wheel-panel';
         panel.id = 'wheelPanel';
         panel.innerHTML = `
-            <div class="panel-header">
-                <h3>European Wheel</h3>
+            <div class="panel-header" style="display:flex;align-items:center;gap:10px;">
+                <h3 style="margin:0;flex:1;">European Wheel</h3>
+                <!-- Strategy-Lab grey-numbers toggle. Mirrored with the
+                     AI-panel checkbox and Auto Test params row via the
+                     'strategyLabIncludeGreyChanged' window event so all
+                     three UIs stay in sync. Tick = include grey numbers
+                     in the Strategy-Lab bet; untick = exclude them. -->
+                <label id="wheelGreyToggleWrap" title="Include grey numbers in Strategy-Lab bets (live + lab). Mirrored with AI panel + Auto Test params." style="
+                    display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+                    color:#475569;cursor:pointer;user-select:none;
+                    padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
+                ">
+                    <input type="checkbox" id="wheelGreyToggle" checked style="vertical-align:middle;"> include grey
+                </label>
                 <button class="btn-toggle" id="toggleWheelPanel">−</button>
             </div>
             <div class="panel-content">
@@ -162,6 +174,46 @@ class RouletteWheel {
         });
 
         this.drawWheel();
+
+        // Strategy-Lab grey-numbers toggle (mirrored with AI panel +
+        // Auto Test params). Source-of-truth: window.strategyLabIncludeGrey
+        // and localStorage['strategyLab.includeGrey']. The wheel listens
+        // to the shared 'strategyLabIncludeGreyChanged' event and emits
+        // it on change, so toggling here also flips the AI-panel and
+        // Auto Test checkboxes.
+        const wheelGreyCb = document.getElementById('wheelGreyToggle');
+        if (wheelGreyCb) {
+            // Initial value: prefer the live global, then localStorage,
+            // default to true (include grey).
+            let initialVal = true;
+            if (typeof window !== 'undefined' && typeof window.strategyLabIncludeGrey === 'boolean') {
+                initialVal = window.strategyLabIncludeGrey;
+            } else {
+                try {
+                    const saved = localStorage.getItem('strategyLab.includeGrey');
+                    if (saved === '0') initialVal = false;
+                    else if (saved === '1') initialVal = true;
+                } catch (_) {}
+            }
+            wheelGreyCb.checked = initialVal;
+            if (typeof window !== 'undefined') window.strategyLabIncludeGrey = initialVal;
+
+            wheelGreyCb.addEventListener('change', () => {
+                const v = !!wheelGreyCb.checked;
+                if (typeof window !== 'undefined') {
+                    window.strategyLabIncludeGrey = v;
+                    if (window.autoTestRunner) window.autoTestRunner._strategyLabIncludeGrey = v;
+                }
+                try { localStorage.setItem('strategyLab.includeGrey', v ? '1' : '0'); } catch (_) {}
+                try {
+                    window.dispatchEvent(new CustomEvent('strategyLabIncludeGreyChanged', { detail: { value: v } }));
+                } catch (_) {}
+            });
+            window.addEventListener('strategyLabIncludeGreyChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (wheelGreyCb.checked !== v) wheelGreyCb.checked = v;
+            });
+        }
 
         // Wheel panel collapse/expand toggle
         const wheelToggleBtn = document.getElementById('toggleWheelPanel');

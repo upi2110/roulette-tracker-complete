@@ -145,6 +145,17 @@ class AIAutoModeUI {
                     border:2px solid #14b8a6;border-radius:5px;cursor:pointer;
                     background:transparent;color:#94a3b8;
                 ">test (lab)</button>
+                <!-- Strategy-Lab options: include/exclude grey numbers in
+                     the bet. Read by both live (StrategyLab decide) and
+                     Auto Test runner via the same global flag, so live
+                     and lab parity is maintained. -->
+                <label id="strategyLabGreyToggleWrap" data-tab-group="test" title="When unchecked, grey numbers (extra anchors / loose) are removed from the bet" style="
+                    display:none;flex:0 0 auto;font-size:11px;color:#cbd5e1;
+                    padding:4px 8px;border:1px solid #14b8a6;border-radius:5px;
+                    background:rgba(20,184,166,0.08);cursor:pointer;user-select:none;
+                ">
+                    <input type="checkbox" id="strategyLabGreyToggle" checked style="margin-right:4px;vertical-align:middle;">include grey numbers
+                </label>
             </div>
             <div id="trainingStatusBar" style="display:none;margin-bottom:4px;">
                 <div id="trainingStatus" style="font-size:10px;color:#94a3b8;margin-bottom:2px;">Not trained</div>
@@ -253,6 +264,44 @@ class AIAutoModeUI {
 
         // Initial sub-row paint matches the default activeTab.
         this._setActiveTab(this.activeTab);
+
+        // Strategy-Lab: include-grey toggle. Persisted in localStorage so
+        // the choice survives reloads. Mirrored to:
+        //   - window.strategyLabIncludeGrey (live orchestrator reads it)
+        //   - window.autoTestRunner._strategyLabIncludeGrey (Auto Test
+        //     runner reads it, set lazily before runAll if available).
+        // Default is true (include grey).
+        const greyToggle = document.getElementById('strategyLabGreyToggle');
+        if (greyToggle) {
+            try {
+                const saved = localStorage.getItem('strategyLab.includeGrey');
+                if (saved === '0') greyToggle.checked = false;
+                else if (saved === '1') greyToggle.checked = true;
+            } catch (_) { /* ignore */ }
+            const sync = (broadcast) => {
+                const v = !!greyToggle.checked;
+                if (typeof window !== 'undefined') {
+                    window.strategyLabIncludeGrey = v;
+                    if (window.autoTestRunner) {
+                        window.autoTestRunner._strategyLabIncludeGrey = v;
+                    }
+                }
+                try { localStorage.setItem('strategyLab.includeGrey', v ? '1' : '0'); } catch (_) {}
+                if (broadcast) {
+                    try {
+                        window.dispatchEvent(new CustomEvent('strategyLabIncludeGreyChanged', { detail: { value: v } }));
+                    } catch (_) {}
+                }
+            };
+            sync(false); // Initial mirror — no broadcast on first paint.
+            greyToggle.addEventListener('change', () => sync(true));
+            // Listen for sibling checkboxes (Auto Test params, wheel
+            // panel) so all mirrored UIs stay coherent.
+            window.addEventListener('strategyLabIncludeGreyChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (greyToggle.checked !== v) greyToggle.checked = v;
+            });
+        }
 
         if (trainBtn) {
             // Click is now routed through the training-mode router.

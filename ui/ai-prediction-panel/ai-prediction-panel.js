@@ -45,6 +45,17 @@ class AIPredictionPanel {
         this.createPanel();
         this.setupToggle();
 
+        // Re-fire predictions whenever the shared "include grey" toggle
+        // changes from any UI (AI panel, wheel panel, Auto Test params),
+        // so the merged bet + wheel + money panel update without a reload.
+        if (typeof window !== 'undefined') {
+            window.addEventListener('strategyLabIncludeGreyChanged', () => {
+                if (typeof this.getPredictions === 'function') {
+                    try { this.getPredictions(); } catch (_) { /* ignore — early state */ }
+                }
+            });
+        }
+
         console.log('✅ AI Prediction Panel initialized with MULTI-TABLE PAIR SELECTION');
     }
 
@@ -712,7 +723,20 @@ class AIPredictionPanel {
             }
 
             if (pairSets.length === 0) {
-                throw new Error('No numbers available from selected pairs');
+                // Gracefully no-op when no pair refs are available yet
+                // (early spins, or test-lab mode where the auto-trigger
+                // can fire before the user has any tables populated).
+                // Throwing here previously surfaced as a console error
+                // every spin in test-lab. We just clear the display.
+                if (signalIndicator) {
+                    signalIndicator.textContent = '⏳ Waiting for table data';
+                    signalIndicator.style.backgroundColor = '#64748b';
+                }
+                const numbersDiv = document.querySelector('#aiResultsPanel .prediction-numbers');
+                if (numbersDiv) {
+                    numbersDiv.innerHTML = '<div style="color:#64748b;padding:20px;text-align:center;">Waiting for table data — add more spins or select pairs.</div>';
+                }
+                return;
             }
 
             // Build legacy tableSets for debug display (UNION within each table)
@@ -803,6 +827,30 @@ class AIPredictionPanel {
             finalNumbers.sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
 
             console.log(`🎯 Intersection: ${finalNumbers.length} numbers:`, finalNumbers);
+
+            // ── INCLUDE-GREY TOGGLE ──
+            // When the shared "include grey numbers" flag is ON (default),
+            // promote the 3rd-ref EXTRA numbers into the COMMON bet so the
+            // money panel actually bets on them, the wheel renders them
+            // with primary colours, and the banner shows a single combined
+            // count instead of "N COMMON + M EXTRA".
+            // Sourced from window.strategyLabIncludeGrey (mirrored across
+            // the AI-panel / wheel-panel / Auto-Test param checkboxes and
+            // localStorage), so toggling any of them takes effect on the
+            // next prediction without a reload.
+            const includeGreyAsBet = (typeof window !== 'undefined' && typeof window.strategyLabIncludeGrey === 'boolean')
+                ? window.strategyLabIncludeGrey
+                : true;
+            if (includeGreyAsBet && extraNumbers.length > 0) {
+                const merged = new Set(finalNumbers);
+                for (const n of extraNumbers) merged.add(n);
+                finalNumbers = Array.from(merged).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
+                // Move greys out of the extras bucket — they are now bet
+                // numbers and must NOT be drawn grey on the wheel or shown
+                // in the "EXTRA" debug panel.
+                extraNumbers = [];
+                console.log(`✅ include-grey ON → merged ${finalNumbers.length} numbers (greys promoted to primary bet)`);
+            }
 
             if (finalNumbers.length === 0 && extraNumbers.length === 0) {
                 // Show no common numbers
