@@ -1514,7 +1514,11 @@ function renderTable1() {
 
                 const flashKey = `${relIdx}:${dataPair}:${anchorIdx}`;
                 if (t1FlashTargets.has(flashKey)) {
-                    html.push(`<td class="t1-flash ${numClass}"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${target}</td>`);
+                    // Slice 3b follow-up: only the C (position-code)
+                    // cell gets the gold flash. The target-number
+                    // cell (1st / 2nd / 3rd) renders normally so the
+                    // user's eye lands directly on the matching code.
+                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
                     html.push(`<td class="t1-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
                 } else {
                     html.push(`<td class="${numClass}"${dp}>${target}</td>`);
@@ -1680,30 +1684,11 @@ function renderTable1() {
         tbody.appendChild(nextRow);
     }
 
-    // ── T1 Anchor Flash Pulse Animation ──
-    if (t1FlashTargets.size > 0) {
-        let bright = false;
-        window._t1PulseInterval = setInterval(() => {
-            bright = !bright;
-            const bg = bright ? '#fbbf24' : '#fef3c7';
-            const shadow = bright
-                ? '0 0 16px rgba(245, 158, 11, 1)'
-                : '0 0 8px rgba(245, 158, 11, 0.6)';
-            const cells = document.querySelectorAll('#table1 .t1-flash');
-            if (cells.length === 0) {
-                clearInterval(window._t1PulseInterval);
-                window._t1PulseInterval = null;
-                return;
-            }
-            cells.forEach(cell => {
-                cell.style.setProperty('background', bg, 'important');
-                cell.style.setProperty('box-shadow', shadow, 'important');
-                const s = cell.querySelector('span');
-                if (s) s.style.setProperty('background', bg, 'important');
-            });
-        }, 600);
-        console.log(`⚡ T1 flash pulse started for ${t1FlashTargets.size} cells`);
-    }
+    // Slice 3a: pulse animation removed — user reported the
+    // glowing/pulsing flash was eye-irritating. The static gold
+    // outline + background is baked into each cell's HTML at
+    // render time (in renderTargetGroup), so without the interval
+    // the highlight stays visible but stops animating.
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1909,7 +1894,9 @@ function renderTable2() {
 
                 const flashKey = `${relIdx}:${dataPair}:${anchorIdx}`;
                 if (t2FlashTargets.has(flashKey)) {
-                    html.push(`<td class="t2-flash ${numClass}"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${target}</td>`);
+                    // Slice 3b follow-up: only the C (position-code)
+                    // cell flashes — target-number cell renders normally.
+                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
                     html.push(`<td class="t2-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
                 } else {
                     html.push(`<td class="${numClass}"${dp}>${target}</td>`);
@@ -1984,30 +1971,7 @@ function renderTable2() {
         tbody.appendChild(nextRow);
     }
 
-    // ── T2 Anchor Flash Pulse Animation ──
-    if (t2FlashTargets.size > 0) {
-        let bright = false;
-        window._t2PulseInterval = setInterval(() => {
-            bright = !bright;
-            const bg = bright ? '#fbbf24' : '#fef3c7';
-            const shadow = bright
-                ? '0 0 16px rgba(245, 158, 11, 1)'
-                : '0 0 8px rgba(245, 158, 11, 0.6)';
-            const cells = document.querySelectorAll('#table2 .t2-flash');
-            if (cells.length === 0) {
-                clearInterval(window._t2PulseInterval);
-                window._t2PulseInterval = null;
-                return;
-            }
-            cells.forEach(cell => {
-                cell.style.setProperty('background', bg, 'important');
-                cell.style.setProperty('box-shadow', shadow, 'important');
-                const s = cell.querySelector('span');
-                if (s) s.style.setProperty('background', bg, 'important');
-            });
-        }, 600);
-        console.log(`⚡ T2 flash pulse started for ${t2FlashTargets.size} cells`);
-    }
+    // Slice 3a: pulse animation removed (same as T1).
 }
 
 // ── ±1 Distance Flash Helper ──────────────────────────────────
@@ -2116,59 +2080,54 @@ function _computeFlashTargets(allSpins, startIdx, visibleCount) {
         return result;
     }
 
-    // Only check the LAST TWO eligible rows (most recent spins)
-    const upper = rowInfos[rowInfos.length - 2];
-    const lower = rowInfos[rowInfos.length - 1];
-
-    if (FLASH_DEBUG_ENABLED) {
-        diagLines.push(`   Checking LAST 2 eligible rows: spinIdx ${upper.spinIdx} (relIdx=${upper.relIdx}) ↔ spinIdx ${lower.spinIdx} (relIdx=${lower.relIdx})`);
-        diagLines.push(`   Upper row spin: ${allSpins[upper.spinIdx].actual}, Lower row spin: ${allSpins[lower.spinIdx].actual}`);
-        diagLines.push(`   ${'─'.repeat(70)}`);
-    }
-
+    // Slice 3b follow-up #2: highlight ONLY the most recent unbroken
+    // ±1 distance chain per refKey. Walk row-pair windows backwards
+    // from the latest. While matches continue, accumulate cells.
+    // First non-match stops the walk — older chains above the break
+    // are NOT highlighted (user: "if cycle breaks we shouldn't
+    // highlight the top columns").
     refKeys.forEach(refKey => {
         const pairName = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
-        const upperPair = upper.info[refKey];
-        const lowerPair = lower.info[refKey];
 
-        const upperDists = [];
-        const lowerDists = [];
-        if (upperPair.pairDist !== null) upperDists.push({ dist: upperPair.pairDist, cell: 'pair' });
-        if (upperPair.pair13Dist !== null) upperDists.push({ dist: upperPair.pair13Dist, cell: 'pair13Opp' });
-        if (lowerPair.pairDist !== null) lowerDists.push({ dist: lowerPair.pairDist, cell: 'pair' });
-        if (lowerPair.pair13Dist !== null) lowerDists.push({ dist: lowerPair.pair13Dist, cell: 'pair13Opp' });
+        for (let i = rowInfos.length - 2; i >= 0; i--) {
+            const upper = rowInfos[i];
+            const lower = rowInfos[i + 1];
+            const upperPair = upper.info[refKey];
+            const lowerPair = lower.info[refKey];
 
-        if (FLASH_DEBUG_ENABLED) {
-            diagLines.push(`   PAIR [${pairName}]:`);
-            diagLines.push(`     Upper: pairCode=${upperPair.pairCode} (dist=${upperPair.pairDist}), pair13Code=${upperPair.pair13Code} (dist=${upperPair.pair13Dist})`);
-            diagLines.push(`     Lower: pairCode=${lowerPair.pairCode} (dist=${lowerPair.pairDist}), pair13Code=${lowerPair.pair13Code} (dist=${lowerPair.pair13Dist})`);
-        }
+            const upperDists = [];
+            const lowerDists = [];
+            if (upperPair.pairDist !== null)   upperDists.push({ dist: upperPair.pairDist,   cell: 'pair' });
+            if (upperPair.pair13Dist !== null) upperDists.push({ dist: upperPair.pair13Dist, cell: 'pair13Opp' });
+            if (lowerPair.pairDist !== null)   lowerDists.push({ dist: lowerPair.pairDist,   cell: 'pair' });
+            if (lowerPair.pair13Dist !== null) lowerDists.push({ dist: lowerPair.pair13Dist, cell: 'pair13Opp' });
 
-        if (upperDists.length === 0 || lowerDists.length === 0) {
-            if (FLASH_DEBUG_ENABLED) {
-                diagLines.push(`     → SKIP: no valid distances (upper=${upperDists.length}, lower=${lowerDists.length})`);
+            if (upperDists.length === 0 || lowerDists.length === 0) {
+                // No valid distances — break stops the chain regardless
+                // of how far we walked.
+                break;
             }
-            return;
-        }
 
-        let matched = false;
-        for (const ud of upperDists) {
-            for (const ld of lowerDists) {
-                const diff = Math.abs(ud.dist - ld.dist);
+            let matched = null;
+            for (const ud of upperDists) {
+                for (const ld of lowerDists) {
+                    if (Math.abs(ud.dist - ld.dist) <= 1) {
+                        matched = { ud, ld };
+                        break;
+                    }
+                }
+                if (matched) break;
+            }
+
+            if (matched) {
+                result.add(`${upper.relIdx}:${refKey}:${matched.ud.cell}`);
+                result.add(`${lower.relIdx}:${refKey}:${matched.ld.cell}`);
                 if (FLASH_DEBUG_ENABLED) {
-                    diagLines.push(`     Comparing: upper.${ud.cell}=${ud.dist} vs lower.${ld.cell}=${ld.dist} → diff=${diff} ${diff <= 1 ? '✅ FLASH!' : '❌ no flash'}`);
+                    diagLines.push(`     [${pairName}] window ${i}: ${matched.ud.cell}=${matched.ud.dist} ↔ ${matched.ld.cell}=${matched.ld.dist} ✅`);
                 }
-                if (diff <= 1) {
-                    result.add(`${upper.relIdx}:${refKey}:${ud.cell}`);
-                    result.add(`${lower.relIdx}:${refKey}:${ld.cell}`);
-                    console.log(`⚡ ±1 MATCH: ${pairName} rows ${upper.spinIdx}↔${lower.spinIdx}: ${ud.cell}=${ud.dist} ↔ ${ld.cell}=${ld.dist} (diff=${diff})`);
-                    matched = true;
-                    return;  // first match per pair exits
-                }
+            } else {
+                break;  // chain broken
             }
-        }
-        if (!matched && FLASH_DEBUG_ENABLED) {
-            diagLines.push(`     → NO ±1 match for ${pairName}`);
         }
     });
 
@@ -2302,32 +2261,53 @@ function _computeAnchorFlashTargets(allSpins, startIdx, visibleCount, pairDefs, 
         rowInfos.push({ relIdx: r, spinIdx, pairHits });
     }
 
-    if (rowInfos.length < 3) return result;
+    // Slice 3b follow-up #2: highlight ONLY the most recent unbroken
+    // chain per pair. Walk backwards from the last consecutive-row
+    // pair; while matches continue, accumulate cell hits. When the
+    // chain breaks, stop — older chains above the break are NOT
+    // highlighted (per user spec: "if cycle breaks we shouldn't
+    // highlight the top columns").
+    if (rowInfos.length < 2) return result;
 
-    // Take the last 3 eligible rows
-    const last3 = rowInfos.slice(-3);
-
-    // For each pair, check if any 2 anchor columns cover all 3 rows
     const combos = [[0, 1], [0, 2], [1, 2]];
 
     pairDefs.forEach(({ dataPair }) => {
-        for (const [a, b] of combos) {
-            let allCovered = true;
-            for (const row of last3) {
-                const hits = row.pairHits[dataPair];
-                if (!hits.has(a) && !hits.has(b)) {
-                    allCovered = false;
+        // Walk pair-windows from the latest (rowInfos.length-2 / -1)
+        // backwards. Stop on first non-match.
+        let chainStarted = false;
+        for (let i = rowInfos.length - 2; i >= 0; i--) {
+            const upper = rowInfos[i];
+            const lower = rowInfos[i + 1];
+            const upperHits = upper.pairHits[dataPair];
+            const lowerHits = lower.pairHits[dataPair];
+            if (!upperHits || !lowerHits) {
+                if (chainStarted) break; else continue;
+            }
+
+            let matchedCombo = null;
+            for (const [a, b] of combos) {
+                const upperHas = upperHits.has(a) || upperHits.has(b);
+                const lowerHas = lowerHits.has(a) || lowerHits.has(b);
+                if (upperHas && lowerHas) {
+                    matchedCombo = [a, b];
                     break;
                 }
             }
-            if (allCovered) {
-                // Flash these 2 anchor columns for all 3 rows (only where they actually hit)
-                for (const row of last3) {
-                    const hits = row.pairHits[dataPair];
-                    if (hits.has(a)) result.add(`${row.relIdx}:${dataPair}:${a}`);
-                    if (hits.has(b)) result.add(`${row.relIdx}:${dataPair}:${b}`);
-                }
-                break;  // first matching combo wins for this pair
+
+            if (matchedCombo) {
+                const [a, b] = matchedCombo;
+                if (upperHits.has(a)) result.add(`${upper.relIdx}:${dataPair}:${a}`);
+                if (upperHits.has(b)) result.add(`${upper.relIdx}:${dataPair}:${b}`);
+                if (lowerHits.has(a)) result.add(`${lower.relIdx}:${dataPair}:${a}`);
+                if (lowerHits.has(b)) result.add(`${lower.relIdx}:${dataPair}:${b}`);
+                chainStarted = true;
+            } else {
+                // Chain broken (or never started). If the chain had
+                // already started, we're done — older windows do not
+                // contribute. If we haven't found the latest chain
+                // yet, also stop — only the most recent chain is
+                // shown per user request.
+                break;
             }
         }
     });
@@ -2452,31 +2432,7 @@ function _applyPm1Flash(tbody, allSpins, startIdx, visibleCount) {
 
     if (totalFlashed > 0) {
         console.log(`⚡ ±1 Flash applied to ${totalFlashed} pair-row combinations`);
-
-        // Start JS-based pulse animation.
-        // We use setInterval instead of CSS @keyframes because CSS animations
-        // CANNOT override !important background rules (per CSS cascade spec).
-        // Inline styles set via JS are the only reliable way to pulse.
-        let bright = false;
-        window._pm1PulseInterval = setInterval(() => {
-            bright = !bright;
-            const bg = bright ? '#fbbf24' : '#fef3c7';
-            const shadow = bright
-                ? '0 0 16px rgba(245, 158, 11, 1)'
-                : '0 0 8px rgba(245, 158, 11, 0.6)';
-            const cells = document.querySelectorAll('.t3-pm1-flash');
-            if (cells.length === 0) {
-                clearInterval(window._pm1PulseInterval);
-                window._pm1PulseInterval = null;
-                return;
-            }
-            cells.forEach(cell => {
-                cell.style.setProperty('background', bg, 'important');
-                cell.style.setProperty('box-shadow', shadow, 'important');
-                const s = cell.querySelector('span');
-                if (s) s.style.setProperty('background', bg, 'important');
-            });
-        }, 600);
+        // Slice 3a: pulse animation removed — static gold stays.
     } else {
         console.log(`⚡ Flash result: no ±1 pairs found across ${rowInfos.length} rows`);
     }
@@ -2805,29 +2761,8 @@ function renderTable3() {
     // Flash styles are already baked into the initial row HTML via posCell().
     // Here we just start the JS pulse animation to toggle between
     // light amber (#fef3c7) and bright amber (#fbbf24).
-    if (flashTargets.size > 0) {
-        let bright = false;
-        window._pm1PulseInterval = setInterval(() => {
-            bright = !bright;
-            const bg = bright ? '#fbbf24' : '#fef3c7';
-            const shadow = bright
-                ? '0 0 16px rgba(245, 158, 11, 1)'
-                : '0 0 8px rgba(245, 158, 11, 0.6)';
-            const cells = document.querySelectorAll('.t3-pm1-flash');
-            if (cells.length === 0) {
-                clearInterval(window._pm1PulseInterval);
-                window._pm1PulseInterval = null;
-                return;
-            }
-            cells.forEach(cell => {
-                cell.style.setProperty('background', bg, 'important');
-                cell.style.setProperty('box-shadow', shadow, 'important');
-                const s = cell.querySelector('span');
-                if (s) s.style.setProperty('background', bg, 'important');
-            });
-        }, 600);
-        console.log(`⚡ ±1 Flash pulse started for ${flashTargets.size} cells`);
-    }
+    // Slice 3a: pulse animation removed — static gold stays
+    // (flash styles are baked inline at render time in posCell()).
 
     if (spins.length >= 2) {
         const lastSpin = spins[spins.length - 1].actual;
