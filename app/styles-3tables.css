@@ -127,7 +127,11 @@ th {
     border: 1px solid #2c3e50;
     position: sticky;
     top: 0;
-    z-index: 10;
+    /* z-index 100 (was 10) so the sticky header wins against the
+       pair-indicator + pair-end-cell stacks (z:20) when the wrapper
+       scrolls. Without this, the green/black indicator gradients
+       in the data area painted up over the sticky header. */
+    z-index: 100;
     font-size: 9px;
     white-space: nowrap;
     line-height: 1.1;
