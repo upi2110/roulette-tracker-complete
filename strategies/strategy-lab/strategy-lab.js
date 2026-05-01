@@ -82,55 +82,81 @@
     }
 
     /**
-     * Build the four "column" number sets for the locked pair using
-     * engine internals so AT and live produce identical results.
+     * Build the per-table source number sets for the locked pair.
      *
-     * Also surfaces the locked pair's "grey" candidates — the 13-opp-side
-     * anchors (proj.neighbors) — so the caller can merge them into the
-     * bet when the include-grey toggle is on. This is the V1.1 hook that
-     * makes the toggle meaningful in Auto Test (V1 always passed []).
+     * The include-grey toggle changes WHICH source sets participate and
+     * how WIDE they are — not what gets tacked on at the end. So we
+     * return both the "tight" (no-grey) and "wide" (with-grey) variants
+     * and let the caller pick based on the toggle:
+     *
+     *   includeGrey = false → bet = T1.tight ∩ T2.tight ∩ T3.tight
+     *     (the pair's purple-side anchors only, no 13-opp half).
+     *
+     *   includeGrey = true  → bet = T1.wide ∩ T2.wide ∩ T2_13opp.wide ∩ T3.wide
+     *     (the pair's full prediction = purple + green expanded; T2's
+     *      13-opp half participates as a fourth source).
+     *
+     * Same engine helpers are used for both variants so AT and live
+     * produce identical numbers for the same spin history.
      */
-    function _computeFourColumnNumbers(engine, spins, idx, refKey) {
+    function _computeColumnSources(engine, spins, idx, refKey) {
         const proj = engine._computeProjectionForPair(spins, idx, refKey);
         if (!proj || !proj.numbers || proj.numbers.length === 0) return null;
 
         const purple = proj.anchors || [];
         const green  = proj.neighbors || [];
 
-        // T1 pair half: anchors only, ±1 neighbor expansion.
-        const t1Pair = engine._getExpandAnchorsToBetNumbers(purple, []) || [];
-        // T2 pair half: pair-side targets expanded ±2.
-        const t2Pair = (purple.length > 0)
+        // ── TIGHT (no-grey) sources: purple-only ──
+        const t1Tight = engine._getExpandAnchorsToBetNumbers(purple, []) || [];
+        const t2Tight = (purple.length > 0)
             ? (engine._getExpandTargetsToBetNumbers(purple, 2) || [])
             : [];
-        // T2 13-opp half: 13-opp-side targets expanded ±2.
-        const t2_13opp = (green.length > 0)
+        const t3Tight = engine._getExpandAnchorsToBetNumbers(purple, []) || [];
+
+        // ── WIDE (with-grey) sources: purple + green ──
+        const t1Wide = engine._getExpandAnchorsToBetNumbers(purple, green) || [];
+        const t2Wide = (purple.length > 0)
+            ? (engine._getExpandTargetsToBetNumbers(purple, 2) || [])
+            : [];
+        const t2_13oppWide = (green.length > 0)
             ? (engine._getExpandTargetsToBetNumbers(green, 2) || [])
             : [];
-        // T3 pair: full pair prediction (anchors + neighbors merged).
-        const t3Pair = proj.numbers || [];
-
-        // Greys for this pair: the 13-opp-side raw anchors (un-expanded).
-        // Small candidate set (typically 4 numbers) that the caller can
-        // optionally promote into the bet when include-grey is ticked.
-        const greys = green.slice();
+        const t3Wide = proj.numbers.slice();
 
         return {
-            t1Pair: new Set(t1Pair),
-            t2Pair: new Set(t2Pair),
-            t2_13opp: new Set(t2_13opp),
-            t3Pair: new Set(t3Pair),
-            greys: greys
+            tight: {
+                t1: new Set(t1Tight),
+                t2: new Set(t2Tight),
+                t3: new Set(t3Tight)
+            },
+            wide: {
+                t1: new Set(t1Wide),
+                t2: new Set(t2Wide),
+                t2_13opp: new Set(t2_13oppWide),
+                t3: new Set(t3Wide)
+            }
         };
     }
 
     /**
-     * Intersection of four number sets.
+     * Intersection of an arbitrary array of Sets. If any source is empty
+     * the result is empty — an absent source means "this column has no
+     * candidates", which strictly excludes everything.
      */
-    function _intersectFour(a, b, c, d) {
+    function _intersectSets(sets) {
+        if (!sets || sets.length === 0) return [];
+        for (const s of sets) {
+            if (!s || s.size === 0) return [];
+        }
+        // Start from the smallest set for efficiency.
+        const sorted = sets.slice().sort((a, b) => a.size - b.size);
         const out = [];
-        for (const n of a) {
-            if (b.has(n) && c.has(n) && d.has(n)) out.push(n);
+        for (const n of sorted[0]) {
+            let inAll = true;
+            for (let i = 1; i < sorted.length; i++) {
+                if (!sorted[i].has(n)) { inAll = false; break; }
+            }
+            if (inAll) out.push(n);
         }
         return out;
     }
@@ -169,30 +195,22 @@
             return skip('Strategy-Lab: no locked pair (call selectBestPair at session start)');
         }
 
-        const cols = _computeFourColumnNumbers(engine, spins, idx, refKey);
+        const cols = _computeColumnSources(engine, spins, idx, refKey);
         if (!cols) return skip('Strategy-Lab: no projection for locked pair');
 
-        let intersection = _intersectFour(cols.t1Pair, cols.t2Pair, cols.t2_13opp, cols.t3Pair);
-
         // ── INCLUDE-GREY SEMANTICS ──
-        // Tick = include greys in the bet (extra coverage).
-        // Untick = bet only on the four-way intersection.
-        // V1.1: greys are sourced from BOTH the caller (live: wheel
-        // extras) AND the strategy's own "secondary" candidates (the
-        // 13-opp-side raw anchors from the projection) so Auto Test —
-        // which can't read the wheel — also responds to the toggle.
+        // The toggle changes WHICH sources are intersected and how WIDE
+        // each source is. The bet is always the intersection — never a
+        // raw append.
+        //   OFF: T1.tight ∩ T2.tight ∩ T3.tight (purple-only, 3 sources)
+        //   ON : T1.wide ∩ T2.wide ∩ T2_13opp.wide ∩ T3.wide
+        //        (full purple+green, 4 sources — the 13-opp half joins).
         const includeGrey = (ctx && typeof ctx.includeGrey === 'boolean') ? ctx.includeGrey : true;
-        const callerGreys = (ctx && ctx.greyNumbers)
-            ? (ctx.greyNumbers instanceof Set ? Array.from(ctx.greyNumbers) : ctx.greyNumbers.slice())
-            : [];
-        const allGreys = Array.from(new Set([...(cols.greys || []), ...callerGreys]));
+        const sources = includeGrey
+            ? [cols.wide.t1, cols.wide.t2, cols.wide.t2_13opp, cols.wide.t3]
+            : [cols.tight.t1, cols.tight.t2, cols.tight.t3];
 
-        if (includeGrey && allGreys.length > 0) {
-            // Promote greys into the bet, deduping against intersection.
-            const merged = new Set(intersection);
-            for (const n of allGreys) merged.add(n);
-            intersection = Array.from(merged);
-        }
+        let intersection = _intersectSets(sources);
 
         if (intersection.length === 0) {
             return skip('Strategy-Lab: empty intersection for locked pair');
@@ -226,7 +244,7 @@
             selectedFilter: null,
             numbers: intersection,
             confidence: 100,
-            reason: `Strategy-Lab pair=${pairName} bet=${intersection.length}${includeGrey ? ` (with ${allGreys.length} greys)` : ' (no greys)'}`
+            reason: `Strategy-Lab pair=${pairName} bet=${intersection.length} ${includeGrey ? '(grey: ON, 4-source ∩)' : '(grey: OFF, 3-source ∩)'}`
         };
     }
 
@@ -234,7 +252,7 @@
         selectBestPair: selectBestPair,
         decideStrategyLab: decideStrategyLab,
         // Exposed for tests.
-        _computeFourColumnNumbers: _computeFourColumnNumbers,
-        _intersectFour: _intersectFour
+        _computeColumnSources: _computeColumnSources,
+        _intersectSets: _intersectSets
     };
 }));
