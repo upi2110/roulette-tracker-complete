@@ -660,34 +660,90 @@ class AIAutoEngine {
         for (const s of sets) {
             let score = 0;
 
-            // Factor 1 (40%): Coverage overlap — how many prediction numbers fall in this set
-            const overlap = combinedNumbers.filter(n => s.nums.has(n)).length;
-            score += (overlap / Math.max(combinedNumbers.length, 1)) * 0.40;
+            // SIZE-NEUTRAL VIA RATIO (LIFT)
+            // SET_0 has 13 numbers (because 0/26 share a pocket); SET_5
+            // and SET_6 have 12 each. Per user spec the three sets must
+            // compete on equal footing regardless of their physical
+            // size — including absence of advantage when a real signal
+            // is present. We use a RATIO (lift) form: rate / baseline.
+            //
+            //   subtract: (rate - baseline) — removes constant bias only;
+            //             a 1.5x-baseline signal still gives larger sets
+            //             larger absolute excess
+            //   ratio:    (rate / baseline) — invariant under set size;
+            //             a 1.5x-baseline signal yields lift=1.5 for all
+            //             three sets regardless of their absolute size
+            //
+            // The (lift - 1.0) form makes lift=1 (chance) contribute 0
+            // and only above-chance excess scores positive.
+            const baselineRate = s.nums.size / 37;
 
-            // Factor 2 (30%): Recent frequency — how many of last 10 spins fell in this set
+            // Factor 1 (40%): Coverage overlap — what fraction of
+            // prediction numbers fall in this set, normalised by chance.
+            const overlap = combinedNumbers.filter(n => s.nums.has(n)).length;
+            const overlapRate = overlap / Math.max(combinedNumbers.length, 1);
+            const overlapLift = overlapRate / baselineRate;
+            score += (overlapLift - 1.0) * 0.40;
+
+            // Factor 2 (30%): Recent frequency — last 10 spins ÷ chance.
             const recent = recentSpins || [];
             const recentInSet = recent.filter(n => s.nums.has(n)).length;
-            const recentRate = recent.length > 0 ? recentInSet / recent.length : (s.nums.size / 37);
-            score += recentRate * 0.30;
+            const recentRate = recent.length > 0 ? recentInSet / recent.length : baselineRate;
+            const recentLift = recentRate / baselineRate;
+            score += (recentLift - 1.0) * 0.30;
 
-            // Factor 3 (15%): Anti-streak — if this set hasn't appeared in last 3 spins, give bonus
+            // Factor 3 (15%): Anti-streak — if this set hasn't appeared
+            // in last 3 spins, give bonus.
+            // SIZE-NEUTRAL: P(no hit in 3 random spins) = ((37-size)/37)^3.
+            // SET_0 (13 nums) has 27.3% chance vs SET_5/6 (12 nums) at
+            // 31.0% — without normalising, SET_5/6 collected this bonus
+            // 3.7% more often per spin. We scale the bonus inversely
+            // with that probability so the EXPECTED contribution per
+            // spin equals 0.10 * (12/37 baseline) for all three sets,
+            // regardless of physical size.
             const last3 = recent.slice(-3);
             const last3InSet = last3.filter(n => s.nums.has(n)).length;
             if (last3InSet === 0 && recent.length >= 3) {
-                score += 0.10;
+                const pNoHit = Math.pow((37 - s.nums.size) / 37, 3);
+                const refPNoHit = Math.pow((37 - 12) / 37, 3); // 12-num set as reference
+                const sizeNeutralBonus = 0.10 * (refPNoHit / pNoHit);
+                score += sizeNeutralBonus;
             }
 
-            // Factor 4 (15%): Historical filter model performance
+            // Factor 4 (15%): Historical filter model performance.
+            // SIZE-NEUTRAL: convert raw hitRate into "lift" relative to
+            // the chance baseline expected from a filtered set of this
+            // average size (avgFilteredCount/37). Larger filtered sets
+            // naturally have higher absolute hit rates; lift normalises
+            // away that effect so we score the per-number predictive
+            // edge instead. Lift > 1 means the filter beats chance;
+            // lift = 1 means it matches chance; <1 means worse than
+            // chance. The * 0.15 weight stays the same for backward
+            // comparability with the previous formula's order of
+            // magnitude (lift ≈ 1.0 for chance, similar weight as a
+            // hitRate ≈ 0.20).
             const fm = this.filterModels[s.filterKey];
-            if (fm && fm.totalTrials > 0) {
-                score += fm.hitRate * 0.15;
+            if (fm && fm.totalTrials > 0 && fm.avgFilteredCount > 0) {
+                const baselineHitRate = fm.avgFilteredCount / 37;
+                const lift = fm.hitRate / baselineHitRate;
+                // Subtract 1.0 so lift=1 (chance) contributes 0; only
+                // above-chance performance scores positive. Otherwise
+                // a filter that exactly matches chance would still rank
+                // sets by chance baseline (which is size-correlated).
+                score += (lift - 1.0) * 0.15;
             }
 
-            // Factor 5: Session filter performance (adaptive)
+            // Factor 5: Session filter performance (adaptive).
+            // SIZE-NEUTRAL: same lift normalisation as Factor 4. The
+            // session doesn't track filtered-count separately, so we
+            // borrow the historical avgFilteredCount from filterModels
+            // as the size baseline.
             const sf = this.session.filterPerformance[s.filterKey];
-            if (sf && sf.attempts >= 3) {
+            if (sf && sf.attempts >= 3 && fm && fm.avgFilteredCount > 0) {
                 const sfRate = sf.hits / sf.attempts;
-                score += sfRate * this.session.adaptationWeight * 0.10;
+                const baselineHitRate = fm.avgFilteredCount / 37;
+                const sfLift = sfRate / baselineHitRate;
+                score += (sfLift - 1.0) * this.session.adaptationWeight * 0.10;
             }
 
             if (score > bestScore) {
