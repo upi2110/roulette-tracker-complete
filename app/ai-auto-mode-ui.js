@@ -7,7 +7,14 @@ class AIAutoModeUI {
     constructor() {
         this.isAutoMode = false;
         this.isSemiAutoMode = false;
-        // 'manual' | 'semi' | 'auto' | 't1-strategy' | 'ai-trained'.
+        // 'manual' | 'semi' | 'auto' | 't1-strategy' | 'ai-trained' | 'test'.
+        // The mode buttons are organized into three top-level tabs:
+        //   - "Manual" tab → sub-options: MANUAL, SEMI
+        //   - "Auto" tab   → sub-options: AUTO, T1-strategy, AI-trained
+        //   - "Test (Lab)" tab → single sub-option: test (set on tab click)
+        // `activeTab` is the visible tab; it auto-syncs to whichever tab
+        // owns the currentMode so a programmatic setMode keeps the UI
+        // coherent.
         // t1-strategy behaves exactly like 'auto' at the engine-enable
         // layer (engine is enabled, orchestrator is in auto mode) but
         // instructs the orchestrator to route live decisions through
@@ -17,6 +24,9 @@ class AIAutoModeUI {
         // NOT use the heuristic engine or user-defined pairs; every
         // spin is routed through window.aiTrainedController.decide().
         this.currentMode = 'manual';
+        // Active top-level tab — drives which sub-button row is visible.
+        // Auto-synced to currentMode; default is 'manual'.
+        this.activeTab = 'manual';
         this.engine = null;      // Will be set to window.aiAutoEngine
         this.dataLoader = null;  // Will be set to window.aiDataLoader
 
@@ -64,32 +74,23 @@ class AIAutoModeUI {
         autoSection.id = 'autoModeSection';
         autoSection.style.cssText = 'padding:8px 12px;background:linear-gradient(135deg,#1e293b 0%,#334155 100%);border-radius:8px;margin-bottom:8px;';
         autoSection.innerHTML = `
+            <!-- Tabs row: top-level mode groupings -->
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                <button id="manualModeBtn" style="
+                <button id="manualTabBtn" data-tab="manual" style="
                     flex:1;padding:6px 12px;font-size:12px;font-weight:700;
                     border:2px solid #3b82f6;border-radius:6px;cursor:pointer;
                     background:#3b82f6;color:white;
-                ">MANUAL</button>
-                <button id="semiAutoModeBtn" style="
+                ">📝 Manual</button>
+                <button id="autoTabBtn" data-tab="auto" style="
                     flex:1;padding:6px 12px;font-size:12px;font-weight:700;
                     border:2px solid #64748b;border-radius:6px;cursor:pointer;
                     background:transparent;color:#94a3b8;
-                ">SEMI</button>
-                <button id="autoModeBtn" style="
+                ">🤖 Auto</button>
+                <button id="testTabBtn" data-tab="test" title="Strategy Lab — sandbox mode for evaluating experimental strategies" style="
                     flex:1;padding:6px 12px;font-size:12px;font-weight:700;
                     border:2px solid #64748b;border-radius:6px;cursor:pointer;
                     background:transparent;color:#94a3b8;
-                ">AUTO</button>
-                <button id="t1StrategyModeBtn" title="Same T1 decision policy as Auto Test" style="
-                    flex:1;padding:6px 12px;font-size:12px;font-weight:700;
-                    border:2px solid #64748b;border-radius:6px;cursor:pointer;
-                    background:transparent;color:#94a3b8;
-                ">T1-strategy</button>
-                <button id="aiTrainedModeBtn" title="System AI Adaptive Training Mode — phase-aware, evidence-gated bets" style="
-                    flex:1;padding:6px 12px;font-size:12px;font-weight:700;
-                    border:2px solid #64748b;border-radius:6px;cursor:pointer;
-                    background:transparent;color:#94a3b8;
-                ">AI-trained</button>
+                ">🧪 Test (Lab)</button>
                 <select id="trainingModeSelect" title="Choose how the app trains" style="
                     flex:0 0 auto;padding:6px 6px;font-size:11px;font-weight:700;
                     border:2px solid #f59e0b;border-radius:6px;cursor:pointer;
@@ -105,6 +106,45 @@ class AIAutoModeUI {
                     border:2px solid #f59e0b;border-radius:6px;cursor:pointer;
                     background:#f59e0b;color:#000;
                 ">🎓 TRAIN</button>
+            </div>
+
+            <!-- Sub-row: shows the sub-options of the active tab.
+                 'Test (Lab)' tab has no sub-row — clicking the tab sets
+                 the mode directly. -->
+            <div id="modeSubRow" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;padding:4px 6px;background:rgba(15,23,42,0.45);border-radius:6px;">
+                <!-- Manual tab sub-buttons -->
+                <button id="manualModeBtn" data-tab-group="manual" style="
+                    flex:1;padding:5px 10px;font-size:11px;font-weight:700;
+                    border:2px solid #3b82f6;border-radius:5px;cursor:pointer;
+                    background:#3b82f6;color:white;
+                ">MANUAL</button>
+                <button id="semiAutoModeBtn" data-tab-group="manual" style="
+                    flex:1;padding:5px 10px;font-size:11px;font-weight:700;
+                    border:2px solid #64748b;border-radius:5px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">SEMI</button>
+                <!-- Auto tab sub-buttons -->
+                <button id="autoModeBtn" data-tab-group="auto" style="
+                    display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
+                    border:2px solid #64748b;border-radius:5px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">AUTO</button>
+                <button id="t1StrategyModeBtn" data-tab-group="auto" title="Same T1 decision policy as Auto Test" style="
+                    display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
+                    border:2px solid #64748b;border-radius:5px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">T1-strategy</button>
+                <button id="aiTrainedModeBtn" data-tab-group="auto" title="System AI Adaptive Training Mode — phase-aware, evidence-gated bets" style="
+                    display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
+                    border:2px solid #64748b;border-radius:5px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">AI-trained</button>
+                <!-- Test tab placeholder (single mode; tab click sets it) -->
+                <button id="testLabModeBtn" data-tab-group="test" title="Strategy Lab — sandbox mode for evaluating experimental strategies in live play" style="
+                    display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
+                    border:2px solid #14b8a6;border-radius:5px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">test (lab)</button>
             </div>
             <div id="trainingStatusBar" style="display:none;margin-bottom:4px;">
                 <div id="trainingStatus" style="font-size:10px;color:#94a3b8;margin-bottom:2px;">Not trained</div>
@@ -182,6 +222,37 @@ class AIAutoModeUI {
                 if (this.currentMode !== 'ai-trained') this.setMode('ai-trained');
             });
         }
+
+        const testLabBtn = document.getElementById('testLabModeBtn');
+        if (testLabBtn) {
+            testLabBtn.addEventListener('click', () => {
+                if (this.currentMode !== 'test') this.setMode('test');
+            });
+        }
+
+        // Tab clicks. Switching to a tab swaps the sub-row visibility but
+        // does NOT change currentMode (the sub-buttons do that), so the
+        // user can browse without committing. Exception: the Test (Lab)
+        // tab has only one sub-option, so a tab click sets mode='test'
+        // directly for one-click access.
+        const tabButtons = ['manualTabBtn', 'autoTabBtn', 'testTabBtn'];
+        tabButtons.forEach((id) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            btn.addEventListener('click', () => {
+                const tab = btn.getAttribute('data-tab');
+                if (tab === 'test') {
+                    // Single-mode tab: act immediately.
+                    if (this.currentMode !== 'test') this.setMode('test');
+                    else this._setActiveTab('test');
+                } else {
+                    this._setActiveTab(tab);
+                }
+            });
+        });
+
+        // Initial sub-row paint matches the default activeTab.
+        this._setActiveTab(this.activeTab);
 
         if (trainBtn) {
             // Click is now routed through the training-mode router.
@@ -266,7 +337,7 @@ class AIAutoModeUI {
                 }
             }
 
-        } else if (mode === 'auto' || mode === 't1-strategy') {
+        } else if (mode === 'auto' || mode === 't1-strategy' || mode === 'test') {
             // Switching to an engine-driven live mode — requires trained
             // engine. Both 'auto' and 't1-strategy' share the engine-
             // enable + orchestrator auto-on plumbing; the only
@@ -324,9 +395,16 @@ class AIAutoModeUI {
                 // per-spin. Falls through harmlessly if setDecisionMode
                 // is not present (older orchestrator build).
                 if (typeof window.autoUpdateOrchestrator.setDecisionMode === 'function') {
-                    window.autoUpdateOrchestrator.setDecisionMode(
-                        mode === 't1-strategy' ? 't1-strategy' : 'auto'
-                    );
+                    // 'test' (Strategy Lab) shares the default decision
+                    // pipeline ('auto') today — placeholder until
+                    // experimental strategies are wired into the
+                    // orchestrator. Pass 'test' through so a future
+                    // setDecisionMode upgrade can branch on it without
+                    // requiring another live-mode change here.
+                    const decisionMode = mode === 't1-strategy'
+                        ? 't1-strategy'
+                        : (mode === 'test' ? 'test' : 'auto');
+                    window.autoUpdateOrchestrator.setDecisionMode(decisionMode);
                 }
             }
 
@@ -367,6 +445,10 @@ class AIAutoModeUI {
             }
         }
 
+        // Auto-sync the visible tab to the tab that owns the new mode so
+        // a programmatic setMode() (or sub-button click) keeps the UI
+        // coherent without requiring the user to also click a tab.
+        this._setActiveTab(this._tabForMode(this.currentMode));
         this._updateModeButtons();
         // SEMI and MANUAL show pair selection; engine-driven modes
         // (AUTO, T1-strategy, AI-trained) hide it — the system picks
@@ -374,7 +456,8 @@ class AIAutoModeUI {
         const engineDriven = (
             this.currentMode === 'auto' ||
             this.currentMode === 't1-strategy' ||
-            this.currentMode === 'ai-trained'
+            this.currentMode === 'ai-trained' ||
+            this.currentMode === 'test'
         );
         this.togglePairSelection(!engineDriven);
 
@@ -417,6 +500,50 @@ class AIAutoModeUI {
         }
     }
 
+    /**
+     * Map a mode value to the top-level tab that owns it.
+     * Used when setMode() is called programmatically or via a sub-button
+     * so the visible tab stays in sync with currentMode.
+     */
+    _tabForMode(mode) {
+        if (mode === 'manual' || mode === 'semi') return 'manual';
+        if (mode === 'auto' || mode === 't1-strategy' || mode === 'ai-trained') return 'auto';
+        if (mode === 'test') return 'test';
+        return 'manual';
+    }
+
+    /**
+     * Switch the visible top-level tab. Only toggles which sub-buttons
+     * are shown and the tab-button highlight; does NOT change currentMode.
+     * Tab='test' shows the single test sub-button (informational only —
+     * the tab click itself sets mode='test' for that case).
+     */
+    _setActiveTab(tab) {
+        const allowed = ['manual', 'auto', 'test'];
+        if (allowed.indexOf(tab) === -1) tab = 'manual';
+        this.activeTab = tab;
+
+        // Tab highlight: blue accent for whichever tab is active.
+        const TAB_ACCENT = { manual: '#3b82f6', auto: '#22c55e', test: '#14b8a6' };
+        ['manualTabBtn', 'autoTabBtn', 'testTabBtn'].forEach((id) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            const t = btn.getAttribute('data-tab');
+            const accent = TAB_ACCENT[t] || '#3b82f6';
+            const active = (t === tab);
+            btn.style.background  = active ? accent : 'transparent';
+            btn.style.color       = active ? 'white' : '#94a3b8';
+            btn.style.borderColor = active ? accent : '#64748b';
+        });
+
+        // Sub-row visibility: show only the buttons whose data-tab-group
+        // matches the active tab.
+        const subButtons = document.querySelectorAll('#modeSubRow [data-tab-group]');
+        subButtons.forEach((el) => {
+            el.style.display = (el.getAttribute('data-tab-group') === tab) ? '' : 'none';
+        });
+    }
+
     _updateModeButtons() {
         const manualBtn = document.getElementById('manualModeBtn');
         const semiBtn = document.getElementById('semiAutoModeBtn');
@@ -456,6 +583,14 @@ class AIAutoModeUI {
             aiTrainedBtn.style.background = mode === 'ai-trained' ? '#a855f7' : 'transparent';
             aiTrainedBtn.style.color = mode === 'ai-trained' ? 'white' : '#94a3b8';
             aiTrainedBtn.style.borderColor = mode === 'ai-trained' ? '#a855f7' : '#64748b';
+        }
+
+        const testLabBtn = document.getElementById('testLabModeBtn');
+        if (testLabBtn) {
+            // Teal accent — distinct from all other modes; signals sandbox.
+            testLabBtn.style.background = mode === 'test' ? '#14b8a6' : 'transparent';
+            testLabBtn.style.color = mode === 'test' ? 'white' : '#94a3b8';
+            testLabBtn.style.borderColor = mode === 'test' ? '#14b8a6' : '#64748b';
         }
     }
 
