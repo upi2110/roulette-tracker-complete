@@ -19,7 +19,7 @@ class MoneyManagementPanel {
             isSessionActive: false,
             spinsWithBets: [],
             isBettingEnabled: false,  // NEW: User control for betting
-            bettingStrategy: 3,  // 1=Aggressive, 2=Conservative, 3=Cautious (default: Cautious)
+            bettingStrategy: 3,  // 1=Aggressive, 2=Conservative, 3=Cautious, 4=Defensive (default: Cautious)
             consecutiveWins: 0,  // Track consecutive wins for strategies 2 & 3
             currentBetPerNumber: 2  // Track current bet amount (overrides backend)
         };
@@ -135,7 +135,7 @@ class MoneyManagementPanel {
                 
                 <div class="bet-history-section" style="margin-top: 12px;">
                     <label style="font-weight: 700; font-size: 11px; margin-bottom: 4px; display: block;">Recent Bets:</label>
-                    <div class="bet-history-list" id="betHistoryList" style="max-height: 100px; overflow-y: auto; font-size: 10px;">
+                    <div class="bet-history-list" id="betHistoryList" style="max-height: 280px; overflow-y: auto; overflow-x: hidden; font-size: 10px; border: 1px solid #dee2e6; border-radius: 4px; background: #fff;">
                         <div style="color: #6c757d; text-align: center; padding: 8px;">No bets yet - Add 3+ spins to start</div>
                     </div>
                 </div>
@@ -204,8 +204,8 @@ class MoneyManagementPanel {
     }
 
     toggleStrategy() {
-        // Cycle through strategies: 1 → 2 → 3 → 1
-        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 3) + 1;
+        // Cycle through strategies: 1 → 2 → 3 → 4 → 1
+        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 4) + 1;
         
         // Reset counters when switching strategies
         this.sessionData.consecutiveWins = 0;
@@ -228,12 +228,21 @@ class MoneyManagementPanel {
             console.log('✅ Strategy 2: Conservative');
             console.log('   • +$1 after 2 CONSECUTIVE losses');
             console.log('   • -$1 after 2 CONSECUTIVE wins');
-        } else {
+        } else if (this.sessionData.bettingStrategy === 3) {
             // Strategy 3: Cautious (Purple)
             btn.textContent = '🟣 Strategy 3: Cautious';
             btn.style.background = 'linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%)';
             console.log('✅ Strategy 3: Cautious');
             console.log('   • +$2 after 3 CONSECUTIVE losses');
+            console.log('   • -$1 after 2 CONSECUTIVE wins');
+        } else {
+            // Strategy 4: Defensive (Dark Teal) — the most cautious profile.
+            // Slow escalation on losses, normal reduction on wins.
+            btn.textContent = '🛡️ Strategy 4: Defensive';
+            btn.style.background = 'linear-gradient(135deg, #0f766e 0%, #134e4a 100%)';
+            console.log('✅ Strategy 4: Defensive');
+            console.log('   • Initial bet $2');
+            console.log('   • +$1 after 5 CONSECUTIVE losses');
             console.log('   • -$1 after 2 CONSECUTIVE wins');
         }
         
@@ -534,6 +543,28 @@ class MoneyManagementPanel {
                     console.log(`🟣 Strategy 3: 3 CONSECUTIVE LOSSES → Increased bet by $2 to $${this.sessionData.currentBetPerNumber}`);
                 } else {
                     console.log(`🟣 Strategy 3: ${this.sessionData.consecutiveLosses} consecutive loss(es) - Need ${3 - this.sessionData.consecutiveLosses} more to increase bet`);
+                }
+            }
+
+        } else if (this.sessionData.bettingStrategy === 4) {
+            // ═══ STRATEGY 4: DEFENSIVE ═══
+            // Initial bet $2 (min). +$1 after 5 CONSECUTIVE losses,
+            // -$1 after 2 CONSECUTIVE wins. Floor stays at $2.
+            if (hit) {
+                if (this.sessionData.consecutiveWins >= 2) {
+                    this.sessionData.currentBetPerNumber = Math.max(2, this.sessionData.currentBetPerNumber - 1);
+                    this.sessionData.consecutiveWins = 0; // Reset after adjustment
+                    console.log(`🛡️ Strategy 4: 2 CONSECUTIVE WINS → Decreased bet to $${this.sessionData.currentBetPerNumber}`);
+                } else {
+                    console.log(`🛡️ Strategy 4: ${this.sessionData.consecutiveWins} consecutive win(s) - Need ${2 - this.sessionData.consecutiveWins} more to decrease bet`);
+                }
+            } else {
+                if (this.sessionData.consecutiveLosses >= 5) {
+                    this.sessionData.currentBetPerNumber += 1;
+                    this.sessionData.consecutiveLosses = 0;  // RESET COUNTER AFTER ADJUSTMENT
+                    console.log(`🛡️ Strategy 4: 5 CONSECUTIVE LOSSES → Increased bet by $1 to $${this.sessionData.currentBetPerNumber}`);
+                } else {
+                    console.log(`🛡️ Strategy 4: ${this.sessionData.consecutiveLosses} consecutive loss(es) - Need ${5 - this.sessionData.consecutiveLosses} more to increase bet`);
                 }
             }
         }

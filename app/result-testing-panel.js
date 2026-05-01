@@ -944,7 +944,7 @@ class ResultTestingPanel {
             sd.isBettingEnabled = true;
 
             // Apply session's strategy so the UI reflects what Auto Test ran.
-            if (session.strategy === 1 || session.strategy === 2 || session.strategy === 3) {
+            if (session.strategy === 1 || session.strategy === 2 || session.strategy === 3 || session.strategy === 4) {
                 sd.bettingStrategy = session.strategy;
             }
 

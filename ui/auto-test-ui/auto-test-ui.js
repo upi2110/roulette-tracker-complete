@@ -8,14 +8,17 @@
 
 // Auto Test method options exposed by the Load-File-area dropdown.
 // Labels are user-facing and must match exactly.
-//   - 'auto-test'     : the ORIGINAL Auto Test behaviour (default).
-//   - 'T1-strategy'   : alternate T1 test method.
-//   - 'test-strategy' : alternate generic test method.
-// The runner currently does not branch on this value — its behaviour
-// is identical for every option. This constant exists so the canonical
-// list and default cannot drift out of sync between the UI, the
-// runner's runAll default, and the tests.
-const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test-strategy', 'AI-trained', 'manual'];
+//   - 'auto-test'   : the ORIGINAL Auto Test behaviour (default).
+//   - 'T1-strategy' : alternate T1 test method.
+//   - 'test'        : Strategy-Lab sandbox where experimental strategies
+//                     are plugged in for evaluation before promotion.
+//                     Currently shares the default _simulateDecision
+//                     pipeline.
+// The runner currently does not branch on 'auto-test' vs 'test' — they
+// share behaviour today. This constant exists so the canonical list and
+// default cannot drift out of sync between the UI, the runner's runAll
+// default, and the tests.
+const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test', 'AI-trained', 'manual'];
 const AUTO_TEST_DEFAULT_METHOD = 'auto-test';
 
 class AutoTestUI {
@@ -56,7 +59,7 @@ class AutoTestUI {
                         <select id="autoTestMethodSelect" title="Auto Test method" style="padding:6px 8px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">
                             <option value="auto-test" selected>auto-test</option>
                             <option value="T1-strategy">T1-strategy</option>
-                            <option value="test-strategy">test-strategy</option>
+                            <option value="test">test (strategy lab)</option>
                             <option value="AI-trained">AI-trained</option>
                             <option value="manual">manual</option>
                         </select>
@@ -77,7 +80,7 @@ class AutoTestUI {
                             <select id="autoTestManualStrategy" title="Which strategy should generate predictions for the manual run" style="padding:4px 8px;font-size:11px;font-weight:600;border:1px solid #fbbf24;border-radius:4px;background:#1e293b;color:#e2e8f0;">
                                 <option value="auto-test">auto-test</option>
                                 <option value="T1-strategy">T1-strategy</option>
-                                <option value="test-strategy">test-strategy</option>
+                                <option value="test">test (strategy lab)</option>
                                 <option value="AI-trained" selected>AI-trained</option>
                             </select>
                             <span style="color:#94a3b8;font-size:10px;">(predictions will be generated using this strategy so you can compare against a live session)</span>

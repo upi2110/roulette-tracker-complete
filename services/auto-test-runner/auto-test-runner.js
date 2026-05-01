@@ -59,7 +59,8 @@ const TEST_REFKEY_TO_PAIR_NAME = {
 const STRATEGY_NAMES = {
     1: 'Aggressive',
     2: 'Conservative',
-    3: 'Cautious'
+    3: 'Cautious',
+    4: 'Defensive'
 };
 
 class AutoTestRunner {
@@ -134,7 +135,10 @@ class AutoTestRunner {
         // strategy's pipeline while still reporting the run as 'manual'.
         // Falls back to 'AI-trained' for back-compat with older callers
         // that did not pass `manualStrategy`.
-        const KNOWN_MANUAL_STRATS = ['auto-test', 'T1-strategy', 'test-strategy', 'AI-trained'];
+        // 'test' = Strategy-Lab sandbox. Currently shares the default
+        // _simulateDecision pipeline; will be the integration point for
+        // experimental strategies pending evaluation.
+        const KNOWN_MANUAL_STRATS = ['auto-test', 'T1-strategy', 'test', 'AI-trained'];
         const requestedManualStrat = (typeof options.manualStrategy === 'string' && KNOWN_MANUAL_STRATS.includes(options.manualStrategy))
             ? options.manualStrategy
             : 'AI-trained';
@@ -234,7 +238,7 @@ class AutoTestRunner {
         this.engine._retrainLossStreak = Infinity;
 
         for (let startIdx = 0; startIdx <= maxStart; startIdx++) {
-            for (const strategy of [1, 2, 3]) {
+            for (const strategy of [1, 2, 3, 4]) {
                 // Reset engine session between simulations
                 this.engine.resetSession();
 
@@ -817,6 +821,20 @@ class AutoTestRunner {
             } else {
                 if (state.consecutiveLosses >= 3) {
                     bet = bet + 2;
+                    state.consecutiveLosses = 0; // Reset after adjustment
+                }
+            }
+        } else if (strategy === 4) {
+            // Strategy 4: Defensive — +$1 after 5 consecutive losses, -$1 after 2 consecutive wins
+            // Min bet is $2; slowest escalation profile.
+            if (hit) {
+                if (state.consecutiveWins >= 2) {
+                    bet = Math.max(MIN_BET, bet - 1);
+                    state.consecutiveWins = 0; // Reset after adjustment
+                }
+            } else {
+                if (state.consecutiveLosses >= 5) {
+                    bet = bet + 1;
                     state.consecutiveLosses = 0; // Reset after adjustment
                 }
             }
