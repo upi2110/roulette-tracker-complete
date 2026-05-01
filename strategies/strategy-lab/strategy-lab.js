@@ -84,6 +84,11 @@
     /**
      * Build the four "column" number sets for the locked pair using
      * engine internals so AT and live produce identical results.
+     *
+     * Also surfaces the locked pair's "grey" candidates — the 13-opp-side
+     * anchors (proj.neighbors) — so the caller can merge them into the
+     * bet when the include-grey toggle is on. This is the V1.1 hook that
+     * makes the toggle meaningful in Auto Test (V1 always passed []).
      */
     function _computeFourColumnNumbers(engine, spins, idx, refKey) {
         const proj = engine._computeProjectionForPair(spins, idx, refKey);
@@ -105,11 +110,17 @@
         // T3 pair: full pair prediction (anchors + neighbors merged).
         const t3Pair = proj.numbers || [];
 
+        // Greys for this pair: the 13-opp-side raw anchors (un-expanded).
+        // Small candidate set (typically 4 numbers) that the caller can
+        // optionally promote into the bet when include-grey is ticked.
+        const greys = green.slice();
+
         return {
             t1Pair: new Set(t1Pair),
             t2Pair: new Set(t2Pair),
             t2_13opp: new Set(t2_13opp),
-            t3Pair: new Set(t3Pair)
+            t3Pair: new Set(t3Pair),
+            greys: greys
         };
     }
 
@@ -163,12 +174,24 @@
 
         let intersection = _intersectFour(cols.t1Pair, cols.t2Pair, cols.t2_13opp, cols.t3Pair);
 
+        // ── INCLUDE-GREY SEMANTICS ──
+        // Tick = include greys in the bet (extra coverage).
+        // Untick = bet only on the four-way intersection.
+        // V1.1: greys are sourced from BOTH the caller (live: wheel
+        // extras) AND the strategy's own "secondary" candidates (the
+        // 13-opp-side raw anchors from the projection) so Auto Test —
+        // which can't read the wheel — also responds to the toggle.
         const includeGrey = (ctx && typeof ctx.includeGrey === 'boolean') ? ctx.includeGrey : true;
-        if (!includeGrey && ctx && ctx.greyNumbers) {
-            const greySet = (ctx.greyNumbers instanceof Set)
-                ? ctx.greyNumbers
-                : new Set(ctx.greyNumbers);
-            intersection = intersection.filter((n) => !greySet.has(n));
+        const callerGreys = (ctx && ctx.greyNumbers)
+            ? (ctx.greyNumbers instanceof Set ? Array.from(ctx.greyNumbers) : ctx.greyNumbers.slice())
+            : [];
+        const allGreys = Array.from(new Set([...(cols.greys || []), ...callerGreys]));
+
+        if (includeGrey && allGreys.length > 0) {
+            // Promote greys into the bet, deduping against intersection.
+            const merged = new Set(intersection);
+            for (const n of allGreys) merged.add(n);
+            intersection = Array.from(merged);
         }
 
         if (intersection.length === 0) {
@@ -203,7 +226,7 @@
             selectedFilter: null,
             numbers: intersection,
             confidence: 100,
-            reason: `Strategy-Lab pair=${pairName} ∩(T1,T2,T2_13opp,T3)=${intersection.length}${includeGrey ? '' : ' (grey filtered)'}`
+            reason: `Strategy-Lab pair=${pairName} bet=${intersection.length}${includeGrey ? ` (with ${allGreys.length} greys)` : ' (no greys)'}`
         };
     }
 
