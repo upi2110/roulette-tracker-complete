@@ -78,13 +78,12 @@ h1 { color: #2c3e50; margin-bottom: 12px; text-align: center; font-size: 16px; }
     overflow-y: auto;
     border: 1px solid #ddd;
     width: 100%;
-    /* NOTE: `scrollbar-gutter: stable` was tried in slice 1 to prevent
-       column-width jumps when the scrollbar materialises. It reserved
-       a permanent gutter strip on the right edge of every table that
-       showed up as a visible white/grey border (the
-       ::-webkit-scrollbar-track background bleeding through). Removed
-       in favour of letting columns reflow on scroll-bar appearance —
-       a one-frame jump is preferable to a permanent border artefact. */
+    /* `scrollbar-gutter: stable` was tried (twice) but caused T2
+       to overflow viewport — reserving 10px on every wrapper
+       eats into the 22-column table's already-tight horizontal
+       budget. Removed in favor of letting columns reflow on
+       scrollbar appearance; the layout shift is acceptable, the
+       overflow isn't. */
 }
 
 /* Force the scrollbar to be visible at all times (default macOS
@@ -96,7 +95,11 @@ h1 { color: #2c3e50; margin-bottom: 12px; text-align: center; font-size: 16px; }
     height: 10px;
 }
 .grid-wrapper::-webkit-scrollbar-track {
-    background: #f0f0f0;
+    /* Transparent so scrollbar-gutter:stable doesn't paint a visible
+       grey strip on the right edge of every table when the bar
+       isn't actively in use. The scrollbar-thumb (below) still
+       shows so users see the affordance when scrolling. */
+    background: transparent;
     border-radius: 4px;
 }
 .grid-wrapper::-webkit-scrollbar-thumb {
@@ -152,9 +155,18 @@ td {
 #table1 .code-s, #table1 .code-o, #table1 .code-xx { font-size: 7px; }
 
 #table2 { width: 100%; }
-#table2 th { font-size: 9px; padding: 1px 1px; }
-#table2 td { font-size: 9px; font-weight: 600; padding: 1px 1px; }
-#table2 .code-s, #table2 .code-o, #table2 .code-xx { font-size: 8px; }
+/* Slice 2f: matched T2 font sizes to T1's compact spec so the
+   22-column layout fits the same screen width as T1. T2 used to
+   render at 9px (vs T1's 7-8px) which overflowed by ~150px once
+   the pair-set was extended. */
+#table2 th { font-size: 7px; padding: 1px 1px; }
+#table2 td { font-size: 8px; padding: 1px 1px; }
+#table2 .code-s, #table2 .code-o, #table2 .code-xx { font-size: 7px; }
+
+/* (Removed all the sticky-header stacking / z-index / top-offset
+   / font-size-bump overrides for the green-black-bleed issue —
+   user is restarting the troubleshooting from a clean baseline.) */
+
 
 #table3 { width: 100%; }
 #table3 th { font-size: 10px; }
@@ -273,8 +285,21 @@ td {
     background: linear-gradient(to right, #16a34a 0 15px, #fff 15px 17px, #16a34a 17px 32px);
 }
 /* Table 2: slightly thinner separators (49 cols) */
-#table2 .pair-separator { border-left: 5px solid #000 !important; }
-#table2 .copair-separator { border-left: 3px solid #fff !important; }
+/* Slice 2f: T2 keeps a black separator between pair-groups but
+   rendered via box-shadow instead of border-left (border-left adds
+   to cell width and overflowed the 22-column layout; box-shadow
+   paints over the cell's existing box, zero width cost).
+   Trimmed 5px → 2px so the shadow doesn't cover the Ref digit
+   in the anchor cell of each pair-group. Same trick for the
+   copair-separator (white) at 1.5px → 1px. */
+#table2 .pair-separator {
+    border-left: 0 !important;
+    box-shadow: inset 2px 0 0 #000 !important;
+}
+#table2 .copair-separator {
+    border-left: 0 !important;
+    box-shadow: inset 1px 0 0 #fff !important;
+}
 
 /* ============================================
    COLOR-CODED PAIR HEADERS (unified across all tables)

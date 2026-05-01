@@ -10,7 +10,29 @@
 <body>
 <div id="cellMagnifier"></div>
 <div class="container">
-    <h1>🎯 European Roulette Tracker - 3 Projection Systems</h1>
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <h1 style="margin:0;">🎯 European Roulette Tracker - 3 Projection Systems</h1>
+        <!-- Slice 2f: Global pair-visibility dropdown. Drives all
+             3 tables (T1/T2/T3) and the engine's pair pool (slice
+             2g). Filter state persists in localStorage. -->
+        <div id="pairFilterDropdown" class="pair-filter-dropdown" style="position:relative;">
+            <button type="button" id="pairFilterToggleBtn" class="pair-filter-btn"
+                    style="padding:6px 12px;font-size:12px;font-weight:600;border:1px solid #6366f1;border-radius:6px;background:#eef2ff;color:#3730a3;cursor:pointer;">
+                🔧 Pairs <span id="pairFilterCount" style="opacity:.75;font-weight:400;">(12/12)</span>
+            </button>
+            <div id="pairFilterPanel" class="pair-filter-panel"
+                 style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #cbd5e1;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:10px 12px;min-width:230px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#475569;font-weight:600;">
+                    <span>Visible pair-families</span>
+                    <button type="button" id="pairFilterAllBtn" style="font-size:10px;padding:2px 8px;border:1px solid #cbd5e1;border-radius:4px;background:#f1f5f9;color:#334155;cursor:pointer;">All</button>
+                </div>
+                <div id="pairFilterCheckboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;"></div>
+                <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:10px;color:#64748b;">
+                    Hides BOTH the main and 13-opp halves for each pair-family across all 3 tables.
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Zoom Controls -->
     <div class="zoom-controls">

@@ -305,7 +305,8 @@ function getTable1NextProjections() {
         }
     });
 
-    return projections;
+    // Slice 2f: drop entries whose family is hidden by the dropdown.
+    return _filterProjectionsByVisibleFamilies(projections);
 }
 
 /**
@@ -368,7 +369,8 @@ function getTable2NextProjections() {
         }
     });
 
-    return projections;
+    // Slice 2f: drop entries whose family is hidden by the dropdown.
+    return _filterProjectionsByVisibleFamilies(projections);
 }
 
 /**
@@ -964,6 +966,186 @@ function _scrollGridWrapperToBottom(wrapperId) {
     if (w) w.scrollTop = w.scrollHeight;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  GLOBAL PAIR-FAMILY FILTER (slice 2f)
+// ═══════════════════════════════════════════════════════════════════
+//
+// A single dropdown next to the page title controls which
+// pair-families are visible across all 3 tables (and, in slice 2g,
+// which families the engine considers when picking a pair).
+//
+// FAMILY vs COLUMN-GROUP
+// T1 / T2 split each pair into TWO column-groups: main + 13opp
+// (e.g. prevPlus1 + prevPlus1_13opp). T3 keeps both halves inside
+// a single column-group with a shared PRJ projection. The user's
+// dropdown toggles the FAMILY (e.g. prevPlus1) — both halves fall
+// out of T1/T2 and the embedded T3 group goes too. Less granular
+// than 22 separate toggles, much cleaner UX, and consistent across
+// all 3 tables.
+//
+// 12 distinct families:
+//   ref0, ref19, prev, prevPrev, prevPlus1, prevMinus1,
+//   prevPlus2, prevMinus2, prevPrevPlus1, prevPrevMinus1,
+//   prevPrevPlus2, prevPrevMinus2
+
+const PAIR_FAMILY_LABELS = [
+    {family: 'ref0',           label: '0'   },
+    {family: 'ref19',          label: '19'  },
+    {family: 'prevPlus1',      label: 'P+1' },
+    {family: 'prevMinus1',     label: 'P-1' },
+    {family: 'prevPrevPlus1',  label: 'PP+1'},
+    {family: 'prevPrevMinus1', label: 'PP-1'},
+    {family: 'prev',           label: 'P'   },
+    {family: 'prevPrev',       label: 'PP'  },
+    {family: 'prevPlus2',      label: 'P+2' },
+    {family: 'prevMinus2',     label: 'P-2' },
+    {family: 'prevPrevPlus2',  label: 'PP+2'},
+    {family: 'prevPrevMinus2', label: 'PP-2'},
+];
+
+/**
+ * Map a column-group's dataPair to its parent family. Strips the
+ * `_13opp` suffix used by T1/T2 13-opposite halves; T3 entries
+ * already use the bare family name.
+ */
+function _familyForDataPair(dataPair) {
+    return dataPair && dataPair.endsWith('_13opp')
+        ? dataPair.slice(0, -6)
+        : dataPair;
+}
+
+const PAIR_FILTER_STORAGE_KEY = 'globalVisiblePairs';
+
+/**
+ * Load the persisted set of visible families from localStorage.
+ * Falls back to "all 12 visible" when the key is absent or invalid.
+ */
+function _loadVisiblePairFamilies() {
+    try {
+        const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem(PAIR_FILTER_STORAGE_KEY) : null;
+        if (!raw) return new Set(PAIR_FAMILY_LABELS.map(p => p.family));
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return new Set(PAIR_FAMILY_LABELS.map(p => p.family));
+        // Filter to known families so a stale key with removed entries
+        // doesn't poison the renderer.
+        const known = new Set(PAIR_FAMILY_LABELS.map(p => p.family));
+        return new Set(arr.filter(k => known.has(k)));
+    } catch (_) {
+        return new Set(PAIR_FAMILY_LABELS.map(p => p.family));
+    }
+}
+
+function _persistVisiblePairFamilies(set) {
+    try {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(PAIR_FILTER_STORAGE_KEY, JSON.stringify(Array.from(set)));
+        }
+    } catch (_) { /* best-effort */ }
+}
+
+// Live filter state — read by every renderTableN() and by slice 2g's
+// engine restriction. Mutations go through _setVisiblePairFamilies()
+// to keep localStorage + UI count badge + tables in sync.
+let _visiblePairFamilies = _loadVisiblePairFamilies();
+
+function _setVisiblePairFamilies(set) {
+    _visiblePairFamilies = new Set(set);
+    _persistVisiblePairFamilies(_visiblePairFamilies);
+    _refreshPairFilterUI();
+    // Re-render all 3 tables so they pick up the filtered config.
+    if (typeof render === 'function') render();
+}
+
+/**
+ * Filter a column-group config array (T1/T2/T3) down to the entries
+ * whose family is currently visible. Used inside each table renderer.
+ */
+function _filterVisibleColumnGroups(groups) {
+    return groups.filter(g => _visiblePairFamilies.has(_familyForDataPair(g.dataPair)));
+}
+
+/**
+ * Filter a projections object (keyed by pairKey, e.g.
+ * `prevPlus1` / `prevPlus1_13opp`) down to keys whose family is
+ * currently visible. Used by getTable1NextProjections /
+ * getTable2NextProjections so the AI prediction panel's
+ * "available pairs" list matches what's visible in the tables.
+ */
+function _filterProjectionsByVisibleFamilies(projections) {
+    if (!projections || typeof projections !== 'object') return projections;
+    const out = {};
+    for (const k of Object.keys(projections)) {
+        if (_visiblePairFamilies.has(_familyForDataPair(k))) {
+            out[k] = projections[k];
+        }
+    }
+    return out;
+}
+
+/**
+ * Build the dropdown's checkbox grid + count badge. Idempotent.
+ */
+function _refreshPairFilterUI() {
+    const grid = (typeof document !== 'undefined') ? document.getElementById('pairFilterCheckboxes') : null;
+    const countBadge = (typeof document !== 'undefined') ? document.getElementById('pairFilterCount') : null;
+    if (!grid || !countBadge) return;
+
+    grid.innerHTML = PAIR_FAMILY_LABELS.map(({family, label}) => {
+        const checked = _visiblePairFamilies.has(family) ? 'checked' : '';
+        return `
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 4px;border-radius:3px;">
+                <input type="checkbox" data-family="${family}" ${checked} style="cursor:pointer;">
+                <span>${label}</span>
+            </label>
+        `;
+    }).join('');
+    countBadge.textContent = `(${_visiblePairFamilies.size}/${PAIR_FAMILY_LABELS.length})`;
+}
+
+/**
+ * Wire up the dropdown's button + checkboxes + click-outside-to-close.
+ * Called once on DOMContentLoaded.
+ */
+function _setupPairFilterDropdown() {
+    if (typeof document === 'undefined') return;
+    const toggleBtn = document.getElementById('pairFilterToggleBtn');
+    const panel     = document.getElementById('pairFilterPanel');
+    const grid      = document.getElementById('pairFilterCheckboxes');
+    const allBtn    = document.getElementById('pairFilterAllBtn');
+    if (!toggleBtn || !panel || !grid) return;
+
+    _refreshPairFilterUI();
+
+    toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'block' : 'none';
+    });
+
+    // Click outside closes the panel
+    document.addEventListener('click', (e) => {
+        if (panel.style.display === 'block' && !panel.contains(e.target) && e.target !== toggleBtn) {
+            panel.style.display = 'none';
+        }
+    });
+
+    // Checkbox change → update Set + persist + re-render
+    grid.addEventListener('change', (e) => {
+        const cb = e.target.closest('input[type="checkbox"][data-family]');
+        if (!cb) return;
+        const fam = cb.dataset.family;
+        const next = new Set(_visiblePairFamilies);
+        if (cb.checked) next.add(fam); else next.delete(fam);
+        _setVisiblePairFamilies(next);
+    });
+
+    // "All" button — re-enable every family.
+    if (allBtn) {
+        allBtn.addEventListener('click', () => {
+            _setVisiblePairFamilies(new Set(PAIR_FAMILY_LABELS.map(p => p.family)));
+        });
+    }
+}
+
 function render() {
     renderTable1();
     renderTable2();
@@ -1054,29 +1236,29 @@ const T1_COLUMN_GROUPS = [
     {key:'ref19',                   computeRef:()=>19,                                                             cssClass:'set-2',  label:'19',        dataPair:'ref19',                   is13Opp:false, prefix:'pair-separator'},
 
     {key:'prevPlus1',               computeRef:(p)=>Math.min(p+1, 36),                                             cssClass:'set-4',  label:'P+1',       dataPair:'prevPlus1',               is13Opp:false, prefix:'pair-indicator'},
-    {key:'prevPlus1_13opp',         computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+1, 36)],                         cssClass:'set-4',  label:'P+1-13OPP', dataPair:'prevPlus1_13opp',         is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPlus1_13opp',         computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+1, 36)],                         cssClass:'set-4',  label:'P+1-13o', dataPair:'prevPlus1_13opp',         is13Opp:true,  prefix:'copair-separator'},
     {key:'prevMinus1',              computeRef:(p)=>Math.max(p-1, 0),                                              cssClass:'set-5',  label:'P-1',       dataPair:'prevMinus1',              is13Opp:false, prefix:'pair-indicator'},
-    {key:'prevMinus1_13opp',        computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-1, 0)],                          cssClass:'set-5',  label:'P-1-13OPP', dataPair:'prevMinus1_13opp',        is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevMinus1_13opp',        computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-1, 0)],                          cssClass:'set-5',  label:'P-1-13o', dataPair:'prevMinus1_13opp',        is13Opp:true,  prefix:'copair-separator'},
 
     {key:'prevPrevPlus1',           computeRef:(p, pp)=>pp==null?null:Math.min(pp+1, 36),                          cssClass:'set-9',  label:'PP+1',      dataPair:'prevPrevPlus1',           is13Opp:false, prefix:'pair-indicator'},
-    {key:'prevPrevPlus1_13opp',     computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.min(pp+1, 36)],      cssClass:'set-9',  label:'PP+1-13OPP',dataPair:'prevPrevPlus1_13opp',     is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrevPlus1_13opp',     computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.min(pp+1, 36)],      cssClass:'set-9',  label:'PP+1-13o',dataPair:'prevPrevPlus1_13opp',     is13Opp:true,  prefix:'copair-separator'},
     {key:'prevPrevMinus1',          computeRef:(p, pp)=>pp==null?null:Math.max(pp-1, 0),                           cssClass:'set-10', label:'PP-1',      dataPair:'prevPrevMinus1',          is13Opp:false, prefix:'pair-indicator'},
-    {key:'prevPrevMinus1_13opp',    computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.max(pp-1, 0)],       cssClass:'set-10', label:'PP-1-13OPP',dataPair:'prevPrevMinus1_13opp',    is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrevMinus1_13opp',    computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.max(pp-1, 0)],       cssClass:'set-10', label:'PP-1-13o',dataPair:'prevPrevMinus1_13opp',    is13Opp:true,  prefix:'copair-separator'},
 
     {key:'prev',                    computeRef:(p)=>p,                                                             cssClass:'set-3',  label:'P',         dataPair:'prev',                    is13Opp:false, prefix:'pair-indicator'},
-    {key:'prev_13opp',              computeRef:(p)=>DIGIT_13_OPPOSITES[p],                                         cssClass:'set-3',  label:'P-13OPP',   dataPair:'prev_13opp',              is13Opp:true,  prefix:'copair-separator'},
+    {key:'prev_13opp',              computeRef:(p)=>DIGIT_13_OPPOSITES[p],                                         cssClass:'set-3',  label:'P-13o',   dataPair:'prev_13opp',              is13Opp:true,  prefix:'copair-separator'},
     {key:'prevPrev',                computeRef:(p, pp)=>pp==null?null:pp,                                          cssClass:'set-8',  label:'PP',        dataPair:'prevPrev',                is13Opp:false, prefix:'pair-indicator'},
-    {key:'prevPrev_13opp',          computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[pp],                      cssClass:'set-8',  label:'PP-13OPP',  dataPair:'prevPrev_13opp',          is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrev_13opp',          computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[pp],                      cssClass:'set-8',  label:'PP-13o',  dataPair:'prevPrev_13opp',          is13Opp:true,  prefix:'copair-separator'},
 
     {key:'prevPlus2',               computeRef:(p)=>Math.min(p+2, 36),                                             cssClass:'set-6',  label:'P+2',       dataPair:'prevPlus2',               is13Opp:false, prefix:'pair-indicator'},
-    {key:'prevPlus2_13opp',         computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+2, 36)],                         cssClass:'set-6',  label:'P+2-13OPP', dataPair:'prevPlus2_13opp',         is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPlus2_13opp',         computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+2, 36)],                         cssClass:'set-6',  label:'P+2-13o', dataPair:'prevPlus2_13opp',         is13Opp:true,  prefix:'copair-separator'},
     {key:'prevMinus2',              computeRef:(p)=>Math.max(p-2, 0),                                              cssClass:'set-7',  label:'P-2',       dataPair:'prevMinus2',              is13Opp:false, prefix:'pair-indicator'},
-    {key:'prevMinus2_13opp',        computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-2, 0)],                          cssClass:'set-7',  label:'P-2-13OPP', dataPair:'prevMinus2_13opp',        is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevMinus2_13opp',        computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-2, 0)],                          cssClass:'set-7',  label:'P-2-13o', dataPair:'prevMinus2_13opp',        is13Opp:true,  prefix:'copair-separator'},
 
     {key:'prevPrevPlus2',           computeRef:(p, pp)=>pp==null?null:Math.min(pp+2, 36),                          cssClass:'set-11', label:'PP+2',      dataPair:'prevPrevPlus2',           is13Opp:false, prefix:'pair-indicator'},
-    {key:'prevPrevPlus2_13opp',     computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.min(pp+2, 36)],      cssClass:'set-11', label:'PP+2-13OPP',dataPair:'prevPrevPlus2_13opp',     is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrevPlus2_13opp',     computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.min(pp+2, 36)],      cssClass:'set-11', label:'PP+2-13o',dataPair:'prevPrevPlus2_13opp',     is13Opp:true,  prefix:'copair-separator'},
     {key:'prevPrevMinus2',          computeRef:(p, pp)=>pp==null?null:Math.max(pp-2, 0),                           cssClass:'set-12', label:'PP-2',      dataPair:'prevPrevMinus2',          is13Opp:false, prefix:'pair-indicator'},
-    {key:'prevPrevMinus2_13opp',    computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.max(pp-2, 0)],       cssClass:'set-12', label:'PP-2-13OPP',dataPair:'prevPrevMinus2_13opp',    is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrevMinus2_13opp',    computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.max(pp-2, 0)],       cssClass:'set-12', label:'PP-2-13o',dataPair:'prevPrevMinus2_13opp',    is13Opp:true,  prefix:'copair-separator'},
 ];
 
 /**
@@ -1100,8 +1282,12 @@ function _renderTable1Head() {
 
     const SUB_LABELS = ['Ref', '1st', 'C', '2nd', 'C', '3rd', 'C'];
 
+    // Slice 2f: filter by the global pair-family dropdown so hidden
+    // families don't render their thead columns either.
+    const VISIBLE = _filterVisibleColumnGroups(T1_COLUMN_GROUPS);
+
     // ── Row 1: pair-group labels (each colspan=7) ──
-    const row1Cells = T1_COLUMN_GROUPS.map(grp => {
+    const row1Cells = VISIBLE.map(grp => {
         const sepCls = grp.prefix === 'pair-separator'  ? ' pair-separator'
                      : grp.prefix === 'copair-separator' ? ' copair-separator'
                      : grp.prefix === 'pair-indicator'   ? ' pair-separator'  // top header gets a plain separator border (the indicator stripe is on the data-row anchor cell, not the thead)
@@ -1110,7 +1296,7 @@ function _renderTable1Head() {
     }).join('');
 
     // ── Row 2: 7 sub-headers per group ──
-    const row2Cells = T1_COLUMN_GROUPS.map(grp => {
+    const row2Cells = VISIBLE.map(grp => {
         return SUB_LABELS.map((lbl, sIdx) => {
             // The first sub-cell of each group carries the same
             // separator visual as the row-1 group label so the
@@ -1134,6 +1320,13 @@ function renderTable1() {
     // safe to run on every render. Slice 2f's dropdown will trigger
     // a full renderTable1() to pick up filtered groups.
     _renderTable1Head();
+
+    // Slice 2f: filter the column-group config by the global
+    // pair-family dropdown. Every reference below uses VISIBLE so
+    // hidden families drop out of placeholder / data / NEXT rows
+    // automatically. Anchor positions, _blockHits indices and end-
+    // of-row marker all derive from VISIBLE.length.
+    const VISIBLE = _filterVisibleColumnGroups(T1_COLUMN_GROUPS);
 
     const tbody = document.getElementById('table1Body');
     tbody.innerHTML = '';
@@ -1217,21 +1410,14 @@ function renderTable1() {
             // anchor (cell 0) of each group carrying the prefix class
             // dictated by the config (none / pair-separator /
             // pair-indicator / copair-separator). End-of-row marker
-            // appended afterwards. Derived entirely from
-            // T1_COLUMN_GROUPS so the magic numbers (84 cells,
-            // indicatorStarts, copairStarts) of the previous form fall
-            // out automatically. Verified against the previous output:
-            // for the existing 12 groups, anchor positions 0,7,14,21,
-            // 28,35,42,49,56,63,70,77 and prefixes match exactly
-            // (pair-separator at c=7, pair-indicator at 14/28/42/56/70,
-            // copair-separator at 21/35/49/63/77, blank elsewhere).
+            // appended afterwards.
             const emptyCells = [];
-            const totalCells = T1_COLUMN_GROUPS.length * 7;
+            const totalCells = VISIBLE.length * 7;
             for (let c = 0; c < totalCells; c++) {
                 const groupIdx = Math.floor(c / 7);
                 const cellIdx  = c % 7;
                 if (cellIdx === 0) {
-                    const grp = T1_COLUMN_GROUPS[groupIdx];
+                    const grp = VISIBLE[groupIdx];
                     if (grp.prefix === 'pair-indicator') {
                         emptyCells.push('<td class="pair-indicator"></td>');
                     } else if (grp.prefix === 'pair-separator') {
@@ -1335,7 +1521,7 @@ function renderTable1() {
         // [prev], …); the loop produces the SAME 12 values for the existing
         // config in slice 2b1.
         const prevPrevForRow = idx >= 2 ? spins[idx - 2].actual : null;
-        const _blockRefs = T1_COLUMN_GROUPS.map(g => g.computeRef(prev, prevPrevForRow));
+        const _blockRefs = VISIBLE.map(g => g.computeRef(prev, prevPrevForRow));
         const _blockHits = _blockRefs.map(r => {
             const lr = (typeof getLookupRow === 'function') ? getLookupRow(r) : null;
             if (!lr) return 0;
@@ -1352,7 +1538,7 @@ function renderTable1() {
         // indicator placement; stripes hang off pair-indicator entries
         // and read the previous pair's two _blockHits. End-of-row marker
         // takes the LAST two _blockHits regardless of group count.
-        T1_COLUMN_GROUPS.forEach((grp, i) => {
+        VISIBLE.forEach((grp, i) => {
             const refNum = grp.computeRef(prev, prevPrevForRow);
             const isPairIndicator = (grp.prefix === 'pair-indicator');
             const addSeparator = (grp.prefix === 'pair-separator' || isPairIndicator);
@@ -1374,8 +1560,8 @@ function renderTable1() {
         // between-pair pattern: anchor-cell + pair-end-cell class. The
         // two stripe values come from the last two _blockHits entries
         // regardless of how many column groups are configured.
-        const _lastL = _blockHits[T1_COLUMN_GROUPS.length - 2] || 0;
-        const _lastR = _blockHits[T1_COLUMN_GROUPS.length - 1] || 0;
+        const _lastL = _blockHits[VISIBLE.length - 2] || 0;
+        const _lastR = _blockHits[VISIBLE.length - 1] || 0;
         html.push(`<td class="pair-end-cell anchor-cell" data-left-hit="${_lastL}" data-right-hit="${_lastR}"><strong style="visibility:hidden">0</strong></td>`);
 
         row.innerHTML = html.join('');
@@ -1465,7 +1651,7 @@ function renderTable1() {
         // is the only entry); the new prevPrev-based groups in slice
         // 2b2 will handle that case via their computeRef.
         const prevPrevForNext = (spins.length >= 2) ? spins[spins.length - 2].actual : null;
-        T1_COLUMN_GROUPS.forEach(grp => {
+        VISIBLE.forEach(grp => {
             const refNum = grp.computeRef(lastSpin, prevPrevForNext);
             const isPairIndicator = (grp.prefix === 'pair-indicator');
             const addSeparator = (grp.prefix === 'pair-separator' || isPairIndicator);
@@ -1538,29 +1724,29 @@ const T2_COLUMN_GROUPS = [
     {key:'ref19',                   computeRef:()=>19,                                                             cssClass:'set-2',  label:'19',        dataPair:'ref19',                   is13Opp:false, prefix:'pair-separator'},
 
     {key:'prevPlus1',               computeRef:(p)=>Math.min(p+1, 36),                                             cssClass:'set-4',  label:'P+1',       dataPair:'prevPlus1',               is13Opp:false, prefix:'pair-separator'},
-    {key:'prevPlus1_13opp',         computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+1, 36)],                         cssClass:'set-4',  label:'P+1-13OPP', dataPair:'prevPlus1_13opp',         is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPlus1_13opp',         computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+1, 36)],                         cssClass:'set-4',  label:'P+1-13o', dataPair:'prevPlus1_13opp',         is13Opp:true,  prefix:'copair-separator'},
     {key:'prevMinus1',              computeRef:(p)=>Math.max(p-1, 0),                                              cssClass:'set-5',  label:'P-1',       dataPair:'prevMinus1',              is13Opp:false, prefix:'pair-separator'},
-    {key:'prevMinus1_13opp',        computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-1, 0)],                          cssClass:'set-5',  label:'P-1-13OPP', dataPair:'prevMinus1_13opp',        is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevMinus1_13opp',        computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-1, 0)],                          cssClass:'set-5',  label:'P-1-13o', dataPair:'prevMinus1_13opp',        is13Opp:true,  prefix:'copair-separator'},
 
     {key:'prevPrevPlus1',           computeRef:(p, pp)=>pp==null?null:Math.min(pp+1, 36),                          cssClass:'set-9',  label:'PP+1',      dataPair:'prevPrevPlus1',           is13Opp:false, prefix:'pair-separator'},
-    {key:'prevPrevPlus1_13opp',     computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.min(pp+1, 36)],      cssClass:'set-9',  label:'PP+1-13OPP',dataPair:'prevPrevPlus1_13opp',     is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrevPlus1_13opp',     computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.min(pp+1, 36)],      cssClass:'set-9',  label:'PP+1-13o',dataPair:'prevPrevPlus1_13opp',     is13Opp:true,  prefix:'copair-separator'},
     {key:'prevPrevMinus1',          computeRef:(p, pp)=>pp==null?null:Math.max(pp-1, 0),                           cssClass:'set-10', label:'PP-1',      dataPair:'prevPrevMinus1',          is13Opp:false, prefix:'pair-separator'},
-    {key:'prevPrevMinus1_13opp',    computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.max(pp-1, 0)],       cssClass:'set-10', label:'PP-1-13OPP',dataPair:'prevPrevMinus1_13opp',    is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrevMinus1_13opp',    computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.max(pp-1, 0)],       cssClass:'set-10', label:'PP-1-13o',dataPair:'prevPrevMinus1_13opp',    is13Opp:true,  prefix:'copair-separator'},
 
     {key:'prev',                    computeRef:(p)=>p,                                                             cssClass:'set-3',  label:'P',         dataPair:'prev',                    is13Opp:false, prefix:'pair-separator'},
-    {key:'prev_13opp',              computeRef:(p)=>DIGIT_13_OPPOSITES[p],                                         cssClass:'set-3',  label:'P-13OPP',   dataPair:'prev_13opp',              is13Opp:true,  prefix:'copair-separator'},
+    {key:'prev_13opp',              computeRef:(p)=>DIGIT_13_OPPOSITES[p],                                         cssClass:'set-3',  label:'P-13o',   dataPair:'prev_13opp',              is13Opp:true,  prefix:'copair-separator'},
     {key:'prevPrev',                computeRef:(p, pp)=>pp==null?null:pp,                                          cssClass:'set-8',  label:'PP',        dataPair:'prevPrev',                is13Opp:false, prefix:'pair-separator'},
-    {key:'prevPrev_13opp',          computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[pp],                      cssClass:'set-8',  label:'PP-13OPP',  dataPair:'prevPrev_13opp',          is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrev_13opp',          computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[pp],                      cssClass:'set-8',  label:'PP-13o',  dataPair:'prevPrev_13opp',          is13Opp:true,  prefix:'copair-separator'},
 
     {key:'prevPlus2',               computeRef:(p)=>Math.min(p+2, 36),                                             cssClass:'set-6',  label:'P+2',       dataPair:'prevPlus2',               is13Opp:false, prefix:'pair-separator'},
-    {key:'prevPlus2_13opp',         computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+2, 36)],                         cssClass:'set-6',  label:'P+2-13OPP', dataPair:'prevPlus2_13opp',         is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPlus2_13opp',         computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+2, 36)],                         cssClass:'set-6',  label:'P+2-13o', dataPair:'prevPlus2_13opp',         is13Opp:true,  prefix:'copair-separator'},
     {key:'prevMinus2',              computeRef:(p)=>Math.max(p-2, 0),                                              cssClass:'set-7',  label:'P-2',       dataPair:'prevMinus2',               is13Opp:false, prefix:'pair-separator'},
-    {key:'prevMinus2_13opp',        computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-2, 0)],                          cssClass:'set-7',  label:'P-2-13OPP', dataPair:'prevMinus2_13opp',        is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevMinus2_13opp',        computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-2, 0)],                          cssClass:'set-7',  label:'P-2-13o', dataPair:'prevMinus2_13opp',        is13Opp:true,  prefix:'copair-separator'},
 
     {key:'prevPrevPlus2',           computeRef:(p, pp)=>pp==null?null:Math.min(pp+2, 36),                          cssClass:'set-11', label:'PP+2',      dataPair:'prevPrevPlus2',           is13Opp:false, prefix:'pair-separator'},
-    {key:'prevPrevPlus2_13opp',     computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.min(pp+2, 36)],      cssClass:'set-11', label:'PP+2-13OPP',dataPair:'prevPrevPlus2_13opp',     is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrevPlus2_13opp',     computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.min(pp+2, 36)],      cssClass:'set-11', label:'PP+2-13o',dataPair:'prevPrevPlus2_13opp',     is13Opp:true,  prefix:'copair-separator'},
     {key:'prevPrevMinus2',          computeRef:(p, pp)=>pp==null?null:Math.max(pp-2, 0),                           cssClass:'set-12', label:'PP-2',      dataPair:'prevPrevMinus2',          is13Opp:false, prefix:'pair-separator'},
-    {key:'prevPrevMinus2_13opp',    computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.max(pp-2, 0)],       cssClass:'set-12', label:'PP-2-13OPP',dataPair:'prevPrevMinus2_13opp',    is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPrevMinus2_13opp',    computeRef:(p, pp)=>pp==null?null:DIGIT_13_OPPOSITES[Math.max(pp-2, 0)],       cssClass:'set-12', label:'PP-2-13o',dataPair:'prevPrevMinus2_13opp',    is13Opp:true,  prefix:'copair-separator'},
 ];
 
 /**
@@ -1574,14 +1760,17 @@ function _renderTable2Head() {
 
     const SUB_LABELS = ['Ref', '1st', 'C', '2nd', 'C', '3rd', 'C'];
 
-    const row1Cells = T2_COLUMN_GROUPS.map(grp => {
+    // Slice 2f: filter by global pair-family dropdown.
+    const VISIBLE = _filterVisibleColumnGroups(T2_COLUMN_GROUPS);
+
+    const row1Cells = VISIBLE.map(grp => {
         const sepCls = grp.prefix === 'pair-separator'   ? ' pair-separator'
                      : grp.prefix === 'copair-separator' ? ' copair-separator'
                      : '';
         return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" colspan="7" data-pair="${grp.dataPair}">${grp.label}</th>`;
     }).join('');
 
-    const row2Cells = T2_COLUMN_GROUPS.map(grp => {
+    const row2Cells = VISIBLE.map(grp => {
         return SUB_LABELS.map((lbl, sIdx) => {
             let sepCls = '';
             if (sIdx === 0) {
@@ -1600,6 +1789,9 @@ function renderTable2() {
     // renderTable1 — slice 2f's dropdown will trigger a re-render
     // to pick up filtered groups.
     _renderTable2Head();
+
+    // Slice 2f: filter by global pair-family dropdown.
+    const VISIBLE = _filterVisibleColumnGroups(T2_COLUMN_GROUPS);
 
     const tbody = document.getElementById('table2Body');
     tbody.innerHTML = '';
@@ -1630,12 +1822,12 @@ function renderTable2() {
             // pair-separator on positions 7..42 — byte-equivalent to
             // the previous `if (c % 7 === 0 && c > 0)` loop.
             const emptyCells = [];
-            const totalCells = T2_COLUMN_GROUPS.length * 7;
+            const totalCells = VISIBLE.length * 7;
             for (let c = 0; c < totalCells; c++) {
                 const groupIdx = Math.floor(c / 7);
                 const cellIdx  = c % 7;
                 if (cellIdx === 0) {
-                    const grp = T2_COLUMN_GROUPS[groupIdx];
+                    const grp = VISIBLE[groupIdx];
                     if (grp.prefix === 'pair-separator') {
                         emptyCells.push('<td class="pair-separator"></td>');
                     } else if (grp.prefix === 'copair-separator') {
@@ -1719,7 +1911,7 @@ function renderTable2() {
         // (between main and 13OPP within a pair-group) so the new
         // 13OPP halves render with the subtle within-pair divider.
         const prevPrevForRow = idx >= 2 ? spins[idx - 2].actual : null;
-        T2_COLUMN_GROUPS.forEach((grp) => {
+        VISIBLE.forEach((grp) => {
             const refNum = grp.computeRef(prev, prevPrevForRow);
             const addSeparator = (grp.prefix === 'pair-separator');
             const addCopairSep = (grp.prefix === 'copair-separator');
@@ -1767,7 +1959,7 @@ function renderTable2() {
         // pair-separator and copair-separator the same way the data
         // row above does.
         const prevPrevForNext = (spins.length >= 2) ? spins[spins.length - 2].actual : null;
-        T2_COLUMN_GROUPS.forEach((grp) => {
+        VISIBLE.forEach((grp) => {
             const refNum = grp.computeRef(lastSpin, prevPrevForNext);
             const addSeparator = (grp.prefix === 'pair-separator');
             const addCopairSep = (grp.prefix === 'copair-separator');
@@ -1869,12 +2061,11 @@ function _computeFlashTargets(allSpins, startIdx, visibleCount) {
         return result;
     }
 
-    // Slice 2e-2: derive T3 flash refKeys from T3_COLUMN_GROUPS so the
-    // new prevPrev-based pair-groups (PP+1, PP-1, PP+2, PP-2)
-    // automatically participate in golden ±1 flash detection.
-    // Previously a hardcoded 6-entry list — would silently skip new
-    // pairs the same way T1/T2's _T1_PAIR_DEFS did before slice 2d-2.
-    const refKeys = T3_COLUMN_GROUPS.map(g => g.engineRefKey);
+    // Slice 2e-2 + 2f: derive T3 flash refKeys from the
+    // FILTERED T3 config so hidden pair-families are excluded from
+    // golden-flash detection too (otherwise we'd flash cells the
+    // user can't even see).
+    const refKeys = _filterVisibleColumnGroups(T3_COLUMN_GROUPS).map(g => g.engineRefKey);
 
     function getRowInfo(idx) {
         const spin = allSpins[idx];
@@ -2033,13 +2224,16 @@ const _T2_VALID_CODES = new Set(['S+0', 'SL+1', 'SR+1', 'SL+2', 'SR+2', 'O+0', '
 // passes both. Returning null for null-prevPrev rows produces no
 // lookup-row, so the flash scan correctly treats those as no-hit.
 function _t1PairDefs() {
-    return T1_COLUMN_GROUPS.map(g => ({
+    // Slice 2f: filter by visible families so hidden pairs don't
+    // contribute to T1 flash detection (matching what the user sees).
+    return _filterVisibleColumnGroups(T1_COLUMN_GROUPS).map(g => ({
         dataPair: g.dataPair,
         getRefNum: g.computeRef
     }));
 }
 function _t2PairDefs() {
-    return T2_COLUMN_GROUPS.map(g => ({
+    // Slice 2f: same filter for T2 flash detection.
+    return _filterVisibleColumnGroups(T2_COLUMN_GROUPS).map(g => ({
         dataPair: g.dataPair,
         getRefNum: g.computeRef
     }));
@@ -2159,9 +2353,10 @@ function _applyPm1Flash(tbody, allSpins, startIdx, visibleCount) {
         return;
     }
 
-    // Slice 2e-2: derive from T3_COLUMN_GROUPS (legacy fallback flash
-    // path). Same rationale as _computeFlashTargets above.
-    const refKeys = T3_COLUMN_GROUPS.map(g => g.engineRefKey);
+    // Slice 2e-2 + 2f: derive from FILTERED T3 config (legacy
+    // fallback flash path). Same rationale as _computeFlashTargets
+    // above — hidden families don't participate.
+    const refKeys = _filterVisibleColumnGroups(T3_COLUMN_GROUPS).map(g => g.engineRefKey);
 
     // Compute position codes + distances for a given spin index
     function getRowInfo(idx) {
@@ -2390,7 +2585,9 @@ function _renderTable3Head() {
         '<th>Dir</th>',
         '<th>Actual</th>'
     ];
-    T3_COLUMN_GROUPS.forEach((grp, gi) => {
+    // Slice 2f: filter by global pair-family dropdown.
+    const VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS);
+    VISIBLE.forEach((grp, gi) => {
         // Match the existing thead convention: first pair-group
         // omits pair-separator on its label cell; later groups carry
         // it on the FIRST sub-header (the main label).
@@ -2412,6 +2609,11 @@ function renderTable3() {
     // Idempotent — slice 2f's dropdown will trigger renderTable3()
     // again whenever the visible-pair set changes.
     _renderTable3Head();
+
+    // Slice 2f: filter the column-group config by the global
+    // pair-family dropdown. Used by placeholder / data / NEXT rows
+    // below.
+    const VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS);
 
     // Clear any existing flash pulse interval before rebuilding DOM
     if (window._pm1PulseInterval) {
@@ -2455,12 +2657,12 @@ function renderTable3() {
             // match the BODY rows where every group also has a
             // separator on its Ref cell).
             const emptyCells = [];
-            const totalCells = T3_COLUMN_GROUPS.length * 5;
+            const totalCells = VISIBLE.length * 5;
             for (let c = 0; c < totalCells; c++) {
                 const groupIdx = Math.floor(c / 5);
                 const cellIdx  = c % 5;
                 if (cellIdx === 0) {
-                    const grp = T3_COLUMN_GROUPS[groupIdx];
+                    const grp = VISIBLE[groupIdx];
                     if (grp.prefix === 'pair-separator' && groupIdx > 0) {
                         emptyCells.push('<td class="pair-separator"></td>');
                     } else {
@@ -2485,7 +2687,7 @@ function renderTable3() {
             // calculateReferences() output. Same per-cell math as
             // before — no formation change.
             const data = {};
-            T3_COLUMN_GROUPS.forEach(grp => {
+            VISIBLE.forEach(grp => {
                 const refKey = grp.engineRefKey;
                 const refNum = refs[refKey];
                 const ref13Opp = DIGIT_13_OPPOSITES[refNum];
@@ -2505,7 +2707,7 @@ function renderTable3() {
                 const prevPrevSpin = spins[idx - 2].actual;
                 const prevRefs = calculateReferences(prevPrevSpin, idx > 2 ? spins[idx - 3].actual : prevPrevSpin);
 
-                T3_COLUMN_GROUPS.forEach(grp => {
+                VISIBLE.forEach(grp => {
                     const refKey = grp.engineRefKey;
                     const prevRefNum = prevRefs[refKey];
                     const prevRef13Opp = DIGIT_13_OPPOSITES[prevRefNum];
@@ -2564,7 +2766,7 @@ function renderTable3() {
             // pair-separator (kept on every group as in the previous
             // form, including the first one). Output is byte-equivalent
             // for the existing 6 groups.
-            const groupHtml = T3_COLUMN_GROUPS.map(grp => {
+            const groupHtml = VISIBLE.map(grp => {
                 const refKey = grp.engineRefKey;
                 const dp = grp.dataPair;
                 return `
@@ -2626,7 +2828,7 @@ function renderTable3() {
         // Slice 2e-1: derive NEXT row data + projections from
         // T3_COLUMN_GROUPS instead of a hardcoded refKey list.
         const data = {};
-        T3_COLUMN_GROUPS.forEach(grp => {
+        VISIBLE.forEach(grp => {
             const refKey = grp.engineRefKey;
             const refNum = refs[refKey];
             const ref13Opp = DIGIT_13_OPPOSITES[refNum];
@@ -2638,7 +2840,7 @@ function renderTable3() {
         const prevRefs = calculateReferences(prevPrevSpin, spins.length > 2 ? spins[spins.length - 3].actual : prevPrevSpin);
 
         const nextProjections = {};
-        T3_COLUMN_GROUPS.forEach(grp => {
+        VISIBLE.forEach(grp => {
             const refKey = grp.engineRefKey;
             const prevRefNum = prevRefs[refKey];
             const prevRef13Opp = DIGIT_13_OPPOSITES[prevRefNum];
@@ -2665,7 +2867,7 @@ function renderTable3() {
         // Slice 2e-1: NEXT row driven from T3_COLUMN_GROUPS. Same
         // 5-cell-per-group pattern as the previous hardcoded form,
         // including pair-separator on every group's Ref cell.
-        const nextGroupHtml = T3_COLUMN_GROUPS.map(grp => {
+        const nextGroupHtml = VISIBLE.map(grp => {
             const refKey = grp.engineRefKey;
             const dp = grp.dataPair;
             return `
@@ -2693,10 +2895,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('spinNumber').addEventListener('keypress', e => {
         if (e.key === 'Enter') addSpin();
     });
-    
+
     document.getElementById('addBtn').addEventListener('click', addSpin);
     document.getElementById('undoBtn').addEventListener('click', undoLast);
     document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+    // Slice 2f: wire up the global pair-family dropdown.
+    _setupPairFilterDropdown();
 
     // Table collapse/expand toggles
     ['1', '2', '3'].forEach(n => {
@@ -2960,8 +3165,11 @@ function getNextRowProjections() {
     // available for selection — without the new prevPrev-based
     // pair-groups in this map, clicking PP+1 / PP-1 / PP+2 / PP-2
     // headers would silently fail with "Pair X not available".
+    // Slice 2f: filter by visible families so hidden pairs don't
+    // appear in the AI prediction panel's available-pair list either
+    // (consistent with their absence from T3's display).
     const keyMap = {};
-    T3_COLUMN_GROUPS.forEach(g => { keyMap[g.engineRefKey] = g.dataPair; });
+    _filterVisibleColumnGroups(T3_COLUMN_GROUPS).forEach(g => { keyMap[g.engineRefKey] = g.dataPair; });
     
     // Use stored projections from table display
     Object.keys(keyMap).forEach(frontendKey => {
