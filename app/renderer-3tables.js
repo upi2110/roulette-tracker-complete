@@ -1869,7 +1869,12 @@ function _computeFlashTargets(allSpins, startIdx, visibleCount) {
         return result;
     }
 
-    const refKeys = ['prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev'];
+    // Slice 2e-2: derive T3 flash refKeys from T3_COLUMN_GROUPS so the
+    // new prevPrev-based pair-groups (PP+1, PP-1, PP+2, PP-2)
+    // automatically participate in golden ±1 flash detection.
+    // Previously a hardcoded 6-entry list — would silently skip new
+    // pairs the same way T1/T2's _T1_PAIR_DEFS did before slice 2d-2.
+    const refKeys = T3_COLUMN_GROUPS.map(g => g.engineRefKey);
 
     function getRowInfo(idx) {
         const spin = allSpins[idx];
@@ -2154,7 +2159,9 @@ function _applyPm1Flash(tbody, allSpins, startIdx, visibleCount) {
         return;
     }
 
-    const refKeys = ['prev', 'prev_plus_1', 'prev_minus_1', 'prev_plus_2', 'prev_minus_2', 'prev_prev'];
+    // Slice 2e-2: derive from T3_COLUMN_GROUPS (legacy fallback flash
+    // path). Same rationale as _computeFlashTargets above.
+    const refKeys = T3_COLUMN_GROUPS.map(g => g.engineRefKey);
 
     // Compute position codes + distances for a given spin index
     function getRowInfo(idx) {
@@ -2339,17 +2346,73 @@ function _flashPairCell(row, dataPair, hitCellType) {
 //                   none, etc). Slice 2e-1 keeps every group's
 //                   first cell as pair-separator so the visual
 //                   match the previous hardcoded form.
+// Slice 2e-2: T3 extended to 10 pair-groups (Option A — keep T3's
+// 5-cell-per-group structure with main+13opp embedded). User's
+// 22-column spec collapses to 10 pair-groups when 13opp is embedded:
+//   P+1, P-1, PP+1, PP-1, P, PP, P+2, P-2, PP+2, PP-2
+// Same color per pair as T1/T2 — every pair has a single colour
+// across all three tables.
+//
+// New pair-groups (PP+1, PP-1, PP+2, PP-2) use the engine's snake_case
+// refKeys added in slice 2a (prev_prev_plus_1 / _minus_1 / _plus_2 /
+// _minus_2). When prevPrev is unavailable (idx<2), T3's existing
+// `calculateReferences(prev, prevPrev || prev)` fallback applies —
+// the new pair-group cells render the prev-based fallback values,
+// matching the existing PP column's convention.
 const T3_COLUMN_GROUPS = [
-    {key:'prev',       engineRefKey:'prev',         cssClass:'set-3', label:'P',   label13:'P-13o',   dataPair:'prev',       prefix:'pair-separator'},
-    {key:'prevPlus1',  engineRefKey:'prev_plus_1',  cssClass:'set-4', label:'P+1', label13:'P+1-13o', dataPair:'prevPlus1',  prefix:'pair-separator'},
-    {key:'prevMinus1', engineRefKey:'prev_minus_1', cssClass:'set-5', label:'P-1', label13:'P-1-13o', dataPair:'prevMinus1', prefix:'pair-separator'},
-    {key:'prevPlus2',  engineRefKey:'prev_plus_2',  cssClass:'set-6', label:'P+2', label13:'P+2-13o', dataPair:'prevPlus2',  prefix:'pair-separator'},
-    {key:'prevMinus2', engineRefKey:'prev_minus_2', cssClass:'set-7', label:'P-2', label13:'P-2-13o', dataPair:'prevMinus2', prefix:'pair-separator'},
-    {key:'prevPrev',   engineRefKey:'prev_prev',    cssClass:'set-8', label:'PP',  label13:'PP-13o',  dataPair:'prevPrev',   prefix:'pair-separator'},
+    {key:'prevPlus1',     engineRefKey:'prev_plus_1',        cssClass:'set-4',  label:'P+1',  label13:'P+1-13o',  dataPair:'prevPlus1',     prefix:'pair-separator'},
+    {key:'prevMinus1',    engineRefKey:'prev_minus_1',       cssClass:'set-5',  label:'P-1',  label13:'P-1-13o',  dataPair:'prevMinus1',    prefix:'pair-separator'},
+    {key:'prevPrevPlus1', engineRefKey:'prev_prev_plus_1',   cssClass:'set-9',  label:'PP+1', label13:'PP+1-13o', dataPair:'prevPrevPlus1', prefix:'pair-separator'},
+    {key:'prevPrevMinus1',engineRefKey:'prev_prev_minus_1',  cssClass:'set-10', label:'PP-1', label13:'PP-1-13o', dataPair:'prevPrevMinus1',prefix:'pair-separator'},
+    {key:'prev',          engineRefKey:'prev',               cssClass:'set-3',  label:'P',    label13:'P-13o',    dataPair:'prev',          prefix:'pair-separator'},
+    {key:'prevPrev',      engineRefKey:'prev_prev',          cssClass:'set-8',  label:'PP',   label13:'PP-13o',   dataPair:'prevPrev',      prefix:'pair-separator'},
+    {key:'prevPlus2',     engineRefKey:'prev_plus_2',        cssClass:'set-6',  label:'P+2',  label13:'P+2-13o',  dataPair:'prevPlus2',     prefix:'pair-separator'},
+    {key:'prevMinus2',    engineRefKey:'prev_minus_2',       cssClass:'set-7',  label:'P-2',  label13:'P-2-13o',  dataPair:'prevMinus2',    prefix:'pair-separator'},
+    {key:'prevPrevPlus2', engineRefKey:'prev_prev_plus_2',   cssClass:'set-11', label:'PP+2', label13:'PP+2-13o', dataPair:'prevPrevPlus2', prefix:'pair-separator'},
+    {key:'prevPrevMinus2',engineRefKey:'prev_prev_minus_2',  cssClass:'set-12', label:'PP-2', label13:'PP-2-13o', dataPair:'prevPrevMinus2',prefix:'pair-separator'},
 ];
+
+/**
+ * Generate T3's <thead> from T3_COLUMN_GROUPS. T3 has only ONE
+ * header row (vs T1/T2's two rows): Dir + Actual + 5 sub-headers
+ * per pair-group (label / POS / label13 / POS / PRJ).
+ *
+ * The first pair-group's header does NOT carry pair-separator (to
+ * match the existing thead pattern); subsequent groups do.
+ *
+ * Idempotent — slice 2f's dropdown will trigger re-render to pick
+ * up filtered groups.
+ */
+function _renderTable3Head() {
+    const head = document.getElementById('table3Head');
+    if (!head) return;
+    const cells = [
+        '<th>Dir</th>',
+        '<th>Actual</th>'
+    ];
+    T3_COLUMN_GROUPS.forEach((grp, gi) => {
+        // Match the existing thead convention: first pair-group
+        // omits pair-separator on its label cell; later groups carry
+        // it on the FIRST sub-header (the main label).
+        const sepCls = (gi > 0) ? ' pair-separator' : '';
+        cells.push(
+            `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}">${grp.label}</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">POS</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">${grp.label13}</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">POS</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">PRJ</th>`
+        );
+    });
+    head.innerHTML = `<tr>${cells.join('')}</tr>`;
+}
 
 // TABLE 3 - FIXED: Position codes + Visual separators
 function renderTable3() {
+    // Build / refresh thead from T3_COLUMN_GROUPS (slice 2e-2).
+    // Idempotent — slice 2f's dropdown will trigger renderTable3()
+    // again whenever the visible-pair set changes.
+    _renderTable3Head();
+
     // Clear any existing flash pulse interval before rebuilding DOM
     if (window._pm1PulseInterval) {
         clearInterval(window._pm1PulseInterval);
@@ -2891,15 +2954,14 @@ function getNextRowProjections() {
     
     const projections = {};
     
-    // Map frontend keys to backend keys
-    const keyMap = {
-        'prev': 'prev',
-        'prev_plus_1': 'prevPlus1',
-        'prev_minus_1': 'prevMinus1',
-        'prev_plus_2': 'prevPlus2',
-        'prev_minus_2': 'prevMinus2',
-        'prev_prev': 'prevPrev'
-    };
+    // Slice 2e-2: derive frontend→backend key map from
+    // T3_COLUMN_GROUPS. The AI prediction panel reads
+    // tableData.table3NextProjections to learn which T3 pairs are
+    // available for selection — without the new prevPrev-based
+    // pair-groups in this map, clicking PP+1 / PP-1 / PP+2 / PP-2
+    // headers would silently fail with "Pair X not available".
+    const keyMap = {};
+    T3_COLUMN_GROUPS.forEach(g => { keyMap[g.engineRefKey] = g.dataPair; });
     
     // Use stored projections from table display
     Object.keys(keyMap).forEach(frontendKey => {
