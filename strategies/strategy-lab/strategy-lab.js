@@ -1,46 +1,34 @@
 /**
- * Strategy-Lab — Pair-Intersection Strategy (V1)
+ * Strategy-Lab — Pair-Intersection Strategy (V1.3)
  *
  * SHARED source-of-truth for both Auto Test (method='test') and live
- * mode (decisionMode='test'). Both contexts call the SAME functions in
- * this module with the same signature, guaranteeing 100% parity:
+ * mode (decisionMode='test'). Mirrors V6's per-ref auto-selection so
+ * the bet is the same intersection the live AI panel computes.
  *
- *   - selectBestPair(engine)
- *       → returns the pair refKey with the highest training hit-rate
- *         (engine.pairModels[refKey].hitRate). Called once at session
- *         start; the caller then stores the locked refKey and reuses
- *         it for every spin in the session.
+ * Algorithm (per spin, after the session-start pair lock):
+ *   1. For each of T1, T2, T2_13opp: auto-select 2 "primary" refs
+ *      (the refs that recently HIT for this pair on this table) and
+ *      one "extra" ref (the ref that did not).
+ *   2. Compute the per-ref number sets (engine._getExpandTargetsToBet
+ *      Numbers with ±1 ring for T1, ±2 for T2). Per-pair-per-table:
+ *         primary = union of selected primary refs' numbers
+ *         extra   = the extra ref's numbers
+ *   3. T3 has no per-ref split — its source is the full pair
+ *      projection (engine._computeProjectionForPair).
+ *   4. Build pairSets   = [T1.primary, T2.primary, T2_13opp.primary, T3]
+ *      Build extendedSets = [T1.primary∪extra, T2.primary∪extra,
+ *                            T2_13opp.primary∪extra, T3]
+ *   5. primaryIntersection  = ∩ pairSets
+ *      extendedIntersection = ∩ extendedSets
+ *   6. Bet:
+ *         includeGrey = false → bet = primaryIntersection
+ *         includeGrey = true  → bet = extendedIntersection
+ *      (Empty intersection → SKIP for that spin.)
  *
- *   - decideStrategyLab(engine, spins, idx, ctx)
- *       → ctx = { lockedPairRefKey, includeGrey, greyNumbers }
- *       → returns { action, selectedPair, selectedFilter, numbers,
- *                   confidence, reason } matching the AutoTestRunner's
- *         _simulateDecision shape so existing P&L / recordResult /
- *         step-logging plumbing is unchanged.
- *
- * Algorithm (V1):
- *   1. Caller passes a session-locked pair refKey (selected by
- *      selectBestPair at session start).
- *   2. Compute the engine's pair projection at idx:
- *          proj = engine._computeProjectionForPair(spins, idx, refKey)
- *      → { numbers, anchors (purple), neighbors (green) }
- *   3. Build four "column" number sets that mirror the table-renderer's
- *      T1 / T2 / T3 projections for the locked pair:
- *          T1[pair]      = expandAnchorsToBetNumbers(purple, []) ±1
- *          T2[pair]      = expandTargetsToBetNumbers(purple, 2)
- *          T2[pair_13op] = expandTargetsToBetNumbers(green,  2)
- *          T3[pair]      = proj.numbers (purple+green ±1, full set)
- *   4. Bet = T1 ∩ T2[pair] ∩ T2[13opp] ∩ T3.
- *   5. If !ctx.includeGrey, remove ctx.greyNumbers from the result.
- *   6. If the result is empty → SKIP (no bet placed this spin).
- *
- * This is V1; we will iterate as testing reveals what works. The
- * algorithm intentionally does NOT use the engine's session
- * confidence / filter / set-prediction heuristics — the locked pair
- * IS the strategy. Confidence is reported as 100 when a non-empty
- * intersection exists (the strategy itself has no probabilistic
- * gate), so the runner's downstream confidence threshold is bypassed
- * for this method.
+ * Pair lock: caller picks once at session start via selectBestPair()
+ * and reuses for every spin in the session. selectBestPair returns the
+ * engine refKey ('prev_plus_1' etc.); decideStrategyLab translates to
+ * camelCase pairKey ('prevPlus1') internally for the per-ref logic.
  */
 
 (function (root, factory) {
@@ -50,18 +38,35 @@
     }
     if (typeof window !== 'undefined') {
         window.StrategyLab = api;
-        // Convenience aliases used by the live orchestrator + AT runner.
         window.selectBestPairForStrategyLab = api.selectBestPair;
         window.decideStrategyLab = api.decideStrategyLab;
     }
 }(this, function () {
 
-    /**
-     * Pick the pair refKey with the highest training hit-rate.
-     *
-     * @param {Object} engine - Trained AIAutoEngine instance.
-     * @returns {string|null} refKey, or null if no pair has a model.
-     */
+    // refKey (snake_case, engine pair-model key) → camelCase pairKey used
+    // by the table renderer + AI panel + auto-ref selection logic.
+    const REFKEY_TO_PAIR = {
+        'prev':              'prev',
+        'prev_plus_1':       'prevPlus1',
+        'prev_minus_1':      'prevMinus1',
+        'prev_plus_2':       'prevPlus2',
+        'prev_minus_2':      'prevMinus2',
+        'prev_prev':         'prevPrev',
+        'prev_prev_plus_1':  'prevPrevPlus1',
+        'prev_prev_minus_1': 'prevPrevMinus1',
+        'prev_prev_plus_2':  'prevPrevPlus2',
+        'prev_prev_minus_2': 'prevPrevMinus2'
+    };
+
+    // Valid hit-codes per table — must match
+    // app/renderer-3tables.js getAutoSelectedRefs.
+    const TABLE1_VALID = ['S+0', 'SL+1', 'SR+1', 'O+0', 'OL+1', 'OR+1'];
+    const TABLE2_VALID = [...TABLE1_VALID, 'SL+2', 'SR+2', 'OL+2', 'OR+2'];
+
+    // ─────────────────────────────────────────────────────────────
+    //  Pair selection
+    // ─────────────────────────────────────────────────────────────
+
     function selectBestPair(engine) {
         if (!engine || !engine.pairModels) return null;
         let bestKey = null;
@@ -69,86 +74,146 @@
         for (const refKey of Object.keys(engine.pairModels)) {
             const m = engine.pairModels[refKey];
             if (!m) continue;
-            // Accept either hitRate (legacy) or winRate (newer naming).
             const rate = (typeof m.hitRate === 'number') ? m.hitRate
                        : (typeof m.winRate === 'number') ? m.winRate
                        : -Infinity;
-            if (rate > bestRate) {
-                bestRate = rate;
-                bestKey = refKey;
-            }
+            if (rate > bestRate) { bestRate = rate; bestKey = refKey; }
         }
         return bestKey;
     }
 
-    /**
-     * Build the per-table source number sets for the locked pair.
-     *
-     * The include-grey toggle changes WHICH source sets participate and
-     * how WIDE they are — not what gets tacked on at the end. So we
-     * return both the "tight" (no-grey) and "wide" (with-grey) variants
-     * and let the caller pick based on the toggle:
-     *
-     *   includeGrey = false → bet = T1.tight ∩ T2.tight ∩ T3.tight
-     *     (the pair's purple-side anchors only, no 13-opp half).
-     *
-     *   includeGrey = true  → bet = T1.wide ∩ T2.wide ∩ T2_13opp.wide ∩ T3.wide
-     *     (the pair's full prediction = purple + green expanded; T2's
-     *      13-opp half participates as a fourth source).
-     *
-     * Same engine helpers are used for both variants so AT and live
-     * produce identical numbers for the same spin history.
-     */
-    function _computeColumnSources(engine, spins, idx, refKey) {
-        const proj = engine._computeProjectionForPair(spins, idx, refKey);
-        if (!proj || !proj.numbers || proj.numbers.length === 0) return null;
+    // ─────────────────────────────────────────────────────────────
+    //  Pair refNum derivation — ports the renderer's pair table
+    //  ('prev', 'prevPlus1', …) to a refNum given the spin history.
+    //  spinAt = spins[i] (the row whose actual we are checking)
+    //  prevAt = spins[i - 1]
+    //  twoAgoAt = spins[i - 2]  (only used for prevPrev family)
+    // ─────────────────────────────────────────────────────────────
 
-        const purple = proj.anchors || [];
-        const green  = proj.neighbors || [];
-
-        // ── TIGHT (no-grey) sources: purple-only ──
-        const t1Tight = engine._getExpandAnchorsToBetNumbers(purple, []) || [];
-        const t2Tight = (purple.length > 0)
-            ? (engine._getExpandTargetsToBetNumbers(purple, 2) || [])
-            : [];
-        const t3Tight = engine._getExpandAnchorsToBetNumbers(purple, []) || [];
-
-        // ── WIDE (with-grey) sources: purple + green ──
-        const t1Wide = engine._getExpandAnchorsToBetNumbers(purple, green) || [];
-        const t2Wide = (purple.length > 0)
-            ? (engine._getExpandTargetsToBetNumbers(purple, 2) || [])
-            : [];
-        const t2_13oppWide = (green.length > 0)
-            ? (engine._getExpandTargetsToBetNumbers(green, 2) || [])
-            : [];
-        const t3Wide = proj.numbers.slice();
-
-        return {
-            tight: {
-                t1: new Set(t1Tight),
-                t2: new Set(t2Tight),
-                t3: new Set(t3Tight)
-            },
-            wide: {
-                t1: new Set(t1Wide),
-                t2: new Set(t2Wide),
-                t2_13opp: new Set(t2_13oppWide),
-                t3: new Set(t3Wide)
-            }
-        };
+    function _refNumFor(basePairKey, prevAt, twoAgoAt) {
+        switch (basePairKey) {
+            case 'ref0':            return 0;
+            case 'ref19':           return 19;
+            case 'prev':            return prevAt;
+            case 'prevPlus1':       return Math.min(prevAt + 1, 36);
+            case 'prevMinus1':      return Math.max(prevAt - 1, 0);
+            case 'prevPlus2':       return Math.min(prevAt + 2, 36);
+            case 'prevMinus2':      return Math.max(prevAt - 2, 0);
+            case 'prevPrev':        return (typeof twoAgoAt === 'number') ? twoAgoAt : null;
+            case 'prevPrevPlus1':   return (typeof twoAgoAt === 'number') ? Math.min(twoAgoAt + 1, 36) : null;
+            case 'prevPrevMinus1':  return (typeof twoAgoAt === 'number') ? Math.max(twoAgoAt - 1, 0) : null;
+            case 'prevPrevPlus2':   return (typeof twoAgoAt === 'number') ? Math.min(twoAgoAt + 2, 36) : null;
+            case 'prevPrevMinus2':  return (typeof twoAgoAt === 'number') ? Math.max(twoAgoAt - 2, 0) : null;
+            default:                return null;
+        }
     }
 
-    /**
-     * Intersection of an arbitrary array of Sets. If any source is empty
-     * the result is empty — an absent source means "this column has no
-     * candidates", which strictly excludes everything.
-     */
+    // ─────────────────────────────────────────────────────────────
+    //  Auto-selected refs — port of app/renderer-3tables.js
+    //  getAutoSelectedRefs(). Walks back through the spin history
+    //  finding which 2 of {first, second, third} target columns
+    //  recently HIT for this pair on this table. The remaining one
+    //  is the "extra" (= grey) ref.
+    // ─────────────────────────────────────────────────────────────
+
+    function _autoSelectedRefs(engine, spins, idx, pairKey, tableId) {
+        const is13Opp = pairKey.endsWith('_13opp');
+        const basePairKey = pairKey.replace('_13opp', '');
+        const validCodes = (tableId === 'table1') ? TABLE1_VALID : TABLE2_VALID;
+        const foundRefs = [];
+
+        // i must have prev (i-1) and (for prevPrev family) i-2 available.
+        for (let i = idx - 1; i >= 1 && foundRefs.length < 2; i--) {
+            const actual = spins[i];
+            const prev   = spins[i - 1];
+            const twoAgo = (i >= 2) ? spins[i - 2] : null;
+
+            let refNum = _refNumFor(basePairKey, prev, twoAgo);
+            if (refNum === null) continue;
+            if (is13Opp) refNum = engine._getDigit13Opposite(refNum);
+            if (typeof refNum !== 'number') continue;
+
+            const lookupRow = engine._getLookupRow(refNum);
+            if (!lookupRow) continue;
+
+            const targets = { first: lookupRow.first, second: lookupRow.second, third: lookupRow.third };
+            for (const refKey of ['first', 'second', 'third']) {
+                if (foundRefs.includes(refKey)) continue;
+                const target = targets[refKey];
+                if (typeof target !== 'number') continue;
+                const code = engine._getCalculatePositionCode(target, actual);
+                if (code === 'XX') continue;
+                if (!validCodes.includes(code)) continue;
+                foundRefs.push(refKey);
+                if (foundRefs.length >= 2) break;
+            }
+        }
+
+        // Fallback: if fewer than 2 found, fill in column order.
+        for (const col of ['first', 'second', 'third']) {
+            if (foundRefs.length >= 2) break;
+            if (!foundRefs.includes(col)) foundRefs.push(col);
+        }
+        const extraRef = ['first', 'second', 'third'].find(c => !foundRefs.includes(c));
+        return { primaryRefs: new Set(foundRefs), extraRef };
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  Per-table-per-pair number sets at idx.
+    //  Mirrors getTable1NextProjections / getTable2NextProjections:
+    //  one number set per ref ({first/second/third}.numbers) where
+    //  numbers = expandTargetsToBetNumbers([target], neighborRange).
+    // ─────────────────────────────────────────────────────────────
+
+    function _tableProjectionsForPair(engine, spins, idx, basePairKey, neighborRange) {
+        if (!Array.isArray(spins) || idx < 1) return null;
+        const lastSpin = spins[idx - 1];
+        const prevPrev = (idx >= 2) ? spins[idx - 2] : null;
+
+        const refNum = _refNumFor(basePairKey, lastSpin, prevPrev);
+        if (refNum === null || typeof refNum !== 'number') return null;
+        const opp = engine._getDigit13Opposite(refNum);
+        const refLookup = engine._getLookupRow(refNum);
+        const oppLookup = engine._getLookupRow(opp);
+
+        const out = {};
+        if (refLookup) {
+            out.pair = {};
+            for (const refKey of ['first', 'second', 'third']) {
+                const target = refLookup[refKey];
+                const numbers = (typeof target === 'number')
+                    ? engine._getExpandTargetsToBetNumbers([target], neighborRange)
+                    : [];
+                out.pair[refKey] = new Set(numbers || []);
+            }
+        }
+        if (oppLookup) {
+            out.opp = {};
+            for (const refKey of ['first', 'second', 'third']) {
+                const target = oppLookup[refKey];
+                const numbers = (typeof target === 'number')
+                    ? engine._getExpandTargetsToBetNumbers([target], neighborRange)
+                    : [];
+                out.opp[refKey] = new Set(numbers || []);
+            }
+        }
+        return out;
+    }
+
+    function _unionSets(sets) {
+        const out = new Set();
+        for (const s of sets) {
+            if (!s) continue;
+            for (const n of s) out.add(n);
+        }
+        return out;
+    }
+
     function _intersectSets(sets) {
         if (!sets || sets.length === 0) return [];
         for (const s of sets) {
             if (!s || s.size === 0) return [];
         }
-        // Start from the smallest set for efficiency.
         const sorted = sets.slice().sort((a, b) => a.size - b.size);
         const out = [];
         for (const n of sorted[0]) {
@@ -162,20 +227,60 @@
     }
 
     /**
-     * Decide for one spin.
-     *
-     * @param {Object} engine
-     * @param {number[]} spins - Spin history up to and including idx-1.
-     * @param {number} idx - Current decision index.
-     * @param {Object} ctx
-     * @param {string} ctx.lockedPairRefKey - Pair locked at session start.
-     * @param {boolean} [ctx.includeGrey=true] - Whether to keep grey
-     *     numbers in the bet. When false, ctx.greyNumbers are removed.
-     * @param {number[]|Set<number>} [ctx.greyNumbers] - Grey numbers
-     *     reported by the caller (live: wheel.extraLoose+extraAnchors;
-     *     AT: V1 passes [] — strategy treats as no greys).
-     * @returns {{action, selectedPair, selectedFilter, numbers, confidence, reason}}
+     * Build the pair-source sets for the locked pair, returning both
+     * primary-only sets and primary+extra ("extended") sets per pair-
+     * source. Mirrors V6 in app/ai-prediction-panel.js getPredictions().
      */
+    function _buildPairSources(engine, spins, idx, refKey) {
+        const camelPair = REFKEY_TO_PAIR[refKey] || refKey;
+        const opp13Pair = camelPair + '_13opp';
+
+        const t1Proj = _tableProjectionsForPair(engine, spins, idx, camelPair, 1);
+        const t2Proj = _tableProjectionsForPair(engine, spins, idx, camelPair, 2);
+        if (!t1Proj || !t1Proj.pair) return null;
+        if (!t2Proj || !t2Proj.pair || !t2Proj.opp) return null;
+
+        // T3 source — full pair prediction (no ref split). Treat the full
+        // set as both the primary AND the extended; T3 has no greys so
+        // it constrains both the OFF and ON intersections identically.
+        const t3Full = engine._computeProjectionForPair(spins, idx, refKey);
+        if (!t3Full || !t3Full.numbers || t3Full.numbers.length === 0) return null;
+        const t3Set = new Set(t3Full.numbers);
+
+        // Per-source primary/extra split using auto-ref selection.
+        const a1   = _autoSelectedRefs(engine, spins, idx, camelPair,  'table1');
+        const a2   = _autoSelectedRefs(engine, spins, idx, camelPair,  'table2');
+        const a2op = _autoSelectedRefs(engine, spins, idx, opp13Pair,  'table2');
+
+        const t1Primary = _unionSets([...a1.primaryRefs].map(r => t1Proj.pair[r]));
+        const t1Extra   = t1Proj.pair[a1.extraRef] || new Set();
+        const t2Primary = _unionSets([...a2.primaryRefs].map(r => t2Proj.pair[r]));
+        const t2Extra   = t2Proj.pair[a2.extraRef] || new Set();
+        const t2oppPrim = _unionSets([...a2op.primaryRefs].map(r => t2Proj.opp[r]));
+        const t2oppExtr = t2Proj.opp[a2op.extraRef] || new Set();
+
+        return {
+            primary: {
+                t1:       t1Primary,
+                t2:       t2Primary,
+                t2_13opp: t2oppPrim,
+                t3:       t3Set
+            },
+            extended: {
+                t1:       _unionSets([t1Primary, t1Extra]),
+                t2:       _unionSets([t2Primary, t2Extra]),
+                t2_13opp: _unionSets([t2oppPrim, t2oppExtr]),
+                t3:       t3Set
+            },
+            // Surfaced for debug / tests.
+            autoRefs: { t1: a1, t2: a2, t2_13opp: a2op }
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  Decide
+    // ─────────────────────────────────────────────────────────────
+
     function decideStrategyLab(engine, spins, idx, ctx) {
         const skip = (reason) => ({
             action: 'SKIP',
@@ -189,62 +294,32 @@
         if (!engine || !Array.isArray(spins) || idx < 3) {
             return skip('Insufficient history');
         }
-
         const refKey = ctx && ctx.lockedPairRefKey;
         if (!refKey) {
             return skip('Strategy-Lab: no locked pair (call selectBestPair at session start)');
         }
 
-        const cols = _computeColumnSources(engine, spins, idx, refKey);
-        if (!cols) return skip('Strategy-Lab: no projection for locked pair');
+        const sources = _buildPairSources(engine, spins, idx, refKey);
+        if (!sources) return skip('Strategy-Lab: no projection for locked pair');
 
-        // ── INCLUDE-GREY SEMANTICS ──
-        // The toggle changes WHICH sources are intersected and how WIDE
-        // each source is. The bet is always the intersection — never a
-        // raw append.
-        //   OFF: T1.tight ∩ T2.tight ∩ T3.tight (purple-only, 3 sources)
-        //   ON : T1.wide ∩ T2.wide ∩ T2_13opp.wide ∩ T3.wide
-        //        (full purple+green, 4 sources — the 13-opp half joins).
         const includeGrey = (ctx && typeof ctx.includeGrey === 'boolean') ? ctx.includeGrey : true;
-        const sources = includeGrey
-            ? [cols.wide.t1, cols.wide.t2, cols.wide.t2_13opp, cols.wide.t3]
-            : [cols.tight.t1, cols.tight.t2, cols.tight.t3];
+        const setList = includeGrey
+            ? [sources.extended.t1, sources.extended.t2, sources.extended.t2_13opp, sources.extended.t3]
+            : [sources.primary.t1,  sources.primary.t2,  sources.primary.t2_13opp,  sources.primary.t3];
 
-        let intersection = _intersectSets(sources);
-
+        const intersection = _intersectSets(setList);
         if (intersection.length === 0) {
-            return skip('Strategy-Lab: empty intersection for locked pair');
+            return skip(`Strategy-Lab: empty intersection (grey ${includeGrey ? 'ON' : 'OFF'})`);
         }
 
-        // The pair name surfaced to UI / reports must be the camelCase
-        // form the AI panel + tables use ('prevPlus1', 'prevPrevMinus1'),
-        // NOT the engine's snake_case refKey ('prev_plus_1'), otherwise
-        // _handleTable3Selection silently fails to highlight the column
-        // and the live-test cascade never auto-selects the locked pair.
-        // Inlined map mirrors REFKEY_TO_PAIR_NAME in
-        // services/ai-auto-engine/ai-auto-engine.js so this module stays
-        // self-contained for both browser and Node test contexts.
-        const REFKEY_TO_PAIR_NAME_LOCAL = {
-            'prev':              'prev',
-            'prev_plus_1':       'prevPlus1',
-            'prev_minus_1':      'prevMinus1',
-            'prev_plus_2':       'prevPlus2',
-            'prev_minus_2':      'prevMinus2',
-            'prev_prev':         'prevPrev',
-            'prev_prev_plus_1':  'prevPrevPlus1',
-            'prev_prev_minus_1': 'prevPrevMinus1',
-            'prev_prev_plus_2':  'prevPrevPlus2',
-            'prev_prev_minus_2': 'prevPrevMinus2'
-        };
-        const pairName = REFKEY_TO_PAIR_NAME_LOCAL[refKey] || refKey;
-
+        const pairName = REFKEY_TO_PAIR[refKey] || refKey;
         return {
             action: 'BET',
             selectedPair: pairName,
             selectedFilter: null,
             numbers: intersection,
             confidence: 100,
-            reason: `Strategy-Lab pair=${pairName} bet=${intersection.length} ${includeGrey ? '(grey: ON, 4-source ∩)' : '(grey: OFF, 3-source ∩)'}`
+            reason: `Strategy-Lab pair=${pairName} bet=${intersection.length} (grey ${includeGrey ? 'ON, primary+extra' : 'OFF, primary only'})`
         };
     }
 
@@ -252,7 +327,12 @@
         selectBestPair: selectBestPair,
         decideStrategyLab: decideStrategyLab,
         // Exposed for tests.
-        _computeColumnSources: _computeColumnSources,
-        _intersectSets: _intersectSets
+        _refNumFor: _refNumFor,
+        _autoSelectedRefs: _autoSelectedRefs,
+        _tableProjectionsForPair: _tableProjectionsForPair,
+        _buildPairSources: _buildPairSources,
+        _intersectSets: _intersectSets,
+        _unionSets: _unionSets,
+        REFKEY_TO_PAIR: REFKEY_TO_PAIR
     };
 }));
