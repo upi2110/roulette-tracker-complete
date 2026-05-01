@@ -958,7 +958,71 @@ function render() {
     }
 }
 
-// TABLE 1 - UNCHANGED
+// ═══════════════════════════════════════════════════════════════════
+//  TABLE 1 — DATA-DRIVEN COLUMN CONFIG (slice 2b1)
+// ═══════════════════════════════════════════════════════════════════
+//
+// WHY THIS EXISTS
+// Before slice 2b1, renderTable1 hardcoded 12 pair groups via 12
+// inline renderTargetGroup(...) calls + magic-number positions for
+// indicator/co-pair separators (84 = 12 × 7). Reordering or extending
+// the column set required editing every block. With the user-driven
+// 22-column layout coming in slice 2b2 + the per-table dropdown
+// coming in 2f, that hand-written form would have been brittle.
+//
+// CRITICAL INVARIANT
+// This config MUST reproduce the EXACT same per-cell output as the
+// previous hardcoded form for the existing 12 pair groups in this
+// exact order. The user's "strictly no change to the table data
+// formation" rule applies — every refNum below mirrors the inline
+// math the previous renderTable1 used line-for-line, including the
+// pre-existing edge-case difference vs. calculateReferences() at
+// prev=0/36 (T1 keeps Math.min(prev+1, 36) → 36 for prev=36; the
+// engine's calculateReferences gives 35; this divergence pre-dates
+// slice 2b1 and is intentionally preserved here, not "fixed").
+//
+// FIELDS
+//   key         - logical group id (also a unique label)
+//   computeRef  - (prev, prevPrev) -> number; the anchor & ref value
+//                 for this column group on a given data row
+//   cssClass    - the set-N color class applied to header cells
+//                 (data cells inherit per existing CSS rules)
+//   label       - header text (e.g. "0", "P+1-13OPP")
+//   dataPair    - data-pair attribute used by the prediction
+//                 selection / pair-clickable mechanism
+//   is13Opp     - true for the 13-opposite half of a pair-group;
+//                 controls the opp13-cell class plumbing
+//   prefix      - what precedes this group's anchor cell:
+//                   'none'              → no extra class on anchor
+//                   'pair-separator'    → just a border (used once,
+//                                         between {0,19} and {prev})
+//                   'pair-indicator'    → two-stripe indicator that
+//                                         summarizes the previous
+//                                         pair-group's hits; appears
+//                                         before each main half from
+//                                         prev onwards
+//                   'copair-separator'  → border before the *_13opp
+//                                         half of a pair-group
+//
+// In slice 2b2 the array is reordered + 10 entries appended for
+// PP, PP·13, PP±1/13opp, PP±2/13opp. In slice 2f a dropdown will
+// filter which entries render. Changing the array is the ONLY edit
+// needed for those slices — the renderer derives column positions,
+// indicator stripe pairing and end-of-row marker from .length.
+const T1_COLUMN_GROUPS = [
+    {key:'ref0',             computeRef:()=>0,                                       cssClass:'set-1', label:'0',         dataPair:'ref0',             is13Opp:false, prefix:'none'},
+    {key:'ref19',            computeRef:()=>19,                                      cssClass:'set-2', label:'19',        dataPair:'ref19',            is13Opp:false, prefix:'pair-separator'},
+    {key:'prev',             computeRef:(p)=>p,                                      cssClass:'set-3', label:'P',         dataPair:'prev',             is13Opp:false, prefix:'pair-indicator'},
+    {key:'prev_13opp',       computeRef:(p)=>DIGIT_13_OPPOSITES[p],                  cssClass:'set-3', label:'P-13OPP',   dataPair:'prev_13opp',       is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPlus1',        computeRef:(p)=>Math.min(p+1, 36),                      cssClass:'set-4', label:'P+1',       dataPair:'prevPlus1',        is13Opp:false, prefix:'pair-indicator'},
+    {key:'prevPlus1_13opp',  computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+1, 36)],  cssClass:'set-4', label:'P+1-13OPP', dataPair:'prevPlus1_13opp',  is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevMinus1',       computeRef:(p)=>Math.max(p-1, 0),                       cssClass:'set-5', label:'P-1',       dataPair:'prevMinus1',       is13Opp:false, prefix:'pair-indicator'},
+    {key:'prevMinus1_13opp', computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-1, 0)],   cssClass:'set-5', label:'P-1-13OPP', dataPair:'prevMinus1_13opp', is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevPlus2',        computeRef:(p)=>Math.min(p+2, 36),                      cssClass:'set-6', label:'P+2',       dataPair:'prevPlus2',        is13Opp:false, prefix:'pair-indicator'},
+    {key:'prevPlus2_13opp',  computeRef:(p)=>DIGIT_13_OPPOSITES[Math.min(p+2, 36)],  cssClass:'set-6', label:'P+2-13OPP', dataPair:'prevPlus2_13opp',  is13Opp:true,  prefix:'copair-separator'},
+    {key:'prevMinus2',       computeRef:(p)=>Math.max(p-2, 0),                       cssClass:'set-7', label:'P-2',       dataPair:'prevMinus2',       is13Opp:false, prefix:'pair-indicator'},
+    {key:'prevMinus2_13opp', computeRef:(p)=>DIGIT_13_OPPOSITES[Math.max(p-2, 0)],   cssClass:'set-7', label:'P-2-13OPP', dataPair:'prevMinus2_13opp', is13Opp:true,  prefix:'copair-separator'},
+];
 
 function renderTable1() {
     const tbody = document.getElementById('table1Body');
@@ -1039,28 +1103,41 @@ function renderTable1() {
         const row = document.createElement('tr');
 
         if (idx === 0) {
-            // 12 pairs × 7 cols = 84 data cols. No Dir/Actual columns.
-            // Groups: 0(7) | 19(7) | P(7)+P13(7) | P+1(7)+P+1-13(7) | P-1(7)+P-1-13(7) | P+2(7)+P+2-13(7) | P-2(7)+P-2-13(7)
+            // First-row placeholder — N pair groups × 7 cells, with the
+            // anchor (cell 0) of each group carrying the prefix class
+            // dictated by the config (none / pair-separator /
+            // pair-indicator / copair-separator). End-of-row marker
+            // appended afterwards. Derived entirely from
+            // T1_COLUMN_GROUPS so the magic numbers (84 cells,
+            // indicatorStarts, copairStarts) of the previous form fall
+            // out automatically. Verified against the previous output:
+            // for the existing 12 groups, anchor positions 0,7,14,21,
+            // 28,35,42,49,56,63,70,77 and prefixes match exactly
+            // (pair-separator at c=7, pair-indicator at 14/28/42/56/70,
+            // copair-separator at 21/35/49/63/77, blank elsewhere).
             const emptyCells = [];
-            // After removing the big black pair-separators, the 5 between-pair
-            // positions now carry the pair-indicator white-placeholder stripes.
-            // Col 7 (within {0,19}) keeps its old class but it is now a no-op
-            // visually because #table1 .pair-separator is border-left:0.
-            const indicatorStarts = [14, 28, 42, 56, 70];
-            const copairStarts = [21, 35, 49, 63, 77];
-            for (let c = 0; c < 84; c++) {
-                if (indicatorStarts.includes(c)) {
-                    emptyCells.push('<td class="pair-indicator"></td>');
-                } else if (c === 7) {
-                    emptyCells.push('<td class="pair-separator"></td>');
-                } else if (copairStarts.includes(c)) {
-                    emptyCells.push('<td class="copair-separator"></td>');
+            const totalCells = T1_COLUMN_GROUPS.length * 7;
+            for (let c = 0; c < totalCells; c++) {
+                const groupIdx = Math.floor(c / 7);
+                const cellIdx  = c % 7;
+                if (cellIdx === 0) {
+                    const grp = T1_COLUMN_GROUPS[groupIdx];
+                    if (grp.prefix === 'pair-indicator') {
+                        emptyCells.push('<td class="pair-indicator"></td>');
+                    } else if (grp.prefix === 'pair-separator') {
+                        emptyCells.push('<td class="pair-separator"></td>');
+                    } else if (grp.prefix === 'copair-separator') {
+                        emptyCells.push('<td class="copair-separator"></td>');
+                    } else {
+                        emptyCells.push('<td></td>');
+                    }
                 } else {
                     emptyCells.push('<td></td>');
                 }
             }
-            // End-of-row (6th pair) placeholder — <strong> content mirrors
-            // anchor cells so the cell has identical content-driven dimensions.
+            // End-of-row (last pair) placeholder — <strong> content
+            // mirrors anchor cells so the cell has identical content-
+            // driven dimensions.
             emptyCells.push('<td class="pair-end-cell anchor-cell"><strong style="visibility:hidden">0</strong></td>');
             row.innerHTML = emptyCells.join('');
             tbody.appendChild(row);
@@ -1133,20 +1210,15 @@ function renderTable1() {
 
         // Pair-indicator pre-pass: compute per-block hit state (any non-XX code
         // in the block's 3 projected positions). Used ONLY for the two-stripe
-        // visual on the between-halves separator of each of the 6 pairs.
+        // visual on the between-halves separator of each pair group.
         // Does NOT alter table-formation or anchor logic.
-        const prevPlus1 = Math.min(prev + 1, 36);
-        const prevMinus1 = Math.max(prev - 1, 0);
-        const prevPlus2 = Math.min(prev + 2, 36);
-        const prevMinus2 = Math.max(prev - 2, 0);
-        const _blockRefs = [
-            0, 19,
-            prev, DIGIT_13_OPPOSITES[prev],
-            prevPlus1, DIGIT_13_OPPOSITES[prevPlus1],
-            prevMinus1, DIGIT_13_OPPOSITES[prevMinus1],
-            prevPlus2, DIGIT_13_OPPOSITES[prevPlus2],
-            prevMinus2, DIGIT_13_OPPOSITES[prevMinus2],
-        ];
+        // Derived from T1_COLUMN_GROUPS so adding/removing column groups
+        // automatically reshapes the hit array. Previously this was a
+        // hardcoded list of 12 ref numbers (0, 19, prev, DIGIT_13_OPPOSITES
+        // [prev], …); the loop produces the SAME 12 values for the existing
+        // config in slice 2b1.
+        const prevPrevForRow = idx >= 2 ? spins[idx - 2].actual : null;
+        const _blockRefs = T1_COLUMN_GROUPS.map(g => g.computeRef(prev, prevPrevForRow));
         const _blockHits = _blockRefs.map(r => {
             const lr = (typeof getLookupRow === 'function') ? getLookupRow(r) : null;
             if (!lr) return 0;
@@ -1157,32 +1229,37 @@ function renderTable1() {
             return 0;
         });
 
-        // Stripes go at the END of each pair (after 0/19, after P/P-13opp, …).
-        // So they live in the left-gutter of the NEXT pair's first block
-        // (blocks 2, 4, 6, 8, 10), plus at the row's right edge for the 6th
-        // pair via row-level CSS variables (handled below).
-        renderTargetGroup(0, 0, false, false, 'ref0');
-        renderTargetGroup(19, 19, true, false, 'ref19');
-        renderTargetGroup(prev, prev, true, false, 'prev', false, _blockHits[0], _blockHits[1]);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prev], DIGIT_13_OPPOSITES[prev], false, true, 'prev_13opp', true);
+        // Loop the column-group config and call renderTargetGroup with the
+        // same arguments the previous hand-written sequence produced.
+        // Each entry's `prefix` is the source of truth for separator /
+        // indicator placement; stripes hang off pair-indicator entries
+        // and read the previous pair's two _blockHits. End-of-row marker
+        // takes the LAST two _blockHits regardless of group count.
+        T1_COLUMN_GROUPS.forEach((grp, i) => {
+            const refNum = grp.computeRef(prev, prevPrevForRow);
+            const isPairIndicator = (grp.prefix === 'pair-indicator');
+            const addSeparator = (grp.prefix === 'pair-separator' || isPairIndicator);
+            const addCopairSep = (grp.prefix === 'copair-separator');
+            const stripeLeftHit  = isPairIndicator ? _blockHits[i - 2] : null;
+            const stripeRightHit = isPairIndicator ? _blockHits[i - 1] : null;
+            renderTargetGroup(
+                refNum, refNum,
+                addSeparator,
+                grp.is13Opp,
+                grp.dataPair,
+                addCopairSep,
+                stripeLeftHit,
+                stripeRightHit
+            );
+        });
 
-        renderTargetGroup(prevPlus1, prevPlus1, true, false, 'prevPlus1', false, _blockHits[2], _blockHits[3]);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus1], DIGIT_13_OPPOSITES[prevPlus1], false, true, 'prevPlus1_13opp', true);
-
-        renderTargetGroup(prevMinus1, prevMinus1, true, false, 'prevMinus1', false, _blockHits[4], _blockHits[5]);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus1], DIGIT_13_OPPOSITES[prevMinus1], false, true, 'prevMinus1_13opp', true);
-
-        renderTargetGroup(prevPlus2, prevPlus2, true, false, 'prevPlus2', false, _blockHits[6], _blockHits[7]);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevPlus2], DIGIT_13_OPPOSITES[prevPlus2], false, true, 'prevPlus2_13opp', true);
-
-        renderTargetGroup(prevMinus2, prevMinus2, true, false, 'prevMinus2', false, _blockHits[8], _blockHits[9]);
-        renderTargetGroup(DIGIT_13_OPPOSITES[prevMinus2], DIGIT_13_OPPOSITES[prevMinus2], false, true, 'prevMinus2_13opp', true);
-
-        // End-of-row pair indicator for the 6th pair {P-2, P-2-13opp}.
-        // Mirrors the between-pair pattern exactly: anchor-cell + pair-end-cell
-        // class. Content is a hidden <strong> so the cell has the same
-        // content-driven dimensions as the anchor cells that between-pair uses.
-        html.push(`<td class="pair-end-cell anchor-cell" data-left-hit="${_blockHits[10]}" data-right-hit="${_blockHits[11]}"><strong style="visibility:hidden">0</strong></td>`);
+        // End-of-row pair-indicator for the LAST pair group. Mirrors the
+        // between-pair pattern: anchor-cell + pair-end-cell class. The
+        // two stripe values come from the last two _blockHits entries
+        // regardless of how many column groups are configured.
+        const _lastL = _blockHits[T1_COLUMN_GROUPS.length - 2] || 0;
+        const _lastR = _blockHits[T1_COLUMN_GROUPS.length - 1] || 0;
+        html.push(`<td class="pair-end-cell anchor-cell" data-left-hit="${_lastL}" data-right-hit="${_lastR}"><strong style="visibility:hidden">0</strong></td>`);
 
         row.innerHTML = html.join('');
         tbody.appendChild(row);
@@ -1256,27 +1333,25 @@ function renderTable1() {
             });
         };
 
-        renderNextGroup(0, 0, false, false, 'ref0');
-        renderNextGroup(19, 19, true, false, 'ref19');
-        // Blocks 2/4/6/8/10 = pair-indicator (placeholder white, matches data rows).
-        renderNextGroup(lastSpin, lastSpin, true, false, 'prev', false, true);
-        renderNextGroup(DIGIT_13_OPPOSITES[lastSpin], DIGIT_13_OPPOSITES[lastSpin], false, true, 'prev_13opp', true);
-
-        const plus1 = Math.min(lastSpin + 1, 36);
-        renderNextGroup(plus1, plus1, true, false, 'prevPlus1', false, true);
-        renderNextGroup(DIGIT_13_OPPOSITES[plus1], DIGIT_13_OPPOSITES[plus1], false, true, 'prevPlus1_13opp', true);
-
-        const minus1 = Math.max(lastSpin - 1, 0);
-        renderNextGroup(minus1, minus1, true, false, 'prevMinus1', false, true);
-        renderNextGroup(DIGIT_13_OPPOSITES[minus1], DIGIT_13_OPPOSITES[minus1], false, true, 'prevMinus1_13opp', true);
-
-        const plus2 = Math.min(lastSpin + 2, 36);
-        renderNextGroup(plus2, plus2, true, false, 'prevPlus2', false, true);
-        renderNextGroup(DIGIT_13_OPPOSITES[plus2], DIGIT_13_OPPOSITES[plus2], false, true, 'prevPlus2_13opp', true);
-
-        const minus2 = Math.max(lastSpin - 2, 0);
-        renderNextGroup(minus2, minus2, true, false, 'prevMinus2', false, true);
-        renderNextGroup(DIGIT_13_OPPOSITES[minus2], DIGIT_13_OPPOSITES[minus2], false, true, 'prevMinus2_13opp', true);
+        // NEXT-row projection — drive cells from the same config as
+        // the data rows above. The previous form had 12 hand-written
+        // renderNextGroup() calls; this loop produces the SAME
+        // arguments for the existing 12 groups in slice 2b1.
+        // Pair-indicator blocks (prev / prevPlus1 / prevMinus1 /
+        // prevPlus2 / prevMinus2) get asPairIndicator=true so the
+        // anchor cell renders with the pair-indicator class instead
+        // of the pair-separator border.
+        // prevPrevForNext is null on a first-spin session (lastSpin
+        // is the only entry); the new prevPrev-based groups in slice
+        // 2b2 will handle that case via their computeRef.
+        const prevPrevForNext = (spins.length >= 2) ? spins[spins.length - 2].actual : null;
+        T1_COLUMN_GROUPS.forEach(grp => {
+            const refNum = grp.computeRef(lastSpin, prevPrevForNext);
+            const isPairIndicator = (grp.prefix === 'pair-indicator');
+            const addSeparator = (grp.prefix === 'pair-separator' || isPairIndicator);
+            const addCopairSep = (grp.prefix === 'copair-separator');
+            renderNextGroup(refNum, refNum, addSeparator, grp.is13Opp, grp.dataPair, addCopairSep, isPairIndicator);
+        });
 
         // End-of-row pair-end placeholder (white) for the next-row projection.
         html.push('<td class="pair-end-cell anchor-cell"><strong style="visibility:hidden">0</strong></td>');

@@ -78,9 +78,13 @@ h1 { color: #2c3e50; margin-bottom: 12px; text-align: center; font-size: 16px; }
     overflow-y: auto;
     border: 1px solid #ddd;
     width: 100%;
-    /* Reserve scrollbar gutter so the column widths don't jump when
-       the bar appears on a freshly-grown table. */
-    scrollbar-gutter: stable;
+    /* NOTE: `scrollbar-gutter: stable` was tried in slice 1 to prevent
+       column-width jumps when the scrollbar materialises. It reserved
+       a permanent gutter strip on the right edge of every table that
+       showed up as a visible white/grey border (the
+       ::-webkit-scrollbar-track background bleeding through). Removed
+       in favour of letting columns reflow on scroll-bar appearance —
+       a one-frame jump is preferable to a permanent border artefact. */
 }
 
 /* Force the scrollbar to be visible at all times (default macOS
@@ -322,8 +326,17 @@ td[data-pair] {
     outline-offset: -2px;
     background-color: rgba(14, 165, 233, 0.15) !important;
 }
+/* Selected-pair HEADERS must be OPAQUE so they mask the data rows
+   behind them when the wrapper scrolls (sticky headers sit on top
+   of scrolled-past content). The previous semi-transparent cyan
+   (rgba 0.35) let scrolled data bleed through the sticky header
+   text, making it look "jumbled" — visible most clearly in T3
+   (one tall header row, no second header layer to mask). Solid
+   light-cyan keeps the visual selection cue while preserving the
+   sticky-header masking the dark default #34495e provides for
+   unselected headers. */
 th.t3-pair-selected {
-    background-color: rgba(14, 165, 233, 0.35) !important;
+    background-color: #bae6fd !important;
     color: #0c4a6e !important;
 }
 
