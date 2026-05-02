@@ -19,7 +19,7 @@ class MoneyManagementPanel {
             isSessionActive: false,
             spinsWithBets: [],
             isBettingEnabled: false,  // NEW: User control for betting
-            bettingStrategy: 3,  // 1=Aggressive, 2=Conservative, 3=Cautious, 4=Defensive (default: Cautious)
+            bettingStrategy: 4,  // 1=Aggressive, 2=Conservative, 3=Cautious, 4=Defensive (default: Defensive)
             consecutiveWins: 0,  // Track consecutive wins for strategies 2 & 3
             currentBetPerNumber: 2  // Track current bet amount (overrides backend)
         };
@@ -86,11 +86,11 @@ class MoneyManagementPanel {
                         border: none;
                         border-radius: 4px;
                         cursor: pointer;
-                        background: linear-gradient(135deg, #6f42c1 0%, #9b59b6 100%);
+                        background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%);
                         color: white;
                         margin-top: 8px;
                         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    ">🟣 Strategy 3: Cautious</button>
+                    ">🛡️ Strategy 4: Defensive</button>
             </div>
 
             <div class="panel-content" id="moneyPanelContent" style="display: block;">
@@ -430,14 +430,15 @@ class MoneyManagementPanel {
         let netChange = 0;
 
         if (hit) {
-            // Win: 35:1 on one number, lose the rest.
-            // AUTO-mode parity: when ai-auto-mode-ui.js sets
-            // _useAutoTestPnl=true, mirror the auto-test runner's
-            // _calculatePnL formula (b*36 − b*n = b*(36-n)) so the live
-            // panel and Auto Test agree on per-win P&L. Manual / Semi /
-            // T1 paths leave the flag false and keep the legacy
-            // b*(35-n) formula byte-for-byte.
-            const winAmount = this._useAutoTestPnl ? betPerNumber * 36 : betPerNumber * 35;
+            // Win: 35:1 on one number, lose the rest. The winning chip
+            // returns b*36 (35 winnings + the stake back); subtracting
+            // totalBet (b*N) gives net = b*(36 − N). The legacy branch
+            // used b*35 here which under-counted every win by exactly
+            // one stake — corrected to b*36 to match the auto-test
+            // _calculatePnL formula. _useAutoTestPnl is now a no-op
+            // (kept so any callers toggling it don't break) but both
+            // branches give identical results.
+            const winAmount = betPerNumber * 36;
             netChange = winAmount - totalBet;
             
             this.sessionData.currentBankroll += netChange;

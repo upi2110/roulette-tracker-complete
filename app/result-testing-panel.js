@@ -96,7 +96,7 @@ class ResultTestingPanel {
                 🧾 Result-testing — Manual verification
                 <span id="resultTestingStatus" style="float:right;font-size:11px;color:#4338ca;font-weight:600;">No submission</span>
             </div>
-            <div id="resultTestingBody" style="padding:8px;background:white;display:block;font-size:11px;color:#1e293b;">
+            <div id="resultTestingBody" style="padding:8px;background:white;display:none;font-size:11px;color:#1e293b;">
                 <div id="resultTestingEmpty" style="color:#64748b;font-style:italic;padding:6px;text-align:center;">
                     Run an Auto Test and click <strong>Submit-to test</strong> to hand the result over here.
                 </div>

@@ -83,7 +83,7 @@ class AIPredictionPanel {
                         📊 TABLE 3 — Anchor System (±1 neighbors)
                         <span style="float: right; font-size: 11px; color: #0369a1;">T3 Selected: <span id="t3Count">0</span></span>
                     </div>
-                    <div id="table3Checkboxes" style="padding: 8px; background: white; display: block;">
+                    <div id="table3Checkboxes" style="padding: 8px; background: white; display: none;">
                         <div style="color: #64748b; font-style: italic; font-size: 11px; text-align: center; padding: 8px;">Enter spins to see pairs</div>
                     </div>
                 </div>
@@ -94,7 +94,7 @@ class AIPredictionPanel {
                         📊 TABLE 2 — 18 Codes (±2 neighbors)
                         <span style="float: right; font-size: 11px; color: #065f46;">T2 Selected: <span id="t2Count">0</span></span>
                     </div>
-                    <div id="table2Checkboxes" style="padding: 8px; background: white; display: block;">
+                    <div id="table2Checkboxes" style="padding: 8px; background: white; display: none;">
                         <div style="color: #64748b; font-style: italic; font-size: 11px; text-align: center; padding: 8px;">Enter spins to see pairs</div>
                     </div>
                 </div>
@@ -105,24 +105,27 @@ class AIPredictionPanel {
                         📊 TABLE 1 — 10 Codes (±1 neighbors)
                         <span style="float: right; font-size: 11px; color: #92400e;">T1 Selected: <span id="t1Count">0</span></span>
                     </div>
-                    <div id="table1Checkboxes" style="padding: 8px; background: white; display: block;">
+                    <div id="table1Checkboxes" style="padding: 8px; background: white; display: none;">
                         <div style="color: #64748b; font-style: italic; font-size: 11px; text-align: center; padding: 8px;">Enter spins to see pairs</div>
                     </div>
                 </div>
 
                 <!-- SIGNAL INDICATOR (stays in selection panel for quick feedback) -->
-                <div class="prediction-status" style="margin-top: 10px;">
+                <div class="prediction-status" style="margin-top: 6px;">
                     <div id="signalIndicator" class="signal-indicator signal-wait" style="
-                        padding: 12px 24px;
-                        border-radius: 8px;
+                        padding: 3px 8px;
+                        border-radius: 4px;
                         background-color: #6b7280;
                         color: white;
                         font-weight: bold;
-                        font-size: 16px;
+                        font-size: 11px;
                         text-align: center;
                         margin-bottom: 0;
                     ">SELECT PAIRS</div>
                 </div>
+
+                <!-- ═══ SUMMARY DASHBOARD (compact at-a-glance view) ═══ -->
+                <div id="aiSummaryDashboard" style="margin-top: 10px;"></div>
             </div>
         `;
 
@@ -157,6 +160,10 @@ class AIPredictionPanel {
         }
 
         console.log('✅ AI Prediction panel created (selection + results split)');
+
+        // Seed the summary dashboard so the empty-state shell appears
+        // immediately on first paint (before any spins / predictions).
+        setTimeout(() => this._renderSummaryDashboard(), 50);
     }
 
     setupToggle() {
@@ -211,6 +218,10 @@ class AIPredictionPanel {
             'prevPrevMinus2':       'PP-2',
             'prevPrevMinus2_13opp': 'PP-2-13OPP'
         };
+
+        // Cache for the summary dashboard so display labels stay in sync
+        // with whatever loadAvailablePairs uses.
+        this._summaryPairNames = pairDisplayNames;
 
         // Table 3
         const t3Next = tableData.table3NextProjections || {};
@@ -477,6 +488,11 @@ class AIPredictionPanel {
         // Also update old selectedCount for compat
         const countSpan = document.getElementById('selectedCount');
         if (countSpan) countSpan.textContent = this._getTotalSelectionCount();
+
+        // Refresh the summary dashboard whenever counts change.
+        if (typeof this._renderSummaryDashboard === 'function') {
+            this._renderSummaryDashboard();
+        }
     }
 
     _autoTriggerPredictions() {
@@ -569,12 +585,244 @@ class AIPredictionPanel {
     }
 
     // ═══════════════════════════════════════════════════════
+    //  SUMMARY DASHBOARD — compact recap inside the AI panel
+    //  so the user doesn't have to scroll back to the tables.
+    //  Shows: recent actuals (wheel-coloured), per-table pair
+    //  selections with auto-ref ticks, primary predictions and
+    //  grey/extra numbers — all in one box.
+    // ═══════════════════════════════════════════════════════
+
+    _renderSummaryDashboard() {
+        const container = document.getElementById('aiSummaryDashboard');
+        if (!container) return;
+
+        // ── Delegated click handler (attached once) ───────────────
+        // Pair badges and ref ticks in the dashboard are click-targets
+        // that re-use the existing per-table selection handlers, so the
+        // dashboard and the T1/T2/T3 sections always stay in sync.
+        if (!container._summaryClickWired) {
+            container.addEventListener('click', (ev) => {
+                const t = ev.target.closest('[data-summary-action]');
+                if (!t) return;
+                const action = t.dataset.summaryAction;
+                const pair   = t.dataset.pair;
+                const tid    = t.dataset.tableId;
+                if (action === 't3-toggle' && pair) {
+                    const isSel = this.table3Selections.has(pair);
+                    this._handleTable3Selection(pair, !isSel);
+                } else if (action === 't12-toggle' && pair && tid) {
+                    const sels = (tid === '1') ? this.table1Selections : this.table2Selections;
+                    const isSel = !!sels[pair];
+                    this._handleTable12PairToggle('table' + tid, pair, !isSel);
+                } else if (action === 'ref-toggle' && pair && tid) {
+                    const sels = (tid === '1') ? this.table1Selections : this.table2Selections;
+                    const refs = sels[pair];
+                    const refKey = t.dataset.ref;
+                    const isOn = !!(refs && refs.has(refKey));
+                    this._handleRefSelection('table' + tid, pair, refKey, !isOn);
+                }
+            });
+            container._summaryClickWired = true;
+        }
+
+        const RED = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+        const colorOf = (n) => (n === 0)
+            ? '#16a34a'
+            : (RED.has(n) ? '#dc2626' : '#1f2937');
+
+        const chip = (n, opts = {}) => {
+            const sz   = opts.size || 18;
+            const grey = opts.grey === true;
+            const bg   = grey ? '#e5e7eb' : colorOf(n);
+            const fg   = grey ? '#1f2937' : '#fff';
+            const brd  = grey ? '1px dashed #64748b' : '1px solid rgba(0,0,0,.15)';
+            return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${sz}px;height:${sz}px;border-radius:50%;background:${bg};color:${fg};font-weight:700;font-size:10px;border:${brd};">${n}</span>`;
+        };
+
+        // ── Hit/miss map for recent spins ─────────────────────────
+        // moneyPanel.betHistory is unshifted (newest first); spinsWithBets
+        // is chronological. Pair them in reverse so each spin index gets
+        // the bet result that resolved on it. Uses null when no bet was
+        // placed on that spin (e.g. SKIP / no-pending).
+        const mp = (typeof window !== 'undefined') ? window.moneyPanel : null;
+        const hits = {};
+        if (mp && Array.isArray(mp.betHistory) && Array.isArray(mp.sessionData?.spinsWithBets)) {
+            const swb = mp.sessionData.spinsWithBets;
+            const bh = mp.betHistory;
+            for (let k = 0; k < swb.length; k++) {
+                // money-panel pushes spins.length (1-based count) into
+                // spinsWithBets, not the 0-based array index. Subtract 1
+                // so the hit lookup matches `window.spins[i]` indices.
+                const spinIdx = swb[k] - 1;
+                const betEntry = bh[bh.length - 1 - k];
+                if (betEntry && typeof betEntry.hit === 'boolean') {
+                    hits[spinIdx] = betEntry.hit;
+                }
+            }
+        }
+
+        // ── Recent actuals — newest first, with hit/miss badge ────
+        const spinsArr = Array.isArray(window.spins) ? window.spins : [];
+        const recentEntries = [];
+        for (let i = spinsArr.length - 1; i >= 0 && recentEntries.length < 12; i--) {
+            const s = spinsArr[i];
+            if (s && typeof s.actual === 'number') {
+                recentEntries.push({ idx: i, actual: s.actual, hit: hits[i] });
+            }
+        }
+        const hitBadge = (h) => {
+            if (h === true)  return '<span style="color:#10b981;font-weight:700;font-size:11px;margin-left:3px;">✓</span>';
+            if (h === false) return '<span style="color:#ef4444;font-weight:700;font-size:11px;margin-left:3px;">✗</span>';
+            return '<span style="color:#cbd5e1;font-size:10px;margin-left:3px;">·</span>';
+        };
+        const recentHtml = recentEntries.length
+            ? recentEntries.map(e =>
+                `<div style="display:flex;align-items:center;justify-content:flex-start;margin:2px 0;">${chip(e.actual)}${hitBadge(e.hit)}</div>`
+            ).join('')
+            : '<div style="color:#64748b;font-size:10px;text-align:center;">—</div>';
+
+        // ── Pair name map ─────────────────────────────────────────
+        const dn = this._summaryPairNames || {
+            'ref0':'0','ref0_13opp':'0·13','ref19':'19','ref19_13opp':'19·13',
+            'prev':'P','prevPlus1':'P+1','prevMinus1':'P-1','prevPlus2':'P+2','prevMinus2':'P-2',
+            'prevPrev':'PP','prevPrevPlus1':'PP+1','prevPrevMinus1':'PP-1','prevPrevPlus2':'PP+2','prevPrevMinus2':'PP-2',
+            'prev_13opp':'P·13','prevPlus1_13opp':'P+1·13','prevMinus1_13opp':'P-1·13',
+            'prevPlus2_13opp':'P+2·13','prevMinus2_13opp':'P-2·13','prevPrev_13opp':'PP·13',
+            'prevPrevPlus1_13opp':'PP+1·13','prevPrevMinus1_13opp':'PP-1·13',
+            'prevPrevPlus2_13opp':'PP+2·13','prevPrevMinus2_13opp':'PP-2·13'
+        };
+        const refLabel = (k) => k === 'first' ? '1st' : k === 'second' ? '2nd' : '3rd';
+
+        // Ref pill — bigger tap target. Selected state is filled green;
+        // unselected is bordered grey. Cursor + title tell the user it's
+        // clickable.
+        const refPill = (tableId, pk, r, on) => {
+            const bg     = on ? '#16a34a' : '#ffffff';
+            const fg     = on ? '#ffffff' : '#475569';
+            const border = on ? '#15803d' : '#cbd5e1';
+            return `<span data-summary-action="ref-toggle" data-table-id="${tableId}" data-pair="${pk}" data-ref="${r}" style="display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:22px;padding:0 8px;margin-left:4px;font-size:11px;font-weight:700;border-radius:4px;background:${bg};color:${fg};border:1px solid ${border};cursor:pointer;user-select:none;white-space:nowrap;box-shadow:${on ? 'inset 0 1px 2px rgba(0,0,0,.15)' : '0 1px 1px rgba(0,0,0,.05)'};" title="Click to toggle ${refLabel(r)}">${refLabel(r)}</span>`;
+        };
+
+        const tableRows = (tableId, sels) => {
+            const keys = (tableId === 3) ? Array.from(sels || []) : Object.keys(sels || {});
+            if (keys.length === 0) return null; // signal "skip this section"
+            return keys.map(pk => {
+                const display = dn[pk] || pk;
+                // T3: clicking the badge unselects the pair (mirrors the
+                // checkbox in the T3 section — both stay in sync via the
+                // existing _handleTable3Selection handler).
+                if (tableId === 3) {
+                    return `<span data-summary-action="t3-toggle" data-pair="${pk}" style="display:inline-block;background:#1e40af;color:#fff;padding:3px 10px;border-radius:4px;font-weight:700;font-size:11px;margin:2px 4px 2px 0;cursor:pointer;" title="Click to unselect ${display}">${display}</span>`;
+                }
+                const refs = sels[pk] || new Set();
+                const refsHtml = ['first','second','third']
+                    .map(r => refPill(tableId, pk, r, refs.has(r)))
+                    .join('');
+                return `<div style="display:flex;align-items:center;flex-wrap:wrap;padding:3px 2px;gap:2px;">
+                    <span data-summary-action="t12-toggle" data-table-id="${tableId}" data-pair="${pk}" style="display:inline-flex;align-items:center;justify-content:center;background:${tableId===1?'#92400e':'#065f46'};color:#fff;padding:3px 10px;border-radius:4px;font-weight:700;font-size:11px;min-width:54px;height:22px;text-align:center;cursor:pointer;" title="Click to unselect ${display}">${display}</span>${refsHtml}
+                </div>`;
+            }).join('');
+        };
+
+        const sectionBlock = (label, color, bgColor, content) => {
+            if (content === null) return '';
+            const innerWrap = (label === 'TABLE 3')
+                ? `<div style="margin-top:1px;">${content}</div>`
+                : content;
+            return `<div style="background:${bgColor};border-left:2px solid ${color};padding:2px 4px;border-radius:0 3px 3px 0;margin-bottom:2px;">
+                <span style="color:${color};font-size:8px;font-weight:700;letter-spacing:.5px;">${label}</span>
+                ${innerWrap}
+            </div>`;
+        };
+
+        const t1Html = sectionBlock('TABLE 1', '#92400e', '#fef3c7', tableRows(1, this.table1Selections));
+        const t2Html = sectionBlock('TABLE 2', '#065f46', '#d1fae5', tableRows(2, this.table2Selections));
+        const t3Html = sectionBlock('TABLE 3', '#1e40af', '#dbeafe', tableRows(3, this.table3Selections));
+        const selectionsHtml = (t1Html + t2Html + t3Html) || '<div style="color:#64748b;font-size:10px;padding:4px;">No pair selections yet</div>';
+
+        // ── Predictions / greys ───────────────────────────────────
+        // Source of truth for greys: prediction.extraNumbers (a flat
+        // number[]). When include-grey is ON in the AI panel, that field
+        // is reset to [] because greys are promoted into primary numbers
+        // — so showing 0 greys is correct in that mode.
+        const pred = this.currentPrediction || {};
+        const primary = Array.isArray(pred.numbers) ? pred.numbers : [];
+        const greys = Array.isArray(pred.extraNumbers) ? pred.extraNumbers : [];
+
+        const predHtml = primary.length
+            ? primary.map(n => `<span style="margin:1px;display:inline-block;">${chip(n,{size:20})}</span>`).join('')
+            : '<span style="color:#64748b;font-size:10px;">no prediction yet</span>';
+        const greyHtml = greys.length
+            ? greys.map(n => `<span style="margin:1px;display:inline-block;">${chip(n,{grey:true,size:20})}</span>`).join('')
+            : '<span style="color:#64748b;font-size:10px;">—</span>';
+
+        // ── Session timer ─────────────────────────────────────────
+        const sessActive = !!(mp && mp.sessionData && mp.sessionData.isSessionActive);
+        if (sessActive && !this._summarySessionStart) {
+            this._summarySessionStart = Date.now();
+            // Tick every second so the timer keeps moving even when no
+            // selection / prediction events fire.
+            if (!this._summaryTimerInterval) {
+                this._summaryTimerInterval = setInterval(() => {
+                    const el = document.getElementById('aiSummaryTimer');
+                    if (el && this._summarySessionStart) {
+                        const sec = Math.floor((Date.now() - this._summarySessionStart) / 1000);
+                        const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+                        const ss = String(sec % 60).padStart(2, '0');
+                        el.textContent = `⏱ ${mm}:${ss}`;
+                    }
+                }, 1000);
+            }
+        } else if (!sessActive && this._summarySessionStart) {
+            // Session ended/reset → clear so the next start re-stamps.
+            this._summarySessionStart = null;
+        }
+        const elapsedTxt = (() => {
+            if (!this._summarySessionStart) return '⏱ --:--';
+            const sec = Math.floor((Date.now() - this._summarySessionStart) / 1000);
+            const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+            const ss = String(sec % 60).padStart(2, '0');
+            return `⏱ ${mm}:${ss}`;
+        })();
+
+        container.innerHTML = `
+            <div style="background:#e5e7eb;border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;color:#1f2937;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#475569;margin-bottom:6px;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">
+                    <span style="font-weight:700;letter-spacing:.5px;color:#16a34a;">📋 SELECTION PANEL</span>
+                    <span id="aiSummaryTimer" style="background:#f8fafc;border:1px solid #cbd5e1;padding:1px 6px;border-radius:3px;font-variant-numeric:tabular-nums;font-weight:600;color:#334155;">${elapsedTxt}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:auto 1fr;gap:8px;">
+                    <div style="background:#f1f5f9;color:#1f2937;border:1px solid #cbd5e1;border-radius:5px;padding:4px 6px;min-width:48px;">
+                        <div style="font-size:8px;color:#475569;font-weight:700;letter-spacing:.5px;text-align:center;margin-bottom:3px;">RECENT</div>
+                        ${recentHtml}
+                    </div>
+                    <div>
+                        <div style="font-size:8px;color:#475569;font-weight:700;letter-spacing:.5px;margin-bottom:3px;">SELECTIONS</div>
+                        ${selectionsHtml}
+                    </div>
+                </div>
+                <div style="margin-top:6px;padding-top:6px;border-top:1px solid #cbd5e1;">
+                    <div style="font-size:8px;color:#475569;font-weight:700;letter-spacing:.5px;margin-bottom:3px;">
+                        PREDICTIONS <span style="color:#059669;">(${primary.length})</span>
+                    </div>
+                    <div style="line-height:22px;">${predHtml}</div>
+                    <div style="font-size:8px;color:#475569;font-weight:700;letter-spacing:.5px;margin-top:4px;margin-bottom:3px;">
+                        GREY / EXTRA <span style="color:#64748b;">(${greys.length})</span>
+                    </div>
+                    <div style="line-height:22px;">${greyHtml}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // ═══════════════════════════════════════════════════════
     //  ON SPIN ADDED
     // ═══════════════════════════════════════════════════════
 
     onSpinAdded() {
         this.loadAvailablePairs();
         this.updateTable3Highlights();
+        this._renderSummaryDashboard();
 
         // Re-trigger predictions if any pairs selected (use debounce to avoid duplicates)
         const total = this._getTotalSelectionCount();
@@ -862,6 +1110,16 @@ class AIPredictionPanel {
                 if (numbersDiv) {
                     numbersDiv.innerHTML = '<div style="color: #f59e0b; padding: 20px; text-align: center; font-weight: bold;">No common numbers found between selected pairs. Try different combinations.</div>';
                 }
+                // Clear stale wheel highlights from the previous prediction
+                // — without this the wheel keeps showing the old numbers
+                // even though the banner says "NO COMMON NUMBERS".
+                if (window.rouletteWheel && typeof window.rouletteWheel.clearHighlights === 'function') {
+                    window.rouletteWheel.clearHighlights();
+                }
+                this.currentPrediction = null;
+                if (typeof this._renderSummaryDashboard === 'function') {
+                    this._renderSummaryDashboard();
+                }
                 return;
             }
 
@@ -1033,6 +1291,11 @@ class AIPredictionPanel {
 
     updatePrediction(prediction) {
         this.currentPrediction = prediction;
+
+        // Refresh the compact summary dashboard with the new prediction.
+        if (typeof this._renderSummaryDashboard === 'function') {
+            this._renderSummaryDashboard();
+        }
 
         if (!prediction) {
             console.warn('⚠️ No prediction to display');

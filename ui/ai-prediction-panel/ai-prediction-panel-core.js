@@ -118,12 +118,14 @@
 
             this.root.innerHTML = `
                 <div data-role="header" style="display:flex;align-items:center;gap:8px;margin-bottom:${compact ? '4px' : '6px'};">
+                    <button data-role="ai-trained-toggle" type="button" title="Collapse / expand AI-trained" style="background:#334155;border:1px solid #475569;color:#e2e8f0;border-radius:3px;padding:0 6px;font-weight:700;cursor:pointer;font-size:11px;line-height:1.4;">+</button>
                     <span data-role="title" style="font-weight:700;font-size:${compact ? '11px' : '12px'};">${_safeText(this.opts.title)}</span>
                     <span data-role="spin-meta" style="color:#94a3b8;font-size:${compact ? '9px' : '10px'};">spin —</span>
                     <span data-role="phase" style="padding:2px 6px;border-radius:4px;background:#334155;color:white;font-weight:700;">—</span>
                     <span data-role="action" style="padding:2px 6px;border-radius:4px;background:#475569;color:white;font-weight:700;">—</span>
                     <span data-role="confidence" style="margin-left:auto;font-weight:700;">conf —</span>
                 </div>
+                <div data-role="ai-trained-body" style="display:none;">
                 <div data-role="phase-strip" style="display:flex;gap:2px;margin-bottom:${compact ? '4px' : '8px'};"></div>
                 <div data-role="zone" style="margin-bottom:${compact ? '4px' : '6px'};"></div>
                 <div data-role="shadow-label" style="display:none;color:#c4b5fd;font-weight:700;margin-bottom:4px;font-size:${compact ? '9px' : '10px'};"></div>
@@ -131,7 +133,22 @@
                 <div data-role="reason" style="color:#94a3b8;margin-bottom:${compact ? '4px' : '6px'};min-height:1em;"></div>
                 <div data-role="diagnostics" style="display:grid;grid-template-columns:repeat(${compact ? 4 : 4},1fr);gap:4px 8px;margin-bottom:${compact ? '4px' : '6px'};"></div>
                 <div data-role="reasoning" style="display:${compact ? 'none' : 'block'};color:#cbd5e1;"></div>
+                </div>
             `;
+
+            // Wire collapse toggle on the header button. Toggles the
+            // body wrapper so every section below the header collapses
+            // together. Caret swaps between − (open) and + (closed).
+            const toggleBtn = this.root.querySelector('[data-role="ai-trained-toggle"]');
+            const bodyEl    = this.root.querySelector('[data-role="ai-trained-body"]');
+            if (toggleBtn && bodyEl) {
+                toggleBtn.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    const collapsed = bodyEl.style.display === 'none';
+                    bodyEl.style.display = collapsed ? '' : 'none';
+                    toggleBtn.textContent = collapsed ? '−' : '+';
+                });
+            }
 
             // Build the phase progression strip once (static cell list).
             const stripEl = this.root.querySelector('[data-role="phase-strip"]');

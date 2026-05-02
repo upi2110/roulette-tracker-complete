@@ -164,8 +164,12 @@ async def process_bet_result(result: BetResult):
         total_bet = result.bet_per_number * num_numbers
         
         if result.hit:
-            # Win: 35:1 payout minus total bet
-            profit = (35 * result.bet_per_number) - total_bet
+            # Win: winning chip returns 36× the per-number bet (35
+            # winnings + the stake back). Net = b*36 − total_bet
+            # = b*(36 − num_numbers). Previously used 35× which
+            # under-counted every win by one stake; brought in line
+            # with the front-end money panel.
+            profit = (36 * result.bet_per_number) - total_bet
             session_state['bankroll'] += profit
             session_state['wins'] += 1
             print(f"\n✅ HIT! Profit: ${profit:.2f}")
