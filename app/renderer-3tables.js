@@ -1311,21 +1311,25 @@ function _renderTable1Head() {
     const VISIBLE = _filterVisibleColumnGroups(T1_COLUMN_GROUPS);
 
     // ── Row 1: pair-group labels (each colspan=7) ──
+    // Pair-indicator-col fix: prepend a 1-wide blank header before
+    // each pair-indicator group so the column structure matches the
+    // data rows, which now emit a dedicated <td.pair-indicator-col>
+    // before each pair-indicator group's 7 cells.
     const row1Cells = VISIBLE.map(grp => {
         const sepCls = grp.prefix === 'pair-separator'  ? ' pair-separator'
                      : grp.prefix === 'copair-separator' ? ' copair-separator'
-                     : grp.prefix === 'pair-indicator'   ? ' pair-separator'  // top header gets a plain separator border (the indicator stripe is on the data-row anchor cell, not the thead)
+                     : grp.prefix === 'pair-indicator'   ? ' pair-separator'
                      : '';
-        return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" colspan="7" data-pair="${grp.dataPair}">${grp.label}</th>`;
+        const indicatorHeader = (grp.prefix === 'pair-indicator')
+            ? `<th class="pair-indicator-col-head"></th>` : '';
+        return `${indicatorHeader}<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" colspan="7" data-pair="${grp.dataPair}">${grp.label}</th>`;
     }).join('');
 
-    // ── Row 2: 7 sub-headers per group ──
+    // ── Row 2: 7 sub-headers per group (+ indicator spacer header) ──
     const row2Cells = VISIBLE.map(grp => {
-        return SUB_LABELS.map((lbl, sIdx) => {
-            // The first sub-cell of each group carries the same
-            // separator visual as the row-1 group label so the
-            // border continues down. Subsequent sub-cells in the
-            // group inherit the row's normal styling.
+        const indicatorHeader = (grp.prefix === 'pair-indicator')
+            ? `<th class="pair-indicator-col-head"></th>` : '';
+        const subHeaders = SUB_LABELS.map((lbl, sIdx) => {
             let sepCls = '';
             if (sIdx === 0) {
                 if (grp.prefix === 'pair-separator')   sepCls = ' pair-separator';
@@ -1334,6 +1338,7 @@ function _renderTable1Head() {
             }
             return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}">${lbl}</th>`;
         }).join('');
+        return indicatorHeader + subHeaders;
     }).join('');
 
     head.innerHTML = `<tr>${row1Cells}</tr><tr>${row2Cells}</tr>`;
@@ -1430,34 +1435,25 @@ function renderTable1() {
         const row = document.createElement('tr');
 
         if (idx === 0) {
-            // First-row placeholder — N pair groups × 7 cells, with the
-            // anchor (cell 0) of each group carrying the prefix class
-            // dictated by the config (none / pair-separator /
-            // pair-indicator / copair-separator). End-of-row marker
-            // appended afterwards.
+            // First-row placeholder — iterate group-by-group so we can
+            // inject the dedicated pair-indicator-col cell BEFORE each
+            // pair-indicator group's 7 cells (mirrors header + data).
             const emptyCells = [];
-            const totalCells = VISIBLE.length * 7;
-            for (let c = 0; c < totalCells; c++) {
-                const groupIdx = Math.floor(c / 7);
-                const cellIdx  = c % 7;
-                if (cellIdx === 0) {
-                    const grp = VISIBLE[groupIdx];
-                    if (grp.prefix === 'pair-indicator') {
-                        emptyCells.push('<td class="pair-indicator"></td>');
-                    } else if (grp.prefix === 'pair-separator') {
-                        emptyCells.push('<td class="pair-separator"></td>');
-                    } else if (grp.prefix === 'copair-separator') {
-                        emptyCells.push('<td class="copair-separator"></td>');
+            VISIBLE.forEach(grp => {
+                if (grp.prefix === 'pair-indicator') {
+                    emptyCells.push('<td class="pair-indicator-col"></td>');
+                }
+                // 7 cells per group (anchor + 3 × number,code).
+                for (let s = 0; s < 7; s++) {
+                    if (s === 0) {
+                        if (grp.prefix === 'pair-separator')        emptyCells.push('<td class="pair-separator"></td>');
+                        else if (grp.prefix === 'copair-separator') emptyCells.push('<td class="copair-separator"></td>');
+                        else                                        emptyCells.push('<td></td>');
                     } else {
                         emptyCells.push('<td></td>');
                     }
-                } else {
-                    emptyCells.push('<td></td>');
                 }
-            }
-            // End-of-row (last pair) placeholder — <strong> content
-            // mirrors anchor cells so the cell has identical content-
-            // driven dimensions.
+            });
             emptyCells.push('<td class="pair-end-cell anchor-cell"><strong style="visibility:hidden">0</strong></td>');
             row.innerHTML = emptyCells.join('');
             tbody.appendChild(row);
@@ -1571,16 +1567,25 @@ function renderTable1() {
             const isPairIndicator = (grp.prefix === 'pair-indicator');
             const addSeparator = (grp.prefix === 'pair-separator' || isPairIndicator);
             const addCopairSep = (grp.prefix === 'copair-separator');
-            const stripeLeftHit  = isPairIndicator ? _blockHits[i - 2] : null;
-            const stripeRightHit = isPairIndicator ? _blockHits[i - 1] : null;
+            // Pair-indicator-col fix: emit a DEDICATED indicator cell
+            // BEFORE the pair-group's 7 cells. The stripe colours come
+            // from the previous pair's two halves' hit state (same data
+            // the old border-left::before used). The pair group's own
+            // cells are now free of the .pair-indicator class so the
+            // Ref number renders cleanly inside its own column.
+            if (isPairIndicator) {
+                const sl = (typeof _blockHits[i - 2] === 'number') ? _blockHits[i - 2] : 0;
+                const sr = (typeof _blockHits[i - 1] === 'number') ? _blockHits[i - 1] : 0;
+                html.push(`<td class="pair-indicator-col" data-left-hit="${sl}" data-right-hit="${sr}"></td>`);
+            }
             renderTargetGroup(
                 refNum, refNum,
                 addSeparator,
                 grp.is13Opp,
                 grp.dataPair,
                 addCopairSep,
-                stripeLeftHit,
-                stripeRightHit
+                null,   // stripeLeftHit — handled by dedicated cell now
+                null    // stripeRightHit — handled by dedicated cell now
             );
         });
 
@@ -1684,7 +1689,13 @@ function renderTable1() {
             const isPairIndicator = (grp.prefix === 'pair-indicator');
             const addSeparator = (grp.prefix === 'pair-separator' || isPairIndicator);
             const addCopairSep = (grp.prefix === 'copair-separator');
-            renderNextGroup(refNum, refNum, addSeparator, grp.is13Opp, grp.dataPair, addCopairSep, isPairIndicator);
+            // Pair-indicator-col fix: NEXT row also emits the dedicated
+            // indicator cell. NEXT row has no spin data so colours stay
+            // at the white default (no data-left-hit attributes).
+            if (isPairIndicator) {
+                html.push(`<td class="pair-indicator-col"></td>`);
+            }
+            renderNextGroup(refNum, refNum, addSeparator, grp.is13Opp, grp.dataPair, addCopairSep, false);
         });
 
         // End-of-row pair-end placeholder (white) for the next-row projection.
