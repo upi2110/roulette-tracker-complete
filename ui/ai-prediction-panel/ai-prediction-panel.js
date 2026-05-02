@@ -585,6 +585,588 @@ class AIPredictionPanel {
     }
 
     // ═══════════════════════════════════════════════════════
+    //  SELECTION-PROCESS POPUP — research view that visualises
+    //  every layer (T1 / T2-pair / T2-13opp / T3 / final) on a
+    //  shared European wheel + a wheel-order stacked-rows grid.
+    //  Opens in its own browser window so the user can drag it to
+    //  a second screen. Reads live data from the panel via
+    //  window.opener.aiPanel; Apply pushes pair changes back into
+    //  the main T1/T2/T3 selections.
+    // ═══════════════════════════════════════════════════════
+
+    _getSelectionProcessSnapshot() {
+        const t1Pairs = this.table1Pairs || [];
+        const t2Pairs = this.table2Pairs || [];
+        const t3Pairs = this.table3Pairs || [];
+        const buildT12 = (sels, pairs) => {
+            const out = {};
+            Object.keys(sels || {}).forEach(pk => {
+                const p = pairs.find(x => x.key === pk);
+                if (!p) return;
+                const refs = sels[pk] || new Set();
+                const primary = new Set();
+                const grey    = new Set();
+                ['first','second','third'].forEach(r => {
+                    const nums = (p.data && p.data[r] && Array.isArray(p.data[r].numbers)) ? p.data[r].numbers : [];
+                    if (refs.has(r)) nums.forEach(n => primary.add(n));
+                    else             nums.forEach(n => grey.add(n));
+                });
+                out[pk] = { display: p.display, primary: [...primary], grey: [...grey] };
+            });
+            return out;
+        };
+        const t1 = buildT12(this.table1Selections, t1Pairs);
+        const t2pair = {};
+        const t2opp  = {};
+        Object.keys(this.table2Selections || {}).forEach(pk => {
+            const p = t2Pairs.find(x => x.key === pk);
+            if (!p) return;
+            const refs = this.table2Selections[pk] || new Set();
+            const primary = new Set();
+            const grey    = new Set();
+            ['first','second','third'].forEach(r => {
+                const nums = (p.data && p.data[r] && Array.isArray(p.data[r].numbers)) ? p.data[r].numbers : [];
+                if (refs.has(r)) nums.forEach(n => primary.add(n));
+                else             nums.forEach(n => grey.add(n));
+            });
+            const target = pk.endsWith('_13opp') ? t2opp : t2pair;
+            target[pk] = { display: p.display, primary: [...primary], grey: [...grey] };
+        });
+        const t3 = {};
+        (this.table3Selections || new Set()).forEach(pk => {
+            const p = t3Pairs.find(x => x.key === pk);
+            if (!p) return;
+            t3[pk] = {
+                display: p.display,
+                primary: (p.data && Array.isArray(p.data.numbers)) ? p.data.numbers : [],
+                grey: []
+            };
+        });
+        const pred = this.currentPrediction || {};
+        return {
+            t1, t2pair, t2opp, t3,
+            finalPrimary: Array.isArray(pred.numbers) ? pred.numbers : [],
+            finalGrey:    Array.isArray(pred.extraNumbers) ? pred.extraNumbers : [],
+            available: {
+                t1: t1Pairs.map(p => ({ key: p.key, display: p.display })),
+                t2: t2Pairs.map(p => ({ key: p.key, display: p.display })),
+                t3: t3Pairs.map(p => ({ key: p.key, display: p.display }))
+            },
+            current: {
+                t1: Object.keys(this.table1Selections || {}),
+                t2: Object.keys(this.table2Selections || {}),
+                t3: [...(this.table3Selections || new Set())]
+            }
+        };
+    }
+
+    _applySelectionProcessChanges(payload) {
+        try {
+            const want = (arr) => new Set(Array.isArray(arr) ? arr : []);
+            const wantT1 = want(payload && payload.t1);
+            const wantT2 = want(payload && payload.t2);
+            const wantT3 = want(payload && payload.t3);
+
+            const cur3 = new Set(this.table3Selections || []);
+            cur3.forEach(k => { if (!wantT3.has(k)) this._handleTable3Selection(k, false); });
+            wantT3.forEach(k => { if (!cur3.has(k)) this._handleTable3Selection(k, true); });
+
+            const cur1 = new Set(Object.keys(this.table1Selections || {}));
+            cur1.forEach(k => { if (!wantT1.has(k)) this._handleTable12PairToggle('table1', k, false); });
+            wantT1.forEach(k => { if (!cur1.has(k)) this._handleTable12PairToggle('table1', k, true); });
+
+            const cur2 = new Set(Object.keys(this.table2Selections || {}));
+            cur2.forEach(k => { if (!wantT2.has(k)) this._handleTable12PairToggle('table2', k, false); });
+            wantT2.forEach(k => { if (!cur2.has(k)) this._handleTable12PairToggle('table2', k, true); });
+
+            return { ok: true };
+        } catch (e) {
+            console.warn('Apply selection-process changes failed:', e);
+            return { ok: false, error: String(e) };
+        }
+    }
+
+    _getLiveWheelSnapshot() {
+        try {
+            const c = document.getElementById('wheelCanvas');
+            if (c && typeof c.toDataURL === 'function') return c.toDataURL('image/png');
+        } catch (_) { /* canvas tainted? best-effort */ }
+        return null;
+    }
+
+    _openSelectionProcessPopup() {
+        if (this._selectionProcessWin && !this._selectionProcessWin.closed) {
+            this._selectionProcessWin.focus();
+            return;
+        }
+        const w = window.open('', 'aiSelectionProcess',
+            'width=820,height=940,resizable=yes,scrollbars=yes');
+        if (!w) {
+            alert('Popup blocked — please allow popups for this site.');
+            return;
+        }
+        this._selectionProcessWin = w;
+        try { w._opener_panel = this; } catch (_) { /* cross-origin guard */ }
+        w.document.open();
+        w.document.write(this._buildSelectionProcessHTML());
+        w.document.close();
+    }
+
+    _buildSelectionProcessHTML() {
+        return `<!doctype html>
+<html><head><meta charset="utf-8"><title>Selection Process</title>
+<style>
+  body { font-family: system-ui,-apple-system,sans-serif; margin: 0; padding: 12px; background: #f1f5f9; color: #1e293b; }
+  h1 { font-size: 14px; margin: 0 0 8px 0; color: #0c4a6e; }
+  h2 { font-size: 11px; margin: 0 0 6px 0; color: #475569; letter-spacing: .5px; text-transform: uppercase; }
+  .card { background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; margin-bottom: 8px; }
+  label { font-size: 11px; display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; cursor: pointer; }
+  button { font-family: inherit; font-size: 11px; padding: 4px 10px; border-radius: 4px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; }
+  button.primary { background: #0ea5e9; color: white; border-color: #0284c7; }
+  button.warn { background: #f59e0b; color: white; border-color: #d97706; }
+  .legend { display: flex; gap: 10px; font-size: 10px; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid #475569; }
+  .pair-pick { display: inline-block; margin: 2px 3px; padding: 2px 6px; border-radius: 3px; background: #e2e8f0; cursor: pointer; font-size: 10px; user-select: none; border: 1px solid transparent; }
+  .pair-pick.on { background: #16a34a; color: white; border-color: #15803d; }
+  .anchor-list { font-size: 10px; padding: 4px; background: #f8fafc; border-radius: 3px; min-height: 20px; }
+  .anchor-list .a { display: inline-block; margin: 1px 3px; padding: 1px 5px; background: #f97316; color: white; border-radius: 3px; }
+  .anchor-list .a span { cursor: pointer; margin-left: 4px; opacity: .7; }
+  .timestamp { font-size: 10px; color: #64748b; margin-left: auto; }
+  .status { font-size: 10px; color: #16a34a; }
+  .status.err { color: #dc2626; }
+  svg { display: block; }
+</style></head>
+<body>
+<div style="display:flex;align-items:center;">
+  <h1>🔬 Selection Process — wheel visualization</h1>
+  <span class="timestamp" id="ts">—</span>
+</div>
+
+<div class="card">
+  <h2>Layout mode</h2>
+  <label><input type="radio" name="layoutMode" value="rings" checked> Concentric rings (around the wheel)</label>
+  <label><input type="radio" name="layoutMode" value="rows"> Stacked rows (wheel-order grid below)</label>
+</div>
+
+<div class="card">
+  <h2>Wheel <span style="font-size:9px;color:#94a3b8;font-weight:400;text-transform:none;letter-spacing:0;">(live snapshot from main panel)</span></h2>
+  <div id="wheelHost" style="text-align:center;overflow:visible;"></div>
+  <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;align-items:center;">
+    <div>
+      <div style="font-size:9px;color:#475569;font-weight:700;margin-bottom:2px;">RING ORDER (inner → outer):</div>
+      <div class="legend" id="ringLegend"></div>
+    </div>
+    <div>
+      <div style="font-size:9px;color:#475569;font-weight:700;margin-bottom:2px;">CELL FILL:</div>
+      <div class="legend">
+        <span><span class="swatch" style="background:#dc2626;"></span>red</span>
+        <span><span class="swatch" style="background:#1f2937;"></span>black</span>
+        <span><span class="swatch" style="background:#16a34a;"></span>0/green</span>
+        <span><span class="swatch" style="background:#cbd5e1;border-style:dashed;"></span>grey (3rd-ref)</span>
+        <span><span class="swatch" style="background:#f97316;border:2px solid #c2410c;"></span>research</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card" id="rowsCard" style="display:none;">
+  <h2>Stacked rows (bottom → top, wheel-order: 26 → 3)</h2>
+  <div id="rowsHost"></div>
+</div>
+
+<div class="card">
+  <h2>Pair selections (popup-local — Apply to push back)</h2>
+  <div style="font-size:10px;color:#64748b;margin-bottom:4px;">Click a pair to toggle. Multiple pairs per table allowed.</div>
+  <div style="margin-bottom:4px;"><strong style="font-size:10px;color:#92400e;">T1:</strong> <div id="pickT1" style="display:inline-block;"></div></div>
+  <div style="margin-bottom:4px;"><strong style="font-size:10px;color:#065f46;">T2:</strong> <div id="pickT2" style="display:inline-block;"></div></div>
+  <div style="margin-bottom:4px;"><strong style="font-size:10px;color:#1e40af;">T3:</strong> <div id="pickT3" style="display:inline-block;"></div></div>
+  <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
+    <button id="btnApply" class="primary">Apply to main panel</button>
+    <button id="btnRevert">Revert to current</button>
+    <span class="status" id="applyStatus"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Manual anchors — research mode</h2>
+  <div style="font-size:10px;color:#64748b;margin-bottom:4px;">Numbers added here appear as orange RESEARCH markers on the wheel and as a top RESEARCH row in stacked-rows mode. Doesn't touch the main panel.</div>
+  <div style="display:flex;gap:4px;align-items:center;font-size:11px;flex-wrap:wrap;">
+    <input id="anchorNum" type="number" min="0" max="36" placeholder="0–36" style="width:70px;padding:2px 4px;font-size:11px;">
+    <button id="anchorAdd">Add</button>
+    <label style="margin-left:8px;"><input type="checkbox" id="anchorActive" checked> show on wheel/rows</label>
+    <button id="anchorClear" class="warn" style="margin-left:auto;">Clear all</button>
+  </div>
+  <div class="anchor-list" id="anchorList"></div>
+</div>
+
+<script>
+(function(){
+  const RED = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+  const WHEEL = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
+  const WHEEL_FROM_26 = [26,0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3];
+  const colorOf = (n) => n === 0 ? '#16a34a' : (RED.has(n) ? '#dc2626' : '#1f2937');
+
+  const LAYERS = [
+    { id:'t1',     label:'T1',          stroke:'#fbbf24' },
+    { id:'t2pair', label:'T2 pair',     stroke:'#34d399' },
+    { id:'t2opp',  label:'T2 ·13',      stroke:'#10b981' },
+    { id:'t3',     label:'T3',          stroke:'#60a5fa' },
+    { id:'final',  label:'FINAL',       stroke:'#a855f7' }
+  ];
+
+  let state = {
+    snap: null,
+    wheelImg: null,
+    mode: 'rings',
+    picked: { t1: new Set(), t2: new Set(), t3: new Set() },
+    pickedInitialized: false,
+    anchors: [],
+    anchorsActive: true
+  };
+
+  function pullSnapshot() {
+    try {
+      const op = window.opener;
+      if (!op || !op.aiPanel || typeof op.aiPanel._getSelectionProcessSnapshot !== 'function') {
+        document.getElementById('ts').textContent = 'opener unavailable';
+        return;
+      }
+      const snap = op.aiPanel._getSelectionProcessSnapshot();
+      state.snap = snap;
+      if (typeof op.aiPanel._getLiveWheelSnapshot === 'function') {
+        state.wheelImg = op.aiPanel._getLiveWheelSnapshot();
+      }
+      if (!state.pickedInitialized) {
+        state.picked.t1 = new Set(snap.current.t1);
+        state.picked.t2 = new Set(snap.current.t2);
+        state.picked.t3 = new Set(snap.current.t3);
+        state.pickedInitialized = true;
+      }
+      document.getElementById('ts').textContent = 'updated ' + new Date().toLocaleTimeString();
+      render();
+    } catch (e) {
+      document.getElementById('ts').textContent = 'pull error';
+      console.warn(e);
+    }
+  }
+  setInterval(pullSnapshot, 1500);
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const segCount = 37;
+  const segAngle = 360 / segCount;
+
+  function polar(cx, cy, r, deg) {
+    const rad = (deg - 90) * Math.PI / 180;
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+  }
+  function arcPath(cx, cy, rOuter, rInner, startDeg, endDeg) {
+    const [x1,y1] = polar(cx,cy,rOuter,startDeg);
+    const [x2,y2] = polar(cx,cy,rOuter,endDeg);
+    const [x3,y3] = polar(cx,cy,rInner,endDeg);
+    const [x4,y4] = polar(cx,cy,rInner,startDeg);
+    const large = (endDeg - startDeg) > 180 ? 1 : 0;
+    return ['M',x1,y1,'A',rOuter,rOuter,0,large,1,x2,y2,'L',x3,y3,'A',rInner,rInner,0,large,0,x4,y4,'Z'].join(' ');
+  }
+
+  function computeLayerData(snap) {
+    const merge = (group) => {
+      const p = new Set(), g = new Set();
+      Object.values(group || {}).forEach(v => {
+        (v.primary || []).forEach(n => p.add(n));
+        (v.grey    || []).forEach(n => g.add(n));
+      });
+      return { primary: p, grey: g };
+    };
+    return {
+      t1:     merge(snap.t1),
+      t2pair: merge(snap.t2pair),
+      t2opp:  merge(snap.t2opp),
+      t3:     merge(snap.t3),
+      final:  { primary: new Set(snap.finalPrimary || []), grey: new Set(snap.finalGrey || []) }
+    };
+  }
+
+  function buildWheelView() {
+    const wrap = document.createElement('div');
+    const isRings = (state.mode === 'rings' && state.snap);
+    const boxSize = isRings ? 640 : 420;
+    wrap.style.cssText = 'position:relative;display:inline-block;width:'+boxSize+'px;height:'+boxSize+'px;';
+
+    const img = document.createElement('img');
+    img.width = 400; img.height = 420;
+    img.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:block;';
+    if (state.wheelImg) img.src = state.wheelImg;
+    else { img.alt = 'wheel snapshot unavailable (toggle the wheel panel and retry)'; img.style.minHeight = '420px'; img.style.background = '#f1f5f9'; }
+    wrap.appendChild(img);
+
+    if (isRings) {
+      const svgSize = boxSize;
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('width', svgSize);
+      svg.setAttribute('height', svgSize);
+      svg.setAttribute('viewBox', '0 0 ' + svgSize + ' ' + svgSize);
+      svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
+      const cxL = svgSize/2, cyL = svgSize/2;
+      const wheelFaceR = 185;
+      const ringW = 20;
+      const layerData = computeLayerData(state.snap);
+      const layersToDraw = LAYERS.slice();
+      if (state.anchorsActive && state.anchors.length) {
+        layersToDraw.push({ id:'research', label:'RESEARCH', stroke:'#c2410c' });
+        layerData.research = { primary: new Set(state.anchors), grey: new Set() };
+      }
+      layersToDraw.forEach((layer, idx) => {
+        const data = layerData[layer.id];
+        if (!data) return;
+        const rIn  = wheelFaceR + idx * ringW;
+        const rOut = wheelFaceR + (idx+1) * ringW;
+        WHEEL.forEach((n, i) => {
+          const start = i * segAngle - 90;
+          const end   = (i + 1) * segAngle - 90;
+          const isPrimary = data.primary.has(n);
+          const isGrey    = data.grey.has(n);
+          if (!isPrimary && !isGrey) return;
+          const path = document.createElementNS(SVG_NS, 'path');
+          path.setAttribute('d', arcPath(cxL,cyL,rOut,rIn,start,end));
+          let fill;
+          if (layer.id === 'research') fill = '#f97316';
+          else if (isPrimary)          fill = colorOf(n);
+          else                         fill = '#cbd5e1';
+          path.setAttribute('fill', fill);
+          path.setAttribute('opacity', layer.id === 'research' ? '0.95' : '0.85');
+          path.setAttribute('stroke', layer.stroke);
+          path.setAttribute('stroke-width', layer.id === 'research' ? '2' : '1');
+          if (isGrey && layer.id !== 'research') path.setAttribute('stroke-dasharray', '2,2');
+          svg.appendChild(path);
+        });
+        // Side label tab on the EAST side of each ring, fanned slightly.
+        const labelAngle = 90 + (idx - (layersToDraw.length-1)/2) * 6;
+        const [tx, ty] = polar(cxL, cyL, rOut + 8, labelAngle);
+        const tag = document.createElementNS(SVG_NS, 'g');
+        const rect = document.createElementNS(SVG_NS, 'rect');
+        const w = 70, h = 16;
+        rect.setAttribute('x', tx);
+        rect.setAttribute('y', ty - h/2);
+        rect.setAttribute('width', w);
+        rect.setAttribute('height', h);
+        rect.setAttribute('rx', 3);
+        rect.setAttribute('fill', layer.stroke);
+        rect.setAttribute('opacity', '0.95');
+        tag.appendChild(rect);
+        const lbl = document.createElementNS(SVG_NS, 'text');
+        lbl.setAttribute('x', tx + w/2);
+        lbl.setAttribute('y', ty + 4);
+        lbl.setAttribute('text-anchor', 'middle');
+        lbl.setAttribute('font-size', '10');
+        lbl.setAttribute('fill', '#fff');
+        lbl.setAttribute('font-weight', '700');
+        lbl.textContent = layer.label;
+        tag.appendChild(lbl);
+        svg.appendChild(tag);
+      });
+      wrap.appendChild(svg);
+    }
+    return wrap;
+  }
+
+  function buildStackedRows() {
+    const host = document.createElement('div');
+    if (!state.snap) return host;
+    const data = computeLayerData(state.snap);
+    const researchSet = (state.anchorsActive && state.anchors.length) ? new Set(state.anchors) : null;
+    const rowOrder = [];
+    if (researchSet) rowOrder.push({ id:'research', label:'RESEARCH', accent:'#c2410c', bg:'#ffedd5', primary: researchSet, grey: new Set() });
+    rowOrder.push(
+      { id:'final',  label:'FINAL DECISION', accent:'#a855f7', bg:'#faf5ff', primary: data.final.primary,  grey: data.final.grey },
+      { id:'t3',     label:'T3',             accent:'#60a5fa', bg:'#dbeafe', primary: data.t3.primary,     grey: data.t3.grey },
+      { id:'t2opp',  label:'T2 ·13opp',      accent:'#10b981', bg:'#d1fae5', primary: data.t2opp.primary,  grey: data.t2opp.grey },
+      { id:'t2pair', label:'T2 pair',        accent:'#34d399', bg:'#ecfdf5', primary: data.t2pair.primary, grey: data.t2pair.grey },
+      { id:'t1',     label:'T1',             accent:'#fbbf24', bg:'#fef3c7', primary: data.t1.primary,     grey: data.t1.grey }
+    );
+
+    const headerRow = document.createElement('div');
+    headerRow.style.cssText = 'display:grid;grid-template-columns:120px repeat(37, 1fr);gap:2px;align-items:center;padding:2px 4px 4px;font-size:9px;color:#64748b;';
+    const headerLbl = document.createElement('span');
+    headerLbl.textContent = 'wheel slot →';
+    headerLbl.style.cssText = 'font-weight:700;text-align:right;padding-right:6px;';
+    headerRow.appendChild(headerLbl);
+    WHEEL_FROM_26.forEach(n => {
+      const cell = document.createElement('span');
+      cell.textContent = n;
+      cell.style.cssText = 'text-align:center;font-weight:600;color:#94a3b8;';
+      headerRow.appendChild(cell);
+    });
+    host.appendChild(headerRow);
+
+    rowOrder.forEach(row => {
+      const all = new Set([...row.primary, ...row.grey]);
+      const grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:120px repeat(37, 1fr);gap:2px;align-items:center;padding:4px;margin-bottom:3px;background:'+row.bg+';border-left:4px solid '+row.accent+';border-radius:0 4px 4px 0;';
+      const lbl = document.createElement('span');
+      lbl.style.cssText = 'font-weight:700;font-size:11px;color:'+row.accent+';text-align:right;padding-right:6px;';
+      lbl.textContent = row.label + ' (' + all.size + ')';
+      grid.appendChild(lbl);
+      WHEEL_FROM_26.forEach(n => {
+        const cell = document.createElement('span');
+        cell.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;height:20px;border-radius:50%;font-weight:700;font-size:9px;';
+        const isResearch = row.id === 'research' && researchSet && researchSet.has(n);
+        if (isResearch) {
+          cell.style.background = '#f97316'; cell.style.color = '#fff';
+          cell.style.border = '2px solid #c2410c'; cell.textContent = n;
+        } else if (row.primary.has(n)) {
+          cell.style.background = colorOf(n); cell.style.color = '#fff';
+          cell.style.border = '1px solid rgba(0,0,0,.2)'; cell.textContent = n;
+          if (researchSet && researchSet.has(n)) cell.style.boxShadow = '0 0 0 2px #f97316';
+        } else if (row.grey.has(n)) {
+          cell.style.background = '#cbd5e1'; cell.style.color = '#1f2937';
+          cell.style.border = '1px dashed #64748b'; cell.textContent = n;
+          if (researchSet && researchSet.has(n)) cell.style.boxShadow = '0 0 0 2px #f97316';
+        } else {
+          cell.style.background = 'transparent';
+          cell.style.border = '1px dashed #e2e8f0';
+          cell.textContent = '';
+        }
+        grid.appendChild(cell);
+      });
+      host.appendChild(grid);
+    });
+    return host;
+  }
+
+  function renderRingLegend() {
+    const host = document.getElementById('ringLegend');
+    if (!host) return;
+    const items = LAYERS.slice();
+    if (state.anchorsActive && state.anchors.length) items.push({ id:'research', label:'RESEARCH', stroke:'#c2410c' });
+    host.innerHTML = '';
+    items.forEach((l, i) => {
+      const span = document.createElement('span');
+      span.innerHTML = '<span class="swatch" style="background:' + l.stroke + ';border-color:' + l.stroke + ';"></span>' +
+                       '<strong style="font-weight:700;color:' + l.stroke + ';">' + (i+1) + '. ' + l.label + '</strong>';
+      host.appendChild(span);
+    });
+  }
+
+  function renderPickers() {
+    const snap = state.snap;
+    if (!snap) return;
+    const buildList = (id, all, picked) => {
+      const host = document.getElementById(id);
+      host.innerHTML = '';
+      all.forEach(p => {
+        const el = document.createElement('span');
+        el.className = 'pair-pick' + (picked.has(p.key) ? ' on' : '');
+        el.textContent = p.display;
+        el.title = p.key;
+        el.addEventListener('click', () => {
+          if (picked.has(p.key)) picked.delete(p.key);
+          else                   picked.add(p.key);
+          renderPickers();
+        });
+        host.appendChild(el);
+      });
+    };
+    buildList('pickT1', snap.available.t1, state.picked.t1);
+    buildList('pickT2', snap.available.t2, state.picked.t2);
+    buildList('pickT3', snap.available.t3, state.picked.t3);
+  }
+
+  function renderAnchors() {
+    const host = document.getElementById('anchorList');
+    if (state.anchors.length === 0) { host.innerHTML = '<span style="color:#94a3b8;">none</span>'; return; }
+    host.innerHTML = '';
+    state.anchors.forEach((n, i) => {
+      const el = document.createElement('span');
+      el.className = 'a';
+      el.innerHTML = '#' + n + '<span data-i="' + i + '">×</span>';
+      el.querySelector('span').addEventListener('click', () => {
+        state.anchors.splice(i, 1);
+        renderAnchors();
+        render();
+      });
+      host.appendChild(el);
+    });
+  }
+
+  function render() {
+    const wheelHost = document.getElementById('wheelHost');
+    wheelHost.innerHTML = '';
+    wheelHost.appendChild(buildWheelView());
+
+    const rowsCard = document.getElementById('rowsCard');
+    const rowsHost = document.getElementById('rowsHost');
+    if (state.mode === 'rows') {
+      rowsCard.style.display = '';
+      rowsHost.innerHTML = '';
+      rowsHost.appendChild(buildStackedRows());
+    } else {
+      rowsCard.style.display = 'none';
+    }
+    renderPickers();
+    renderRingLegend();
+  }
+
+  document.querySelectorAll('input[name="layoutMode"]').forEach(r => {
+    r.addEventListener('change', () => {
+      state.mode = document.querySelector('input[name="layoutMode"]:checked').value;
+      render();
+    });
+  });
+  document.getElementById('anchorAdd').addEventListener('click', () => {
+    const n = parseInt(document.getElementById('anchorNum').value, 10);
+    if (Number.isFinite(n) && n >= 0 && n <= 36 && !state.anchors.includes(n)) {
+      state.anchors.push(n);
+      document.getElementById('anchorNum').value = '';
+      renderAnchors();
+      render();
+    }
+  });
+  document.getElementById('anchorClear').addEventListener('click', () => {
+    state.anchors = [];
+    renderAnchors();
+    render();
+  });
+  document.getElementById('anchorActive').addEventListener('change', (e) => {
+    state.anchorsActive = !!e.target.checked;
+    render();
+  });
+  document.getElementById('btnRevert').addEventListener('click', () => {
+    if (state.snap && state.snap.current) {
+      state.picked.t1 = new Set(state.snap.current.t1);
+      state.picked.t2 = new Set(state.snap.current.t2);
+      state.picked.t3 = new Set(state.snap.current.t3);
+      renderPickers();
+      const s = document.getElementById('applyStatus');
+      s.className = 'status'; s.textContent = 'Reverted to live state.';
+    }
+  });
+  document.getElementById('btnApply').addEventListener('click', () => {
+    const s = document.getElementById('applyStatus');
+    try {
+      const op = window.opener;
+      if (!op || !op.aiPanel) throw new Error('opener unavailable');
+      const r = op.aiPanel._applySelectionProcessChanges({
+        t1: [...state.picked.t1],
+        t2: [...state.picked.t2],
+        t3: [...state.picked.t3]
+      });
+      if (r && r.ok) { s.className = 'status'; s.textContent = '✓ Applied at ' + new Date().toLocaleTimeString(); }
+      else           { s.className = 'status err'; s.textContent = 'Apply failed: ' + (r && r.error || ''); }
+    } catch (e) {
+      s.className = 'status err';
+      s.textContent = 'Apply error: ' + e.message;
+    }
+  });
+
+  pullSnapshot();
+  renderAnchors();
+})();
+</script>
+</body></html>`;
+    }
+
+    // ═══════════════════════════════════════════════════════
     //  SUMMARY DASHBOARD — compact recap inside the AI panel
     //  so the user doesn't have to scroll back to the tables.
     //  Shows: recent actuals (wheel-coloured), per-table pair
@@ -602,6 +1184,12 @@ class AIPredictionPanel {
         // dashboard and the T1/T2/T3 sections always stay in sync.
         if (!container._summaryClickWired) {
             container.addEventListener('click', (ev) => {
+                // Selection-process popup launcher.
+                const procBtn = ev.target.closest('#aiSelectionProcessBtn');
+                if (procBtn) {
+                    this._openSelectionProcessPopup();
+                    return;
+                }
                 const t = ev.target.closest('[data-summary-action]');
                 if (!t) return;
                 const action = t.dataset.summaryAction;
@@ -787,9 +1375,12 @@ class AIPredictionPanel {
 
         container.innerHTML = `
             <div style="background:#e5e7eb;border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;color:#1f2937;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.08);">
-                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#475569;margin-bottom:6px;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#475569;margin-bottom:6px;border-bottom:1px solid #cbd5e1;padding-bottom:4px;gap:6px;">
                     <span style="font-weight:700;letter-spacing:.5px;color:#16a34a;">📋 SELECTION PANEL</span>
-                    <span id="aiSummaryTimer" style="background:#f8fafc;border:1px solid #cbd5e1;padding:1px 6px;border-radius:3px;font-variant-numeric:tabular-nums;font-weight:600;color:#334155;">${elapsedTxt}</span>
+                    <span style="display:flex;align-items:center;gap:6px;">
+                        <button id="aiSelectionProcessBtn" type="button" title="Open the visual selection-process popup" style="background:linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%);border:none;color:#fff;font-weight:700;font-size:10px;padding:3px 8px;border-radius:4px;cursor:pointer;letter-spacing:.3px;box-shadow:0 1px 2px rgba(0,0,0,.15);">🔬 Selection Process</button>
+                        <span id="aiSummaryTimer" style="background:#f8fafc;border:1px solid #cbd5e1;padding:1px 6px;border-radius:3px;font-variant-numeric:tabular-nums;font-weight:600;color:#334155;">${elapsedTxt}</span>
+                    </span>
                 </div>
                 <div style="display:grid;grid-template-columns:auto 1fr;gap:8px;">
                     <div style="background:#f1f5f9;color:#1f2937;border:1px solid #cbd5e1;border-radius:5px;padding:4px 6px;min-width:48px;">
