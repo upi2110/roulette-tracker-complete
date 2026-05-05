@@ -424,13 +424,30 @@ class AIPredictionPanel {
         const highlightSet = tableId === 'table1' ? this.table1SelectedPairs : this.table2SelectedPairs;
 
         if (isChecked) {
-            // Auto-select the 2 refs that hit most recently
+            // Auto-select the 2 refs that hit most recently.
+            //
+            // ── User-spec change ───────────────────────────────────
+            // T1's auto-pick now MIRRORS T2's logic:
+            //   - When the user ticks a T1 pair, we run getAutoSelectedRefs
+            //     with tableId='table2' so the broader T2 valid-codes
+            //     list (S+0, SL/SR ±1 ±2, O+0, OL/OR ±1 ±2) is used to
+            //     find the 2 most-recent column hits in spin history.
+            //   - The 2 picks must be in DIFFERENT columns; this is
+            //     already enforced by `foundRefs.includes(refKey)`
+            //     inside getAutoSelectedRefs (a column once picked is
+            //     never picked again, so the walk-back keeps going
+            //     until a new column hits).
+            //   - For *_13opp pairs the same call applies — the helper
+            //     already swaps in DIGIT_13_OPPOSITES[refNum] for the
+            //     lookup, regardless of which valid-codes list is used.
+            // T2 keeps its own logic (still passes 'table2' here).
+            const lookupTable = (tableId === 'table1') ? 'table2' : tableId;
             if (!this._extraRefs) this._extraRefs = {};
             if (window.getAutoSelectedRefs && window.spins && window.spins.length >= 2) {
-                const autoRefs = window.getAutoSelectedRefs(pairKey, tableId);
+                const autoRefs = window.getAutoSelectedRefs(pairKey, lookupTable);
                 selections[pairKey] = new Set(autoRefs.primaryRefs);
                 this._extraRefs[`${tableId}:${pairKey}`] = autoRefs.extraRef;
-                console.log(`✅ Auto-selected refs for ${pairKey}: primary=[${[...autoRefs.primaryRefs].join(',')}], extra=${autoRefs.extraRef}`);
+                console.log(`✅ Auto-selected refs for ${pairKey} (${tableId}, codes from ${lookupTable}): primary=[${[...autoRefs.primaryRefs].join(',')}], extra=${autoRefs.extraRef}`);
             } else {
                 // Fallback: select all 3 if not enough history
                 selections[pairKey] = new Set(['first', 'second', 'third']);
@@ -756,8 +773,8 @@ class AIPredictionPanel {
 
 <div class="card">
   <h2>Layout mode</h2>
-  <label><input type="radio" name="layoutMode" value="rings" checked> Concentric rings (around the wheel)</label>
-  <label><input type="radio" name="layoutMode" value="rows"> Stacked rows (wheel-order grid below)</label>
+  <label><input type="radio" name="layoutMode" value="rows" checked> Stacked rows (wheel-order grid below)</label>
+  <label><input type="radio" name="layoutMode" value="rings"> Concentric rings (around the wheel)</label>
 </div>
 
 <div class="card">
@@ -829,7 +846,7 @@ class AIPredictionPanel {
   let state = {
     snap: null,
     wheelImg: null,
-    mode: 'rings',
+    mode: 'rows',
     picked: { t1: new Set(), t2: new Set(), t3: new Set() },
     pickedInitialized: false,
     anchors: [],
@@ -1408,6 +1425,14 @@ class AIPredictionPanel {
                         const ss = String(sec % 60).padStart(2, '0');
                         el.textContent = `⏱ ${mm}:${ss}`;
                     }
+                    // Keep the spin counter live too — costs nothing
+                    // and means the user always sees the latest count
+                    // even if no selection / prediction event fires.
+                    const sc = document.getElementById('aiSummarySpinCount');
+                    if (sc) {
+                        const n = Array.isArray(window.spins) ? window.spins.length : 0;
+                        sc.textContent = `🎰 ${n}`;
+                    }
                 }, 1000);
             }
         } else if (!sessActive && this._summarySessionStart) {
@@ -1441,6 +1466,7 @@ class AIPredictionPanel {
                             ? 'background:linear-gradient(135deg,#dc2626 0%,#b91c1c 100%);'
                             : 'background:linear-gradient(135deg,#16a34a 0%,#15803d 100%);'}border:none;color:#fff;font-weight:700;font-size:10px;padding:3px 8px;border-radius:4px;cursor:pointer;letter-spacing:.3px;box-shadow:0 1px 2px rgba(0,0,0,.15);">${bettingOn ? '⏸️ PAUSE BETTING' : '▶️ START BETTING'}</button>
                         <button id="aiSelectionProcessBtn" type="button" title="Open the visual selection-process popup" style="background:linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%);border:none;color:#fff;font-weight:700;font-size:10px;padding:3px 8px;border-radius:4px;cursor:pointer;letter-spacing:.3px;box-shadow:0 1px 2px rgba(0,0,0,.15);">🔬 Selection Process</button>
+                        <span id="aiSummarySpinCount" title="Number of actual spins entered this session" style="background:#f8fafc;border:1px solid #cbd5e1;padding:1px 6px;border-radius:3px;font-variant-numeric:tabular-nums;font-weight:600;color:#334155;">🎰 ${(Array.isArray(window.spins) ? window.spins.length : 0)}</span>
                         <span id="aiSummaryTimer" style="background:#f8fafc;border:1px solid #cbd5e1;padding:1px 6px;border-radius:3px;font-variant-numeric:tabular-nums;font-weight:600;color:#334155;">${elapsedTxt}</span>
                     </span>
                 </div>

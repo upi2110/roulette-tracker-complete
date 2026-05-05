@@ -399,6 +399,10 @@ function getAutoSelectedRefs(pairKey, tableId) {
     for (let i = spins.length - 1; i >= 1 && foundRefs.length < 2; i--) {
         const actual = spins[i].actual;
         const prev = spins[i - 1].actual;
+        // prevPrev is needed for the PP-family pair refs. Null when
+        // we only have 1 spin of history at this index — those PP*
+        // cases skip the iteration via `if (refNum === null)` below.
+        const prevPrev = (i >= 2) ? spins[i - 2].actual : null;
 
         // Compute refNum for this pairKey at this historical spin
         let refNum;
@@ -410,8 +414,22 @@ function getAutoSelectedRefs(pairKey, tableId) {
             case 'prevMinus1': refNum = Math.max(prev - 1, 0); break;
             case 'prevPlus2':  refNum = Math.min(prev + 2, 36); break;
             case 'prevMinus2': refNum = Math.max(prev - 2, 0); break;
+            // ── PP-family fix (2026-05-05) ──
+            // Previously these all hit `default: continue` so the
+            // walk-back never evaluated any historical row for PP*
+            // pairs and the algorithm always fell through to the
+            // [first, second] fallback. Now they compute the proper
+            // ref from prevPrev, with a null check that defers the
+            // first one or two early iterations until we have 2 spins
+            // of history before idx.
+            case 'prevPrev':       refNum = (prevPrev !== null) ? prevPrev : null; break;
+            case 'prevPrevPlus1':  refNum = (prevPrev !== null) ? Math.min(prevPrev + 1, 36) : null; break;
+            case 'prevPrevMinus1': refNum = (prevPrev !== null) ? Math.max(prevPrev - 1, 0)  : null; break;
+            case 'prevPrevPlus2':  refNum = (prevPrev !== null) ? Math.min(prevPrev + 2, 36) : null; break;
+            case 'prevPrevMinus2': refNum = (prevPrev !== null) ? Math.max(prevPrev - 2, 0)  : null; break;
             default: continue;
         }
+        if (refNum === null) continue;
         if (is13Opp) refNum = DIGIT_13_OPPOSITES[refNum];
 
         // Get lookup table row for this reference number
