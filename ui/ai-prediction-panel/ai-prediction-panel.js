@@ -42,6 +42,11 @@ class AIPredictionPanel {
         this.table1SelectedPairs = new Set();  // For table column highlighting
         this.table2SelectedPairs = new Set();  // For table column highlighting
 
+        // T1 auto-bet pilot — always starts OFF on every reload /
+        // session per user request. In-memory only; user can flip ON
+        // mid-session but it resets to OFF on next load.
+        this._t1AutoBetEnabled = false;
+
         this.createPanel();
         this.setupToggle();
 
@@ -419,13 +424,30 @@ class AIPredictionPanel {
         const highlightSet = tableId === 'table1' ? this.table1SelectedPairs : this.table2SelectedPairs;
 
         if (isChecked) {
-            // Auto-select the 2 refs that hit most recently
+            // Auto-select the 2 refs that hit most recently.
+            //
+            // ── User-spec change ───────────────────────────────────
+            // T1's auto-pick now MIRRORS T2's logic:
+            //   - When the user ticks a T1 pair, we run getAutoSelectedRefs
+            //     with tableId='table2' so the broader T2 valid-codes
+            //     list (S+0, SL/SR ±1 ±2, O+0, OL/OR ±1 ±2) is used to
+            //     find the 2 most-recent column hits in spin history.
+            //   - The 2 picks must be in DIFFERENT columns; this is
+            //     already enforced by `foundRefs.includes(refKey)`
+            //     inside getAutoSelectedRefs (a column once picked is
+            //     never picked again, so the walk-back keeps going
+            //     until a new column hits).
+            //   - For *_13opp pairs the same call applies — the helper
+            //     already swaps in DIGIT_13_OPPOSITES[refNum] for the
+            //     lookup, regardless of which valid-codes list is used.
+            // T2 keeps its own logic (still passes 'table2' here).
+            const lookupTable = (tableId === 'table1') ? 'table2' : tableId;
             if (!this._extraRefs) this._extraRefs = {};
             if (window.getAutoSelectedRefs && window.spins && window.spins.length >= 2) {
-                const autoRefs = window.getAutoSelectedRefs(pairKey, tableId);
+                const autoRefs = window.getAutoSelectedRefs(pairKey, lookupTable);
                 selections[pairKey] = new Set(autoRefs.primaryRefs);
                 this._extraRefs[`${tableId}:${pairKey}`] = autoRefs.extraRef;
-                console.log(`✅ Auto-selected refs for ${pairKey}: primary=[${[...autoRefs.primaryRefs].join(',')}], extra=${autoRefs.extraRef}`);
+                console.log(`✅ Auto-selected refs for ${pairKey} (${tableId}, codes from ${lookupTable}): primary=[${[...autoRefs.primaryRefs].join(',')}], extra=${autoRefs.extraRef}`);
             } else {
                 // Fallback: select all 3 if not enough history
                 selections[pairKey] = new Set(['first', 'second', 'third']);
@@ -443,6 +465,12 @@ class AIPredictionPanel {
         this.updateSingleTableHighlights(tableId, highlightSet);
         this._updateCounts();
         this._autoTriggerPredictions();
+        // T1 auto-bet pilot — re-evaluate immediately so selecting /
+        // unselecting a T1 pair flips the START / PAUSE button
+        // without waiting for the next spin.
+        if (tableId === 'table1') {
+            try { this._applyT1AutoBetStatus(); } catch (e) { console.warn(e); }
+        }
     }
 
     _handleRefSelection(tableId, pairKey, refKey, isChecked) {
@@ -745,8 +773,8 @@ class AIPredictionPanel {
 
 <div class="card">
   <h2>Layout mode</h2>
-  <label><input type="radio" name="layoutMode" value="rings" checked> Concentric rings (around the wheel)</label>
-  <label><input type="radio" name="layoutMode" value="rows"> Stacked rows (wheel-order grid below)</label>
+  <label><input type="radio" name="layoutMode" value="rows" checked> Stacked rows (wheel-order grid below)</label>
+  <label><input type="radio" name="layoutMode" value="rings"> Concentric rings (around the wheel)</label>
 </div>
 
 <div class="card">
@@ -818,7 +846,7 @@ class AIPredictionPanel {
   let state = {
     snap: null,
     wheelImg: null,
-    mode: 'rings',
+    mode: 'rows',
     picked: { t1: new Set(), t2: new Set(), t3: new Set() },
     pickedInitialized: false,
     anchors: [],
@@ -1190,6 +1218,44 @@ class AIPredictionPanel {
                     this._openSelectionProcessPopup();
                     return;
                 }
+                // Mirror of the money-panel START/PAUSE button.
+                const betBtn = ev.target.closest('#aiBetToggleBtn');
+                if (betBtn) {
+                    const mp = window.moneyPanel;
+                    if (mp && typeof mp.toggleBetting === 'function') {
+                        mp.toggleBetting();
+                        // Re-render so the dashboard label/color flips
+                        // immediately to reflect the new state.
+                        this._renderSummaryDashboard();
+                    }
+                    return;
+                }
+                // T1 auto-bet pilot master switch.
+                const autoCb = ev.target.closest('#aiT1AutoBetToggle');
+                if (autoCb) {
+                    // The click event fires AFTER the checkbox flips,
+                    // so .checked already reflects the new state.
+                    this._t1AutoBetEnabled = !!autoCb.checked;
+                    console.log(`🎯 T1 auto-pilot ${this._t1AutoBetEnabled ? 'ENABLED' : 'DISABLED'}`);
+                    if (this._t1AutoBetEnabled) {
+                        // Apply immediately so the toggle reflects the
+                        // current spin state without waiting for the
+                        // next spin.
+                        try { this._applyT1AutoBetStatus(); } catch (e) { console.warn(e); }
+                    } else {
+                        // Turning auto-pilot OFF → restore betting to
+                        // START so the user isn't stranded in PAUSE
+                        // after the autopilot last paused it.
+                        const mp = window.moneyPanel;
+                        if (mp && mp.sessionData && typeof mp.toggleBetting === 'function'
+                            && !mp.sessionData.isBettingEnabled) {
+                            mp.toggleBetting();
+                            console.log('🎯 T1 auto-pilot OFF → restored START BETTING');
+                        }
+                    }
+                    this._renderSummaryDashboard();
+                    return;
+                }
                 const t = ev.target.closest('[data-summary-action]');
                 if (!t) return;
                 const action = t.dataset.summaryAction;
@@ -1359,6 +1425,14 @@ class AIPredictionPanel {
                         const ss = String(sec % 60).padStart(2, '0');
                         el.textContent = `⏱ ${mm}:${ss}`;
                     }
+                    // Keep the spin counter live too — costs nothing
+                    // and means the user always sees the latest count
+                    // even if no selection / prediction event fires.
+                    const sc = document.getElementById('aiSummarySpinCount');
+                    if (sc) {
+                        const n = Array.isArray(window.spins) ? window.spins.length : 0;
+                        sc.textContent = `🎰 ${n}`;
+                    }
                 }, 1000);
             }
         } else if (!sessActive && this._summarySessionStart) {
@@ -1373,12 +1447,26 @@ class AIPredictionPanel {
             return `⏱ ${mm}:${ss}`;
         })();
 
+        // Money-panel betting state — drives the START/PAUSE button label
+        // and color in the selection-panel header.
+        const bettingOn = !!(mp && mp.sessionData && mp.sessionData.isBettingEnabled);
+
+        // T1 auto-bet pilot master switch (default OFF).
+        const autoOn = (this._t1AutoBetEnabled === true);
+
         container.innerHTML = `
             <div style="background:#e5e7eb;border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;color:#1f2937;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.08);">
-                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#475569;margin-bottom:6px;border-bottom:1px solid #cbd5e1;padding-bottom:4px;gap:6px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#475569;margin-bottom:6px;border-bottom:1px solid #cbd5e1;padding-bottom:4px;gap:6px;flex-wrap:wrap;">
                     <span style="font-weight:700;letter-spacing:.5px;color:#16a34a;">📋 SELECTION PANEL</span>
-                    <span style="display:flex;align-items:center;gap:6px;">
+                    <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <label title="When ON, the T1 auto-bet pilot watches your selected T1 pairs and toggles the money-panel START / PAUSE BETTING based on the latest spin's hit (green) / miss (black) state. Default OFF so it never touches the toggle until you opt in." style="display:inline-flex;align-items:center;gap:3px;font-size:9px;color:${autoOn ? '#16a34a' : '#64748b'};font-weight:700;cursor:pointer;background:#fff;border:1px solid #cbd5e1;padding:2px 6px;border-radius:4px;">
+                            <input type="checkbox" id="aiT1AutoBetToggle"${autoOn ? ' checked' : ''} style="margin:0;cursor:pointer;"> T1 auto-pilot ${autoOn ? 'ON' : 'OFF'}
+                        </label>
+                        <button id="aiBetToggleBtn" type="button" title="Toggle the money-management START / PAUSE BETTING (mirrors the button in the money panel)" style="${bettingOn
+                            ? 'background:linear-gradient(135deg,#dc2626 0%,#b91c1c 100%);'
+                            : 'background:linear-gradient(135deg,#16a34a 0%,#15803d 100%);'}border:none;color:#fff;font-weight:700;font-size:10px;padding:3px 8px;border-radius:4px;cursor:pointer;letter-spacing:.3px;box-shadow:0 1px 2px rgba(0,0,0,.15);">${bettingOn ? '⏸️ PAUSE BETTING' : '▶️ START BETTING'}</button>
                         <button id="aiSelectionProcessBtn" type="button" title="Open the visual selection-process popup" style="background:linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%);border:none;color:#fff;font-weight:700;font-size:10px;padding:3px 8px;border-radius:4px;cursor:pointer;letter-spacing:.3px;box-shadow:0 1px 2px rgba(0,0,0,.15);">🔬 Selection Process</button>
+                        <span id="aiSummarySpinCount" title="Number of actual spins entered this session" style="background:#f8fafc;border:1px solid #cbd5e1;padding:1px 6px;border-radius:3px;font-variant-numeric:tabular-nums;font-weight:600;color:#334155;">🎰 ${(Array.isArray(window.spins) ? window.spins.length : 0)}</span>
                         <span id="aiSummaryTimer" style="background:#f8fafc;border:1px solid #cbd5e1;padding:1px 6px;border-radius:3px;font-variant-numeric:tabular-nums;font-weight:600;color:#334155;">${elapsedTxt}</span>
                     </span>
                 </div>
@@ -1415,6 +1503,13 @@ class AIPredictionPanel {
         this.updateTable3Highlights();
         this._renderSummaryDashboard();
 
+        // T1 auto-bet hook: after every spin, check whether the user's
+        // selected T1 pairs went GREEN (any valid T1 hit-code on the
+        // latest spin). If so → start betting; if every selected T1
+        // pair is BLACK → pause. Drives the same money-panel toggle
+        // the user clicks manually.
+        try { this._applyT1AutoBetStatus(); } catch (e) { console.warn('T1 auto-bet hook failed:', e); }
+
         // Re-trigger predictions if any pairs selected (use debounce to avoid duplicates)
         const total = this._getTotalSelectionCount();
         if (total >= 1 && window.spins && window.spins.length >= 3) {
@@ -1422,6 +1517,121 @@ class AIPredictionPanel {
             this._autoTriggerPredictions();
         } else if (window.spins && window.spins.length < 3) {
             console.log('⚠️ Not enough spins for predictions (need 3+)');
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  T1 AUTO-BET PILOT
+    //  When the user has T1 pairs selected, the latest-spin hit
+    //  state of those pairs drives the money-management START /
+    //  PAUSE betting toggle:
+    //    - ANY selected pair GREEN on latest spin → START
+    //    - ALL selected pairs BLACK on latest spin → PAUSE
+    //  No T1 selections → don't touch the toggle (manual control).
+    //  Not enough spin history (initial state) → default to START
+    //  (per user spec — "proceed" until we have data to pause on).
+    // ═══════════════════════════════════════════════════════
+
+    _computeT1PairRefNum(pairKey, prev, prevPrev) {
+        const is13Opp = pairKey.endsWith('_13opp');
+        const base = pairKey.replace('_13opp', '');
+        let r = null;
+        switch (base) {
+            case 'ref0':            r = 0; break;
+            case 'ref19':           r = 19; break;
+            case 'prev':            r = prev; break;
+            case 'prevPlus1':       r = (typeof prev === 'number') ? Math.min(prev + 1, 36) : null; break;
+            case 'prevMinus1':      r = (typeof prev === 'number') ? Math.max(prev - 1, 0)  : null; break;
+            case 'prevPlus2':       r = (typeof prev === 'number') ? Math.min(prev + 2, 36) : null; break;
+            case 'prevMinus2':      r = (typeof prev === 'number') ? Math.max(prev - 2, 0)  : null; break;
+            case 'prevPrev':        r = (typeof prevPrev === 'number') ? prevPrev : null; break;
+            case 'prevPrevPlus1':   r = (typeof prevPrev === 'number') ? Math.min(prevPrev + 1, 36) : null; break;
+            case 'prevPrevMinus1':  r = (typeof prevPrev === 'number') ? Math.max(prevPrev - 1, 0)  : null; break;
+            case 'prevPrevPlus2':   r = (typeof prevPrev === 'number') ? Math.min(prevPrev + 2, 36) : null; break;
+            case 'prevPrevMinus2':  r = (typeof prevPrev === 'number') ? Math.max(prevPrev - 2, 0)  : null; break;
+            default: r = null;
+        }
+        if (typeof r !== 'number') return null;
+        if (is13Opp) {
+            const eng = window.aiAutoEngine;
+            if (eng && typeof eng._getDigit13Opposite === 'function') {
+                r = eng._getDigit13Opposite(r);
+            } else {
+                return null;
+            }
+        }
+        return (typeof r === 'number') ? r : null;
+    }
+
+    _isT1PairGreenOnSpin(pairKey, spinIdx) {
+        const T1_VALID = new Set(['S+0','SL+1','SR+1','O+0','OL+1','OR+1']);
+        const spins = window.spins || [];
+        if (spinIdx < 1 || spinIdx >= spins.length) return null;
+        const actual = spins[spinIdx] && spins[spinIdx].actual;
+        const prev   = spins[spinIdx - 1] && spins[spinIdx - 1].actual;
+        const prevPrev = (spinIdx >= 2) ? (spins[spinIdx - 2] && spins[spinIdx - 2].actual) : null;
+        if (typeof actual !== 'number' || typeof prev !== 'number') return null;
+
+        const refNum = this._computeT1PairRefNum(pairKey, prev, prevPrev);
+        if (typeof refNum !== 'number') return null;
+
+        const eng = window.aiAutoEngine;
+        if (!eng || typeof eng._getLookupRow !== 'function' || typeof eng._getCalculatePositionCode !== 'function') {
+            return null;
+        }
+        const lr = eng._getLookupRow(refNum);
+        if (!lr) return null;
+        const targets = [lr.first, lr.second, lr.third];
+        for (const t of targets) {
+            if (typeof t !== 'number') continue;
+            const code = eng._getCalculatePositionCode(t, actual);
+            if (T1_VALID.has(code)) return true;
+        }
+        return false;
+    }
+
+    _evaluateT1AutoBetStatus() {
+        const sels = Object.keys(this.table1Selections || {});
+        if (sels.length === 0) return null; // no T1 selections → don't touch toggle
+        const spins = window.spins || [];
+        if (spins.length < 2) return 'proceed'; // initial state → default proceed
+        const latestIdx = spins.length - 1;
+        const anyGreen = sels.some(pk => this._isT1PairGreenOnSpin(pk, latestIdx) === true);
+        return anyGreen ? 'proceed' : 'pause';
+    }
+
+    _applyT1AutoBetStatus() {
+        // Master on/off switch — surfaced as a checkbox in the
+        // selection-panel header. Default OFF so the feature doesn't
+        // touch the START / PAUSE button until the user opts in.
+        if (this._t1AutoBetEnabled !== true) return;
+        const desired = this._evaluateT1AutoBetStatus();
+        if (desired === null) return; // no T1 selections — leave money panel alone
+        const mp = window.moneyPanel;
+        if (!mp || !mp.sessionData || typeof mp.toggleBetting !== 'function') return;
+        const wantOn = (desired === 'proceed');
+        const isOn = !!mp.sessionData.isBettingEnabled;
+        if (wantOn === isOn) return; // already in desired state
+
+        // ── RACE GUARD ─────────────────────────────────────────────
+        // Don't toggle while there's an unresolved pendingBet from a
+        // previous spin. The money-panel spin listener polls every
+        // 200ms; if we flip to PAUSE now, toggleBetting() nulls
+        // pendingBet and the listener never gets a chance to record
+        // the hit/miss. Defer until the bet has resolved.
+        const pb = mp.pendingBet;
+        const spinsLen = Array.isArray(window.spins) ? window.spins.length : 0;
+        if (pb && typeof pb.placedAtSpinCount === 'number' && pb.placedAtSpinCount < spinsLen) {
+            setTimeout(() => this._applyT1AutoBetStatus(), 350);
+            return;
+        }
+
+        mp.toggleBetting();
+        console.log(`🎯 T1 auto-bet pilot: ${wantOn ? 'PROCEED — at least one selected T1 pair GREEN' : 'PAUSE — all selected T1 pairs BLACK'}`);
+        // Refresh the selection-panel header so the START/PAUSE
+        // button label flips to match the new state immediately.
+        if (typeof this._renderSummaryDashboard === 'function') {
+            this._renderSummaryDashboard();
         }
     }
 

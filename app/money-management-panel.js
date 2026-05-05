@@ -20,6 +20,14 @@ class MoneyManagementPanel {
             spinsWithBets: [],
             isBettingEnabled: false,  // NEW: User control for betting
             bettingStrategy: 4,  // 1=Aggressive, 2=Conservative, 3=Cautious, 4=Defensive (default: Defensive)
+            // ─── Strategy-4 Defensive variables (user-tunable) ───
+            // Defaults match the previous hard-coded behavior:
+            //   +$1 after 5 consecutive losses, -$1 after 2 consecutive wins.
+            // Edited via the ⚙️ Variables button next to the strategy button.
+            s4LossesToIncrease: 5,
+            s4LossIncrement:    1,
+            s4WinsToDecrease:   2,
+            s4WinDecrement:     1,
             consecutiveWins: 0,  // Track consecutive wins for strategies 2 & 3
             currentBetPerNumber: 2  // Track current bet amount (overrides backend)
         };
@@ -78,19 +86,54 @@ class MoneyManagementPanel {
                     color: #721c24;
                     font-weight: bold;
                 ">⏸️ Betting PAUSED - Click START to begin</div>
-                <button id="toggleStrategyBtn" style="
-                        width: 100%;
-                        padding: 8px;
-                        font-size: 13px;
-                        font-weight: 600;
-                        border: none;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%);
-                        color: white;
-                        margin-top: 8px;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    ">🛡️ Strategy 4: Defensive</button>
+                <div style="display:flex;gap:6px;margin-top:8px;align-items:stretch;">
+                    <button id="toggleStrategyBtn" style="
+                            flex:1;
+                            padding: 8px;
+                            font-size: 13px;
+                            font-weight: 600;
+                            border: none;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%);
+                            color: white;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        ">🛡️ Strategy 4: Defensive</button>
+                    <button id="strategyVarsBtn" type="button" title="Edit defensive-strategy variables (loss/win thresholds + bet step sizes)" style="
+                            padding: 8px 12px;
+                            font-size: 14px;
+                            font-weight: 700;
+                            border: none;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            background: #475569;
+                            color: white;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        ">⚙️</button>
+                </div>
+                <!-- Variables editor (Strategy-4 tunables). Hidden until
+                     the ⚙️ button is clicked. Save commits values into
+                     this.sessionData.s4* fields used by the Strategy-4
+                     adjustment block in recordBetResult(). -->
+                <div id="strategyVarsPanel" style="display:none;margin-top:6px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;padding:8px;font-size:11px;color:#1f2937;position:relative;">
+                    <button id="s4VarsClose" type="button" title="Close" style="position:absolute;top:4px;right:4px;width:20px;height:20px;line-height:18px;font-size:14px;font-weight:700;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:3px;cursor:pointer;padding:0;">×</button>
+                    <div style="font-weight:700;color:#0f766e;margin-bottom:6px;padding-right:24px;">🛡️ Strategy 4 — Defensive variables</div>
+                    <div style="display:grid;grid-template-columns:1fr 60px;gap:4px 6px;align-items:center;">
+                        <label for="s4LossesIn" title="How many consecutive LOSSES before the bet is increased.">Increase bet after every</label>
+                        <input id="s4LossesIn" type="number" min="1" max="50" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s4LossIncIn" title="Dollar amount added to the per-number bet on each escalation.">Increase $</label>
+                        <input id="s4LossIncIn" type="number" min="0" max="100" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s4WinsIn" title="How many consecutive WINS before the bet is decreased.">Decrease bet after every</label>
+                        <input id="s4WinsIn" type="number" min="1" max="50" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s4WinDecIn" title="Dollar amount removed from the per-number bet on each step-down (floor stays at $2).">Decrease $</label>
+                        <input id="s4WinDecIn" type="number" min="0" max="100" step="1" style="padding:3px;font-size:11px;width:55px;">
+                    </div>
+                    <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end;">
+                        <button id="s4VarsCancel" type="button" style="padding:4px 10px;font-size:11px;border:1px solid #cbd5e1;background:#fff;border-radius:3px;cursor:pointer;">Cancel</button>
+                        <button id="s4VarsSave" type="button" style="padding:4px 10px;font-size:11px;border:none;background:#0f766e;color:#fff;border-radius:3px;cursor:pointer;font-weight:600;">Save</button>
+                    </div>
+                    <div id="s4VarsStatus" style="margin-top:6px;font-size:10px;color:#16a34a;min-height:12px;"></div>
+                </div>
             </div>
 
             <div class="panel-content" id="moneyPanelContent" style="display: block;">
@@ -261,6 +304,79 @@ class MoneyManagementPanel {
             strategyBtn.hasListener = true;
             strategyBtn.addEventListener('click', () => this.toggleStrategy());
         }
+
+        // ⚙️ Strategy-4 variables editor — open / save / cancel.
+        const varsBtn = document.getElementById('strategyVarsBtn');
+        if (varsBtn && !varsBtn.hasListener) {
+            varsBtn.hasListener = true;
+            varsBtn.addEventListener('click', () => this.openStrategyVarsEditor());
+        }
+        const saveBtn = document.getElementById('s4VarsSave');
+        if (saveBtn && !saveBtn.hasListener) {
+            saveBtn.hasListener = true;
+            saveBtn.addEventListener('click', () => this.saveStrategyVars());
+        }
+        const cancelBtn = document.getElementById('s4VarsCancel');
+        if (cancelBtn && !cancelBtn.hasListener) {
+            cancelBtn.hasListener = true;
+            cancelBtn.addEventListener('click', () => this.closeStrategyVarsEditor());
+        }
+        // Top-right × close button (same effect as Cancel — discards
+        // unsaved changes, just hides the panel).
+        const closeBtn = document.getElementById('s4VarsClose');
+        if (closeBtn && !closeBtn.hasListener) {
+            closeBtn.hasListener = true;
+            closeBtn.addEventListener('click', () => this.closeStrategyVarsEditor());
+        }
+    }
+
+    openStrategyVarsEditor() {
+        // Pre-fill inputs from the live state so the editor always
+        // reflects the current values.
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+        set('s4LossesIn',  this.sessionData.s4LossesToIncrease);
+        set('s4LossIncIn', this.sessionData.s4LossIncrement);
+        set('s4WinsIn',    this.sessionData.s4WinsToDecrease);
+        set('s4WinDecIn',  this.sessionData.s4WinDecrement);
+        const panel = document.getElementById('strategyVarsPanel');
+        if (panel) panel.style.display = 'block';
+        const status = document.getElementById('s4VarsStatus');
+        if (status) status.textContent = '';
+    }
+
+    closeStrategyVarsEditor() {
+        const panel = document.getElementById('strategyVarsPanel');
+        if (panel) panel.style.display = 'none';
+    }
+
+    saveStrategyVars() {
+        // Read inputs, validate, and write back to sessionData. The
+        // Strategy-4 adjustment block in recordBetResult() reads these
+        // values on every spin so the change takes effect on the next
+        // hit/miss without any restart.
+        const readInt = (id, fallback, min) => {
+            const el = document.getElementById(id);
+            if (!el) return fallback;
+            const v = parseInt(el.value, 10);
+            if (!Number.isFinite(v)) return fallback;
+            return Math.max(min, v);
+        };
+        const lossesNeeded = readInt('s4LossesIn',  this.sessionData.s4LossesToIncrease, 1);
+        const lossInc      = readInt('s4LossIncIn', this.sessionData.s4LossIncrement,    0);
+        const winsNeeded   = readInt('s4WinsIn',    this.sessionData.s4WinsToDecrease,   1);
+        const winDec       = readInt('s4WinDecIn',  this.sessionData.s4WinDecrement,     0);
+
+        this.sessionData.s4LossesToIncrease = lossesNeeded;
+        this.sessionData.s4LossIncrement    = lossInc;
+        this.sessionData.s4WinsToDecrease   = winsNeeded;
+        this.sessionData.s4WinDecrement     = winDec;
+
+        const status = document.getElementById('s4VarsStatus');
+        if (status) {
+            status.textContent = `✓ Saved — +$${lossInc} after ${lossesNeeded} losses, -$${winDec} after ${winsNeeded} wins`;
+            setTimeout(() => { if (status) status.textContent = ''; }, 3000);
+        }
+        console.log(`🛡️ Strategy 4 variables updated: +$${lossInc} after ${lossesNeeded} losses, -$${winDec} after ${winsNeeded} wins`);
     }
 
     togglePanel() {
@@ -548,24 +664,29 @@ class MoneyManagementPanel {
             }
 
         } else if (this.sessionData.bettingStrategy === 4) {
-            // ═══ STRATEGY 4: DEFENSIVE ═══
-            // Initial bet $2 (min). +$1 after 5 CONSECUTIVE losses,
-            // -$1 after 2 CONSECUTIVE wins. Floor stays at $2.
+            // ═══ STRATEGY 4: DEFENSIVE (user-tunable) ═══
+            // Variables edited via the ⚙️ button next to the strategy
+            // toggle. Defaults: +$1 after 5 losses, -$1 after 2 wins.
+            // Floor remains $2 regardless of decrement size.
+            const lossesNeeded = Math.max(1, parseInt(this.sessionData.s4LossesToIncrease, 10) || 5);
+            const lossInc      = Math.max(0, parseInt(this.sessionData.s4LossIncrement,    10) || 1);
+            const winsNeeded   = Math.max(1, parseInt(this.sessionData.s4WinsToDecrease,   10) || 2);
+            const winDec       = Math.max(0, parseInt(this.sessionData.s4WinDecrement,     10) || 1);
             if (hit) {
-                if (this.sessionData.consecutiveWins >= 2) {
-                    this.sessionData.currentBetPerNumber = Math.max(2, this.sessionData.currentBetPerNumber - 1);
+                if (this.sessionData.consecutiveWins >= winsNeeded) {
+                    this.sessionData.currentBetPerNumber = Math.max(2, this.sessionData.currentBetPerNumber - winDec);
                     this.sessionData.consecutiveWins = 0; // Reset after adjustment
-                    console.log(`🛡️ Strategy 4: 2 CONSECUTIVE WINS → Decreased bet to $${this.sessionData.currentBetPerNumber}`);
+                    console.log(`🛡️ Strategy 4: ${winsNeeded} CONSECUTIVE WINS → Decreased bet by $${winDec} to $${this.sessionData.currentBetPerNumber}`);
                 } else {
-                    console.log(`🛡️ Strategy 4: ${this.sessionData.consecutiveWins} consecutive win(s) - Need ${2 - this.sessionData.consecutiveWins} more to decrease bet`);
+                    console.log(`🛡️ Strategy 4: ${this.sessionData.consecutiveWins} consecutive win(s) - Need ${winsNeeded - this.sessionData.consecutiveWins} more to decrease bet`);
                 }
             } else {
-                if (this.sessionData.consecutiveLosses >= 5) {
-                    this.sessionData.currentBetPerNumber += 1;
+                if (this.sessionData.consecutiveLosses >= lossesNeeded) {
+                    this.sessionData.currentBetPerNumber += lossInc;
                     this.sessionData.consecutiveLosses = 0;  // RESET COUNTER AFTER ADJUSTMENT
-                    console.log(`🛡️ Strategy 4: 5 CONSECUTIVE LOSSES → Increased bet by $1 to $${this.sessionData.currentBetPerNumber}`);
+                    console.log(`🛡️ Strategy 4: ${lossesNeeded} CONSECUTIVE LOSSES → Increased bet by $${lossInc} to $${this.sessionData.currentBetPerNumber}`);
                 } else {
-                    console.log(`🛡️ Strategy 4: ${this.sessionData.consecutiveLosses} consecutive loss(es) - Need ${5 - this.sessionData.consecutiveLosses} more to increase bet`);
+                    console.log(`🛡️ Strategy 4: ${this.sessionData.consecutiveLosses} consecutive loss(es) - Need ${lossesNeeded - this.sessionData.consecutiveLosses} more to increase bet`);
                 }
             }
         }
