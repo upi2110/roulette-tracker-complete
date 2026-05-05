@@ -47,6 +47,15 @@ class AIPredictionPanel {
         // mid-session but it resets to OFF on next load.
         this._t1AutoBetEnabled = false;
 
+        // Tracks which T1/T2 pair selections are still in their
+        // "auto-picked" state vs. manually edited. Each entry is the
+        // SET of refs the auto-pick wrote at that pair's last
+        // auto-select. On every new spin, we re-run getAutoSelectedRefs
+        // ONLY for pairs whose stored refs still match this snapshot
+        // (= user hasn't manually toggled). If they've diverged, the
+        // pair is silently demoted out of this map and left alone.
+        this._autoPickedPairs = {};
+
         this.createPanel();
         this.setupToggle();
 
@@ -443,10 +452,15 @@ class AIPredictionPanel {
             // T2 keeps its own logic (still passes 'table2' here).
             const lookupTable = (tableId === 'table1') ? 'table2' : tableId;
             if (!this._extraRefs) this._extraRefs = {};
+            if (!this._autoPickedPairs) this._autoPickedPairs = {};
             if (window.getAutoSelectedRefs && window.spins && window.spins.length >= 2) {
                 const autoRefs = window.getAutoSelectedRefs(pairKey, lookupTable);
                 selections[pairKey] = new Set(autoRefs.primaryRefs);
                 this._extraRefs[`${tableId}:${pairKey}`] = autoRefs.extraRef;
+                // Snapshot the auto-pick result so the per-spin refresh
+                // (_refreshAutoPickedPairs) can detect manual edits and
+                // skip them.
+                this._autoPickedPairs[`${tableId}:${pairKey}`] = new Set(autoRefs.primaryRefs);
                 console.log(`✅ Auto-selected refs for ${pairKey} (${tableId}, codes from ${lookupTable}): primary=[${[...autoRefs.primaryRefs].join(',')}], extra=${autoRefs.extraRef}`);
             } else {
                 // Fallback: select all 3 if not enough history
@@ -458,6 +472,7 @@ class AIPredictionPanel {
             delete selections[pairKey];
             highlightSet.delete(pairKey);
             if (this._extraRefs) delete this._extraRefs[`${tableId}:${pairKey}`];
+            if (this._autoPickedPairs) delete this._autoPickedPairs[`${tableId}:${pairKey}`];
         }
 
         const pairs = tableId === 'table1' ? this.table1Pairs : this.table2Pairs;
@@ -490,6 +505,12 @@ class AIPredictionPanel {
                 delete selections[pairKey];
                 highlightSet.delete(pairKey);
             }
+        }
+
+        // User manually edited the refs → demote this pair from
+        // "auto-picked" so the per-spin refresh leaves it alone.
+        if (this._autoPickedPairs) {
+            delete this._autoPickedPairs[`${tableId}:${pairKey}`];
         }
 
         const pairs = tableId === 'table1' ? this.table1Pairs : this.table2Pairs;
@@ -1500,6 +1521,11 @@ class AIPredictionPanel {
 
     onSpinAdded() {
         this.loadAvailablePairs();
+        // Refresh auto-picked T1/T2 ref selections against the new spin
+        // history. Only pairs whose stored refs still match their last
+        // auto-pick snapshot (i.e. user hasn't manually toggled a sub-
+        // ref) are refreshed; manually-edited pairs are left alone.
+        try { this._refreshAutoPickedPairs(); } catch (e) { console.warn('Auto-pick refresh failed:', e); }
         this.updateTable3Highlights();
         this._renderSummaryDashboard();
 
@@ -1588,6 +1614,78 @@ class AIPredictionPanel {
             if (T1_VALID.has(code)) return true;
         }
         return false;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  AUTO-PICK REFRESH ON NEW SPIN
+    //  After every spin, re-run getAutoSelectedRefs for each
+    //  selected T1/T2 pair whose stored refs still match its
+    //  last auto-pick snapshot. Pairs the user has manually
+    //  edited (per _autoPickedPairs delete in _handleRefSelection)
+    //  are left alone. Re-renders the T1/T2 checkbox lists when
+    //  any refresh actually changes a stored set.
+    // ═══════════════════════════════════════════════════════
+    _refreshAutoPickedPairs() {
+        if (!this._autoPickedPairs || !window.getAutoSelectedRefs) return;
+        if (!Array.isArray(window.spins) || window.spins.length < 2) return;
+        const setsEqual = (a, b) => {
+            if (!a || !b || a.size !== b.size) return false;
+            for (const v of a) if (!b.has(v)) return false;
+            return true;
+        };
+
+        let t1Changed = false;
+        let t2Changed = false;
+        // Iterate keys at snapshot time so we can mutate the map mid-loop.
+        const keys = Object.keys(this._autoPickedPairs);
+        for (const key of keys) {
+            const sep = key.indexOf(':');
+            if (sep < 0) continue;
+            const tableId = key.slice(0, sep);
+            const pairKey = key.slice(sep + 1);
+            const selections = (tableId === 'table1') ? this.table1Selections : this.table2Selections;
+            const currentRefs = selections[pairKey];
+
+            // Pair was unselected since the last auto-pick → drop snapshot
+            if (!currentRefs) {
+                delete this._autoPickedPairs[key];
+                continue;
+            }
+
+            // User edited the refs → demote and skip
+            const snapshot = this._autoPickedPairs[key];
+            if (!setsEqual(currentRefs, snapshot)) {
+                delete this._autoPickedPairs[key];
+                continue;
+            }
+
+            // Re-run auto-pick (T1 mirrors T2; T2 uses its own codes)
+            const lookupTable = (tableId === 'table1') ? 'table2' : tableId;
+            const newAuto = window.getAutoSelectedRefs(pairKey, lookupTable);
+            const newRefs = new Set(newAuto.primaryRefs);
+
+            if (setsEqual(newRefs, currentRefs)) continue; // nothing to do
+
+            selections[pairKey] = newRefs;
+            if (this._extraRefs) this._extraRefs[`${tableId}:${pairKey}`] = newAuto.extraRef;
+            this._autoPickedPairs[key] = new Set(newRefs);
+            if (tableId === 'table1') t1Changed = true; else t2Changed = true;
+            console.log(`🔄 Auto-pick refreshed ${pairKey} (${tableId}): primary=[${[...newRefs].join(',')}], extra=${newAuto.extraRef}`);
+        }
+
+        // Re-render checkbox lists for tables that actually changed.
+        // Predictions are re-triggered later by the existing onSpinAdded
+        // flow when total selection count >= 1, so we do NOT call
+        // _autoTriggerPredictions() here — it would just duplicate work.
+        if (t1Changed) {
+            this._renderTable12Checkboxes('table1', this.table1Pairs, this.table1Selections);
+            this.updateSingleTableHighlights('table1', this.table1SelectedPairs);
+        }
+        if (t2Changed) {
+            this._renderTable12Checkboxes('table2', this.table2Pairs, this.table2Selections);
+            this.updateSingleTableHighlights('table2', this.table2SelectedPairs);
+        }
+        if (t1Changed || t2Changed) this._updateCounts();
     }
 
     _evaluateT1AutoBetStatus() {

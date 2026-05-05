@@ -138,7 +138,7 @@ class AutoTestRunner {
         // 'test' = Strategy-Lab sandbox. Currently shares the default
         // _simulateDecision pipeline; will be the integration point for
         // experimental strategies pending evaluation.
-        const KNOWN_MANUAL_STRATS = ['auto-test', 'T1-strategy', 'test', 'AI-trained'];
+        const KNOWN_MANUAL_STRATS = ['auto-test', 'T1-strategy', 'test', '3t-selection', 'AI-trained'];
         const requestedManualStrat = (typeof options.manualStrategy === 'string' && KNOWN_MANUAL_STRATS.includes(options.manualStrategy))
             ? options.manualStrategy
             : 'AI-trained';
@@ -373,6 +373,11 @@ class AutoTestRunner {
         // the same thing until we finish the session".
         if (this._currentMethod === 'test') {
             this._lockedTestPair = null;
+        }
+        // 3T-Selection pair lock-in: same lifecycle, separate var so the
+        // two methods can run in parallel without leaking state.
+        if (this._currentMethod === '3t-selection') {
+            this._locked3TPair = null;
         }
 
         // AI-trained feedback boundary: reset the per-engine controller
@@ -662,6 +667,37 @@ class AutoTestRunner {
                     ? this._strategyLabIncludeGrey
                     : true,
                 greyNumbers: [] // V1: AT has no grey-number computation yet.
+            });
+        }
+
+        // ── 3T-Selection ('3t-selection' method) ──
+        // Independent production copy of the Strategy-Lab algorithm.
+        // Loaded from strategies/strategy-3t-selection/ and exposed under
+        // window.Strategy3T so it can be modified independently of the
+        // Test (Lab) sandbox. Locked-pair var also separate.
+        if (this._currentMethod === '3t-selection') {
+            const S3T = (typeof require === 'function')
+                ? (function () { try { return require('../../strategies/strategy-3t-selection/strategy-3t-selection.js'); } catch (_) { return null; } }())
+                : (typeof window !== 'undefined' ? window.Strategy3T : null);
+            if (!S3T) {
+                return {
+                    action: 'SKIP',
+                    selectedPair: null,
+                    selectedFilter: null,
+                    numbers: [],
+                    confidence: 0,
+                    reason: '3T-Selection module not loaded'
+                };
+            }
+            if (!this._locked3TPair) {
+                this._locked3TPair = S3T.selectBestPair(this.engine);
+            }
+            return S3T.decideStrategyLab(this.engine, testSpins, idx, {
+                lockedPairRefKey: this._locked3TPair,
+                includeGrey: (typeof this._strategyLabIncludeGrey === 'boolean')
+                    ? this._strategyLabIncludeGrey
+                    : true,
+                greyNumbers: []
             });
         }
 

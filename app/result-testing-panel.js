@@ -116,6 +116,7 @@ class ResultTestingPanel {
                             <option value="auto">auto</option>
                             <option value="t1-strategy">T1-strategy</option>
                             <option value="ai-trained">AI-trained</option>
+                            <option value="3t-selection">3T-Selection</option>
                         </select>
                         <button id="resultTestingRunBtn" type="button"
                                 style="padding:4px 10px;font-size:11px;font-weight:700;border:1px solid #6366f1;border-radius:3px;background:#6366f1;color:white;cursor:pointer;">

@@ -249,6 +249,51 @@ class AutoUpdateOrchestrator {
                 }
             );
             console.log('🧪 STRATEGY-LAB DECISION:', decision);
+        } else if (this.decisionMode === '3t-selection' && window.Strategy3T) {
+            // 3T-Selection live path — production copy of the Strategy-Lab
+            // algorithm. Independent module + namespace + locked-pair var
+            // from Test (Lab) so each can be modified without affecting
+            // the other.
+            const spinsArr = Array.isArray(window.spins)
+                ? window.spins
+                    .map(s => (s && typeof s.actual === 'number') ? s.actual : null)
+                    .filter(n => n !== null)
+                : [];
+            const idx = spinsArr.length - 1;
+
+            if (!this._3tLockedPair) {
+                this._3tLockedPair = window.Strategy3T.selectBestPair(window.aiAutoEngine);
+            }
+
+            // Grey numbers: same wheel-derived source as the Test (Lab)
+            // path so the user's "include grey" toggle is honoured here too.
+            let greyNumbers = [];
+            const w = window.rouletteWheel;
+            if (w) {
+                if (Array.isArray(w.extraLoose)) {
+                    greyNumbers = greyNumbers.concat(w.extraLoose);
+                }
+                if (Array.isArray(w.extraAnchorGroups)) {
+                    for (const g of w.extraAnchorGroups) {
+                        if (Array.isArray(g)) greyNumbers = greyNumbers.concat(g);
+                        else if (g && Array.isArray(g.numbers)) greyNumbers = greyNumbers.concat(g.numbers);
+                    }
+                }
+            }
+
+            const includeGrey = (typeof window.strategyLabIncludeGrey === 'boolean')
+                ? window.strategyLabIncludeGrey
+                : true;
+
+            decision = window.Strategy3T.decideStrategyLab(
+                window.aiAutoEngine, spinsArr, idx,
+                {
+                    lockedPairRefKey: this._3tLockedPair,
+                    includeGrey: includeGrey,
+                    greyNumbers: greyNumbers
+                }
+            );
+            console.log('🎯 3T-SELECTION DECISION:', decision);
         } else {
             decision = window.aiAutoEngine.decide();
             console.log('🤖 AUTO DECISION:', decision);
@@ -374,14 +419,16 @@ class AutoUpdateOrchestrator {
             //    pair + 13-opp from T2, same pair from T3".
             if (this.decisionMode !== 'ai-trained' && window.aiPanel) {
                 window.aiPanel.clearSelections();
-                if (this.decisionMode === 'test') {
+                // Strategy-Lab ('test') and 3T-Selection ('3t-selection')
+                // share the same pair-selection cascade: T1 + T2 (pair +
+                // 13-opp halves) + T3 all get the locked pair so V6's
+                // intersection produces the bet.
+                if (this.decisionMode === 'test' || this.decisionMode === '3t-selection') {
                     const pair = decision.selectedPair;
                     if (pair) {
                         try { window.aiPanel._handleTable3Selection(pair, true); } catch (_) {}
                         try { window.aiPanel._handleTable12PairToggle('table1', pair, true); } catch (_) {}
                         try { window.aiPanel._handleTable12PairToggle('table2', pair, true); } catch (_) {}
-                        // T2 13-opposite half — uses pair-key suffix '_13opp'
-                        // per the renderer's table2NextProjections shape.
                         try { window.aiPanel._handleTable12PairToggle('table2', pair + '_13opp', true); } catch (_) {}
                     }
                 } else {
@@ -531,6 +578,7 @@ class AutoUpdateOrchestrator {
         if (mode === 't1-strategy') this.decisionMode = 't1-strategy';
         else if (mode === 'ai-trained') this.decisionMode = 'ai-trained';
         else if (mode === 'test') this.decisionMode = 'test';
+        else if (mode === '3t-selection') this.decisionMode = '3t-selection';
         else this.decisionMode = 'auto';
         // Drop any queued AI-trained feedback when leaving ai-trained,
         // so a later re-entry cannot misattribute an old decision to a
@@ -542,6 +590,11 @@ class AutoUpdateOrchestrator {
         // future re-entry re-picks based on the latest pairModels.
         if (prev === 'test' && this.decisionMode !== 'test') {
             this._strategyLabLockedPair = null;
+        }
+        // 3T-Selection: same lifecycle, separate locked-pair var so
+        // switching between 'test' and '3t-selection' doesn't leak state.
+        if (prev === '3t-selection' && this.decisionMode !== '3t-selection') {
+            this._3tLockedPair = null;
         }
         console.log(`🤖 Decision mode → ${this.decisionMode}`);
     }
