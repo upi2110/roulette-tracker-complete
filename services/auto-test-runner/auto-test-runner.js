@@ -242,6 +242,9 @@ class AutoTestRunner {
             };
         }
 
+        // Backlog C — pair-rotation parity for method='test'. Pre-fetch
+        // the persisted training records once so the AT runner can build
+        // a per-session active-pair schedule using the same recommender
         const allSessions = { 1: [], 2: [], 3: [], 4: [] };
 
         // Total work: each starting position × 3 strategies
@@ -342,6 +345,7 @@ class AutoTestRunner {
      * @param {number} strategy - 1=Aggressive, 2=Conservative, 3=Cautious
      * @returns {SessionResult}
      */
+
     _runSession(testSpins, startIdx, strategy) {
         const { STARTING_BANKROLL, TARGET_PROFIT, MIN_BET, MAX_BET, LOSS_STREAK_RESET, MAX_RESETS, STOP_LOSS } = this._sessionConfig;
 
@@ -655,9 +659,8 @@ class AutoTestRunner {
                     reason: 'Strategy-Lab module not loaded'
                 };
             }
-            // Lock the pair lazily on the first decision in this session.
-            // _runSession resets _lockedTestPair at the start of each
-            // session, so a fresh pick happens per session.
+            // Strategy-Lab pair lock-in: select once at session start
+            // (cleared by _runSession at session boundary).
             if (!this._lockedTestPair) {
                 this._lockedTestPair = SL.selectBestPair(this.engine);
             }

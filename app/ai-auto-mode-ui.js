@@ -318,6 +318,15 @@ class AIAutoModeUI {
             });
         }
 
+        // GBM model toggle removed — Test Lab uses the marginal scorer.
+        // Force flags off so any leftover localStorage value is ignored.
+        if (typeof window !== 'undefined') {
+            window.testLabUseModel        = false;
+            window.testLabMarginThreshold = 0;
+            try { localStorage.removeItem('testLab.useModel'); } catch (_) {}
+            try { localStorage.removeItem('testLab.marginThreshold'); } catch (_) {}
+        }
+
         if (trainBtn) {
             // Click is now routed through the training-mode router.
             // For 'user-mode' (default) the router invokes startTraining()
@@ -526,6 +535,11 @@ class AIAutoModeUI {
             this.currentMode === '3t-selection'
         );
         this.togglePairSelection(!engineDriven);
+
+        // Phase 2 — let the AI Prediction Panel react to a Test-Lab
+        // entry/exit so it can hide/show T3 and run the autopilot
+        // without waiting for the next spin.
+        try { if (window.aiPanel && typeof window.aiPanel.refreshTestLabUI === 'function') window.aiPanel.refreshTestLabUI(); } catch (_) { /* swallow */ }
 
         const statusDiv = document.getElementById('autoModeStatus');
         if (statusDiv) {

@@ -212,9 +212,23 @@ class AutoUpdateOrchestrator {
                 : [];
             const idx = spinsArr.length - 1;
 
-            // Lock the pair on first live decision in this session.
-            // Cleared by setDecisionMode() and on session reset.
-            if (!this._strategyLabLockedPair) {
+            // Phase 2 — Test Lab: the AI Prediction Panel autopilot
+            // (_runTestLabAutopilot) drives T1 pair selection and
+            // rotation on miss. Take the locked pair from the
+            // autopilot's current T1 selection so the strategy-lab
+            // intersection rotates with it. Fall back to selectBestPair
+            // only on cold start (autopilot hasn't picked yet).
+            let _autopilotPair = null;
+            try {
+                const _sel = window.aiPanel && window.aiPanel.table1Selections;
+                if (_sel) {
+                    const _keys = Object.keys(_sel);
+                    if (_keys.length > 0) _autopilotPair = _keys[0];
+                }
+            } catch (_) { /* ignore */ }
+            if (_autopilotPair) {
+                this._strategyLabLockedPair = _autopilotPair;
+            } else if (!this._strategyLabLockedPair) {
                 this._strategyLabLockedPair = window.StrategyLab.selectBestPair(window.aiAutoEngine);
             }
 
@@ -263,6 +277,12 @@ class AutoUpdateOrchestrator {
 
             if (!this._3tLockedPair) {
                 this._3tLockedPair = window.Strategy3T.selectBestPair(window.aiAutoEngine);
+                const _pmCount = (window.aiAutoEngine && window.aiAutoEngine.pairModels)
+                    ? Object.keys(window.aiAutoEngine.pairModels).length : 0;
+                console.log(`🎯 3T-Selection: locking pair → ${this._3tLockedPair || '(null)'} (engine.pairModels=${_pmCount})`);
+                if (!this._3tLockedPair) {
+                    console.warn('🎯 3T-Selection: selectBestPair returned NULL — engine has no pairModels yet. SKIP until engine trains.');
+                }
             }
 
             // Grey numbers: same wheel-derived source as the Test (Lab)
@@ -423,7 +443,21 @@ class AutoUpdateOrchestrator {
                 // share the same pair-selection cascade: T1 + T2 (pair +
                 // 13-opp halves) + T3 all get the locked pair so V6's
                 // intersection produces the bet.
-                if (this.decisionMode === 'test' || this.decisionMode === '3t-selection') {
+                if (this.decisionMode === 'test') {
+                    // Phase 2 — Test Lab no longer uses T3. Only reselect
+                    // T1 + T2 (pair + its 13-opposite). Use the shared
+                    // helper so ref0 ↔ ref19 is treated as the mutual
+                    // 13-opposite pair (NOT 'ref0_13opp', which would
+                    // be redundant with ref19).
+                    const pair = decision.selectedPair;
+                    if (pair) {
+                        const _oppFn = k => (k === 'ref0' ? 'ref19' : (k === 'ref19' ? 'ref0' : (k.endsWith('_13opp') ? k.slice(0, -'_13opp'.length) : k + '_13opp')));
+                        const _opp = _oppFn(pair);
+                        try { window.aiPanel._handleTable12PairToggle('table1', pair, true); } catch (_) {}
+                        try { window.aiPanel._handleTable12PairToggle('table2', pair, true); } catch (_) {}
+                        try { window.aiPanel._handleTable12PairToggle('table2', _opp, true); } catch (_) {}
+                    }
+                } else if (this.decisionMode === '3t-selection') {
                     const pair = decision.selectedPair;
                     if (pair) {
                         try { window.aiPanel._handleTable3Selection(pair, true); } catch (_) {}
@@ -456,7 +490,16 @@ class AutoUpdateOrchestrator {
                     && typeof window.aiAutoEngine.recordSkip === 'function') {
                 window.aiAutoEngine.recordSkip();
             }
-            if (window.aiPanel) {
+            // Test Lab ('test') with the autopilot keeps its T1 pair
+            // across SKIPs so the autopilot's rotation continuity is
+            // preserved (without this, every empty-intersection SKIP
+            // would wipe the autopilot's pick and force a re-seed).
+            // Every other mode (incl. 3T-Selection, t1-strategy, auto,
+            // ai-trained) uses the original SKIP behavior — clear
+            // selections so stale UI from the previous BET doesn't
+            // bleed into the next decision.
+            const _keepSelections = (this.decisionMode === 'test');
+            if (window.aiPanel && !_keepSelections) {
                 window.aiPanel.clearSelections();
             }
             if (window.rouletteWheel && typeof window.rouletteWheel.clearHighlights === 'function') {

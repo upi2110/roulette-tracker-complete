@@ -911,13 +911,30 @@ class MoneyManagementPanel {
         }
 
         // AUTO MODE SKIP: If AI engine decided SKIP, don't create a bet
-        // This prevents the delayed prediction cascade from overwriting a SKIP decision
+        // This prevents the delayed prediction cascade from overwriting a SKIP decision.
+        //
+        // EXCEPTION (Test Lab only): the autopilot's T1 pair drives the
+        // V6 cascade selections. Strategy-Lab's intersection (T1 ∩ T2 ∩
+        // T2_13opp, no T3) is stricter than V6's cascade, so strategy-
+        // lab may return SKIP while V6 still has a non-empty bet on
+        // the same autopilot-chosen pair. In Test Lab, V6 is authoritative
+        // because that's what the user SEES on screen.
+        // 3T-Selection / Auto / T1-Strategy / AI-Trained: original
+        // behavior — strategy SKIP blocks the bet.
         const autoEngine = typeof window !== 'undefined' ? window.aiAutoEngine : null;
-        if (autoEngine && autoEngine.isEnabled && autoEngine.lastDecision === null) {
+        const orchMode = (typeof window !== 'undefined' && window.autoUpdateOrchestrator)
+            ? window.autoUpdateOrchestrator.decisionMode
+            : null;
+        const skipGuardBypass = (orchMode === 'test');
+        if (autoEngine && autoEngine.isEnabled && autoEngine.lastDecision === null && !skipGuardBypass) {
             this.pendingBet = null;
             console.log('⏭️ AUTO SKIP: Not creating pending bet (engine decided SKIP)');
             return;
         }
+        if (skipGuardBypass && autoEngine && autoEngine.lastDecision === null) {
+            console.log('🧪 Test Lab: V6 cascade authoritative — accepting bet despite strategy-lab SKIP');
+        }
+
 
         console.log('💰 Money panel received prediction:', {
             signal: prediction.signal,

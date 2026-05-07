@@ -5,13 +5,15 @@ AI Server V6 - NEW STRATEGY
 API server for the new prediction strategy
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 import uvicorn
 import sys
 import os
+import json
+import datetime
 
 # Add backend directory to path
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -234,6 +236,61 @@ async def reset_session():
         "status": "session_reset",
         "bankroll": session_state['bankroll']
     }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PAIR TRAINING DATA CAPTURE (Phase 1 — silent capture, no behavior change)
+# Front-end posts one record per spin per active T1/T2 pair so we can later
+# train a model that ranks T1 pairs by hit-probability with confidence.
+# Storage: line-delimited JSON (one record per line) — easy to append &
+# stream-read for training.
+# ─────────────────────────────────────────────────────────────────────
+PAIR_TRAINING_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'analysis',
+    'pair_training_data.jsonl'
+)
+
+
+@app.post("/log_pair_training")
+async def log_pair_training(request: Request):
+    """Append a per-spin pair-training record (jsonl). Accepts arbitrary
+    JSON dict; server stamps `received_at` ISO timestamp."""
+    try:
+        record = await request.json()
+        if not isinstance(record, dict):
+            raise HTTPException(status_code=400, detail="record must be a JSON object")
+        record['received_at'] = datetime.datetime.utcnow().isoformat() + 'Z'
+        os.makedirs(os.path.dirname(PAIR_TRAINING_PATH), exist_ok=True)
+        with open(PAIR_TRAINING_PATH, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(record, ensure_ascii=False) + '\n')
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ log_pair_training error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/pair_training_stats")
+async def pair_training_stats():
+    """Quick health/inspection endpoint — returns row count + last record."""
+    if not os.path.exists(PAIR_TRAINING_PATH):
+        return {"rows": 0, "last": None, "path": PAIR_TRAINING_PATH}
+    rows = 0
+    last = None
+    with open(PAIR_TRAINING_PATH, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rows += 1
+            last = line
+    try:
+        last = json.loads(last) if last else None
+    except Exception:
+        pass
+    return {"rows": rows, "last": last, "path": PAIR_TRAINING_PATH}
 
 
 if __name__ == "__main__":
