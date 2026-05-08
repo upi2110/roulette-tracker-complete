@@ -21,12 +21,12 @@ class MoneyManagementPanel {
             isBettingEnabled: false,  // NEW: User control for betting
             bettingStrategy: 4,  // 1=Aggressive, 2=Conservative, 3=Cautious, 4=Defensive (default: Defensive)
             // ─── Strategy-4 Defensive variables (user-tunable) ───
-            // Defaults match the previous hard-coded behavior:
-            //   +$1 after 5 consecutive losses, -$1 after 2 consecutive wins.
+            // Default escalation:
+            //   +$1 after 6 consecutive losses, -$1 after 1 consecutive win.
             // Edited via the ⚙️ Variables button next to the strategy button.
-            s4LossesToIncrease: 5,
+            s4LossesToIncrease: 6,
             s4LossIncrement:    1,
-            s4WinsToDecrease:   2,
+            s4WinsToDecrease:   1,
             s4WinDecrement:     1,
             consecutiveWins: 0,  // Track consecutive wins for strategies 2 & 3
             currentBetPerNumber: 2  // Track current bet amount (overrides backend)
@@ -666,11 +666,11 @@ class MoneyManagementPanel {
         } else if (this.sessionData.bettingStrategy === 4) {
             // ═══ STRATEGY 4: DEFENSIVE (user-tunable) ═══
             // Variables edited via the ⚙️ button next to the strategy
-            // toggle. Defaults: +$1 after 5 losses, -$1 after 2 wins.
+            // toggle. Defaults: +$1 after 6 losses, -$1 after 1 win.
             // Floor remains $2 regardless of decrement size.
-            const lossesNeeded = Math.max(1, parseInt(this.sessionData.s4LossesToIncrease, 10) || 5);
+            const lossesNeeded = Math.max(1, parseInt(this.sessionData.s4LossesToIncrease, 10) || 6);
             const lossInc      = Math.max(0, parseInt(this.sessionData.s4LossIncrement,    10) || 1);
-            const winsNeeded   = Math.max(1, parseInt(this.sessionData.s4WinsToDecrease,   10) || 2);
+            const winsNeeded   = Math.max(1, parseInt(this.sessionData.s4WinsToDecrease,   10) || 1);
             const winDec       = Math.max(0, parseInt(this.sessionData.s4WinDecrement,     10) || 1);
             if (hit) {
                 if (this.sessionData.consecutiveWins >= winsNeeded) {
