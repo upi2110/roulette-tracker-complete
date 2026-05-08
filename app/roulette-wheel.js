@@ -70,7 +70,11 @@ class RouletteWheel {
         // DOM so the first _onFilterChange()/drawWheel() call sees the
         // same truth whether it reads this.filters or the radio group.
         this.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true,
-                         set0: true, set5: true, set6: true };
+                         set0: true, set5: true, set6: true,
+                         // When true, the final bet set is inverted: every
+                         // wheel number NOT currently selected becomes the
+                         // bet, and every selected number is removed.
+                         inverse: false };
 
         // Store the raw/unfiltered prediction for re-filtering
         this._rawPrediction = null;
@@ -103,6 +107,11 @@ class RouletteWheel {
                 ">
                     <input type="checkbox" id="wheelGreyToggle" checked style="vertical-align:middle;"> include grey
                 </label>
+                <button id="wheelInverseBtn" title="Flip the bet set: remove all currently selected wheel numbers, select all the others. Click again to flip back. Mirrors to money panel + AI display + wheel highlights." style="
+                    font-size:10px;font-weight:700;cursor:pointer;user-select:none;
+                    padding:3px 9px;border:1px solid #94a3b8;border-radius:4px;
+                    background:#f8fafc;color:#1e293b;letter-spacing:.2px;line-height:1;
+                ">⇄ Inverse</button>
                 <button class="btn-toggle" id="toggleWheelPanel">−</button>
             </div>
             <div class="panel-content">
@@ -227,6 +236,30 @@ class RouletteWheel {
             });
         }
 
+        // Inverse button — flips the bet set on click. Active state
+        // is reflected by a darker background + active class so the
+        // user always knows which side of the flip they're on.
+        const inverseBtn = document.getElementById('wheelInverseBtn');
+        if (inverseBtn) {
+            inverseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.filters.inverse = !this.filters.inverse;
+                if (this.filters.inverse) {
+                    inverseBtn.style.background = '#1e293b';
+                    inverseBtn.style.color       = '#fde68a';
+                    inverseBtn.style.borderColor = '#1e293b';
+                    inverseBtn.textContent       = '⇄ Inverse ON';
+                } else {
+                    inverseBtn.style.background = '#f8fafc';
+                    inverseBtn.style.color       = '#1e293b';
+                    inverseBtn.style.borderColor = '#94a3b8';
+                    inverseBtn.textContent       = '⇄ Inverse';
+                }
+                console.log(`⇄ Wheel inverse mode ${this.filters.inverse ? 'ON' : 'OFF'}`);
+                if (this._rawPrediction) this._applyFilters();
+            });
+        }
+
         console.log('✅ Wheel visualization initialized (LEFT position)');
     }
 
@@ -286,6 +319,14 @@ class RouletteWheel {
     }
 
     _passesFilter(num) {
+        // Same as _passesFilterIgnoreInverse — the inverse flag is
+        // applied later in _applyFilters by complementing the result
+        // set against the universe, NOT per-number here. So this fn
+        // returns the same value regardless of inverse state.
+        return this._passesFilterIgnoreInverse(num);
+    }
+
+    _passesFilterIgnoreInverse(num) {
         // Table filter: number must be in at least one CHECKED table
         const inZero = ZERO_TABLE_NUMS.has(num);
         const inNineteen = NINETEEN_TABLE_NUMS.has(num);
@@ -318,7 +359,7 @@ class RouletteWheel {
                       this.filters.positive && this.filters.negative &&
                       this.filters.set0 && this.filters.set5 && this.filters.set6;
 
-        if (allOn) {
+        if (allOn && !this.filters.inverse) {
             // No filtering needed — show everything
             // Sync money panel FIRST so _updateNumberLists reads current data
             this._syncMoneyPanel(raw.prediction);
@@ -329,8 +370,28 @@ class RouletteWheel {
         }
 
         // Filter primary numbers through checked filters
-        const filteredPrimary = raw.prediction.numbers.filter(n => this._passesFilter(n));
-        const filteredExtra = (raw.extraNumbers || []).filter(n => this._passesFilter(n));
+        let filteredPrimary = raw.prediction.numbers.filter(n => this._passesFilter(n));
+        let filteredExtra   = (raw.extraNumbers || []).filter(n => this._passesFilter(n));
+
+        // ⇄ Inverse mode — replace the bet set with its complement on
+        // the European wheel. Whatever was selected becomes deselected,
+        // whatever was NOT selected becomes selected. The complement is
+        // computed against the ALL-37-pockets universe but still respects
+        // the table/sign/set filters above (so flipping while a sub-filter
+        // is active flips only inside that sub-filter's allowed pool).
+        if (this.filters.inverse) {
+            const universe = (Array.isArray(this.wheelOrder) ? this.wheelOrder : [])
+                .filter(n => this._passesFilterIgnoreInverse(n));
+            const selectedSet = new Set(filteredPrimary);
+            const extraSet    = new Set(filteredExtra);
+            const newPrimary  = universe.filter(n => !selectedSet.has(n));
+            // Extras don't really exist after an inverse (the "extra"
+            // notion comes from the strategy's third-ref structure which
+            // doesn't apply to the complement). Drop them so the bet is
+            // pure complement-of-primary.
+            filteredPrimary = newPrimary;
+            filteredExtra   = [];
+        }
 
         // Recalculate anchors from filtered primary
         let filteredAnchors = [], filteredLoose = [], filteredAnchorGroups = [];
