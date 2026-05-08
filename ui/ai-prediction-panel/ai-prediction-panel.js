@@ -91,8 +91,14 @@ class AIPredictionPanel {
         selectionPanel.id = 'aiSelectionPanel';
         selectionPanel.innerHTML = `
             <div class="panel-header">
-                <div style="display:inline-flex;align-items:center;gap:10px;">
+                <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     <h3 style="margin:0;">🎯 AI Prediction - Multi-Table Selection</h3>
+                    <button id="inversePairBtn" title="Flip every selected T1 pair to its 13-opposite. e.g. P → P-13opp, P+1 → P+1-13opp, ref0 ↔ ref19. T2 mirror stays in sync automatically." style="
+                        font-size:11px;padding:3px 9px;cursor:pointer;
+                        background:rgba(255,255,255,0.18);color:#fff;
+                        border:1px solid rgba(255,255,255,0.45);border-radius:4px;
+                        font-weight:600;line-height:1;letter-spacing:.2px;
+                    ">⇄ Inverse Pair</button>
                     <button id="deselectAllPairsBtn" title="Clear all pair selections across T1, T2, T3 (does not affect spin history or money management)" style="
                         font-size:11px;padding:3px 9px;cursor:pointer;
                         background:rgba(255,255,255,0.18);color:#fff;
@@ -221,6 +227,77 @@ class AIPredictionPanel {
                     console.log('✕ User clicked Deselect Pairs — all T1/T2/T3 selections cleared.');
                 } catch (e) {
                     console.warn('Deselect Pairs failed:', e && e.message);
+                }
+            });
+        }
+
+        // Inverse-pair button — flips every currently selected T1 pair
+        // to its 13-opposite, then re-mirrors T2 to {pair, opposite}
+        // (which is the same set since opposite-of-opposite = pair).
+        // T3 is left untouched. Safe in all modes; on the next spin
+        // the autopilot / orchestrator will see the flipped pair as
+        // active and continue from there.
+        const inversePairBtn = document.getElementById('inversePairBtn');
+        if (inversePairBtn) {
+            const oppFn = k => (k === 'ref0' ? 'ref19'
+                          : (k === 'ref19' ? 'ref0'
+                          : (k.endsWith('_13opp') ? k.slice(0, -'_13opp'.length) : k + '_13opp')));
+            inversePairBtn.addEventListener('click', () => {
+                try {
+                    const currentT1 = Object.keys(this.table1Selections || {});
+                    if (currentT1.length === 0) {
+                        console.log('⇄ Inverse Pair: nothing selected in T1 — nothing to flip');
+                        return;
+                    }
+                    // Compute every flip pair → opposite. Skip duplicates
+                    // (in case both halves were already selected).
+                    const flips = [];
+                    for (const pk of currentT1) {
+                        const opp = oppFn(pk);
+                        flips.push({ from: pk, to: opp });
+                    }
+                    // Toggle OFF the originals first, then ON the flipped.
+                    // Using _handleTable12PairToggle so the side-effects
+                    // (auto-pick refresh tracking, dashboard, T2 mirror)
+                    // run correctly.
+                    for (const { from } of flips) {
+                        if (this.table1Selections[from]) {
+                            this._handleTable12PairToggle('table1', from, false);
+                        }
+                    }
+                    for (const { to } of flips) {
+                        if (!this.table1Selections[to]) {
+                            this._handleTable12PairToggle('table1', to, true);
+                        }
+                    }
+                    // T2 mirror — for each flipped pair, ensure T2 has
+                    // both the new pair and its opposite (which is the
+                    // OLD pair). Net result: T2 ends with the same two
+                    // entries as before (base + 13opp). We still call
+                    // _setSingleT1Pair-style mirror to be safe.
+                    for (const { to } of flips) {
+                        const opp = oppFn(to);
+                        const want = new Set([to, opp]);
+                        const currentT2 = [...Object.keys(this.table2Selections || {})];
+                        currentT2.forEach(pk => { if (!want.has(pk)) this._handleTable12PairToggle('table2', pk, false); });
+                        want.forEach(pk => {
+                            const exists = (this.table2Pairs || []).some(p => p.key === pk);
+                            if (exists && (!this.table2Selections || !this.table2Selections[pk])) {
+                                this._handleTable12PairToggle('table2', pk, true);
+                            }
+                        });
+                    }
+                    // Re-render lists, dashboard, counts.
+                    try {
+                        this._renderTable12Checkboxes('table1', this.table1Pairs, this.table1Selections);
+                        this._renderTable12Checkboxes('table2', this.table2Pairs, this.table2Selections);
+                        this._updateCounts();
+                        this._renderSummaryDashboard();
+                    } catch (_) { /* swallow */ }
+                    const summary = flips.map(f => `${f.from}→${f.to}`).join(', ');
+                    console.log(`⇄ Inverse Pair: T1 flipped (${summary})`);
+                } catch (e) {
+                    console.warn('Inverse Pair failed:', e && e.message);
                 }
             });
         }
