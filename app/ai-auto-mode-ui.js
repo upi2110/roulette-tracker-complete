@@ -139,6 +139,14 @@ class AIAutoModeUI {
                     border:2px solid #64748b;border-radius:5px;cursor:pointer;
                     background:transparent;color:#94a3b8;
                 ">AI-trained</button>
+                <!-- 3T-Selection: production copy of the Strategy-Lab algorithm.
+                     Independent module (window.Strategy3T) so it can evolve
+                     separately from the Test (Lab) sandbox. -->
+                <button id="threeTSelectionModeBtn" data-tab-group="auto" title="3T-Selection — pair-intersection across T1, T2, T2·13, T3 (production copy of Strategy-Lab)" style="
+                    display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
+                    border:2px solid #64748b;border-radius:5px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">3T-Selection</button>
                 <!-- Test tab placeholder (single mode; tab click sets it) -->
                 <button id="testLabModeBtn" data-tab-group="test" title="Strategy Lab — sandbox mode for evaluating experimental strategies in live play" style="
                     display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
@@ -234,6 +242,13 @@ class AIAutoModeUI {
             });
         }
 
+        const threeTBtn = document.getElementById('threeTSelectionModeBtn');
+        if (threeTBtn) {
+            threeTBtn.addEventListener('click', () => {
+                if (this.currentMode !== '3t-selection') this.setMode('3t-selection');
+            });
+        }
+
         const testLabBtn = document.getElementById('testLabModeBtn');
         if (testLabBtn) {
             testLabBtn.addEventListener('click', () => {
@@ -301,6 +316,15 @@ class AIAutoModeUI {
                 const v = !!(e && e.detail && e.detail.value);
                 if (greyToggle.checked !== v) greyToggle.checked = v;
             });
+        }
+
+        // GBM model toggle removed — Test Lab uses the marginal scorer.
+        // Force flags off so any leftover localStorage value is ignored.
+        if (typeof window !== 'undefined') {
+            window.testLabUseModel        = false;
+            window.testLabMarginThreshold = 0;
+            try { localStorage.removeItem('testLab.useModel'); } catch (_) {}
+            try { localStorage.removeItem('testLab.marginThreshold'); } catch (_) {}
         }
 
         if (trainBtn) {
@@ -386,7 +410,7 @@ class AIAutoModeUI {
                 }
             }
 
-        } else if (mode === 'auto' || mode === 't1-strategy' || mode === 'test') {
+        } else if (mode === 'auto' || mode === 't1-strategy' || mode === 'test' || mode === '3t-selection') {
             // Switching to an engine-driven live mode — requires trained
             // engine. Both 'auto' and 't1-strategy' share the engine-
             // enable + orchestrator auto-on plumbing; the only
@@ -444,15 +468,16 @@ class AIAutoModeUI {
                 // per-spin. Falls through harmlessly if setDecisionMode
                 // is not present (older orchestrator build).
                 if (typeof window.autoUpdateOrchestrator.setDecisionMode === 'function') {
-                    // 'test' (Strategy Lab) shares the default decision
-                    // pipeline ('auto') today — placeholder until
-                    // experimental strategies are wired into the
-                    // orchestrator. Pass 'test' through so a future
-                    // setDecisionMode upgrade can branch on it without
-                    // requiring another live-mode change here.
-                    const decisionMode = mode === 't1-strategy'
-                        ? 't1-strategy'
-                        : (mode === 'test' ? 'test' : 'auto');
+                    // Map UI mode → orchestrator decisionMode. 't1-strategy',
+                    // 'test' (Strategy-Lab sandbox) and '3t-selection'
+                    // (production copy) each have their own decision branch
+                    // in the orchestrator. Everything else falls through
+                    // to 'auto'.
+                    let decisionMode;
+                    if (mode === 't1-strategy')      decisionMode = 't1-strategy';
+                    else if (mode === 'test')        decisionMode = 'test';
+                    else if (mode === '3t-selection') decisionMode = '3t-selection';
+                    else                             decisionMode = 'auto';
                     window.autoUpdateOrchestrator.setDecisionMode(decisionMode);
                 }
             }
@@ -506,9 +531,15 @@ class AIAutoModeUI {
             this.currentMode === 'auto' ||
             this.currentMode === 't1-strategy' ||
             this.currentMode === 'ai-trained' ||
-            this.currentMode === 'test'
+            this.currentMode === 'test' ||
+            this.currentMode === '3t-selection'
         );
         this.togglePairSelection(!engineDriven);
+
+        // Phase 2 — let the AI Prediction Panel react to a Test-Lab
+        // entry/exit so it can hide/show T3 and run the autopilot
+        // without waiting for the next spin.
+        try { if (window.aiPanel && typeof window.aiPanel.refreshTestLabUI === 'function') window.aiPanel.refreshTestLabUI(); } catch (_) { /* swallow */ }
 
         const statusDiv = document.getElementById('autoModeStatus');
         if (statusDiv) {
@@ -556,7 +587,7 @@ class AIAutoModeUI {
      */
     _tabForMode(mode) {
         if (mode === 'manual' || mode === 'semi') return 'manual';
-        if (mode === 'auto' || mode === 't1-strategy' || mode === 'ai-trained') return 'auto';
+        if (mode === 'auto' || mode === 't1-strategy' || mode === 'ai-trained' || mode === '3t-selection') return 'auto';
         if (mode === 'test') return 'test';
         return 'manual';
     }
@@ -632,6 +663,15 @@ class AIAutoModeUI {
             aiTrainedBtn.style.background = mode === 'ai-trained' ? '#a855f7' : 'transparent';
             aiTrainedBtn.style.color = mode === 'ai-trained' ? 'white' : '#94a3b8';
             aiTrainedBtn.style.borderColor = mode === 'ai-trained' ? '#a855f7' : '#64748b';
+        }
+
+        const threeTBtn = document.getElementById('threeTSelectionModeBtn');
+        if (threeTBtn) {
+            // Sky blue accent — distinct from AI-trained (magenta) /
+            // Test-Lab (teal). 3T-Selection is the production sibling.
+            threeTBtn.style.background = mode === '3t-selection' ? '#0ea5e9' : 'transparent';
+            threeTBtn.style.color = mode === '3t-selection' ? 'white' : '#94a3b8';
+            threeTBtn.style.borderColor = mode === '3t-selection' ? '#0ea5e9' : '#64748b';
         }
 
         const testLabBtn = document.getElementById('testLabModeBtn');

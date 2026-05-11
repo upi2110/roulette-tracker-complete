@@ -13,11 +13,11 @@
  *      Numbers with ±1 ring for T1, ±2 for T2). Per-pair-per-table:
  *         primary = union of selected primary refs' numbers
  *         extra   = the extra ref's numbers
- *   3. (T3 removed in Phase 2 — Test Lab now intersects only T1 ∩ T2
- *      ∩ T2_13opp. The 3T-Selection variant retains the T3 source.)
- *   4. Build pairSets   = [T1.primary, T2.primary, T2_13opp.primary]
+ *   3. T3 has no per-ref split — its source is the full pair
+ *      projection (engine._computeProjectionForPair).
+ *   4. Build pairSets   = [T1.primary, T2.primary, T2_13opp.primary, T3]
  *      Build extendedSets = [T1.primary∪extra, T2.primary∪extra,
- *                            T2_13opp.primary∪extra]
+ *                            T2_13opp.primary∪extra, T3]
  *   5. primaryIntersection  = ∩ pairSets
  *      extendedIntersection = ∩ extendedSets
  *   6. Bet:
@@ -37,9 +37,14 @@
         module.exports = api;
     }
     if (typeof window !== 'undefined') {
-        window.StrategyLab = api;
-        window.selectBestPairForStrategyLab = api.selectBestPair;
-        window.decideStrategyLab = api.decideStrategyLab;
+        // 3T-Selection production module — independent namespace so it
+        // can diverge from the Test (Lab) sandbox copy
+        // (window.StrategyLab in strategies/strategy-lab/strategy-lab.js).
+        // Same algorithm at creation time; either side can be modified
+        // without affecting the other.
+        window.Strategy3T = api;
+        window.selectBestPairFor3T = api.selectBestPair;
+        window.decide3T = api.decideStrategyLab;
     }
 }(this, function () {
 
@@ -232,92 +237,25 @@
      * source. Mirrors V6 in app/ai-prediction-panel.js getPredictions().
      */
     function _buildPairSources(engine, spins, idx, refKey) {
-        // Phase 2 — accept either half of a 13-opposite pair as the
-        // locked refKey. _tableProjectionsForPair always returns
-        // {pair, opp} where `pair` = projection at refNum and
-        // `opp` = projection at digit-13-opposite(refNum). When the
-        // locked half is _13opp we swap roles so T1 reads from .opp
-        // and T2_13opp reads from .pair.
-        //
-        // SPECIAL CASE — ref0 / ref19:
-        //   By user spec these are mutual 13-opposites: ref0 ↔ ref19.
-        //   But mathematically DIGIT_13_OPPOSITES[0]=34 (≠19) and
-        //   DIGIT_13_OPPOSITES[19]=13 (≠0). The default code path
-        //   would therefore project ref0's "opp" at refNum=34 and
-        //   ref19's "opp" at refNum=13 — both wrong, producing empty
-        //   intersections vs V6's panel cascade (which correctly
-        //   uses ref19 = refNum 19 as ref0's 13-opp twin).
-        //   Fix: build projections explicitly using refNum=0 and
-        //   refNum=19 for these two pair-keys, bypassing the
-        //   digit-13-opposite logic.
-        const buildProjFromRow = (row, neighborRange) => {
-            const out = {};
-            for (const k of ['first','second','third']) {
-                const tgt = row && row[k];
-                const nums = (typeof tgt === 'number')
-                    ? engine._getExpandTargetsToBetNumbers([tgt], neighborRange)
-                    : [];
-                out[k] = new Set(nums || []);
-            }
-            return out;
-        };
+        const camelPair = REFKEY_TO_PAIR[refKey] || refKey;
+        const opp13Pair = camelPair + '_13opp';
 
-        let baseKeyRaw, isOppLock;
-        let t1ProjRaw, t2ProjRaw;
-        let baseCamel, oppCamel;
+        const t1Proj = _tableProjectionsForPair(engine, spins, idx, camelPair, 1);
+        const t2Proj = _tableProjectionsForPair(engine, spins, idx, camelPair, 2);
+        if (!t1Proj || !t1Proj.pair) return null;
+        if (!t2Proj || !t2Proj.pair || !t2Proj.opp) return null;
 
-        if (refKey === 'ref0' || refKey === 'ref19') {
-            const lockedNum = (refKey === 'ref0') ? 0 : 19;
-            const oppNum    = (refKey === 'ref0') ? 19 : 0;
-            const lockedRow = engine._getLookupRow(lockedNum);
-            const oppRow    = engine._getLookupRow(oppNum);
-            if (!lockedRow || !oppRow) return null;
-            // Pair = locked side, opp = mutual partner. NO swap.
-            t1ProjRaw = { pair: buildProjFromRow(lockedRow, 1), opp: buildProjFromRow(oppRow, 1) };
-            t2ProjRaw = { pair: buildProjFromRow(lockedRow, 2), opp: buildProjFromRow(oppRow, 2) };
-            baseKeyRaw = refKey;
-            isOppLock  = false;
-            baseCamel  = refKey;
-            oppCamel   = (refKey === 'ref0') ? 'ref19' : 'ref0';
-        } else {
-            if (typeof refKey === 'string' && refKey.endsWith('_13opp')) {
-                baseKeyRaw = refKey.slice(0, -'_13opp'.length);
-                isOppLock  = true;
-            } else {
-                baseKeyRaw = refKey;
-                isOppLock  = false;
-            }
-            baseCamel = REFKEY_TO_PAIR[baseKeyRaw] || baseKeyRaw;
-            oppCamel  = baseCamel + '_13opp';
-            t1ProjRaw = _tableProjectionsForPair(engine, spins, idx, baseCamel, 1);
-            t2ProjRaw = _tableProjectionsForPair(engine, spins, idx, baseCamel, 2);
-        }
-        if (!t1ProjRaw || !t1ProjRaw.pair) return null;
-        if (!t2ProjRaw || !t2ProjRaw.pair || !t2ProjRaw.opp) return null;
+        // T3 source — full pair prediction (no ref split). Treat the full
+        // set as both the primary AND the extended; T3 has no greys so
+        // it constrains both the OFF and ON intersections identically.
+        const t3Full = engine._computeProjectionForPair(spins, idx, refKey);
+        if (!t3Full || !t3Full.numbers || t3Full.numbers.length === 0) return null;
+        const t3Set = new Set(t3Full.numbers);
 
-        const t1Proj = isOppLock
-            ? { pair: t1ProjRaw.opp, opp: t1ProjRaw.pair }
-            : t1ProjRaw;
-        const t2Proj = isOppLock
-            ? { pair: t2ProjRaw.opp, opp: t2ProjRaw.pair }
-            : t2ProjRaw;
-        const camelPair = baseCamel;
-        const opp13Pair = oppCamel;
-
-        // T3 removed from Test-Lab intersection (Phase 2). The strategy
-        // now intersects only T1 ∩ T2 ∩ T2_13opp; T3 is no longer used
-        // here. The 3T-Selection copy still uses T3 — change scoped to
-        // Test Lab only.
-
-        // Per-source primary/extra split using auto-ref selection. The
-        // pair-key passed here drives history-walking inside
-        // getAutoSelectedRefs, so use the locked side for T1 + T2 and
-        // the opposite side for T2_13opp.
-        const t1PairKey = isOppLock ? oppCamel  : baseCamel;
-        const t2OppKey  = isOppLock ? baseCamel : oppCamel;
-        const a1   = _autoSelectedRefs(engine, spins, idx, t1PairKey, 'table1');
-        const a2   = _autoSelectedRefs(engine, spins, idx, t1PairKey, 'table2');
-        const a2op = _autoSelectedRefs(engine, spins, idx, t2OppKey,  'table2');
+        // Per-source primary/extra split using auto-ref selection.
+        const a1   = _autoSelectedRefs(engine, spins, idx, camelPair,  'table1');
+        const a2   = _autoSelectedRefs(engine, spins, idx, camelPair,  'table2');
+        const a2op = _autoSelectedRefs(engine, spins, idx, opp13Pair,  'table2');
 
         const t1Primary = _unionSets([...a1.primaryRefs].map(r => t1Proj.pair[r]));
         const t1Extra   = t1Proj.pair[a1.extraRef] || new Set();
@@ -330,12 +268,14 @@
             primary: {
                 t1:       t1Primary,
                 t2:       t2Primary,
-                t2_13opp: t2oppPrim
+                t2_13opp: t2oppPrim,
+                t3:       t3Set
             },
             extended: {
                 t1:       _unionSets([t1Primary, t1Extra]),
                 t2:       _unionSets([t2Primary, t2Extra]),
-                t2_13opp: _unionSets([t2oppPrim, t2oppExtr])
+                t2_13opp: _unionSets([t2oppPrim, t2oppExtr]),
+                t3:       t3Set
             },
             // Surfaced for debug / tests.
             autoRefs: { t1: a1, t2: a2, t2_13opp: a2op }
@@ -369,8 +309,8 @@
 
         const includeGrey = (ctx && typeof ctx.includeGrey === 'boolean') ? ctx.includeGrey : true;
         const setList = includeGrey
-            ? [sources.extended.t1, sources.extended.t2, sources.extended.t2_13opp]
-            : [sources.primary.t1,  sources.primary.t2,  sources.primary.t2_13opp];
+            ? [sources.extended.t1, sources.extended.t2, sources.extended.t2_13opp, sources.extended.t3]
+            : [sources.primary.t1,  sources.primary.t2,  sources.primary.t2_13opp,  sources.primary.t3];
 
         const intersection = _intersectSets(setList);
         if (intersection.length === 0) {

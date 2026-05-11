@@ -47,6 +47,20 @@ class AIPredictionPanel {
         // mid-session but it resets to OFF on next load.
         this._t1AutoBetEnabled = false;
 
+        // Tracks which T1/T2 pair selections are still in their
+        // "auto-picked" state vs. manually edited. Each entry is the
+        // SET of refs the auto-pick wrote at that pair's last
+        // auto-select. On every new spin, we re-run getAutoSelectedRefs
+        // ONLY for pairs whose stored refs still match this snapshot
+        // (= user hasn't manually toggled). If they've diverged, the
+        // pair is silently demoted out of this map and left alone.
+        this._autoPickedPairs = {};
+
+        // renderer-3tables.js render() unconditionally calls
+        // onSpinAdded(); used to track new vs re-render so we only
+        // run autopilot on a genuine new spin.
+        this._lastSpinCount = 0;
+
         this.createPanel();
         this.setupToggle();
 
@@ -77,7 +91,21 @@ class AIPredictionPanel {
         selectionPanel.id = 'aiSelectionPanel';
         selectionPanel.innerHTML = `
             <div class="panel-header">
-                <h3>🎯 AI Prediction - Multi-Table Selection</h3>
+                <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <h3 style="margin:0;">🎯 AI Prediction - Multi-Table Selection</h3>
+                    <button id="inversePairBtn" title="Flip every selected T1 pair to its 13-opposite. e.g. P → P-13opp, P+1 → P+1-13opp, ref0 ↔ ref19. T2 mirror stays in sync automatically." style="
+                        font-size:11px;padding:3px 9px;cursor:pointer;
+                        background:rgba(255,255,255,0.18);color:#fff;
+                        border:1px solid rgba(255,255,255,0.45);border-radius:4px;
+                        font-weight:600;line-height:1;letter-spacing:.2px;
+                    ">⇄ Inverse Pair</button>
+                    <button id="deselectAllPairsBtn" title="Clear all pair selections across T1, T2, T3 (does not affect spin history or money management)" style="
+                        font-size:11px;padding:3px 9px;cursor:pointer;
+                        background:rgba(255,255,255,0.18);color:#fff;
+                        border:1px solid rgba(255,255,255,0.45);border-radius:4px;
+                        font-weight:600;line-height:1;letter-spacing:.2px;
+                    ">✕ Deselect Pairs</button>
+                </div>
                 <button class="btn-toggle" id="toggleAIPanel">−</button>
             </div>
             <div class="panel-content" id="aiPanelContent" style="display: block;">
@@ -182,6 +210,95 @@ class AIPredictionPanel {
                 content.style.display = this.isExpanded ? 'block' : 'none';
                 toggleBtn.textContent = this.isExpanded ? '−' : '+';
                 panel.className = this.isExpanded ? 'ai-selection-panel expanded' : 'ai-selection-panel collapsed';
+            });
+        }
+
+        // Deselect-all-pairs button — clears T1, T2, T3 selections in
+        // one click. Does NOT touch spin history, money management,
+        // training data, or any other panel. Safe to call anytime.
+        const deselectBtn = document.getElementById('deselectAllPairsBtn');
+        if (deselectBtn) {
+            deselectBtn.addEventListener('click', () => {
+                try {
+                    this.clearSelections();
+                    if (window.rouletteWheel && typeof window.rouletteWheel.clearHighlights === 'function') {
+                        window.rouletteWheel.clearHighlights();
+                    }
+                    console.log('✕ User clicked Deselect Pairs — all T1/T2/T3 selections cleared.');
+                } catch (e) {
+                    console.warn('Deselect Pairs failed:', e && e.message);
+                }
+            });
+        }
+
+        // Inverse-pair button — flips every currently selected T1 pair
+        // to its 13-opposite, then re-mirrors T2 to {pair, opposite}
+        // (which is the same set since opposite-of-opposite = pair).
+        // T3 is left untouched. Safe in all modes; on the next spin
+        // the autopilot / orchestrator will see the flipped pair as
+        // active and continue from there.
+        const inversePairBtn = document.getElementById('inversePairBtn');
+        if (inversePairBtn) {
+            const oppFn = k => (k === 'ref0' ? 'ref19'
+                          : (k === 'ref19' ? 'ref0'
+                          : (k.endsWith('_13opp') ? k.slice(0, -'_13opp'.length) : k + '_13opp')));
+            inversePairBtn.addEventListener('click', () => {
+                try {
+                    const currentT1 = Object.keys(this.table1Selections || {});
+                    if (currentT1.length === 0) {
+                        console.log('⇄ Inverse Pair: nothing selected in T1 — nothing to flip');
+                        return;
+                    }
+                    // Compute every flip pair → opposite. Skip duplicates
+                    // (in case both halves were already selected).
+                    const flips = [];
+                    for (const pk of currentT1) {
+                        const opp = oppFn(pk);
+                        flips.push({ from: pk, to: opp });
+                    }
+                    // Toggle OFF the originals first, then ON the flipped.
+                    // Using _handleTable12PairToggle so the side-effects
+                    // (auto-pick refresh tracking, dashboard, T2 mirror)
+                    // run correctly.
+                    for (const { from } of flips) {
+                        if (this.table1Selections[from]) {
+                            this._handleTable12PairToggle('table1', from, false);
+                        }
+                    }
+                    for (const { to } of flips) {
+                        if (!this.table1Selections[to]) {
+                            this._handleTable12PairToggle('table1', to, true);
+                        }
+                    }
+                    // T2 mirror — for each flipped pair, ensure T2 has
+                    // both the new pair and its opposite (which is the
+                    // OLD pair). Net result: T2 ends with the same two
+                    // entries as before (base + 13opp). We still call
+                    // _setSingleT1Pair-style mirror to be safe.
+                    for (const { to } of flips) {
+                        const opp = oppFn(to);
+                        const want = new Set([to, opp]);
+                        const currentT2 = [...Object.keys(this.table2Selections || {})];
+                        currentT2.forEach(pk => { if (!want.has(pk)) this._handleTable12PairToggle('table2', pk, false); });
+                        want.forEach(pk => {
+                            const exists = (this.table2Pairs || []).some(p => p.key === pk);
+                            if (exists && (!this.table2Selections || !this.table2Selections[pk])) {
+                                this._handleTable12PairToggle('table2', pk, true);
+                            }
+                        });
+                    }
+                    // Re-render lists, dashboard, counts.
+                    try {
+                        this._renderTable12Checkboxes('table1', this.table1Pairs, this.table1Selections);
+                        this._renderTable12Checkboxes('table2', this.table2Pairs, this.table2Selections);
+                        this._updateCounts();
+                        this._renderSummaryDashboard();
+                    } catch (_) { /* swallow */ }
+                    const summary = flips.map(f => `${f.from}→${f.to}`).join(', ');
+                    console.log(`⇄ Inverse Pair: T1 flipped (${summary})`);
+                } catch (e) {
+                    console.warn('Inverse Pair failed:', e && e.message);
+                }
             });
         }
     }
@@ -443,10 +560,15 @@ class AIPredictionPanel {
             // T2 keeps its own logic (still passes 'table2' here).
             const lookupTable = (tableId === 'table1') ? 'table2' : tableId;
             if (!this._extraRefs) this._extraRefs = {};
+            if (!this._autoPickedPairs) this._autoPickedPairs = {};
             if (window.getAutoSelectedRefs && window.spins && window.spins.length >= 2) {
                 const autoRefs = window.getAutoSelectedRefs(pairKey, lookupTable);
                 selections[pairKey] = new Set(autoRefs.primaryRefs);
                 this._extraRefs[`${tableId}:${pairKey}`] = autoRefs.extraRef;
+                // Snapshot the auto-pick result so the per-spin refresh
+                // (_refreshAutoPickedPairs) can detect manual edits and
+                // skip them.
+                this._autoPickedPairs[`${tableId}:${pairKey}`] = new Set(autoRefs.primaryRefs);
                 console.log(`✅ Auto-selected refs for ${pairKey} (${tableId}, codes from ${lookupTable}): primary=[${[...autoRefs.primaryRefs].join(',')}], extra=${autoRefs.extraRef}`);
             } else {
                 // Fallback: select all 3 if not enough history
@@ -458,6 +580,7 @@ class AIPredictionPanel {
             delete selections[pairKey];
             highlightSet.delete(pairKey);
             if (this._extraRefs) delete this._extraRefs[`${tableId}:${pairKey}`];
+            if (this._autoPickedPairs) delete this._autoPickedPairs[`${tableId}:${pairKey}`];
         }
 
         const pairs = tableId === 'table1' ? this.table1Pairs : this.table2Pairs;
@@ -490,6 +613,12 @@ class AIPredictionPanel {
                 delete selections[pairKey];
                 highlightSet.delete(pairKey);
             }
+        }
+
+        // User manually edited the refs → demote this pair from
+        // "auto-picked" so the per-spin refresh leaves it alone.
+        if (this._autoPickedPairs) {
+            delete this._autoPickedPairs[`${tableId}:${pairKey}`];
         }
 
         const pairs = tableId === 'table1' ? this.table1Pairs : this.table2Pairs;
@@ -603,6 +732,10 @@ class AIPredictionPanel {
         this.table1SelectedPairs.clear();
         this.table2SelectedPairs.clear();
         this._extraRefs = {};
+        // Also wipe the auto-pick tracker so _refreshAutoPickedPairs
+        // (next spin) doesn't think these pairs are auto-picked and
+        // re-populate them. User clicked Deselect → keep cleared.
+        this._autoPickedPairs = {};
 
         this._updateCounts();
         this.renderAllCheckboxes();
@@ -1499,7 +1632,30 @@ class AIPredictionPanel {
     // ═══════════════════════════════════════════════════════
 
     onSpinAdded() {
+        // renderer-3tables.js render() unconditionally calls this
+        // method (incl. on undo's render). We only run the new-spin
+        // side-effects (snapshot push, training capture, autopilot)
+        // when the spin count actually INCREASED. On undo / pure re-
+        // render, we still refresh available pairs + dashboards but
+        // skip the side-effects so undo can correctly restore state.
+        const currentCount = (Array.isArray(window.spins) ? window.spins.length : 0);
+        const isNewSpin = currentCount > this._lastSpinCount;
+        this._lastSpinCount = currentCount;
+
+        if (isNewSpin) {
+            // Phase 1 — silent pair-training capture (predictive record).
+            try { this._capturePairTrainingRecords(); } catch (e) { console.warn('Pair training capture failed:', e); }
+
+            // Test Lab autopilot. Inert in non-test modes.
+            try { this._runTestLabAutopilot(); } catch (e) { console.warn('Test Lab autopilot failed:', e); }
+        }
+
         this.loadAvailablePairs();
+        // Refresh auto-picked T1/T2 ref selections against the new spin
+        // history. Only pairs whose stored refs still match their last
+        // auto-pick snapshot (i.e. user hasn't manually toggled a sub-
+        // ref) are refreshed; manually-edited pairs are left alone.
+        try { this._refreshAutoPickedPairs(); } catch (e) { console.warn('Auto-pick refresh failed:', e); }
         this.updateTable3Highlights();
         this._renderSummaryDashboard();
 
@@ -1588,6 +1744,364 @@ class AIPredictionPanel {
             if (T1_VALID.has(code)) return true;
         }
         return false;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  AUTO-PICK REFRESH ON NEW SPIN
+    //  PAIR TRAINING DATA CAPTURE (Phase 1)
+    //  On every new spin, post one record per selected T1 pair and one
+    //  per selected T2 pair (incl. _13opp counterparts) to the backend
+    //  for later model training. Schema:
+    //    {
+    //      spinIndex, actual, prev, prevPrev,
+    //      table: 't1' | 't2',
+    //      pairKey, is13Opp,
+    //      activeRefs: ['first','third', ...],
+    //      primaryNumbers: [<wheel nums covered>],
+    //      hit: bool,
+    //      contextPairsSelected: { t1: [...], t2: [...] }
+    //    }
+    //  Endpoint: POST http://localhost:8002/log_pair_training (jsonl).
+    // ═══════════════════════════════════════════════════════
+    _capturePairTrainingRecords() {
+        if (!Array.isArray(window.spins) || window.spins.length < 1) return;
+        const spinIndex = window.spins.length;            // 1-based
+        const actual = window.spins[spinIndex - 1].actual;
+        const prev = (spinIndex >= 2) ? window.spins[spinIndex - 2].actual : null;
+        const prevPrev = (spinIndex >= 3) ? window.spins[spinIndex - 3].actual : null;
+
+        const collect = (sels, pairs, table) => {
+            const records = [];
+            Object.keys(sels || {}).forEach(pk => {
+                const p = (pairs || []).find(x => x.key === pk);
+                if (!p) return;
+                const refs = sels[pk] || new Set();
+                const activeRefs = [];
+                const primary = new Set();
+                ['first','second','third'].forEach(r => {
+                    if (refs.has(r)) {
+                        activeRefs.push(r);
+                        const nums = (p.data && p.data[r] && Array.isArray(p.data[r].numbers)) ? p.data[r].numbers : [];
+                        nums.forEach(n => primary.add(n));
+                    }
+                });
+                const primaryNumbers = [...primary];
+                records.push({
+                    spinIndex, actual, prev, prevPrev,
+                    table,
+                    pairKey: pk,
+                    is13Opp: pk.endsWith('_13opp'),
+                    activeRefs,
+                    primaryNumbers,
+                    hit: primaryNumbers.includes(actual)
+                });
+            });
+            return records;
+        };
+
+        const t1Records = collect(this.table1Selections, this.table1Pairs, 't1');
+        const t2Records = collect(this.table2Selections, this.table2Pairs, 't2');
+        const all = [...t1Records, ...t2Records];
+        if (all.length === 0) return;
+
+        const ctx = {
+            t1: Object.keys(this.table1Selections || {}),
+            t2: Object.keys(this.table2Selections || {})
+        };
+        all.forEach(rec => {
+            rec.contextPairsSelected = ctx;
+            // fire-and-forget; ignore network errors
+            try {
+                fetch('http://localhost:8002/log_pair_training', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(rec)
+                }).catch(() => {});
+            } catch (_) { /* swallow */ }
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  TEST LAB AUTOPILOT (Phase 2 — mode='test' only)
+    //  Strategy: T1 ∩ T2 ∩ T2_13opp (T3 removed). One T1 pair active
+    //  at a time. T2 mirrors T1 (same base + _13opp). On a miss, ask
+    //  the trained recommender for the next pair and rotate. Cold-
+    //  start seed picks the pair with a 2-spin hitting streak; ties
+    //  broken by SHORTEST current streak. Falls back to recommender
+    //  when no pair has a streak.
+    //
+    //  Inert in every other mode (manual / semi / auto / t1-strategy /
+    //  ai-trained / 3t-selection) — early-returns on currentMode check.
+    // ═══════════════════════════════════════════════════════
+    _isTestLabMode() {
+        try { return !!(window.aiAutoModeUI && window.aiAutoModeUI.currentMode === 'test'); }
+        catch (_) { return false; }
+    }
+
+    refreshTestLabUI() {
+        // Public hook — call after a setMode() change to flip T3 visibility
+        // and clear stale T3 selections.
+        try { this._applyTestLabUI(); } catch (e) { console.warn('refreshTestLabUI:', e); }
+    }
+
+    _applyTestLabUI() {
+        // Per user spec: T3 stays visible in Test Lab — we just must not
+        // *select* anything from it. Clear any T3 selections that exist.
+        // (Do not hide the AI-panel's internal T3 sub-section or the
+        // big top-of-page TABLE 3 grid.)
+        if (!this._isTestLabMode()) return;
+        if (this.table3Selections && this.table3Selections.size > 0) {
+            const keys = [...this.table3Selections];
+            keys.forEach(k => this._handleTable3Selection(k, false));
+        }
+    }
+
+    // Pair-coverage set used for hit detection / streak heuristic. Uses
+    // only the *active* refs of the pair (what the user/auto would
+    // actually bet) — same definition the dashboard uses for hit/miss.
+    _t1ActivePrimaryFor(pairKey) {
+        const p = (this.table1Pairs || []).find(x => x.key === pairKey);
+        if (!p || !p.data) return null;
+        const refs = (this.table1Selections && this.table1Selections[pairKey]) || null;
+        const out = new Set();
+        ['first','second','third'].forEach(r => {
+            const active = refs ? refs.has(r) : true;  // no selection yet → use full union
+            if (active) {
+                const nums = (p.data[r] && Array.isArray(p.data[r].numbers)) ? p.data[r].numbers : [];
+                nums.forEach(n => out.add(n));
+            }
+        });
+        return out;
+    }
+
+    _pickSeedT1Pair(candidatePairKeys) {
+        const spins = window.spins || [];
+        if (spins.length < 2) return null;
+        const lastTwo = [spins[spins.length - 1].actual, spins[spins.length - 2].actual];
+
+        // For each candidate, compute current hit-streak at end of history,
+        // requiring streak >= 2 (= last 2 spins both covered).
+        const withStreak = [];
+        candidatePairKeys.forEach(pk => {
+            const cover = this._t1ActivePrimaryFor(pk);
+            if (!cover || cover.size === 0) return;
+            if (!cover.has(lastTwo[0]) || !cover.has(lastTwo[1])) return;
+            // count further back
+            let streak = 2;
+            for (let i = spins.length - 3; i >= 0; i--) {
+                if (cover.has(spins[i].actual)) streak++;
+                else break;
+            }
+            withStreak.push({ pk, streak });
+        });
+        if (withStreak.length === 0) return null;
+        // Per user spec: pick the pair with the SHORTEST hitting streak
+        // (favor newly-heating-up pairs). Stable tie-break by pairKey.
+        withStreak.sort((a, b) => (a.streak - b.streak) || (a.pk < b.pk ? -1 : 1));
+        return withStreak[0].pk;
+    }
+
+    _setSingleT1Pair(pairKey) {
+        if (!pairKey) return;
+        // 1) Drop any other T1 selections, ensure target is selected.
+        const currentT1 = [...Object.keys(this.table1Selections || {})];
+        currentT1.forEach(pk => { if (pk !== pairKey) this._handleTable12PairToggle('table1', pk, false); });
+        if (!this.table1Selections || !this.table1Selections[pairKey]) {
+            this._handleTable12PairToggle('table1', pairKey, true);
+        }
+        // 2) T2 mirror: pair + its 13-opposite. ref0 ↔ ref19 are the
+        //    mutual-opposite pair; everything else uses the _13opp suffix.
+        const oppFn = k => (k === 'ref0' ? 'ref19' : (k === 'ref19' ? 'ref0' : (k.endsWith('_13opp') ? k.slice(0, -'_13opp'.length) : k + '_13opp')));
+        const opp  = oppFn(pairKey);
+        const want = new Set([pairKey, opp]);
+        const currentT2 = [...Object.keys(this.table2Selections || {})];
+        currentT2.forEach(pk => { if (!want.has(pk)) this._handleTable12PairToggle('table2', pk, false); });
+        want.forEach(pk => {
+            const exists = (this.table2Pairs || []).some(p => p.key === pk);
+            if (exists && (!this.table2Selections || !this.table2Selections[pk])) {
+                this._handleTable12PairToggle('table2', pk, true);
+            }
+        });
+    }
+
+    _runTestLabAutopilot() {
+        if (!this._isTestLabMode()) {
+            return;
+        }
+        this._applyTestLabUI();
+
+        const candidates = (this.table1Pairs || []).map(p => p.key);
+        const spins = window.spins || [];
+        const spinIndex = spins.length;
+        const currentT1Keys = Object.keys(this.table1Selections || {});
+        const activePair = currentT1Keys[0];
+        console.log(`🧪 Test Lab autopilot: spin#${spinIndex}, candidates=${candidates.length}, activeT1=${activePair || '(none)'}`);
+        if (candidates.length === 0) {
+            console.log('🧪   …no candidates yet (need history) → skip');
+            return;
+        }
+
+        // Cold start: no active T1 pair → seed from 2-streak heuristic;
+        // if none qualifies, fall back to recommender's top pick.
+        if (!activePair) {
+            const seed = this._pickSeedT1Pair(candidates);
+            if (seed) {
+                console.log(`🌱 Test Lab seed: ${seed} (2-streak heuristic)`);
+                this._setSingleT1Pair(seed);
+                return;
+            }
+            console.log('🌱 No 2-streak candidate → asking recommender for cold-start pick');
+            this._fetchAndApplyRecommendation(candidates, spinIndex, []);
+            return;
+        }
+
+        if (spins.length === 0) return;
+        const actual = spins[spins.length - 1].actual;
+        const cover = this._t1ActivePrimaryFor(activePair);
+        const coverArr = cover ? [...cover] : [];
+        const hit = !!(cover && cover.has(actual));
+        console.log(`🧪   active=${activePair} actual=${actual} cover=[${coverArr.join(',')}] → ${hit ? '✅ HIT (keep)' : '❌ MISS (rotate)'}`);
+        if (hit) return;
+
+        this._fetchAndApplyRecommendation(candidates, spinIndex, [activePair]);
+    }
+
+    _fetchAndApplyRecommendation(candidates, spinIndex, avoid) {
+        console.log(`📡 /recommend_t1_pair: candidates=${candidates.length}, avoid=[${(avoid||[]).join(',')}]`);
+        try {
+            fetch('http://localhost:8002/recommend_t1_pair', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    candidatePairKeys: candidates,
+                    currentSpinIndex: spinIndex,
+                    avoidPairKeys: avoid || []
+                })
+            }).then(r => {
+                if (!r.ok) {
+                    console.warn(`📡   HTTP ${r.status} from recommender — backend may not be restarted with the new endpoint.`);
+                    return null;
+                }
+                return r.json();
+            }).then(rec => {
+                  if (!rec) return;
+                  if (!rec.bestPair) {
+                      console.log('📡   recommender returned no bestPair (empty candidates?) →', rec);
+                      return;
+                  }
+                  const currentActive = Object.keys(this.table1Selections || {})[0];
+                  // Phase 2 — confidence/margin gating. Margin = top
+                  // pair's rate − second-best's rate. With dense
+                  // bootstrap data, confidence is ~0.998 for every
+                  // pair, so the MARGIN gate is the meaningful one.
+                  // Phase 2 — gates default OFF. Walkforward showed the
+                  // marginal recommender has no real confidence signal
+                  // worth gating on (top-vs-second-best is mostly noise
+                  // with bootstrap data). Mechanism ready for Phase 4
+                  // (conditional model) when its probabilities will
+                  // carry real signal. Override at runtime to measure:
+                  //   window.testLabConfidenceThreshold = 0.6
+                  //   window.testLabMarginThreshold     = 0.01
+                  const confT   = (typeof window.testLabConfidenceThreshold === 'number') ? window.testLabConfidenceThreshold : 0.0;
+                  const marginT = (typeof window.testLabMarginThreshold === 'number')      ? window.testLabMarginThreshold     : 0.0;
+                  const ranked  = Array.isArray(rec.ranked) ? rec.ranked : [];
+                  const second  = ranked[1] ? ranked[1].predictedHitRate : 0.5;
+                  const margin  = (rec.predictedHitRate || 0) - (second || 0);
+                  const lowConf = (rec.confidence || 0) < confT;
+                  const lowMargin = margin < marginT;
+                  console.log(`📡   recommender → bestPair=${rec.bestPair} rate=${rec.predictedHitRate} conf=${rec.confidence} margin=${margin.toFixed(4)} (currentActive=${currentActive || '(none)'})`);
+                  if (lowConf || lowMargin) {
+                      // Bet skipped this spin — selections kept visible.
+                      this._lowConfidenceSpinIndex = spinIndex;
+                      console.log(`⏸️  Phase 2 gate: SKIP this spin (lowConf=${lowConf} lowMargin=${lowMargin})`);
+                  }
+                  if (rec.bestPair === currentActive) {
+                      console.log('📡   bestPair already active → no change');
+                      return;
+                  }
+                  console.log(`🔄 Test Lab → switching T1 ${currentActive || '∅'} → ${rec.bestPair}`);
+                  this._setSingleT1Pair(rec.bestPair);
+                  try {
+                      this._renderTable12Checkboxes('table1', this.table1Pairs, this.table1Selections);
+                      this._renderTable12Checkboxes('table2', this.table2Pairs, this.table2Selections);
+                      this._updateCounts();
+                      this._renderSummaryDashboard();
+                  } catch (_) { /* swallow */ }
+              })
+              .catch(err => { console.warn('📡   fetch failed:', err && err.message); });
+        } catch (e) { console.warn('📡   throw:', e && e.message); }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  AUTO-PICK REFRESH
+    //  After every spin, re-run getAutoSelectedRefs for each
+    //  selected T1/T2 pair whose stored refs still match its
+    //  last auto-pick snapshot. Pairs the user has manually
+    //  edited (per _autoPickedPairs delete in _handleRefSelection)
+    //  are left alone. Re-renders the T1/T2 checkbox lists when
+    //  any refresh actually changes a stored set.
+    // ═══════════════════════════════════════════════════════
+    _refreshAutoPickedPairs() {
+        if (!this._autoPickedPairs || !window.getAutoSelectedRefs) return;
+        if (!Array.isArray(window.spins) || window.spins.length < 2) return;
+        const setsEqual = (a, b) => {
+            if (!a || !b || a.size !== b.size) return false;
+            for (const v of a) if (!b.has(v)) return false;
+            return true;
+        };
+
+        let t1Changed = false;
+        let t2Changed = false;
+        // Iterate keys at snapshot time so we can mutate the map mid-loop.
+        const keys = Object.keys(this._autoPickedPairs);
+        for (const key of keys) {
+            const sep = key.indexOf(':');
+            if (sep < 0) continue;
+            const tableId = key.slice(0, sep);
+            const pairKey = key.slice(sep + 1);
+            const selections = (tableId === 'table1') ? this.table1Selections : this.table2Selections;
+            const currentRefs = selections[pairKey];
+
+            // Pair was unselected since the last auto-pick → drop snapshot
+            if (!currentRefs) {
+                delete this._autoPickedPairs[key];
+                continue;
+            }
+
+            // User edited the refs → demote and skip
+            const snapshot = this._autoPickedPairs[key];
+            if (!setsEqual(currentRefs, snapshot)) {
+                delete this._autoPickedPairs[key];
+                continue;
+            }
+
+            // Re-run auto-pick (T1 mirrors T2; T2 uses its own codes)
+            const lookupTable = (tableId === 'table1') ? 'table2' : tableId;
+            const newAuto = window.getAutoSelectedRefs(pairKey, lookupTable);
+            const newRefs = new Set(newAuto.primaryRefs);
+
+            if (setsEqual(newRefs, currentRefs)) continue; // nothing to do
+
+            selections[pairKey] = newRefs;
+            if (this._extraRefs) this._extraRefs[`${tableId}:${pairKey}`] = newAuto.extraRef;
+            this._autoPickedPairs[key] = new Set(newRefs);
+            if (tableId === 'table1') t1Changed = true; else t2Changed = true;
+            console.log(`🔄 Auto-pick refreshed ${pairKey} (${tableId}): primary=[${[...newRefs].join(',')}], extra=${newAuto.extraRef}`);
+        }
+
+        // Re-render checkbox lists for tables that actually changed.
+        // Predictions are re-triggered later by the existing onSpinAdded
+        // flow when total selection count >= 1, so we do NOT call
+        // _autoTriggerPredictions() here — it would just duplicate work.
+        if (t1Changed) {
+            this._renderTable12Checkboxes('table1', this.table1Pairs, this.table1Selections);
+            this.updateSingleTableHighlights('table1', this.table1SelectedPairs);
+        }
+        if (t2Changed) {
+            this._renderTable12Checkboxes('table2', this.table2Pairs, this.table2Selections);
+            this.updateSingleTableHighlights('table2', this.table2SelectedPairs);
+        }
+        if (t1Changed || t2Changed) this._updateCounts();
     }
 
     _evaluateT1AutoBetStatus() {

@@ -58,3 +58,8 @@ build/
 # =========================
 .claude/
 logs/
+
+# Bootstrap-regenerated analysis files (run backend/analysis/bootstrap_pair_training.js
+# to recreate). Big and reproducible — keep out of the repo.
+backend/analysis/pair_training_bootstrap.jsonl
+backend/analysis/spin_pattern_data.jsonl

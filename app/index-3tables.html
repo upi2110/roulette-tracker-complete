@@ -175,8 +175,16 @@
 <script src="../strategies/ai-trained/ai-trained-logger.js"></script>
 <!-- Strategy-Lab: shared pair-intersection strategy. Single source-of-truth
      for both Auto Test (method='test') and live mode (decisionMode='test')
-     so backtest parity is guaranteed by construction. -->
+     so backtest parity is guaranteed by construction.
+     This is the SANDBOX copy used by the Test (Lab) tab — modify here to
+     prototype a new strategy without disturbing 3T-Selection production. -->
 <script src="../strategies/strategy-lab/strategy-lab.js"></script>
+<!-- 3T-Selection: production copy of the same algorithm exposed under
+     window.Strategy3T. Triggered by the "3T-Selection" sub-button on the
+     Auto tab (decisionMode='3t-selection') and Auto-Test method='3t-selection'.
+     Diverges from strategy-lab.js by namespace only at creation time;
+     each can evolve independently. -->
+<script src="../strategies/strategy-3t-selection/strategy-3t-selection.js"></script>
 <!-- auto-test-runner now loaded from canonical services/auto-test-runner/. -->
 <script src="../services/auto-test-runner/auto-test-runner.js"></script>
 <!-- auto-test-report now loaded from canonical reports/auto-test-report/. -->

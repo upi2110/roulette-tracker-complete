@@ -138,7 +138,7 @@ class AutoTestRunner {
         // 'test' = Strategy-Lab sandbox. Currently shares the default
         // _simulateDecision pipeline; will be the integration point for
         // experimental strategies pending evaluation.
-        const KNOWN_MANUAL_STRATS = ['auto-test', 'T1-strategy', 'test', 'AI-trained'];
+        const KNOWN_MANUAL_STRATS = ['auto-test', 'T1-strategy', 'test', '3t-selection', 'AI-trained'];
         const requestedManualStrat = (typeof options.manualStrategy === 'string' && KNOWN_MANUAL_STRATS.includes(options.manualStrategy))
             ? options.manualStrategy
             : 'AI-trained';
@@ -242,6 +242,9 @@ class AutoTestRunner {
             };
         }
 
+        // Backlog C — pair-rotation parity for method='test'. Pre-fetch
+        // the persisted training records once so the AT runner can build
+        // a per-session active-pair schedule using the same recommender
         const allSessions = { 1: [], 2: [], 3: [], 4: [] };
 
         // Total work: each starting position × 3 strategies
@@ -342,6 +345,7 @@ class AutoTestRunner {
      * @param {number} strategy - 1=Aggressive, 2=Conservative, 3=Cautious
      * @returns {SessionResult}
      */
+
     _runSession(testSpins, startIdx, strategy) {
         const { STARTING_BANKROLL, TARGET_PROFIT, MIN_BET, MAX_BET, LOSS_STREAK_RESET, MAX_RESETS, STOP_LOSS } = this._sessionConfig;
 
@@ -373,6 +377,11 @@ class AutoTestRunner {
         // the same thing until we finish the session".
         if (this._currentMethod === 'test') {
             this._lockedTestPair = null;
+        }
+        // 3T-Selection pair lock-in: same lifecycle, separate var so the
+        // two methods can run in parallel without leaking state.
+        if (this._currentMethod === '3t-selection') {
+            this._locked3TPair = null;
         }
 
         // AI-trained feedback boundary: reset the per-engine controller
@@ -650,9 +659,8 @@ class AutoTestRunner {
                     reason: 'Strategy-Lab module not loaded'
                 };
             }
-            // Lock the pair lazily on the first decision in this session.
-            // _runSession resets _lockedTestPair at the start of each
-            // session, so a fresh pick happens per session.
+            // Strategy-Lab pair lock-in: select once at session start
+            // (cleared by _runSession at session boundary).
             if (!this._lockedTestPair) {
                 this._lockedTestPair = SL.selectBestPair(this.engine);
             }
@@ -662,6 +670,37 @@ class AutoTestRunner {
                     ? this._strategyLabIncludeGrey
                     : true,
                 greyNumbers: [] // V1: AT has no grey-number computation yet.
+            });
+        }
+
+        // ── 3T-Selection ('3t-selection' method) ──
+        // Independent production copy of the Strategy-Lab algorithm.
+        // Loaded from strategies/strategy-3t-selection/ and exposed under
+        // window.Strategy3T so it can be modified independently of the
+        // Test (Lab) sandbox. Locked-pair var also separate.
+        if (this._currentMethod === '3t-selection') {
+            const S3T = (typeof require === 'function')
+                ? (function () { try { return require('../../strategies/strategy-3t-selection/strategy-3t-selection.js'); } catch (_) { return null; } }())
+                : (typeof window !== 'undefined' ? window.Strategy3T : null);
+            if (!S3T) {
+                return {
+                    action: 'SKIP',
+                    selectedPair: null,
+                    selectedFilter: null,
+                    numbers: [],
+                    confidence: 0,
+                    reason: '3T-Selection module not loaded'
+                };
+            }
+            if (!this._locked3TPair) {
+                this._locked3TPair = S3T.selectBestPair(this.engine);
+            }
+            return S3T.decideStrategyLab(this.engine, testSpins, idx, {
+                lockedPairRefKey: this._locked3TPair,
+                includeGrey: (typeof this._strategyLabIncludeGrey === 'boolean')
+                    ? this._strategyLabIncludeGrey
+                    : true,
+                greyNumbers: []
             });
         }
 

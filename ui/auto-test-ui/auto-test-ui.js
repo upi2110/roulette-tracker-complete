@@ -60,6 +60,7 @@ class AutoTestUI {
                             <option value="auto-test" selected>auto-test</option>
                             <option value="T1-strategy">T1-strategy</option>
                             <option value="test">test (strategy lab)</option>
+                            <option value="3t-selection">3T-Selection</option>
                             <option value="AI-trained">AI-trained</option>
                             <option value="manual">manual</option>
                         </select>
@@ -88,6 +89,7 @@ class AutoTestUI {
                                 <option value="auto-test">auto-test</option>
                                 <option value="T1-strategy">T1-strategy</option>
                                 <option value="test">test (strategy lab)</option>
+                                <option value="3t-selection">3T-Selection</option>
                                 <option value="AI-trained" selected>AI-trained</option>
                             </select>
                             <span style="color:#94a3b8;font-size:10px;">(predictions will be generated using this strategy so you can compare against a live session)</span>

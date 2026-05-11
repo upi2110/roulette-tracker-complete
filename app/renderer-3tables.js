@@ -752,8 +752,8 @@ async function undoLast() {
                             replayConsWins = 0;
                         }
                     } else if (strategy === 4) {
-                        // Defensive: -$1 after 2 consecutive wins
-                        if (replayConsWins >= 2) {
+                        // Defensive: -$1 after 1 consecutive win
+                        if (replayConsWins >= 1) {
                             replayBet = Math.max(2, replayBet - 1);
                             replayConsWins = 0;
                         }
@@ -775,8 +775,8 @@ async function undoLast() {
                             replayConsLosses = 0;
                         }
                     } else if (strategy === 4) {
-                        // Defensive: +$1 after 5 consecutive losses
-                        if (replayConsLosses >= 5) {
+                        // Defensive: +$1 after 6 consecutive losses
+                        if (replayConsLosses >= 6) {
                             replayBet += 1;
                             replayConsLosses = 0;
                         }
