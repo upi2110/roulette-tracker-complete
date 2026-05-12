@@ -275,13 +275,53 @@ class AutoUpdateOrchestrator {
                 : [];
             const idx = spinsArr.length - 1;
 
-            if (!this._3tLockedPair) {
+            // 3T-Selection lock: ONE pair, picked once, sticks for the
+            // entire session. Two ways the pair gets set:
+            //   1) User picks a T1 pair manually → that's the lock.
+            //      (Override at any time.)
+            //   2) If user hasn't picked AND no prior lock,
+            //      Strategy3T.selectBestPair() auto-picks the best
+            //      historical pair → that's the lock.
+            //
+            // The lock is cleared only by setDecisionMode (leaving the
+            // mode). The orchestrator does NOT clear or re-toggle
+            // selections after each BET/SKIP (cascade removed), so a
+            // user manual override truly persists.
+            let _userPair = null;
+            try {
+                const _sel = window.aiPanel && window.aiPanel.table1Selections;
+                if (_sel) {
+                    const _keys = Object.keys(_sel);
+                    if (_keys.length > 0) _userPair = _keys[0];
+                }
+            } catch (_) { /* ignore */ }
+            if (_userPair) {
+                if (this._3tLockedPair !== _userPair) {
+                    console.log(`🎯 3T-Selection: locked pair → ${_userPair} (from user T1 selection)`);
+                }
+                this._3tLockedPair = _userPair;
+            } else if (!this._3tLockedPair) {
                 this._3tLockedPair = window.Strategy3T.selectBestPair(window.aiAutoEngine);
-                const _pmCount = (window.aiAutoEngine && window.aiAutoEngine.pairModels)
-                    ? Object.keys(window.aiAutoEngine.pairModels).length : 0;
-                console.log(`🎯 3T-Selection: locking pair → ${this._3tLockedPair || '(null)'} (engine.pairModels=${_pmCount})`);
-                if (!this._3tLockedPair) {
-                    console.warn('🎯 3T-Selection: selectBestPair returned NULL — engine has no pairModels yet. SKIP until engine trains.');
+                if (this._3tLockedPair) {
+                    console.log(`🎯 3T-Selection: auto-picked pair → ${this._3tLockedPair} (Strategy3T.selectBestPair)`);
+                    // ONE-TIME UI populate so the user can see what's
+                    // locked. Selects T3 + T1 + T2 + T2_13opp for the
+                    // locked pair. After this initial click, the
+                    // orchestrator NEVER re-toggles selections; if the
+                    // user clicks a different pair mid-session, the
+                    // _userPair read above picks it up next decision.
+                    try {
+                        const refkeyMap = window.Strategy3T.REFKEY_TO_PAIR || {};
+                        const camelPair = refkeyMap[this._3tLockedPair] || this._3tLockedPair;
+                        if (window.aiPanel) {
+                            try { window.aiPanel._handleTable3Selection(camelPair, true); } catch (_) {}
+                            try { window.aiPanel._handleTable12PairToggle('table1', camelPair, true); } catch (_) {}
+                            try { window.aiPanel._handleTable12PairToggle('table2', camelPair, true); } catch (_) {}
+                            try { window.aiPanel._handleTable12PairToggle('table2', camelPair + '_13opp', true); } catch (_) {}
+                        }
+                    } catch (e) { console.warn('🎯 3T-Selection initial UI populate failed:', e && e.message); }
+                } else {
+                    console.warn('🎯 3T-Selection: selectBestPair returned NULL — engine has no pairModels yet. Spin will SKIP until engine trains.');
                 }
             }
 
@@ -437,12 +477,21 @@ class AutoUpdateOrchestrator {
             //    13-opp half) and T3 so V6's intersection produces the
             //    bet — matching the spec "select pair from T1, same
             //    pair + 13-opp from T2, same pair from T3".
-            if (this.decisionMode !== 'ai-trained' && window.aiPanel) {
+            // 3T-Selection is now USER-DRIVEN: the user manually picks
+            // the T1 pair and that becomes the locked pair. The
+            // orchestrator MUST NOT clear or rewrite the user's pair
+            // selections after each BET — that would overwrite their
+            // manual choice every spin. So 3t-selection skips this
+            // whole clear-then-reselect cascade.
+            //
+            // Test Lab keeps the cascade (autopilot drives the lock and
+            // the reselect propagates the autopilot's pair to the V6
+            // bet path). AUTO / T1-strategy / etc. keep original
+            // behavior (clear + reselect T3 with the engine's pick).
+            if (this.decisionMode !== 'ai-trained'
+                && this.decisionMode !== '3t-selection'
+                && window.aiPanel) {
                 window.aiPanel.clearSelections();
-                // Strategy-Lab ('test') and 3T-Selection ('3t-selection')
-                // share the same pair-selection cascade: T1 + T2 (pair +
-                // 13-opp halves) + T3 all get the locked pair so V6's
-                // intersection produces the bet.
                 if (this.decisionMode === 'test') {
                     // Phase 2 — Test Lab no longer uses T3. Only reselect
                     // T1 + T2 (pair + its 13-opposite). Use the shared
@@ -456,14 +505,6 @@ class AutoUpdateOrchestrator {
                         try { window.aiPanel._handleTable12PairToggle('table1', pair, true); } catch (_) {}
                         try { window.aiPanel._handleTable12PairToggle('table2', pair, true); } catch (_) {}
                         try { window.aiPanel._handleTable12PairToggle('table2', _opp, true); } catch (_) {}
-                    }
-                } else if (this.decisionMode === '3t-selection') {
-                    const pair = decision.selectedPair;
-                    if (pair) {
-                        try { window.aiPanel._handleTable3Selection(pair, true); } catch (_) {}
-                        try { window.aiPanel._handleTable12PairToggle('table1', pair, true); } catch (_) {}
-                        try { window.aiPanel._handleTable12PairToggle('table2', pair, true); } catch (_) {}
-                        try { window.aiPanel._handleTable12PairToggle('table2', pair + '_13opp', true); } catch (_) {}
                     }
                 } else {
                     window.aiPanel._handleTable3Selection(decision.selectedPair, true);
@@ -490,15 +531,23 @@ class AutoUpdateOrchestrator {
                     && typeof window.aiAutoEngine.recordSkip === 'function') {
                 window.aiAutoEngine.recordSkip();
             }
-            // Test Lab ('test') with the autopilot keeps its T1 pair
-            // across SKIPs so the autopilot's rotation continuity is
-            // preserved (without this, every empty-intersection SKIP
-            // would wipe the autopilot's pick and force a re-seed).
-            // Every other mode (incl. 3T-Selection, t1-strategy, auto,
-            // ai-trained) uses the original SKIP behavior — clear
-            // selections so stale UI from the previous BET doesn't
-            // bleed into the next decision.
-            const _keepSelections = (this.decisionMode === 'test');
+            // Two modes preserve selections across SKIP for different
+            // reasons:
+            //   • 'test'         — autopilot drives the lock; clearing
+            //                      would wipe the autopilot's pick and
+            //                      force a re-seed every empty-
+            //                      intersection spin.
+            //   • '3t-selection' — USER picked the pair manually; the
+            //                      strategy uses it every spin. Clearing
+            //                      on SKIP would wipe the user's pick
+            //                      and the next spin would have no pair
+            //                      to bet on.
+            // All other modes (t1-strategy, auto, ai-trained) keep the
+            // original SKIP behavior — clear so stale UI doesn't leak.
+            const _keepSelections = (
+                this.decisionMode === 'test' ||
+                this.decisionMode === '3t-selection'
+            );
             if (window.aiPanel && !_keepSelections) {
                 window.aiPanel.clearSelections();
             }
