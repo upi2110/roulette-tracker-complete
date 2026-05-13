@@ -860,13 +860,26 @@ class AIPredictionPanel {
             this._selectionProcessWin.focus();
             return;
         }
+        // Open at the full available screen size so the wheel +
+        // stacked rows + pair selections are visible without manual
+        // resizing. `screen.availWidth/availHeight` excludes OS
+        // chrome (dock / menu bar) which is what we want.
+        const _availW = (typeof screen !== 'undefined' && screen.availWidth)  ? screen.availWidth  : 1600;
+        const _availH = (typeof screen !== 'undefined' && screen.availHeight) ? screen.availHeight : 1000;
         const w = window.open('', 'aiSelectionProcess',
-            'width=820,height=940,resizable=yes,scrollbars=yes');
+            `width=${_availW},height=${_availH},left=0,top=0,resizable=yes,scrollbars=yes`);
         if (!w) {
             alert('Popup blocked — please allow popups for this site.');
             return;
         }
         this._selectionProcessWin = w;
+        // Belt-and-braces: some platforms ignore width/height in
+        // window.open features and use a default size. Explicitly
+        // resize + reposition once the window exists.
+        try {
+            w.moveTo(0, 0);
+            w.resizeTo(_availW, _availH);
+        } catch (_) { /* cross-origin guard — popup is same-origin so this is safe, but keep tolerant */ }
         try { w._opener_panel = this; } catch (_) { /* cross-origin guard */ }
         w.document.open();
         w.document.write(this._buildSelectionProcessHTML());
@@ -982,9 +995,22 @@ class AIPredictionPanel {
     mode: 'rows',
     picked: { t1: new Set(), t2: new Set(), t3: new Set() },
     pickedInitialized: false,
+    // True once the user toggles a pill inside this popup. Until then,
+    // the popup's pickers mirror the main panel on every refresh so
+    // newly-added main-panel selections show up. Once dirty, the
+    // popup keeps the user's in-progress edits and only re-syncs on
+    // Apply or Revert.
+    pickedDirty: false,
     anchors: [],
     anchorsActive: true
   };
+
+  // Set/array equality helper for resync decision.
+  function _setsEqual(a, b) {
+    if (a.size !== b.length) return false;
+    for (const x of b) if (!a.has(x)) return false;
+    return true;
+  }
 
   function pullSnapshot() {
     try {
@@ -1003,6 +1029,22 @@ class AIPredictionPanel {
         state.picked.t2 = new Set(snap.current.t2);
         state.picked.t3 = new Set(snap.current.t3);
         state.pickedInitialized = true;
+      } else if (!state.pickedDirty) {
+        // Re-sync from the main panel so multi-pair selections made
+        // AFTER the popup opened are reflected in the picker pills.
+        // Skipped once the user has started editing locally (dirty
+        // flag set on first pill toggle) to avoid clobbering their
+        // in-progress edits. Revert / Apply both clear the dirty
+        // flag, which resumes auto-sync.
+        if (!_setsEqual(state.picked.t1, snap.current.t1)) {
+            state.picked.t1 = new Set(snap.current.t1);
+        }
+        if (!_setsEqual(state.picked.t2, snap.current.t2)) {
+            state.picked.t2 = new Set(snap.current.t2);
+        }
+        if (!_setsEqual(state.picked.t3, snap.current.t3)) {
+            state.picked.t3 = new Set(snap.current.t3);
+        }
       }
       document.getElementById('ts').textContent = 'updated ' + new Date().toLocaleTimeString();
       render();
@@ -1136,15 +1178,48 @@ class AIPredictionPanel {
     if (!state.snap) return host;
     const data = computeLayerData(state.snap);
     const researchSet = (state.anchorsActive && state.anchors.length) ? new Set(state.anchors) : null;
+
+    // Expand a per-table snap group ({ pk: {display, primary, grey} })
+    // into one row per selected pair so the user can see how each
+    // individual pair contributes — rather than the previous behaviour
+    // which merged every selection in T1 / T3 into a single combined
+    // row. T2 was already split into pair / 13opp; this generalises
+    // the same idea so multi-pair selections in any table become
+    // one row per pair. If the user has selected only one pair in a
+    // table, the output is identical to before. If nothing is
+    // selected, falls back to the merged row so the panel never
+    // collapses to zero rows for that table.
+    const expandGroup = (group, opts) => {
+      const entries = Object.entries(group || {});
+      if (entries.length === 0) {
+        return [{
+          id: opts.id, label: opts.label, accent: opts.accent, bg: opts.bg,
+          primary: opts.merged.primary, grey: opts.merged.grey
+        }];
+      }
+      return entries.map(([pk, v]) => ({
+        id: opts.id + ':' + pk,
+        label: opts.label + ' · ' + (v.display || pk),
+        accent: opts.accent,
+        bg: opts.bg,
+        primary: new Set(v.primary || []),
+        grey:    new Set(v.grey    || [])
+      }));
+    };
+
     const rowOrder = [];
     if (researchSet) rowOrder.push({ id:'research', label:'RESEARCH', accent:'#c2410c', bg:'#ffedd5', primary: researchSet, grey: new Set() });
     rowOrder.push(
-      { id:'final',  label:'FINAL DECISION', accent:'#a855f7', bg:'#faf5ff', primary: data.final.primary,  grey: data.final.grey },
-      { id:'t3',     label:'T3',             accent:'#60a5fa', bg:'#dbeafe', primary: data.t3.primary,     grey: data.t3.grey },
-      { id:'t2opp',  label:'T2 ·13opp',      accent:'#10b981', bg:'#d1fae5', primary: data.t2opp.primary,  grey: data.t2opp.grey },
-      { id:'t2pair', label:'T2 pair',        accent:'#34d399', bg:'#ecfdf5', primary: data.t2pair.primary, grey: data.t2pair.grey },
-      { id:'t1',     label:'T1',             accent:'#fbbf24', bg:'#fef3c7', primary: data.t1.primary,     grey: data.t1.grey }
+      { id:'final',  label:'FINAL DECISION', accent:'#a855f7', bg:'#faf5ff', primary: data.final.primary,  grey: data.final.grey }
     );
+    // T3 — one row per selected T3 pair
+    rowOrder.push(...expandGroup(state.snap.t3,     { id:'t3',     label:'T3',        accent:'#60a5fa', bg:'#dbeafe', merged: data.t3 }));
+    // T2 ·13opp — one row per selected *_13opp pair
+    rowOrder.push(...expandGroup(state.snap.t2opp,  { id:'t2opp',  label:'T2 ·13opp', accent:'#10b981', bg:'#d1fae5', merged: data.t2opp }));
+    // T2 pair — one row per selected base pair
+    rowOrder.push(...expandGroup(state.snap.t2pair, { id:'t2pair', label:'T2 pair',   accent:'#34d399', bg:'#ecfdf5', merged: data.t2pair }));
+    // T1 — one row per selected T1 pair
+    rowOrder.push(...expandGroup(state.snap.t1,     { id:'t1',     label:'T1',        accent:'#fbbf24', bg:'#fef3c7', merged: data.t1 }));
 
     const headerRow = document.createElement('div');
     headerRow.style.cssText = 'display:grid;grid-template-columns:120px repeat(37, 1fr);gap:2px;align-items:center;padding:2px 4px 4px;font-size:9px;color:#64748b;';
@@ -1223,6 +1298,9 @@ class AIPredictionPanel {
         el.addEventListener('click', () => {
           if (picked.has(p.key)) picked.delete(p.key);
           else                   picked.add(p.key);
+          // User has begun editing — pause auto-resync from main
+          // panel until they Apply or Revert.
+          state.pickedDirty = true;
           renderPickers();
         });
         host.appendChild(el);
@@ -1297,6 +1375,8 @@ class AIPredictionPanel {
       state.picked.t1 = new Set(state.snap.current.t1);
       state.picked.t2 = new Set(state.snap.current.t2);
       state.picked.t3 = new Set(state.snap.current.t3);
+      // Resume auto-sync from main panel.
+      state.pickedDirty = false;
       renderPickers();
       const s = document.getElementById('applyStatus');
       s.className = 'status'; s.textContent = 'Reverted to live state.';
@@ -1312,7 +1392,12 @@ class AIPredictionPanel {
         t2: [...state.picked.t2],
         t3: [...state.picked.t3]
       });
-      if (r && r.ok) { s.className = 'status'; s.textContent = '✓ Applied at ' + new Date().toLocaleTimeString(); }
+      if (r && r.ok) {
+        // Popup state is now in sync with the main panel — resume
+        // auto-sync from the next pullSnapshot tick.
+        state.pickedDirty = false;
+        s.className = 'status'; s.textContent = '✓ Applied at ' + new Date().toLocaleTimeString();
+      }
       else           { s.className = 'status err'; s.textContent = 'Apply failed: ' + (r && r.error || ''); }
     } catch (e) {
       s.className = 'status err';
@@ -2322,34 +2407,15 @@ class AIPredictionPanel {
                 numbers: Array.from(s.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
             })));
 
-            // --- INTERSECTION (PRIMARY) ---
-            // Rule: UNION within a table, INTERSECTION across tables.
-            //
-            // Why: the user can pick multiple pairs per table (the
-            // "Stacked Rows" panel shows the per-table union — T1, T2
-            // pair, T2-13opp, T3). Treating every single pair as a
-            // mandatory filter (the old behaviour) made the result
-            // empty as soon as 3+ pairs were chosen because no
-            // wheel number sits in every individual pair's 25-number
-            // set. Per-table union followed by cross-table
-            // intersection matches what the Stacked Rows display
-            // already computes and lets multi-pair selections produce
-            // a non-empty common-numbers set.
-            //
-            // Behaviour preserved for single-pair-per-table modes
-            // (Auto / Test-Lab / 3T-Selection / T1-Strategy): the
-            // union of one set is the set itself, so the per-table
-            // contribution is unchanged.
-            const _tableUnionSets = Object.values(tableMap).map(t => t.numbers);
+            // --- INTERSECTION across ALL pairs (PRIMARY) ---
+            // Every selected pair must contain the number for it to be in the final result.
             let intersection;
-            if (_tableUnionSets.length === 0) {
-                intersection = new Set();
-            } else if (_tableUnionSets.length === 1) {
-                intersection = new Set(_tableUnionSets[0]);
+            if (pairSets.length === 1) {
+                intersection = new Set(pairSets[0].numbers);
             } else {
-                intersection = new Set(_tableUnionSets[0]);
-                for (let i = 1; i < _tableUnionSets.length; i++) {
-                    const next = _tableUnionSets[i];
+                intersection = new Set(pairSets[0].numbers);
+                for (let i = 1; i < pairSets.length; i++) {
+                    const next = pairSets[i].numbers;
                     intersection = new Set([...intersection].filter(n => next.has(n)));
                 }
             }
@@ -2360,33 +2426,24 @@ class AIPredictionPanel {
             // extraNumbers = extendedIntersection - primaryIntersection
             let extraNumbers = [];
             if (pairExtraSets.length > 0 && pairSets.length >= 1) {
-                // Same union-per-table → intersect-across-tables rule
-                // as the primary intersection. Build a per-pair
-                // extended set (primary numbers ∪ extras), then union
-                // those by table, then intersect across tables.
-                const extendedByTable = {};
-                pairSets.forEach(ps => {
+                const extendedSets = pairSets.map(ps => {
+                    // Find matching extra set for this pair
                     const extraEntry = pairExtraSets.find(es => es.pairNumbers === ps.numbers);
-                    const merged = new Set(ps.numbers);
                     if (extraEntry) {
+                        const merged = new Set(ps.numbers);
                         extraEntry.numbers.forEach(n => merged.add(n));
+                        return merged;
                     }
-                    if (!extendedByTable[ps.table]) {
-                        extendedByTable[ps.table] = new Set();
-                    }
-                    merged.forEach(n => extendedByTable[ps.table].add(n));
+                    return ps.numbers; // No extra for this pair (e.g., T3 pairs)
                 });
 
-                const _extendedTableSets = Object.values(extendedByTable);
                 let extendedIntersection;
-                if (_extendedTableSets.length === 0) {
-                    extendedIntersection = new Set();
-                } else if (_extendedTableSets.length === 1) {
-                    extendedIntersection = new Set(_extendedTableSets[0]);
+                if (extendedSets.length === 1) {
+                    extendedIntersection = new Set(extendedSets[0]);
                 } else {
-                    extendedIntersection = new Set(_extendedTableSets[0]);
-                    for (let i = 1; i < _extendedTableSets.length; i++) {
-                        const next = _extendedTableSets[i];
+                    extendedIntersection = new Set(extendedSets[0]);
+                    for (let i = 1; i < extendedSets.length; i++) {
+                        const next = extendedSets[i];
                         extendedIntersection = new Set([...extendedIntersection].filter(n => next.has(n)));
                     }
                 }
