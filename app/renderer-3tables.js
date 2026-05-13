@@ -2049,7 +2049,17 @@ const _PAIR_REFKEY_TO_DATA_PAIR = {
     'prev_minus_1': 'prevMinus1',
     'prev_plus_2': 'prevPlus2',
     'prev_minus_2': 'prevMinus2',
-    'prev_prev': 'prevPrev'
+    'prev_prev': 'prevPrev',
+    // Previously missing — caused Table-3 POS cells in the PP±1 / PP±2
+    // groups to render `data-pair="undefined"`, so clicks on those cells
+    // logged "Pair undefined not available yet" and silently failed.
+    // Users had to click a different cell (number / PRJ) to land the
+    // selection. Adding these makes every Table-3 POS cell clickable
+    // first-try across all 10 pair families.
+    'prev_prev_plus_1':  'prevPrevPlus1',
+    'prev_prev_minus_1': 'prevPrevMinus1',
+    'prev_prev_plus_2':  'prevPrevPlus2',
+    'prev_prev_minus_2': 'prevPrevMinus2'
 };
 
 /**
