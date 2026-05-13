@@ -2322,15 +2322,34 @@ class AIPredictionPanel {
                 numbers: Array.from(s.numbers).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99))
             })));
 
-            // --- INTERSECTION across ALL pairs (PRIMARY) ---
-            // Every selected pair must contain the number for it to be in the final result
+            // --- INTERSECTION (PRIMARY) ---
+            // Rule: UNION within a table, INTERSECTION across tables.
+            //
+            // Why: the user can pick multiple pairs per table (the
+            // "Stacked Rows" panel shows the per-table union — T1, T2
+            // pair, T2-13opp, T3). Treating every single pair as a
+            // mandatory filter (the old behaviour) made the result
+            // empty as soon as 3+ pairs were chosen because no
+            // wheel number sits in every individual pair's 25-number
+            // set. Per-table union followed by cross-table
+            // intersection matches what the Stacked Rows display
+            // already computes and lets multi-pair selections produce
+            // a non-empty common-numbers set.
+            //
+            // Behaviour preserved for single-pair-per-table modes
+            // (Auto / Test-Lab / 3T-Selection / T1-Strategy): the
+            // union of one set is the set itself, so the per-table
+            // contribution is unchanged.
+            const _tableUnionSets = Object.values(tableMap).map(t => t.numbers);
             let intersection;
-            if (pairSets.length === 1) {
-                intersection = new Set(pairSets[0].numbers);
+            if (_tableUnionSets.length === 0) {
+                intersection = new Set();
+            } else if (_tableUnionSets.length === 1) {
+                intersection = new Set(_tableUnionSets[0]);
             } else {
-                intersection = new Set(pairSets[0].numbers);
-                for (let i = 1; i < pairSets.length; i++) {
-                    const next = pairSets[i].numbers;
+                intersection = new Set(_tableUnionSets[0]);
+                for (let i = 1; i < _tableUnionSets.length; i++) {
+                    const next = _tableUnionSets[i];
                     intersection = new Set([...intersection].filter(n => next.has(n)));
                 }
             }
@@ -2341,24 +2360,33 @@ class AIPredictionPanel {
             // extraNumbers = extendedIntersection - primaryIntersection
             let extraNumbers = [];
             if (pairExtraSets.length > 0 && pairSets.length >= 1) {
-                const extendedSets = pairSets.map(ps => {
-                    // Find matching extra set for this pair
+                // Same union-per-table → intersect-across-tables rule
+                // as the primary intersection. Build a per-pair
+                // extended set (primary numbers ∪ extras), then union
+                // those by table, then intersect across tables.
+                const extendedByTable = {};
+                pairSets.forEach(ps => {
                     const extraEntry = pairExtraSets.find(es => es.pairNumbers === ps.numbers);
+                    const merged = new Set(ps.numbers);
                     if (extraEntry) {
-                        const merged = new Set(ps.numbers);
                         extraEntry.numbers.forEach(n => merged.add(n));
-                        return merged;
                     }
-                    return ps.numbers; // No extra for this pair (e.g., T3 pairs)
+                    if (!extendedByTable[ps.table]) {
+                        extendedByTable[ps.table] = new Set();
+                    }
+                    merged.forEach(n => extendedByTable[ps.table].add(n));
                 });
 
+                const _extendedTableSets = Object.values(extendedByTable);
                 let extendedIntersection;
-                if (extendedSets.length === 1) {
-                    extendedIntersection = new Set(extendedSets[0]);
+                if (_extendedTableSets.length === 0) {
+                    extendedIntersection = new Set();
+                } else if (_extendedTableSets.length === 1) {
+                    extendedIntersection = new Set(_extendedTableSets[0]);
                 } else {
-                    extendedIntersection = new Set(extendedSets[0]);
-                    for (let i = 1; i < extendedSets.length; i++) {
-                        const next = extendedSets[i];
+                    extendedIntersection = new Set(_extendedTableSets[0]);
+                    for (let i = 1; i < _extendedTableSets.length; i++) {
+                        const next = _extendedTableSets[i];
                         extendedIntersection = new Set([...extendedIntersection].filter(n => next.has(n)));
                     }
                 }
