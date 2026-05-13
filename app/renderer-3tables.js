@@ -888,13 +888,24 @@ function resetAll() {
                     totalLosses: 0,
                     consecutiveLosses: 0,
                     consecutiveWins: 0,
+                    peakBankroll: 4000,
+                    maxDrawdown: 0,
                     lastBetAmount: 0,
                     lastBetNumbers: 12,
                     isSessionActive: false,
                     isBettingEnabled: false,
                     bettingStrategy: currentStrategy,
                     currentBetPerNumber: 2,
-                    spinsWithBets: []
+                    spinsWithBets: [],
+                    // Strategy-4 user-tunable defaults
+                    s4LossesToIncrease: 6, s4LossIncrement: 1,
+                    s4WinsToDecrease:   1, s4WinDecrement:  1,
+                    // Strategy-5 LOGICAL state + tunables
+                    s5LossesToIncrease: 6, s5LossIncrement: 1,
+                    s5WinsToDecrease:   1, s5WinDecrement:  1,
+                    s5StartingBet:      2, s5SessionTarget: 100,
+                    s5MinBet:           2, s5ReferenceN:    4,
+                    s5LossUnits:        0, s5WinUnits:      0
                 };
                 window.moneyPanel.betHistory = [];
                 window.moneyPanel.pendingBet = null;

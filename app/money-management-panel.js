@@ -28,7 +28,28 @@ class MoneyManagementPanel {
             s4LossIncrement:    1,
             s4WinsToDecrease:   1,
             s4WinDecrement:     1,
+            // ─── Strategy-5 LOGICAL variables (user-tunable) ───
+            // Logical = Defensive + N/4 bet scaling + fractional
+            // loss accumulator + cap-to-session-target.
+            // Reference bet calibrated to 4 numbers:
+            //   bet_per_num_actual = base × min(N, 4) / 4
+            // Loss escalation accumulates fractionally:
+            //   miss adds N_managed/4 to s5LossUnits (max N_managed=4)
+            //   hit  adds 1.0 to s5WinUnits (full win regardless of N)
+            // Cap: max base = max($2, floor(remainingToTarget / 32)).
+            s5LossesToIncrease: 6,
+            s5LossIncrement:    1,
+            s5WinsToDecrease:   1,
+            s5WinDecrement:     1,
+            s5StartingBet:      2,
+            s5SessionTarget:    100,
+            s5MinBet:           2,
+            s5ReferenceN:       4,
+            s5LossUnits:        0,  // float — fractional accumulator
+            s5WinUnits:         0,  // float — fractional accumulator
             consecutiveWins: 0,  // Track consecutive wins for strategies 2 & 3
+            peakBankroll: 4000,   // running max of currentBankroll — for max drawdown
+            maxDrawdown: 0,       // largest peak-to-trough dip during the session
             currentBetPerNumber: 2  // Track current bet amount (overrides backend)
         };
 
@@ -167,6 +188,14 @@ class MoneyManagementPanel {
                         <label>Consecutive Losses</label>
                         <div class="stat-value" id="consecutiveLossesValue">0</div>
                     </div>
+                    <div class="money-stat">
+                        <label>Session P&L</label>
+                        <div class="stat-value" id="sessionPnLValue">$0</div>
+                    </div>
+                    <div class="money-stat">
+                        <label>Max Drawdown</label>
+                        <div class="stat-value" id="maxDrawdownValue">$0</div>
+                    </div>
                     <div class="money-stat full-width">
                         <label>Progress to Target</label>
                         <div class="progress-bar">
@@ -247,13 +276,17 @@ class MoneyManagementPanel {
     }
 
     toggleStrategy() {
-        // Cycle through strategies: 1 → 2 → 3 → 4 → 1
-        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 4) + 1;
-        
+        // Cycle through strategies: 1 → 2 → 3 → 4 → 5 → 1
+        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 5) + 1;
+
         // Reset counters when switching strategies
         this.sessionData.consecutiveWins = 0;
         this.sessionData.currentBetPerNumber = 2; // Reset to minimum
-        
+        // Strategy-5 fractional accumulators reset on every strategy switch
+        // (matches the "fresh start" semantics for s1–s4 consec counters).
+        this.sessionData.s5LossUnits = 0;
+        this.sessionData.s5WinUnits  = 0;
+
         const btn = document.getElementById('toggleStrategyBtn');
         if (!btn) return;
         
@@ -278,7 +311,7 @@ class MoneyManagementPanel {
             console.log('✅ Strategy 3: Cautious');
             console.log('   • +$2 after 3 CONSECUTIVE losses');
             console.log('   • -$1 after 2 CONSECUTIVE wins');
-        } else {
+        } else if (this.sessionData.bettingStrategy === 4) {
             // Strategy 4: Defensive (Dark Teal) — the most cautious profile.
             // Slow escalation on losses, normal reduction on wins.
             btn.textContent = '🛡️ Strategy 4: Defensive';
@@ -287,8 +320,31 @@ class MoneyManagementPanel {
             console.log('   • Initial bet $2');
             console.log('   • +$1 after 5 CONSECUTIVE losses');
             console.log('   • -$1 after 2 CONSECUTIVE wins');
+        } else {
+            // Strategy 5: LOGICAL (Indigo) — Defensive escalation +
+            // N/4 bet sizing + fractional loss accumulator +
+            // cap-to-session-target.
+            btn.textContent = '🧠 Strategy 5: Logical';
+            btn.style.background = 'linear-gradient(135deg, #4338ca 0%, #312e81 100%)';
+            // Reset Strategy-5 accumulators on switch IN to S5.
+            this.sessionData.currentBetPerNumber = parseInt(this.sessionData.s5StartingBet, 10) || 2;
+            this.sessionData.s5LossUnits = 0;
+            this.sessionData.s5WinUnits  = 0;
+            console.log('✅ Strategy 5: Logical');
+            console.log(`   • Initial bet $${this.sessionData.currentBetPerNumber}, calibrated to 4 numbers`);
+            console.log('   • Bet/num scales linearly: base × min(N,4)/4');
+            console.log('   • +$1 after 6 CUMULATIVE loss-units (miss adds N_managed/4)');
+            console.log('   • -$1 after 1 HIT (any hit counts as full win)');
+            console.log(`   • Bet capped to max($2, floor((target − profit) / 32))`);
+            console.log(`   • Session target +$${this.sessionData.s5SessionTarget}`);
         }
-        
+
+        // Show/hide variables panel based on strategy (s4/s5 have one).
+        try {
+            const varsPanel = document.getElementById('strategyVarsPanel');
+            if (varsPanel) varsPanel.style.display = 'none';
+        } catch (_) {}
+
         this.render();
     }
 
@@ -508,14 +564,17 @@ class MoneyManagementPanel {
             this.sessionData.lastBetNumbers = 12;
             this.pendingBet = null;
         } else {
-            // Use strategy-based bet amount instead of backend calculation
-            const betAmount = this.sessionData.currentBetPerNumber || 2;
+            // Use strategy-based bet amount. For S1–S4 this is just
+            // currentBetPerNumber with a bankroll-safety cap. For S5
+            // (Logical) it's base × min(N,4)/4 with a session-target
+            // cap — calculateBetAmount handles both via dispatch.
             const numbersCount = prediction.numbers ? prediction.numbers.length : 12;
+            const betAmount = this.calculateBetAmount(numbersCount);
 
             this.sessionData.lastBetAmount = betAmount;
             this.sessionData.lastBetNumbers = numbersCount;
 
-            console.log(`💡 Using strategy bet: $${betAmount}/number (Strategy ${this.sessionData.bettingStrategy})`);
+            console.log(`💡 Using strategy bet: $${betAmount}/number (Strategy ${this.sessionData.bettingStrategy}, N=${numbersCount})`);
             // CRITICAL: Store the prediction we're betting on
             if (this.sessionData.isSessionActive && betAmount > 0 && this.sessionData.isBettingEnabled) {
                 this.pendingBet = {
@@ -562,6 +621,7 @@ class MoneyManagementPanel {
             this.sessionData.totalWins++;
             this.sessionData.consecutiveLosses = 0;
             this.sessionData.consecutiveWins++;  // NEW: Track consecutive wins
+            this._updateDrawdown();
             
             console.log(`✅ HIT! Number ${actualNumber} - Won $${netChange}`);
             } else {
@@ -573,6 +633,7 @@ class MoneyManagementPanel {
                 this.sessionData.totalLosses++;
                 this.sessionData.consecutiveLosses++;
                 this.sessionData.consecutiveWins = 0;  // NEW: Reset consecutive wins
+                this._updateDrawdown();
                 
                 console.log(`❌ MISS! Number ${actualNumber} - Lost $${Math.abs(netChange)}`);
             }
@@ -687,6 +748,50 @@ class MoneyManagementPanel {
                     console.log(`🛡️ Strategy 4: ${lossesNeeded} CONSECUTIVE LOSSES → Increased bet by $${lossInc} to $${this.sessionData.currentBetPerNumber}`);
                 } else {
                     console.log(`🛡️ Strategy 4: ${this.sessionData.consecutiveLosses} consecutive loss(es) - Need ${lossesNeeded - this.sessionData.consecutiveLosses} more to increase bet`);
+                }
+            }
+        } else if (this.sessionData.bettingStrategy === 5) {
+            // ═══ STRATEGY 5: LOGICAL ═══
+            // Bet sizing: base × min(N, 4) / 4 (applied at placement
+            // time in _s5BetPerNumber). Escalation accumulates
+            // FRACTIONALLY:
+            //   miss → s5LossUnits += N_managed / 4   (max N_managed=4)
+            //   hit  → s5WinUnits  += 1.0             (any hit = full win)
+            // Thresholds (s5LossesToIncrease, s5WinsToDecrease default
+            // 6 and 1) compare against the accumulator. When the
+            // threshold is crossed, base bet shifts by s5LossIncrement
+            // or s5WinDecrement and the accumulator resets.
+            // Floor: s5MinBet ($2). Cap: max($2, floor(remaining/32))
+            // applied at bet placement, not here.
+            const lossesNeeded = Math.max(1, parseInt(this.sessionData.s5LossesToIncrease, 10) || 6);
+            const lossInc      = Math.max(0, parseInt(this.sessionData.s5LossIncrement,    10) || 1);
+            const winsNeeded   = Math.max(1, parseInt(this.sessionData.s5WinsToDecrease,   10) || 1);
+            const winDec       = Math.max(0, parseInt(this.sessionData.s5WinDecrement,     10) || 1);
+            const minBet       = Math.max(1, parseInt(this.sessionData.s5MinBet,           10) || 2);
+            const N_managed    = this._s5ManagedN(numbersCount);
+            const ref          = Math.max(1, parseInt(this.sessionData.s5ReferenceN, 10) || 4);
+            if (hit) {
+                // Any hit = full win-unit; misses-accumulator resets.
+                this.sessionData.s5WinUnits  = (this.sessionData.s5WinUnits || 0) + 1.0;
+                this.sessionData.s5LossUnits = 0;
+                if (this.sessionData.s5WinUnits >= winsNeeded) {
+                    this.sessionData.currentBetPerNumber = Math.max(minBet, this.sessionData.currentBetPerNumber - winDec);
+                    this.sessionData.s5WinUnits = 0;
+                    console.log(`🧠 Strategy 5: HIT (N=${numbersCount}) → ${winsNeeded} win-unit reached → −$${winDec} → base now $${this.sessionData.currentBetPerNumber}`);
+                } else {
+                    console.log(`🧠 Strategy 5: HIT (N=${numbersCount}) → win-units=${this.sessionData.s5WinUnits.toFixed(2)} / ${winsNeeded}`);
+                }
+            } else {
+                // Miss adds N_managed/4 to loss accumulator. Win
+                // accumulator resets (any miss breaks the streak).
+                this.sessionData.s5LossUnits = (this.sessionData.s5LossUnits || 0) + (N_managed / ref);
+                this.sessionData.s5WinUnits  = 0;
+                if (this.sessionData.s5LossUnits >= lossesNeeded) {
+                    this.sessionData.currentBetPerNumber += lossInc;
+                    this.sessionData.s5LossUnits = 0;
+                    console.log(`🧠 Strategy 5: MISS (N=${numbersCount}, +${(N_managed/ref).toFixed(2)} unit) → ${lossesNeeded} loss-units reached → +$${lossInc} → base now $${this.sessionData.currentBetPerNumber}`);
+                } else {
+                    console.log(`🧠 Strategy 5: MISS (N=${numbersCount}, +${(N_managed/ref).toFixed(2)} unit) → loss-units=${this.sessionData.s5LossUnits.toFixed(2)} / ${lossesNeeded}`);
                 }
             }
         }
@@ -840,6 +945,48 @@ class MoneyManagementPanel {
             }
         }
 
+        // Max Drawdown (for all strategies) — largest peak-to-trough dip
+        const ddEl = document.getElementById('maxDrawdownValue');
+        if (ddEl) {
+            // Defensive: if peak hasn't been initialized (legacy session
+            // object), seed it from current bankroll so the first render
+            // shows $0 instead of NaN.
+            if (typeof this.sessionData.peakBankroll !== 'number') {
+                this.sessionData.peakBankroll = this.sessionData.currentBankroll || 0;
+            }
+            if (typeof this.sessionData.maxDrawdown !== 'number') {
+                this.sessionData.maxDrawdown = 0;
+            }
+            const dd = this.sessionData.maxDrawdown || 0;
+            ddEl.textContent = `$${dd.toLocaleString()}`;
+            ddEl.className = 'stat-value';
+            if (dd >= 200) {
+                ddEl.classList.add('danger');
+            } else if (dd >= 50) {
+                ddEl.classList.add('warning');
+            }
+        }
+
+        // Session P&L (for all strategies) — current bankroll minus starting bankroll
+        const pnlEl = document.getElementById('sessionPnLValue');
+        if (pnlEl) {
+            const start = parseFloat(this.sessionData.startingBankroll) || 0;
+            const cur = parseFloat(this.sessionData.currentBankroll) || 0;
+            const pnl = cur - start;
+            const sign = pnl >= 0 ? '+' : '-';
+            pnlEl.textContent = `${sign}$${Math.abs(pnl).toLocaleString()}`;
+            pnlEl.className = 'stat-value';
+            if (pnl > 0) {
+                pnlEl.classList.add('positive');
+                pnlEl.style.color = '#28a745';
+            } else if (pnl < 0) {
+                pnlEl.classList.add('negative');
+                pnlEl.style.color = '#dc3545';
+            } else {
+                pnlEl.style.color = '';
+            }
+        }
+
         // Progress
         const progressEl = document.getElementById('progressFill');
         const progressTextEl = document.getElementById('progressText');
@@ -888,8 +1035,21 @@ class MoneyManagementPanel {
             const resultIcon = bet.hit ? '✅' : '❌';
             const resultColor = bet.hit ? '#28a745' : '#dc3545';
 
+            // Per-number bet + count of numbers covered.
+            // betAmount = $ per number; totalBet = betAmount × numbersCount.
+            const perNum = (typeof bet.betAmount === 'number') ? bet.betAmount : 0;
+            const numsCount = Array.isArray(bet.predictedNumbers)
+                ? bet.predictedNumbers.length
+                : (perNum > 0 && typeof bet.totalBet === 'number'
+                    ? Math.max(1, Math.round(bet.totalBet / perNum))
+                    : 0);
+            const totalBet = (typeof bet.totalBet === 'number')
+                ? bet.totalBet
+                : perNum * numsCount;
+
             div.innerHTML = `
                 <span style="color: #6c757d;">#${bet.spin}</span>
+                <span style="color: #495057;" title="bet/num × numbers = total">$${perNum} × ${numsCount} = $${totalBet}</span>
                 <span>${resultIcon} ${bet.actualNumber}</span>
                 <span style="color: ${resultColor}; font-weight: 700;">${bet.netChange >= 0 ? '+' : ''}$${bet.netChange}</span>
                 <span style="color: #adb5bd; font-size: 9px;">${bet.timestamp}</span>
@@ -1039,16 +1199,88 @@ class MoneyManagementPanel {
     
     calculateBetAmount(numberCount) {
         /**
-         * Calculate bet amount based on strategy and bankroll
+         * Calculate bet amount based on strategy and bankroll.
+         * Strategy 5 (Logical) applies extra rules: N/4 linear scaling
+         * + session-target cap.
          */
-        
         const currentBet = this.sessionData.currentBetPerNumber;
-        
-        // Safety check: ensure we have enough bankroll
+
+        if (this.sessionData.bettingStrategy === 5) {
+            return this._s5BetPerNumber(numberCount);
+        }
+
+        // Strategies 1–4 — original safety check on bankroll.
         const maxBet = Math.floor(this.sessionData.currentBankroll / (numberCount * 2));
         const safeBet = Math.min(currentBet, maxBet);
-        
+
         return Math.max(1, safeBet); // Minimum $1 per number
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  STRATEGY 5 — LOGICAL: helpers
+    // ═══════════════════════════════════════════════════════
+
+    /**
+     * S5 — cap the base bet at the session-target ceiling.
+     *
+     *   target_bankroll = starting + s5SessionTarget
+     *   remaining        = target_bankroll - current_bankroll
+     *   max_base         = max(s5MinBet, floor(remaining / 32))
+     *
+     * A 4-number win nets 36b − 4b = 32b, so dividing the
+     * remaining-to-target by 32 gives the largest base bet whose
+     * single win does not overshoot the target. Floor enforces the
+     * configured minimum ($2 by default). Cap wins over escalation.
+     */
+    // Update peak bankroll + max drawdown after each bankroll change.
+    // Drawdown = peak − current; tracked as a positive dollar amount.
+    _updateDrawdown() {
+        const sd = this.sessionData;
+        const cur = parseFloat(sd.currentBankroll) || 0;
+        if (typeof sd.peakBankroll !== 'number') sd.peakBankroll = cur;
+        if (typeof sd.maxDrawdown !== 'number') sd.maxDrawdown = 0;
+        if (cur > sd.peakBankroll) sd.peakBankroll = cur;
+        const dd = sd.peakBankroll - cur;
+        if (dd > sd.maxDrawdown) sd.maxDrawdown = dd;
+    }
+
+    _s5CapBaseBet(baseBet) {
+        const sd = this.sessionData;
+        const target = (sd.startingBankroll || 4000) + (parseInt(sd.s5SessionTarget, 10) || 100);
+        const remaining = target - (sd.currentBankroll || 0);
+        const minBet = Math.max(1, parseInt(sd.s5MinBet, 10) || 2);
+        if (remaining <= 0) {
+            // User asked: no auto-pause/stop at target. Just hold the
+            // bet at the minimum so escalation can't overshoot further.
+            return minBet;
+        }
+        const fromCap = Math.floor(remaining / 32);
+        const capped  = Math.max(minBet, fromCap);
+        return Math.min(baseBet, capped);
+    }
+
+    /**
+     * S5 — bet-per-number scaled linearly to the reference count.
+     *   ref = s5ReferenceN (default 4)
+     *   N_managed = min(N, ref) — bets with >ref numbers are treated as ref
+     *   bet/num = capped_base × N_managed / ref
+     */
+    _s5BetPerNumber(numberCount) {
+        const sd = this.sessionData;
+        const ref = Math.max(1, parseInt(sd.s5ReferenceN, 10) || 4);
+        const baseBet = this._s5CapBaseBet(parseInt(sd.currentBetPerNumber, 10) || ref);
+        const N_managed = Math.max(1, Math.min(parseInt(numberCount, 10) || ref, ref));
+        const scaled = baseBet * (N_managed / ref);
+        // Round DOWN to integer dollars for clarity. Floor 1 to avoid 0.
+        return Math.max(1, Math.floor(scaled));
+    }
+
+    /**
+     * S5 — N_managed used by the escalation accumulator (always ≤ ref).
+     */
+    _s5ManagedN(numberCount) {
+        const ref = Math.max(1, parseInt(this.sessionData.s5ReferenceN, 10) || 4);
+        return Math.max(1, Math.min(parseInt(numberCount, 10) || ref, ref));
     }
 }
 

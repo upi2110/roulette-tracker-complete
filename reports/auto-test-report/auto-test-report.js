@@ -11,7 +11,8 @@ const STRATEGY_LABELS = {
     1: 'Strategy 1 - Aggressive',
     2: 'Strategy 2 - Conservative',
     3: 'Strategy 3 - Cautious',
-    4: 'Strategy 4 - Defensive'
+    4: 'Strategy 4 - Defensive',
+    5: 'Strategy 5 - Logical'
 };
 
 class AutoTestReport {
@@ -41,7 +42,7 @@ class AutoTestReport {
 
         // Build map of ALL detail sheet names (for hyperlinks in strategy sheets)
         const detailSheetMap = {};
-        for (const strategyNum of [1, 2, 3, 4]) {
+        for (const strategyNum of [1, 2, 3, 4, 5]) {
             const data = result.strategies[strategyNum];
             if (!data || data.sessions.length === 0) continue;
             for (const session of data.sessions) {
@@ -51,7 +52,7 @@ class AutoTestReport {
         }
 
         // Sheet 2-4: One per strategy (with hyperlinks to detail tabs)
-        for (const strategyNum of [1, 2, 3, 4]) {
+        for (const strategyNum of [1, 2, 3, 4, 5]) {
             const data = result.strategies[strategyNum];
             if (data && data.sessions.length > 0) {
                 this._createStrategySheet(workbook, strategyNum, data, detailSheetMap);
@@ -59,7 +60,7 @@ class AutoTestReport {
         }
 
         // Sheet 5+: Session detail sheets for EVERY session (in order)
-        for (const strategyNum of [1, 2, 3, 4]) {
+        for (const strategyNum of [1, 2, 3, 4, 5]) {
             const data = result.strategies[strategyNum];
             if (!data || data.sessions.length === 0) continue;
             for (const session of data.sessions) {
@@ -132,7 +133,7 @@ class AutoTestReport {
         });
 
         // Data rows (6-8)
-        for (const strategyNum of [1, 2, 3, 4]) {
+        for (const strategyNum of [1, 2, 3, 4, 5]) {
             const summary = result.strategies[strategyNum].summary;
             const row = sheet.getRow(5 + strategyNum);
             // Dollar totals — defensive fallback to 0 if an older summary
@@ -180,6 +181,8 @@ class AutoTestReport {
                 nameCell.font = { bold: true, color: { argb: 'FF28A745' } };
             } else if (strategyNum === 2) {
                 nameCell.font = { bold: true, color: { argb: 'FF007BFF' } };
+            } else if (strategyNum === 5) {
+                nameCell.font = { bold: true, color: { argb: 'FF4338CA' } };
             } else {
                 nameCell.font = { bold: true, color: { argb: 'FF6F42C1' } };
             }

@@ -237,7 +237,8 @@ class AutoTestRunner {
                     1: { sessions: [], summary: this._emptyStrategySummary() },
                     2: { sessions: [], summary: this._emptyStrategySummary() },
                     3: { sessions: [], summary: this._emptyStrategySummary() },
-                    4: { sessions: [], summary: this._emptyStrategySummary() }
+                    4: { sessions: [], summary: this._emptyStrategySummary() },
+                    5: { sessions: [], summary: this._emptyStrategySummary() }
                 }
             };
         }
@@ -245,7 +246,7 @@ class AutoTestRunner {
         // Backlog C — pair-rotation parity for method='test'. Pre-fetch
         // the persisted training records once so the AT runner can build
         // a per-session active-pair schedule using the same recommender
-        const allSessions = { 1: [], 2: [], 3: [], 4: [] };
+        const allSessions = { 1: [], 2: [], 3: [], 4: [], 5: [] };
 
         // Total work: each starting position × 3 strategies
         // We need at least 4 spins from startIdx, so max start = testSpins.length - 5
@@ -285,7 +286,7 @@ class AutoTestRunner {
         };
 
         for (let startIdx = 0; startIdx <= maxStart; startIdx++) {
-            for (const strategy of [1, 2, 3, 4]) {
+            for (const strategy of [1, 2, 3, 4, 5]) {
                 // Reset engine session between simulations
                 this.engine.resetSession();
                 // Restore the trained pair-model baseline so each
@@ -326,7 +327,8 @@ class AutoTestRunner {
                 1: { sessions: allSessions[1], summary: this._computeSummary(allSessions[1]) },
                 2: { sessions: allSessions[2], summary: this._computeSummary(allSessions[2]) },
                 3: { sessions: allSessions[3], summary: this._computeSummary(allSessions[3]) },
-                4: { sessions: allSessions[4], summary: this._computeSummary(allSessions[4]) }
+                4: { sessions: allSessions[4], summary: this._computeSummary(allSessions[4]) },
+                5: { sessions: allSessions[5], summary: this._computeSummary(allSessions[5]) }
             }
         };
 
@@ -366,7 +368,11 @@ class AutoTestRunner {
             maxConsecutiveSkips: 0,
             maxDrawdown: 0,
             peakProfit: 0,
-            reanalyzeCount: 0
+            reanalyzeCount: 0,
+            // Strategy-5 LOGICAL — fractional escalation accumulators
+            // (miss adds N/4, hit adds 1.0). Reset per session.
+            s5LossUnits: 0,
+            s5WinUnits:  0
         };
 
         const steps = [];
@@ -431,7 +437,22 @@ class AutoTestRunner {
                 const nextActual = testSpins[i + 1];
                 const hit = decision.numbers.includes(nextActual);
                 const numbersCount = decision.numbers.length;
-                const betUsed = sessionState.betPerNumber; // save BEFORE strategy adjusts it
+                // Strategy 5 applies session-target cap + N/4 linear
+                // scaling at bet placement. Other strategies use the
+                // base bet directly.
+                let betUsed;
+                if (strategy === 5) {
+                    const target  = STARTING_BANKROLL + 100;
+                    const remaining = target - sessionState.bankroll;
+                    const fromCap = (remaining > 0) ? Math.floor(remaining / 32) : 0;
+                    const capped  = Math.max(MIN_BET, fromCap);
+                    const baseBet = Math.min(sessionState.betPerNumber, capped);
+                    const ref     = 4;
+                    const N_managed = Math.max(1, Math.min(numbersCount, ref));
+                    betUsed = Math.max(1, Math.floor(baseBet * (N_managed / ref)));
+                } else {
+                    betUsed = sessionState.betPerNumber; // save BEFORE strategy adjusts it
+                }
                 const pnl = this._calculatePnL(betUsed, numbersCount, hit);
 
                 // Update bankroll
@@ -469,7 +490,7 @@ class AutoTestRunner {
 
                 // Apply strategy for next bet, then enforce MAX_BET cap
                 sessionState.betPerNumber = Math.min(
-                    this._applyStrategy(strategy, hit, sessionState),
+                    this._applyStrategy(strategy, hit, sessionState, numbersCount),
                     MAX_BET
                 );
 
@@ -946,7 +967,7 @@ class AutoTestRunner {
      * @param {Object} state - Session state with consecutiveLosses, consecutiveWins, betPerNumber
      * @returns {number} New betPerNumber (min $2)
      */
-    _applyStrategy(strategy, hit, state) {
+    _applyStrategy(strategy, hit, state, numbersCount) {
         const MIN_BET = 2;
         let bet = state.betPerNumber;
 
@@ -995,6 +1016,33 @@ class AutoTestRunner {
                 if (state.consecutiveLosses >= 5) {
                     bet = bet + 1;
                     state.consecutiveLosses = 0; // Reset after adjustment
+                }
+            }
+        } else if (strategy === 5) {
+            // Strategy 5: LOGICAL — same N/4 fractional model as live.
+            //   miss adds N_managed/4 to s5LossUnits (N_managed ≤ 4)
+            //   hit  adds 1.0 to s5WinUnits (any hit = full win)
+            // Triggers: 6 cumulative loss-units → +$1 base; 1 win-unit → −$1.
+            // Min bet $2. Cap-to-target is applied at bet PLACEMENT, not here.
+            const lossesNeeded = 6;
+            const lossInc      = 1;
+            const winsNeeded   = 1;
+            const winDec       = 1;
+            const ref          = 4;
+            const N_managed    = Math.max(1, Math.min(parseInt(numbersCount, 10) || ref, ref));
+            if (hit) {
+                state.s5WinUnits  = (state.s5WinUnits || 0) + 1.0;
+                state.s5LossUnits = 0;
+                if (state.s5WinUnits >= winsNeeded) {
+                    bet = Math.max(MIN_BET, bet - winDec);
+                    state.s5WinUnits = 0;
+                }
+            } else {
+                state.s5LossUnits = (state.s5LossUnits || 0) + (N_managed / ref);
+                state.s5WinUnits  = 0;
+                if (state.s5LossUnits >= lossesNeeded) {
+                    bet = bet + lossInc;
+                    state.s5LossUnits = 0;
                 }
             }
         }

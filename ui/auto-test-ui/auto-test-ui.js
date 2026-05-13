@@ -118,6 +118,7 @@ class AutoTestUI {
                         <button class="auto-test-tab" data-tab="strategy2" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 2</button>
                         <button class="auto-test-tab" data-tab="strategy3" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 3</button>
                         <button class="auto-test-tab" data-tab="strategy4" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 4</button>
+                        <button class="auto-test-tab" data-tab="strategy5" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 5</button>
                     </div>
                 </div>
 
@@ -584,12 +585,12 @@ class AutoTestUI {
             return;
         }
 
-        const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious', 4: '🛡️ Defensive' };
+        const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious', 4: '🛡️ Defensive', 5: '🧠 Logical' };
         const colors = { 1: '#28a745', 2: '#007bff', 3: '#6f42c1', 4: '#0f766e' };
 
         let bestStrategy = 1;
         let bestWinRate = 0;
-        for (const num of [1, 2, 3, 4]) {
+        for (const num of [1, 2, 3, 4, 5]) {
             const wr = result.strategies[num].summary.winRate;
             if (wr > bestWinRate) { bestWinRate = wr; bestStrategy = num; }
         }
@@ -620,7 +621,7 @@ class AutoTestUI {
                 </thead>
                 <tbody>`;
 
-        for (const num of [1, 2, 3, 4]) {
+        for (const num of [1, 2, 3, 4, 5]) {
             const s = result.strategies[num].summary;
             const isBest = num === bestStrategy && bestWinRate > 0;
             const rowBg = isBest ? 'rgba(34,197,94,0.1)' : 'transparent';
@@ -654,7 +655,7 @@ class AutoTestUI {
 
         // Bar charts
         html += '<div style="margin-top:16px;">';
-        for (const num of [1, 2, 3, 4]) {
+        for (const num of [1, 2, 3, 4, 5]) {
             const s = result.strategies[num].summary;
             const total = s.totalSessions || 1;
             const winPct = (s.wins / total * 100).toFixed(0);
