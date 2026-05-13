@@ -107,6 +107,18 @@ class RouletteWheel {
                 ">
                     <input type="checkbox" id="wheelGreyToggle" checked style="vertical-align:middle;"> include grey
                 </label>
+                <!-- T3 halfs toggle: when ON, each Table-3 pair group
+                     splits into a "pair" half (P+1) and a "13opp" half
+                     (P+1-13opp) that can be selected independently —
+                     matching how T1 / T2 already work. When OFF, T3
+                     keeps the original single-entry-per-pair behaviour. -->
+                <label id="wheelT3HalfsWrap" title="Split each Table-3 pair group into pair / 13opp halves so they can be selected independently (like Table 1 and Table 2)." style="
+                    display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+                    color:#475569;cursor:pointer;user-select:none;
+                    padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
+                ">
+                    <input type="checkbox" id="wheelT3HalfsToggle" style="vertical-align:middle;"> T3 halfs
+                </label>
                 <button id="wheelInverseBtn" title="Flip the bet set: remove all currently selected wheel numbers, select all the others. Click again to flip back. Mirrors to money panel + AI display + wheel highlights." style="
                     font-size:10px;font-weight:700;cursor:pointer;user-select:none;
                     padding:3px 9px;border:1px solid #94a3b8;border-radius:4px;
@@ -221,6 +233,41 @@ class RouletteWheel {
             window.addEventListener('strategyLabIncludeGreyChanged', (e) => {
                 const v = !!(e && e.detail && e.detail.value);
                 if (wheelGreyCb.checked !== v) wheelGreyCb.checked = v;
+            });
+        }
+
+        // T3 halfs toggle: independently selectable pair / 13opp halves
+        // for Table 3. Mirrors the include-grey pattern: window global
+        // (window.t3Halfs) is source of truth, persisted in
+        // localStorage('strategyLab.t3Halfs'), broadcast via custom
+        // event 't3HalfsChanged' so renderer-3tables and the AI panel
+        // refresh their available-pair lists. Default OFF — when off,
+        // T3 behaves exactly as before (no behavioural change).
+        const wheelT3HalfsCb = document.getElementById('wheelT3HalfsToggle');
+        if (wheelT3HalfsCb) {
+            let initialT3Halfs = false;
+            if (typeof window !== 'undefined' && typeof window.t3Halfs === 'boolean') {
+                initialT3Halfs = window.t3Halfs;
+            } else {
+                try {
+                    const saved = localStorage.getItem('strategyLab.t3Halfs');
+                    if (saved === '1') initialT3Halfs = true;
+                } catch (_) {}
+            }
+            wheelT3HalfsCb.checked = initialT3Halfs;
+            if (typeof window !== 'undefined') window.t3Halfs = initialT3Halfs;
+
+            wheelT3HalfsCb.addEventListener('change', () => {
+                const v = !!wheelT3HalfsCb.checked;
+                if (typeof window !== 'undefined') window.t3Halfs = v;
+                try { localStorage.setItem('strategyLab.t3Halfs', v ? '1' : '0'); } catch (_) {}
+                try {
+                    window.dispatchEvent(new CustomEvent('t3HalfsChanged', { detail: { value: v } }));
+                } catch (_) {}
+            });
+            window.addEventListener('t3HalfsChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (wheelT3HalfsCb.checked !== v) wheelT3HalfsCb.checked = v;
             });
         }
 

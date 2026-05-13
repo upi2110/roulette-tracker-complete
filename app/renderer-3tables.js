@@ -2627,16 +2627,24 @@ function _renderTable3Head() {
     ];
     // Slice 2f: filter by global pair-family dropdown.
     const VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS);
+    // T3-halfs aware header data-pair: pair-half (label + first POS)
+    // gets "_pair", 13opp-half (label13 + second POS) gets "_13opp",
+    // PRJ keeps the base key. When halfs is OFF every header uses
+    // the base key as before — no behavioural change.
+    const _hdrHalfsOn = (typeof window !== 'undefined' && window.t3Halfs === true);
+    const _hdrDpFor = (baseDp, half) => _hdrHalfsOn ? `${baseDp}_${half}` : baseDp;
     VISIBLE.forEach((grp, gi) => {
         // Match the existing thead convention: first pair-group
         // omits pair-separator on its label cell; later groups carry
         // it on the FIRST sub-header (the main label).
         const sepCls = (gi > 0) ? ' pair-separator' : '';
+        const dpPair = _hdrDpFor(grp.dataPair, 'pair');
+        const dp13   = _hdrDpFor(grp.dataPair, '13opp');
         cells.push(
-            `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}">${grp.label}</th>`,
-            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">POS</th>`,
-            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">${grp.label13}</th>`,
-            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">POS</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${dpPair}">${grp.label}</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dpPair}">POS</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dp13}">${grp.label13}</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dp13}">POS</th>`,
             `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">PRJ</th>`
         );
     });
@@ -2787,9 +2795,19 @@ function renderTable3() {
             // When a cell is a flash target, it gets class="t3-pm1-flash" (no
             // cell-has-position) and a span with inline amber styles (no pos-s/
             // pos-o/pos-xx classes). This eliminates ALL CSS specificity battles.
+            // T3-halfs mode: when ON, the Ref + first POS cells carry
+            // the "_pair" half key, the 13Opp ref + second POS cells
+            // carry the "_13opp" half key. PRJ keeps the base key
+            // (clicks on PRJ aren't intended as half-specific). When
+            // OFF, every cell uses the base key as before.
+            const _halfsOn = (typeof window !== 'undefined' && window.t3Halfs === true);
+            const _dpFor = (baseDp, half) => _halfsOn ? `${baseDp}_${half}` : baseDp;
+
             const posCell = (refKey, field) => {
                 const posCode = data[refKey][field];
-                const dataPairAttr = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
+                const baseDp = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
+                const half = (field === 'pair') ? 'pair' : '13opp';
+                const dataPairAttr = _dpFor(baseDp, half);
                 const cellType = field === 'pair' ? 'pair' : 'pair13Opp';
                 const flash = flashTargets.has(`${relIdx}:${refKey}:${cellType}`);
                 if (flash) {
@@ -2809,10 +2827,12 @@ function renderTable3() {
             const groupHtml = VISIBLE.map(grp => {
                 const refKey = grp.engineRefKey;
                 const dp = grp.dataPair;
+                const dpPair = _dpFor(dp, 'pair');
+                const dp13   = _dpFor(dp, '13opp');
                 return `
-                    <td class="${cellClass(refKey, 'pair', true)}" data-pair="${dp}">${data[refKey].ref}</td>
+                    <td class="${cellClass(refKey, 'pair', true)}" data-pair="${dpPair}">${data[refKey].ref}</td>
                     ${posCell(refKey, 'pair')}
-                    <td class="${cellClass(refKey, 'pair13Opp')}" data-pair="${dp}">${data[refKey].ref13Opp}</td>
+                    <td class="${cellClass(refKey, 'pair13Opp')}" data-pair="${dp13}">${data[refKey].ref13Opp}</td>
                     ${posCell(refKey, 'pair13Opp')}
                     <td class="${projClass(refKey)}" data-pair="${dp}">${projHtml(refKey)}</td>
                 `;
@@ -2868,8 +2888,35 @@ function renderTable3() {
             const prevPair13 = calculatePositionCode(prevRef13Opp, prevSpin.actual);
             const usePosCode = prevPair !== 'XX' ? prevPair : prevPair13;
 
-            const { purple, green } = generateAnchors(refs[refKey], DIGIT_13_OPPOSITES[refs[refKey]], usePosCode);
-            nextProjections[refKey] = { purple, green };
+            const refNum = refs[refKey];
+            const ref13Opp = DIGIT_13_OPPOSITES[refNum];
+            const { purple, green } = generateAnchors(refNum, ref13Opp, usePosCode);
+
+            // T3-halfs: derive the pair-half anchors and the
+            // 13opp-half anchors separately so getNextRowProjections
+            // can emit independently selectable halves. The merged
+            // (purple, green) above is kept for the existing
+            // single-entry path; halves use the per-side anchors.
+            let pairAnchors = [];
+            let oppAnchors  = [];
+            if (usePosCode && usePosCode !== 'XX') {
+                const aPairA = getNumberAtPosition(refNum, usePosCode);
+                const aPairB = getNumberAtPosition(refNum, flipPositionCode(usePosCode));
+                const aOppA  = getNumberAtPosition(ref13Opp, usePosCode);
+                const aOppB  = getNumberAtPosition(ref13Opp, flipPositionCode(usePosCode));
+                [aPairA, aPairB].forEach(a => { if (a !== null && !pairAnchors.includes(a)) pairAnchors.push(a); });
+                [aOppA,  aOppB ].forEach(a => { if (a !== null && !oppAnchors .includes(a)) oppAnchors .push(a); });
+            }
+            const pairGreen = pairAnchors.map(a => REGULAR_OPPOSITES[a]).filter(a => a !== undefined);
+            const oppGreen  = oppAnchors .map(a => REGULAR_OPPOSITES[a]).filter(a => a !== undefined);
+
+            nextProjections[refKey] = {
+                purple, green,                 // merged (existing behaviour)
+                pairPurple: pairAnchors,       // T3-halfs: pair half only
+                pairGreen,
+                oppPurple:  oppAnchors,        // T3-halfs: 13opp half only
+                oppGreen
+            };
         });
         
         // Store for backend to use
@@ -2886,14 +2933,20 @@ function renderTable3() {
         // Slice 2e-1: NEXT row driven from T3_COLUMN_GROUPS. Same
         // 5-cell-per-group pattern as the previous hardcoded form,
         // including pair-separator on every group's Ref cell.
+        // T3-halfs aware: ref + first dash carry "_pair" half, 13Opp
+        // ref + second dash carry "_13opp" half. PRJ keeps base key.
+        const _nextHalfsOn = (typeof window !== 'undefined' && window.t3Halfs === true);
+        const _nextDpFor = (baseDp, half) => _nextHalfsOn ? `${baseDp}_${half}` : baseDp;
         const nextGroupHtml = VISIBLE.map(grp => {
             const refKey = grp.engineRefKey;
             const dp = grp.dataPair;
+            const dpPair = _nextDpFor(dp, 'pair');
+            const dp13   = _nextDpFor(dp, '13opp');
             return `
-                <td class="pair-separator" data-pair="${dp}">${data[refKey].ref}</td>
-                <td data-pair="${dp}">-</td>
-                <td data-pair="${dp}">${data[refKey].ref13Opp}</td>
-                <td data-pair="${dp}">-</td>
+                <td class="pair-separator" data-pair="${dpPair}">${data[refKey].ref}</td>
+                <td data-pair="${dpPair}">-</td>
+                <td data-pair="${dp13}">${data[refKey].ref13Opp}</td>
+                <td data-pair="${dp13}">-</td>
                 <td class="col-prj" data-pair="${dp}">${nextProjHtml(refKey)}</td>
             `;
         }).join('');
@@ -2949,6 +3002,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     render();
+
+    // T3-halfs toggle: when flipped from the wheel panel we need to
+    // re-render Table 3 (so cell data-pair attrs pick up _pair /
+    // _13opp suffixes) and re-prime the AI panel so its pair list
+    // shows the halves. Clearing existing T3 selections avoids stale
+    // keys that no longer exist in the new pair list.
+    window.addEventListener('t3HalfsChanged', () => {
+        try {
+            if (window.aiPanel && window.aiPanel.table3Selections) {
+                window.aiPanel.table3Selections.clear();
+                if (window.aiPanel.table1SelectedPairs) {
+                    // Refresh highlights (drops stale t3-pair-selected classes)
+                    document.querySelectorAll('.t3-pair-selected').forEach(el => el.classList.remove('t3-pair-selected'));
+                }
+            }
+        } catch (_) {}
+        try { render(); } catch (_) {}
+        try {
+            if (window.aiPanel && typeof window.aiPanel.loadAvailablePairs === 'function') {
+                const data = (typeof window.getAIDataV6 === 'function') ? window.getAIDataV6() : null;
+                if (data) window.aiPanel.loadAvailablePairs(data);
+            }
+        } catch (_) {}
+    });
 });
 
 // COMPLETE FIX FOR DATA EXPORT
@@ -3190,30 +3267,67 @@ function getNextRowProjections() {
     const keyMap = {};
     _filterVisibleColumnGroups(T3_COLUMN_GROUPS).forEach(g => { keyMap[g.engineRefKey] = g.dataPair; });
     
+    // T3-halfs mode: when window.t3Halfs is true, split each pair
+    // group into a "_pair" half (purple anchors only — the ref pair)
+    // and a "_13opp" half (green anchors only — its 13-opposite),
+    // each independently selectable downstream. When false, keep
+    // the original single-entry merged behaviour.
+    const halfsOn = (typeof window !== 'undefined' && window.t3Halfs === true);
+
     // Use stored projections from table display
     Object.keys(keyMap).forEach(frontendKey => {
         const backendKey = keyMap[frontendKey];
         const displayProj = window.table3DisplayProjections[frontendKey];
-        
+
         if (!displayProj || !displayProj.purple) {
             return;
         }
-        
+
         const purple = displayProj.purple || [];
         const green = displayProj.green || [];
-        
+
         console.log(`   ${backendKey}: purple=${JSON.stringify(purple)}, green=${JSON.stringify(green)}`);
-        
-        // Expand to include wheel neighbors
-        const betNumbers = expandAnchorsToBetNumbers(purple, green);
-        
-        projections[backendKey] = {
-            anchors: purple,         // From table display
-            neighbors: green,        // From table display
-            numbers: betNumbers      // Expanded
-        };
-        
-        console.log(`   ✅ ${backendKey}: purple=${purple.length}, green=${green.length}, total=${betNumbers.length}`);
+
+        if (halfsOn) {
+            // Pair-half anchors / 13opp-half anchors are pre-computed
+            // by renderTable3's NEXT projection step using the same
+            // four-anchor breakdown generateAnchors uses internally
+            // (a1, a2 = pair half; a3, a4 = 13opp half). Each half's
+            // purple anchors are expanded with their own green
+            // wheel-opposites so the bet neighborhood is symmetric
+            // around just that half.
+            const pairPurple = displayProj.pairPurple || [];
+            const pairGreen  = displayProj.pairGreen  || [];
+            const oppPurple  = displayProj.oppPurple  || [];
+            const oppGreen   = displayProj.oppGreen   || [];
+            const pairBet = expandAnchorsToBetNumbers(pairPurple, pairGreen);
+            const oppBet  = expandAnchorsToBetNumbers(oppPurple,  oppGreen);
+            if (pairPurple.length > 0) {
+                projections[backendKey + '_pair'] = {
+                    anchors: pairPurple,
+                    neighbors: pairGreen,
+                    numbers: pairBet
+                };
+                console.log(`   ✅ ${backendKey}_pair (halfs): purple=${pairPurple.length}, green=${pairGreen.length}, total=${pairBet.length}`);
+            }
+            if (oppPurple.length > 0) {
+                projections[backendKey + '_13opp'] = {
+                    anchors: oppPurple,
+                    neighbors: oppGreen,
+                    numbers: oppBet
+                };
+                console.log(`   ✅ ${backendKey}_13opp (halfs): purple=${oppPurple.length}, green=${oppGreen.length}, total=${oppBet.length}`);
+            }
+        } else {
+            // Expand to include wheel neighbors (merged — purple + green)
+            const betNumbers = expandAnchorsToBetNumbers(purple, green);
+            projections[backendKey] = {
+                anchors: purple,         // From table display
+                neighbors: green,        // From table display
+                numbers: betNumbers      // Expanded
+            };
+            console.log(`   ✅ ${backendKey}: purple=${purple.length}, green=${green.length}, total=${betNumbers.length}`);
+        }
     });
     
     console.log(`\n📊 Using table display projections for ${Object.keys(projections).length} pairs`);

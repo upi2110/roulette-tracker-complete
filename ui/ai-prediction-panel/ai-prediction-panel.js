@@ -341,6 +341,22 @@ class AIPredictionPanel {
             'prevPrevMinus2_13opp': 'PP-2-13OPP'
         };
 
+        // T3-halfs split labels: when window.t3Halfs is ON the T3
+        // projections come back with "_pair" and "_13opp" suffixes
+        // (renderer-3tables.js getNextRowProjections). Provide
+        // matching display names so the AI-panel pair list shows
+        // them with readable labels instead of raw keys.
+        const _halfBases = [
+            ['prev','P'], ['prevPlus1','P+1'], ['prevMinus1','P-1'],
+            ['prevPlus2','P+2'], ['prevMinus2','P-2'], ['prevPrev','PP'],
+            ['prevPrevPlus1','PP+1'], ['prevPrevMinus1','PP-1'],
+            ['prevPrevPlus2','PP+2'], ['prevPrevMinus2','PP-2']
+        ];
+        _halfBases.forEach(([k, lbl]) => {
+            pairDisplayNames[k + '_pair']  = lbl;
+            pairDisplayNames[k + '_13opp'] = lbl + '-13OPP';
+        });
+
         // Cache for the summary dashboard so display labels stay in sync
         // with whatever loadAvailablePairs uses.
         this._summaryPairNames = pairDisplayNames;
