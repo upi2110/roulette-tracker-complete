@@ -663,7 +663,14 @@ function formatPos(code) {
 // so there are zero CSS specificity battles.
 function formatPosFlash(code) {
     if (!code) return '';
-    return `<span style="background:#fbbf24 !important;color:#000 !important;padding:1px 2px;border-radius:2px;display:inline-block;white-space:nowrap;font-weight:900;font-size:9px;min-width:28px;text-align:center">${code}</span>`;
+    // Outline-only flash: re-use the same .pos-s / .pos-o / .pos-xx
+    // class as non-flashed cells so S codes stay green, O codes stay
+    // blue, XX stays peach. The amber outline lives on the <td>, not
+    // on the inner span — so highlight + position color coexist.
+    let cls = 'pos-xx';
+    if (code.startsWith('S')) cls = 'pos-s';
+    else if (code.startsWith('O')) cls = 'pos-o';
+    return `<span class="${cls}" style="font-weight:900">${code}</span>`;
 }
 
 function addSpin() {
@@ -1556,7 +1563,7 @@ function renderTable1() {
                     // cell (1st / 2nd / 3rd) renders normally so the
                     // user's eye lands directly on the matching code.
                     html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                    html.push(`<td class="t1-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
+                    html.push(`<td class="t1-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
                 } else {
                     html.push(`<td class="${numClass}"${dp}>${target}</td>`);
                     html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
@@ -1949,7 +1956,7 @@ function renderTable2() {
                     // Slice 3b follow-up: only the C (position-code)
                     // cell flashes — target-number cell renders normally.
                     html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                    html.push(`<td class="t2-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
+                    html.push(`<td class="t2-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
                 } else {
                     html.push(`<td class="${numClass}"${dp}>${target}</td>`);
                     html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
@@ -2517,14 +2524,17 @@ function _flashPairCell(row, dataPair, hitCellType) {
         cell.style.setProperty('outline-offset', '-1px', 'important');
         cell.style.setProperty('position', 'relative', 'important');
         cell.style.setProperty('z-index', '10', 'important');
-        cell.style.setProperty('background', '#fef3c7', 'important');
+        // Outline-only flash: do NOT paint a background — let the cell's
+        // own green/blue/red color show through.
+        cell.style.removeProperty('background');
         cell.style.setProperty('box-shadow', '0 0 8px rgba(245, 158, 11, 0.6)', 'important');
 
-        // INLINE STYLES on SPAN — override .pos-s/.pos-o/.pos-xx !important backgrounds
+        // SPAN: clear any prior amber bg/color paint so the span's own
+        // .pos-s / .pos-o / .pos-xx green/blue/peach styling shows.
         const span = cell.querySelector('span');
         if (span) {
-            span.style.setProperty('background', '#fef3c7', 'important');
-            span.style.setProperty('color', '#92400e', 'important');
+            span.style.removeProperty('background');
+            span.style.removeProperty('color');
         }
 
         console.log(`⚡ DOM: Added t3-pm1-flash to ${dataPair}[${cellIdx}] (${hitCellType}), text="${cell.textContent}"`);
@@ -2773,7 +2783,7 @@ function renderTable3() {
                 const cellType = field === 'pair' ? 'pair' : 'pair13Opp';
                 const flash = flashTargets.has(`${relIdx}:${refKey}:${cellType}`);
                 if (flash) {
-                    return `<td class="t3-pm1-flash" data-pair="${dataPairAttr}" style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(posCode)}</td>`;
+                    return `<td class="t3-pm1-flash" data-pair="${dataPairAttr}" style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(posCode)}</td>`;
                 }
                 const cls = posCode && posCode !== 'XX' ? 'cell-has-position' : '';
                 return `<td class="${cls}" data-pair="${dataPairAttr}">${formatPos(posCode)}</td>`;
