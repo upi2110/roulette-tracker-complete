@@ -51,11 +51,19 @@ class AutoTestReport {
             }
         }
 
+        // Manual-test config one-liner — passed through to per-strategy
+        // and per-session sheets so a single look at any tab shows what
+        // was actually used. Null for any other method (no header line
+        // emitted, byte-identical layout to before).
+        const mtOneLine = (result.method === 'manual-test' && result.manualTestConfig)
+            ? AutoTestReport._formatManualTestConfigOneLine(result.manualTestConfig)
+            : null;
+
         // Sheet 2-4: One per strategy (with hyperlinks to detail tabs)
         for (const strategyNum of [1, 2, 3, 4, 5]) {
             const data = result.strategies[strategyNum];
             if (data && data.sessions.length > 0) {
-                this._createStrategySheet(workbook, strategyNum, data, detailSheetMap);
+                this._createStrategySheet(workbook, strategyNum, data, detailSheetMap, mtOneLine);
             }
         }
 
@@ -64,7 +72,7 @@ class AutoTestReport {
             const data = result.strategies[strategyNum];
             if (!data || data.sessions.length === 0) continue;
             for (const session of data.sessions) {
-                this._createSessionSheet(workbook, session, strategyNum);
+                this._createSessionSheet(workbook, session, strategyNum, mtOneLine);
             }
         }
 
@@ -196,7 +204,74 @@ class AutoTestReport {
             { width: 12 }, { width: 14 }
         ];
 
+        // Manual-test config block — only renders when the run was a
+        // manual-test AND the runner populated result.manualTestConfig.
+        // Pure additive: any other method skips this entirely so the
+        // overview layout is byte-identical for them. Sits below the
+        // strategy data rows so column widths above stay valid.
+        if (result.method === 'manual-test' && result.manualTestConfig) {
+            const cfg = result.manualTestConfig;
+            const startRow = 13;
+            sheet.mergeCells(`A${startRow}:Q${startRow}`);
+            const hdr = sheet.getCell(`A${startRow}`);
+            hdr.value = '🛠️ manual-test — Config snapshot used for this run';
+            hdr.font = { bold: true, size: 12, color: { argb: 'FF22D3EE' } };
+            hdr.alignment = { horizontal: 'left' };
+
+            const lines = AutoTestReport._formatManualTestConfigLines(cfg);
+            lines.forEach((line, i) => {
+                const r = startRow + 1 + i;
+                sheet.mergeCells(`A${r}:Q${r}`);
+                const c = sheet.getCell(`A${r}`);
+                c.value = line;
+                c.font = { size: 11, color: { argb: 'FF334155' } };
+                c.alignment = { horizontal: 'left' };
+            });
+        }
+
         return sheet;
+    }
+
+    /**
+     * Format the manual-test config into human-readable lines for the
+     * Overview sheet. Pure helper (no DOM, no ExcelJS calls inside) so
+     * it's unit-testable and reusable from the strategy / session
+     * sheets (they get a 1-line summary using these same fields).
+     *
+     * @param {{inverse:boolean, t3Halfs:boolean, includeGrey:boolean,
+     *          filters:Object, selections:{t1:[],t2:[],t3:[]}}} cfg
+     * @returns {string[]} multi-line description
+     */
+    static _formatManualTestConfigLines(cfg) {
+        const sels = cfg.selections || {};
+        const t1 = (sels.t1 && sels.t1.length) ? sels.t1.join(', ')  : '(none)';
+        const t2 = (sels.t2 && sels.t2.length) ? sels.t2.join(', ')  : '(none)';
+        const t3 = (sels.t3 && sels.t3.length) ? sels.t3.join(', ')  : '(none)';
+        const filters = cfg.filters || {};
+        const sets = filters.sets || {};
+        const setsList = ['set0','set5','set6'].filter(k => sets[k]).map(k => k.replace('set','')).join('/') || '(none)';
+        return [
+            `Env toggles — Inverse: ${cfg.inverse ? 'ON' : 'OFF'}   |   T3 halfs: ${cfg.t3Halfs ? 'ON' : 'OFF'}   |   Include grey: ${cfg.includeGrey ? 'ON' : 'OFF'}`,
+            `Filters     — Table: ${filters.table || 'both'}   |   Sign: ${filters.sign || 'both'}   |   Set: ${setsList}`,
+            `T1 pairs    : ${t1}`,
+            `T2 pairs    : ${t2}`,
+            `T3 pairs    : ${t3}`
+        ];
+    }
+
+    /**
+     * One-line summary for embedding in Strategy / session-detail
+     * sheets. Compact version of _formatManualTestConfigLines.
+     */
+    static _formatManualTestConfigOneLine(cfg) {
+        const sels = cfg.selections || {};
+        const t1 = (sels.t1 && sels.t1.length) ? sels.t1.join(',') : '–';
+        const t2 = (sels.t2 && sels.t2.length) ? sels.t2.join(',') : '–';
+        const t3 = (sels.t3 && sels.t3.length) ? sels.t3.join(',') : '–';
+        const filters = cfg.filters || {};
+        const sets = filters.sets || {};
+        const setsList = ['0','5','6'].filter(k => sets['set'+k]).join('/') || '–';
+        return `manual-test cfg → Inv:${cfg.inverse?'ON':'OFF'} | T3halfs:${cfg.t3Halfs?'ON':'OFF'} | Grey:${cfg.includeGrey?'ON':'OFF'} | Tbl:${filters.table||'both'} | Sgn:${filters.sign||'both'} | Sets:${setsList} | T1:[${t1}] T2:[${t2}] T3:[${t3}]`;
     }
 
     /**
@@ -204,13 +279,26 @@ class AutoTestReport {
      *
      * @param {Object} detailSheetMap - Map of "strategyNum-startIdx" → sheet name
      */
-    _createStrategySheet(workbook, strategyNum, data, detailSheetMap) {
+    _createStrategySheet(workbook, strategyNum, data, detailSheetMap, mtOneLine) {
         const sheetName = STRATEGY_LABELS[strategyNum];
         const sheet = workbook.addWorksheet(sheetName);
 
+        // Optional manual-test config one-liner — sits at row 1 if
+        // provided. When absent (every other method) the layout is
+        // byte-identical to before: headers stay on row 1.
+        let headerRowNum = 1;
+        if (mtOneLine) {
+            sheet.mergeCells('A1:K1');
+            const note = sheet.getCell('A1');
+            note.value = mtOneLine;
+            note.font = { size: 10, italic: true, color: { argb: 'FF22D3EE' } };
+            note.alignment = { horizontal: 'left' };
+            headerRowNum = 2;
+        }
+
         // Headers (11 columns — added "Details" link column)
         const headers = ['#', 'Start Idx', 'Outcome', 'Spins', 'Bets', 'Wins', 'Losses', 'Win Rate', 'Profit', 'Max Drawdown', 'Details'];
-        const headerRow = sheet.getRow(1);
+        const headerRow = sheet.getRow(headerRowNum);
         headers.forEach((h, i) => {
             const cell = headerRow.getCell(i + 1);
             cell.value = h;
@@ -225,9 +313,11 @@ class AutoTestReport {
             };
         });
 
-        // Data rows
+        // Data rows — start one row below the header row (which moved
+        // to row 2 when mtOneLine is present).
+        const dataStartRow = headerRowNum + 1;
         data.sessions.forEach((session, idx) => {
-            const row = sheet.getRow(idx + 2);
+            const row = sheet.getRow(idx + dataStartRow);
             const values = [
                 idx + 1,
                 session.startIdx,
@@ -292,14 +382,15 @@ class AutoTestReport {
             { width: 12 }, { width: 14 }, { width: 10 }
         ];
 
-        // Auto-filter
+        // Auto-filter — anchored to the header row (1 or 2 depending
+        // on whether the manual-test one-liner is present).
         sheet.autoFilter = {
-            from: { row: 1, column: 1 },
-            to: { row: data.sessions.length + 1, column: 11 }
+            from: { row: headerRowNum, column: 1 },
+            to: { row: data.sessions.length + headerRowNum, column: 11 }
         };
 
-        // Freeze header row
-        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+        // Freeze rows above the data area
+        sheet.views = [{ state: 'frozen', ySplit: headerRowNum }];
 
         return sheet;
     }
@@ -307,7 +398,7 @@ class AutoTestReport {
     /**
      * Create a session detail sheet with step-by-step log.
      */
-    _createSessionSheet(workbook, session, strategyNum) {
+    _createSessionSheet(workbook, session, strategyNum, mtOneLine) {
         const sheetName = `S${strategyNum}-Start${session.startIdx}`;
         // Truncate if too long (Excel sheet names max 31 chars)
         const safeName = sheetName.substring(0, 31);
@@ -325,6 +416,17 @@ class AutoTestReport {
         backCell.value = { text: '← Back', hyperlink: `#'${strategySheetName}'!A1` };
         backCell.font = { color: { argb: 'FF0563C1' }, underline: true, size: 10 };
         backCell.alignment = { horizontal: 'center' };
+
+        // Manual-test config one-liner — fills the previously blank
+        // row 2 only when this is a manual-test session. Layout for
+        // every other method is unchanged (row 2 stays empty as before).
+        if (mtOneLine) {
+            sheet.mergeCells('A2:L2');
+            const c = sheet.getCell('A2');
+            c.value = mtOneLine;
+            c.font = { size: 10, italic: true, color: { argb: 'FF22D3EE' } };
+            c.alignment = { horizontal: 'left' };
+        }
 
         // Headers (row 3)
         // Legacy columns 1..12 are fixed and must not shift. AI-trained

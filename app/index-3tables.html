@@ -179,6 +179,10 @@
      This is the SANDBOX copy used by the Test (Lab) tab — modify here to
      prototype a new strategy without disturbing 3T-Selection production. -->
 <script src="../strategies/strategy-lab/strategy-lab.js"></script>
+<!-- Manual Replay — pure prediction math for the Auto Test
+     'manual-test' mode. No engine / DOM dependencies; exposes
+     window.ManualReplay.computeManualPrediction. -->
+<script src="../strategies/manual-replay/manual-replay.js"></script>
 <!-- 3T-Selection: production copy of the same algorithm exposed under
      window.Strategy3T. Triggered by the "3T-Selection" sub-button on the
      Auto tab (decisionMode='3t-selection') and Auto-Test method='3t-selection'.

@@ -145,6 +145,14 @@ class AutoTestRunner {
         this._currentMethod  = (method === 'manual') ? requestedManualStrat : method;
         this._reportedMethod = method;
 
+        // manual-test: snapshot the user's UI config on the runner so
+        // _simulateDecision can read it without touching any globals.
+        // Pure additive — when method !== 'manual-test' this field is
+        // null and no existing code path is affected.
+        this._manualTestConfig = (method === 'manual-test' && options.manualTestConfig)
+            ? options.manualTestConfig
+            : null;
+
         // Strategy-Lab parity: if the include-grey flag wasn't already
         // set on this runner (e.g. AI panel mirrored it when the user
         // toggled the checkbox), pull the latest value from window /
@@ -182,7 +190,10 @@ class AutoTestRunner {
         // engine.isTrained gate. Without this, manual→AI-trained returns
         // ENGINE_NOT_TRAINED with empty strategies and the renderer
         // crashes on result.strategies[1].summary.
-        if (this._engineMaybeUntrained && this._currentMethod !== 'AI-trained') {
+        // manual-test uses user-supplied pair keys + a self-contained
+        // projection helper — no engine training required. Same
+        // exemption AI-trained has.
+        if (this._engineMaybeUntrained && this._currentMethod !== 'AI-trained' && this._currentMethod !== 'manual-test') {
             return {
                 testFile,
                 method,
@@ -323,6 +334,12 @@ class AutoTestRunner {
             totalTestSpins: testSpins.length,
             trainedOn: `${Object.keys(this.engine.pairModels).length} pairs trained`,
             timestamp: new Date().toISOString(),
+            // Surface the manual-test config (env toggles + filters +
+            // pair selections) on the result so the Excel report can
+            // echo exactly what the user picked. Null for every other
+            // method — the report only renders the config block when
+            // method === 'manual-test' AND this is populated.
+            manualTestConfig: (method === 'manual-test') ? this._manualTestConfig : null,
             strategies: {
                 1: { sessions: allSessions[1], summary: this._computeSummary(allSessions[1]) },
                 2: { sessions: allSessions[2], summary: this._computeSummary(allSessions[2]) },
@@ -350,6 +367,15 @@ class AutoTestRunner {
 
     _runSession(testSpins, startIdx, strategy) {
         const { STARTING_BANKROLL, TARGET_PROFIT, MIN_BET, MAX_BET, LOSS_STREAK_RESET, MAX_RESETS, STOP_LOSS } = this._sessionConfig;
+
+        // Expose the session's start index on the runner so the
+        // manual-test branch in _simulateDecision can slice history
+        // to session-only spins (matches a fresh live session's
+        // auto-ref walk-back depth). Pure additive — only the
+        // manual-test branch reads this field; every other path
+        // ignores it. Reset per-session so multi-session runs are
+        // independent.
+        this._currentSessionStartIdx = startIdx;
 
         const sessionState = {
             bankroll: STARTING_BANKROLL,
@@ -529,7 +555,16 @@ class AutoTestRunner {
                 }
 
                 // ── LOSS STREAK PROTECTION: reset bet to stop escalation ──
-                if (sessionState.consecutiveLosses >= LOSS_STREAK_RESET && sessionState.reanalyzeCount < MAX_RESETS) {
+                // Scoped OFF for manual-test — live has no anti-death-spiral
+                // reset, so the auto-test must not introduce one. Without
+                // this guard, the runner silently caps S4 escalation at 5
+                // consecutive losses (resetting bet to $2) which prevents
+                // the S4 6-loss escalation from ever firing and emits the
+                // "BET RESET / Loss streak" step rows the user observed.
+                // Other methods keep the existing safety net unchanged.
+                if (this._currentMethod !== 'manual-test'
+                    && sessionState.consecutiveLosses >= LOSS_STREAK_RESET
+                    && sessionState.reanalyzeCount < MAX_RESETS) {
                     sessionState.reanalyzeCount++;
 
                     // Reset bet to minimum — stops escalation death spiral
@@ -658,6 +693,86 @@ class AutoTestRunner {
         }
         if (this._currentMethod === 'AI-trained') {
             return this._aiTrainedAdapter(testSpins, idx);
+        }
+
+        // ── manual-test ──────────────────────────────────────────
+        // Pure-math replay of the live manual-mode prediction. Reads
+        // ONLY the spin history (testSpins[0..idx]) + the user's
+        // locked env / pair selections. Does NOT call engine methods
+        // or touch DOM globals — see strategies/manual-replay for
+        // the parity contract with the live UI.
+        if (this._currentMethod === 'manual-test') {
+            const cfg = this._manualTestConfig;
+            if (!cfg) {
+                return { action:'SKIP', selectedPair:null, selectedFilter:null, numbers:[], confidence:0, reason:'manual-test: no config' };
+            }
+            // Lazy-load (same pattern as the 'test' branch below).
+            let MR = null;
+            try {
+                if (typeof require === 'function') MR = require('../../strategies/manual-replay/manual-replay.js');
+            } catch (_) { /* fall through */ }
+            if (!MR && typeof window !== 'undefined' && window.ManualReplay) MR = window.ManualReplay;
+            if (!MR || typeof MR.computeManualPrediction !== 'function') {
+                return { action:'SKIP', selectedPair:null, selectedFilter:null, numbers:[], confidence:0, reason:'manual-test: manual-replay module unavailable' };
+            }
+
+            // Session-scope walk-back: only the current session's spins
+            // are visible to the auto-ref selector inside manual-replay.
+            // This mirrors a fresh live session that enters spins from
+            // the session's start point — without this, the runner
+            // feeds the entire file (testSpins[0..idx]) and the
+            // auto-ref walk-back finds different "most recent hits"
+            // than a short live session would, producing different
+            // 2-of-3 ref picks and divergent predictions.
+            //
+            // sessionStart is stashed on the runner by _runSession (see
+            // this._currentSessionStartIdx). Defensive fallback to 0 so
+            // a direct call to _simulateDecision (tests etc.) still
+            // works — that path was unreachable in normal runs anyway.
+            //
+            // Scoped to manual-test only — every other method (auto,
+            // T1-strategy, test, 3t-selection, AI-trained, manual) is
+            // untouched and continues to receive whatever history its
+            // own decision path expects.
+            const sessionStart = (typeof this._currentSessionStartIdx === 'number') ? this._currentSessionStartIdx : 0;
+            const history = testSpins.slice(sessionStart, idx + 1);
+            const result = MR.computeManualPrediction(history, cfg.selections || {}, {
+                inverse:     !!cfg.inverse,
+                includeGrey: !!cfg.includeGrey,
+                t3Halfs:     !!cfg.t3Halfs,
+                filters:     cfg.filters || null
+            });
+
+            if (result.action === 'SKIP') {
+                return {
+                    action: 'SKIP',
+                    selectedPair: null,
+                    selectedFilter: null,
+                    numbers: [],
+                    confidence: 0,
+                    reason: 'manual-test: ' + result.reason
+                };
+            }
+            // selectedPair = a stable label so the report's "Pair"
+            // column doesn't misleadingly show only one of multiple
+            // selected keys. The full set of selections is surfaced
+            // by the Overview "Manual-test Config" block and the
+            // per-sheet one-liner header (auto-test-report.js).
+            // Money management / hit detection only need result.numbers.
+            const allKeys = [
+                ...(cfg.selections?.t1 || []),
+                ...(cfg.selections?.t2 || []),
+                ...(cfg.selections?.t3 || [])
+            ];
+            const label = (allKeys.length === 1) ? allKeys[0] : 'manual';
+            return {
+                action: 'BET',
+                selectedPair: label,
+                selectedFilter: 'manual-test',
+                numbers: result.numbers,
+                confidence: 100,
+                reason: 'manual-test: ' + result.reason
+            };
         }
 
         // ── Strategy-Lab ('test' method) ──
@@ -1005,15 +1120,20 @@ class AutoTestRunner {
                 }
             }
         } else if (strategy === 4) {
-            // Strategy 4: Defensive — +$1 after 5 consecutive losses, -$1 after 2 consecutive wins
-            // Min bet is $2; slowest escalation profile.
+            // Strategy 4: Defensive — match live money panel defaults
+            // (app/money-management-panel.js):
+            //   s4LossesToIncrease = 6 → +$1 after 6 consecutive losses
+            //   s4WinsToDecrease   = 1 → -$1 after 1 consecutive win
+            // Previously hardcoded 5/2 which diverged from live and made
+            // auto-test S4 escalate one spin earlier than a live session
+            // (and held the higher bet longer after a win). Min bet $2.
             if (hit) {
-                if (state.consecutiveWins >= 2) {
+                if (state.consecutiveWins >= 1) {
                     bet = Math.max(MIN_BET, bet - 1);
                     state.consecutiveWins = 0; // Reset after adjustment
                 }
             } else {
-                if (state.consecutiveLosses >= 5) {
+                if (state.consecutiveLosses >= 6) {
                     bet = bet + 1;
                     state.consecutiveLosses = 0; // Reset after adjustment
                 }

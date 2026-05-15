@@ -18,7 +18,7 @@
 // share behaviour today. This constant exists so the canonical list and
 // default cannot drift out of sync between the UI, the runner's runAll
 // default, and the tests.
-const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test', 'AI-trained', 'manual'];
+const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test', 'AI-trained', 'manual', 'manual-test'];
 const AUTO_TEST_DEFAULT_METHOD = 'auto-test';
 
 class AutoTestUI {
@@ -63,6 +63,7 @@ class AutoTestUI {
                             <option value="3t-selection">3T-Selection</option>
                             <option value="AI-trained">AI-trained</option>
                             <option value="manual">manual</option>
+                            <option value="manual-test">manual-test (file + manual selections)</option>
                         </select>
                         <button id="autoTestRunBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #22c55e;border-radius:5px;cursor:pointer;background:#22c55e;color:#000;" disabled>▶ Run Test</button>
                         <button id="autoTestExportBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #3b82f6;border-radius:5px;cursor:pointer;background:#3b82f6;color:white;" disabled>📊 Export Excel</button>
@@ -98,6 +99,84 @@ class AutoTestUI {
                         <div style="margin-top:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                             <button id="autoTestParseBtn" style="padding:6px 14px;font-size:11px;font-weight:700;border:1px solid #fbbf24;border-radius:4px;cursor:pointer;background:#fbbf24;color:#000;">Parse Input</button>
                             <span id="autoTestManualStatus" style="font-size:11px;color:#94a3b8;"></span>
+                        </div>
+                    </div>
+
+                    <!-- Manual-test config (separate from the 'manual' textarea-based
+                         comparison mode). Visible only when method === 'manual-test'.
+                         User picks pairs (one or more) per table + a few env toggles
+                         that mirror the live wheel/AI panel's manual-mode controls,
+                         then clicks Run as usual. Selections are snapshot-locked at
+                         run time and held for the whole session. -->
+                    <div id="autoTestManualTestSection" style="display:none;color:#cbd5e1;font-size:11px;margin-top:4px;border-top:1px dashed #334155;padding-top:6px;">
+                        <div style="margin-bottom:6px;font-weight:600;color:#22d3ee;">🛠️ manual-test — load a file, pick env toggles + pairs, then Run (no engine training required)</div>
+                        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);">
+                                <input type="checkbox" id="autoTestMtInverse"> Inverse
+                            </label>
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);">
+                                <input type="checkbox" id="autoTestMtT3Halfs"> T3 halfs
+                            </label>
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);">
+                                <input type="checkbox" id="autoTestMtIncludeGrey"> Include grey
+                            </label>
+                        </div>
+                        <!-- Table / Sign / Set filters — same controls as the live Wheel panel.
+                             Captured into manualTestConfig at Run time and applied to the bet set. -->
+                        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;padding:6px 8px;background:rgba(15,23,42,0.5);border-radius:5px;">
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <span style="font-size:10px;font-weight:700;color:#22d3ee;min-width:40px;">Table:</span>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#86efac;">
+                                    <input type="radio" name="autoTestMtTable" value="0"> 0
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#c4b5fd;">
+                                    <input type="radio" name="autoTestMtTable" value="19"> 19
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#93c5fd;">
+                                    <input type="radio" name="autoTestMtTable" value="both" checked> Both
+                                </label>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <span style="font-size:10px;font-weight:700;color:#22d3ee;min-width:40px;">Sign:</span>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#86efac;">
+                                    <input type="radio" name="autoTestMtSign" value="positive"> +ve
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#cbd5e1;">
+                                    <input type="radio" name="autoTestMtSign" value="negative"> -ve
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#93c5fd;">
+                                    <input type="radio" name="autoTestMtSign" value="both" checked> Both
+                                </label>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <span style="font-size:10px;font-weight:700;color:#22d3ee;min-width:40px;">Set:</span>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#fbbf24;">
+                                    <input type="checkbox" id="autoTestMtSet0" checked> 0
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#10b981;">
+                                    <input type="checkbox" id="autoTestMtSet5" checked> 5
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#a78bfa;">
+                                    <input type="checkbox" id="autoTestMtSet6" checked> 6
+                                </label>
+                            </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:5px;">
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <strong style="color:#fbbf24;min-width:30px;">T1:</strong>
+                                <div id="autoTestMtT1Pills" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <strong style="color:#34d399;min-width:30px;">T2:</strong>
+                                <div id="autoTestMtT2Pills" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <strong style="color:#60a5fa;min-width:30px;">T3:</strong>
+                                <div id="autoTestMtT3Pills" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+                            </div>
+                        </div>
+                        <div style="margin-top:6px;font-size:10px;color:#94a3b8;">
+                            <span id="autoTestMtSummary">No pairs selected. Use the live tables to see which pair keys are available, or click pills below to toggle.</span>
                         </div>
                     </div>
                 </div>
@@ -331,7 +410,9 @@ class AutoTestUI {
             const sel = document.getElementById('autoTestManualStrategy');
             if (sel && sel.value) effectiveMethod = sel.value;
         }
-        if (effectiveMethod !== 'AI-trained' && !engine.isTrained) {
+        // manual-test uses user-supplied pair selections — no engine
+        // training needed. Same exemption AI-trained already has.
+        if (effectiveMethod !== 'AI-trained' && effectiveMethod !== 'manual-test' && !engine.isTrained) {
             // Surface WHY the method is blocked: which TRAIN mode the
             // method requires, and which mode is currently active. The
             // user may have clicked TRAIN with a placeholder mode
@@ -401,13 +482,24 @@ class AutoTestUI {
                 const sel = document.getElementById('autoTestManualStrategy');
                 if (sel && sel.value) manualStrategy = sel.value;
             }
+            // Step 1 (UI only): snapshot the manual-test config so it's
+            // visible in the console for verification. The runner does
+            // NOT consume it yet — that's Step 2. Until then a
+            // manual-test run executes the existing default pipeline
+            // (auto-test behaviour) so it never blows up.
+            let manualTestConfig = null;
+            if (this.testMethod === 'manual-test') {
+                manualTestConfig = this._captureManualTestConfig();
+                console.log('🛠️ manual-test config snapshot (Step 1 — runner integration pending):', manualTestConfig);
+            }
             this.result = await runner.runAll(
                 this.testSpins,
                 {
                     testFile: this.testFileName || 'manual',
                     batchSize: 20,
                     method: this.testMethod,
-                    manualStrategy: manualStrategy
+                    manualStrategy: manualStrategy,
+                    manualTestConfig: manualTestConfig
                 },
                 (pct, msg) => this.updateProgress(pct, msg)
             );
@@ -879,10 +971,193 @@ class AutoTestUI {
     _applyMethodVisibility() {
         if (typeof document === 'undefined') return;
         const isManual = (this.testMethod === 'manual');
+        const isManualTest = (this.testMethod === 'manual-test');
         const manualSec = document.getElementById('autoTestManualSection');
+        const manualTestSec = document.getElementById('autoTestManualTestSection');
         const loadBtn   = document.getElementById('autoTestLoadBtn');
-        if (manualSec) manualSec.style.display = isManual ? 'block' : 'none';
-        if (loadBtn)   loadBtn.style.display   = isManual ? 'none'  : '';
+        // 'manual'      — textarea entry, hides Load File.
+        // 'manual-test' — file-loaded run with manual env + pair config,
+        //                 keeps Load File visible. The two sections live
+        //                 in the same container so we toggle them
+        //                 independently.
+        if (manualSec)     manualSec.style.display     = isManual     ? 'block' : 'none';
+        if (manualTestSec) manualTestSec.style.display = isManualTest ? 'block' : 'none';
+        if (loadBtn)       loadBtn.style.display       = isManual     ? 'none'  : '';
+        if (isManualTest) this._renderManualTestPills();
+    }
+
+    /**
+     * Render the pair-selection pills for manual-test mode. Pulls the
+     * currently-available pair lists from window.aiPanel (which keeps
+     * them in sync with the live tables) so the user sees the same
+     * pair keys they'd see in the live AI prediction panel. Pills are
+     * click-to-toggle; the in-memory selection is held on this
+     * instance and snapshotted into the run options when Run is
+     * pressed.
+     *
+     * Defensive: if aiPanel hasn't loaded pairs yet (not enough spins)
+     * the pills areas show a placeholder note. Idempotent — safe to
+     * re-call when the user adds more spins.
+     */
+    _renderManualTestPills() {
+        if (typeof document === 'undefined') return;
+        if (!this._mtSelections) {
+            this._mtSelections = { t1: new Set(), t2: new Set(), t3: new Set() };
+        }
+        // Static pair-key list — doesn't depend on the live AI panel
+        // having spins. These are the symbolic ref-keys used across the
+        // whole codebase; the runner will compute the actual numbers
+        // per spin from the loaded test file.
+        const T12_PAIRS = [
+            { key: 'ref0',                   display: '0' },
+            { key: 'ref19',                  display: '19' },
+            { key: 'prev',                   display: 'P' },
+            { key: 'prev_13opp',             display: 'P-13OPP' },
+            { key: 'prevPlus1',              display: 'P+1' },
+            { key: 'prevPlus1_13opp',        display: 'P+1-13OPP' },
+            { key: 'prevMinus1',             display: 'P-1' },
+            { key: 'prevMinus1_13opp',       display: 'P-1-13OPP' },
+            { key: 'prevPlus2',              display: 'P+2' },
+            { key: 'prevPlus2_13opp',        display: 'P+2-13OPP' },
+            { key: 'prevMinus2',             display: 'P-2' },
+            { key: 'prevMinus2_13opp',       display: 'P-2-13OPP' },
+            { key: 'prevPrev',               display: 'PP' },
+            { key: 'prevPrev_13opp',         display: 'PP-13OPP' },
+            { key: 'prevPrevPlus1',          display: 'PP+1' },
+            { key: 'prevPrevPlus1_13opp',    display: 'PP+1-13OPP' },
+            { key: 'prevPrevMinus1',         display: 'PP-1' },
+            { key: 'prevPrevMinus1_13opp',   display: 'PP-1-13OPP' },
+            { key: 'prevPrevPlus2',          display: 'PP+2' },
+            { key: 'prevPrevPlus2_13opp',    display: 'PP+2-13OPP' },
+            { key: 'prevPrevMinus2',         display: 'PP-2' },
+            { key: 'prevPrevMinus2_13opp',   display: 'PP-2-13OPP' }
+        ];
+        // T3 uses the same 10 base pair families (no _13opp variants
+        // unless T3-halfs is ON — in that case each splits into _pair
+        // and _13opp half).
+        const T3_BASE = [
+            { key: 'prev',           display: 'P' },
+            { key: 'prevPlus1',      display: 'P+1' },
+            { key: 'prevMinus1',     display: 'P-1' },
+            { key: 'prevPlus2',      display: 'P+2' },
+            { key: 'prevMinus2',     display: 'P-2' },
+            { key: 'prevPrev',       display: 'PP' },
+            { key: 'prevPrevPlus1',  display: 'PP+1' },
+            { key: 'prevPrevMinus1', display: 'PP-1' },
+            { key: 'prevPrevPlus2',  display: 'PP+2' },
+            { key: 'prevPrevMinus2', display: 'PP-2' }
+        ];
+        const t3HalfsCb = document.getElementById('autoTestMtT3Halfs');
+        const halfsOn = !!(t3HalfsCb && t3HalfsCb.checked);
+        const t3 = halfsOn
+            ? T3_BASE.flatMap(p => [
+                { key: p.key + '_pair',  display: p.display },
+                { key: p.key + '_13opp', display: p.display + '-13OPP' }
+            ])
+            : T3_BASE;
+        const t1 = T12_PAIRS;
+        const t2 = T12_PAIRS;
+
+        const draw = (hostId, pairs, sel, accent) => {
+            const host = document.getElementById(hostId);
+            if (!host) return;
+            host.innerHTML = '';
+            if (pairs.length === 0) {
+                host.innerHTML = '<span style="color:#64748b;font-size:10px;font-style:italic;">no pairs available (add spins)</span>';
+                return;
+            }
+            pairs.forEach(p => {
+                const pill = document.createElement('span');
+                const on = sel.has(p.key);
+                pill.textContent = p.display || p.key;
+                pill.title = p.key;
+                pill.style.cssText = `
+                    padding:2px 8px;font-size:10px;font-weight:700;border-radius:3px;cursor:pointer;
+                    border:1px solid ${on ? accent : '#475569'};
+                    background:${on ? accent : 'rgba(71,85,105,0.2)'};
+                    color:${on ? '#0f172a' : '#cbd5e1'};
+                    user-select:none;
+                `;
+                pill.addEventListener('click', () => {
+                    if (sel.has(p.key)) sel.delete(p.key);
+                    else                sel.add(p.key);
+                    this._renderManualTestPills();
+                });
+                host.appendChild(pill);
+            });
+        };
+
+        draw('autoTestMtT1Pills', t1, this._mtSelections.t1, '#fbbf24');
+        draw('autoTestMtT2Pills', t2, this._mtSelections.t2, '#34d399');
+        draw('autoTestMtT3Pills', t3, this._mtSelections.t3, '#60a5fa');
+
+        // Wire the T3-halfs checkbox to re-render T3 pills (drop any
+        // selected keys that no longer exist in the new list — e.g.,
+        // switching halfs ON drops 'prevPlus1' since it becomes
+        // 'prevPlus1_pair' / 'prevPlus1_13opp'). Bind once.
+        if (t3HalfsCb && !t3HalfsCb._autoTestMtBound) {
+            t3HalfsCb._autoTestMtBound = true;
+            t3HalfsCb.addEventListener('change', () => {
+                // Drop selections that don't exist in the new t3 key set
+                const newKeys = new Set((t3HalfsCb.checked
+                    ? T3_BASE.flatMap(p => [p.key + '_pair', p.key + '_13opp'])
+                    : T3_BASE.map(p => p.key)));
+                this._mtSelections.t3.forEach(k => { if (!newKeys.has(k)) this._mtSelections.t3.delete(k); });
+                this._renderManualTestPills();
+            });
+        }
+
+        const summary = document.getElementById('autoTestMtSummary');
+        if (summary) {
+            const total = this._mtSelections.t1.size + this._mtSelections.t2.size + this._mtSelections.t3.size;
+            if (total === 0) {
+                summary.textContent = 'No pairs selected. Click pills above to choose. Toggles + selections lock at Run time.';
+                summary.style.color = '#94a3b8';
+            } else {
+                const t1Sel = [...this._mtSelections.t1].join(', ') || '—';
+                const t2Sel = [...this._mtSelections.t2].join(', ') || '—';
+                const t3Sel = [...this._mtSelections.t3].join(', ') || '—';
+                summary.textContent = `${total} pair(s) selected | T1: ${t1Sel} | T2: ${t2Sel} | T3: ${t3Sel}`;
+                summary.style.color = '#cbd5e1';
+            }
+        }
+    }
+
+    /**
+     * Snapshot the manual-test config when the user presses Run. The
+     * runner consumes this object via options.manualTestConfig in
+     * Step 2 (runner integration — not yet wired). For Step 1 we
+     * just capture and log it so the UI can be verified visually.
+     */
+    _captureManualTestConfig() {
+        if (typeof document === 'undefined') return null;
+        const cb = (id) => {
+            const el = document.getElementById(id);
+            return !!(el && el.checked);
+        };
+        const radio = (name) => {
+            const checked = document.querySelector(`input[name="${name}"]:checked`);
+            return checked ? checked.value : null;
+        };
+        return {
+            inverse:      cb('autoTestMtInverse'),
+            t3Halfs:      cb('autoTestMtT3Halfs'),
+            includeGrey:  cb('autoTestMtIncludeGrey'),
+            filters: {
+                table: radio('autoTestMtTable') || 'both',
+                sign:  radio('autoTestMtSign')  || 'both',
+                sets:  {
+                    set0: cb('autoTestMtSet0'),
+                    set5: cb('autoTestMtSet5'),
+                    set6: cb('autoTestMtSet6')
+                }
+            },
+            selections: {
+                t1: this._mtSelections ? [...this._mtSelections.t1] : [],
+                t2: this._mtSelections ? [...this._mtSelections.t2] : [],
+                t3: this._mtSelections ? [...this._mtSelections.t3] : []
+            }
+        };
     }
 
     /**
