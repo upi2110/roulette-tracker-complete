@@ -80,6 +80,91 @@ class AutoTestReport {
     }
 
     /**
+     * Async version of generate() that yields to the event loop every
+     * BATCH_SIZE session sheets so Electron's renderer stays responsive
+     * during large exports (e.g. a 500-spin file × 5 strategies =
+     * 2,500 detail sheets — the sync path locks the UI thread for
+     * tens of seconds and looks like a freeze).
+     *
+     * Same workbook output as generate() — bytes are identical. The
+     * only behavioural difference is that this method returns a
+     * Promise and may invoke a progress callback periodically.
+     *
+     * Kept alongside generate() instead of replacing it so the test
+     * suite (which calls generate() synchronously) doesn't need
+     * await sprinkled through it.
+     *
+     * @param {FullTestResult} result
+     * @param {(percent:number, message:string)=>void} [progressCb] optional
+     * @param {{batchSize?:number}} [opts] optional tuning
+     * @returns {Promise<ExcelJS.Workbook>}
+     */
+    async generateAsync(result, progressCb, opts) {
+        const BATCH_SIZE = (opts && typeof opts.batchSize === 'number') ? opts.batchSize : 40;
+        const yieldFn = () => new Promise(r => setTimeout(r, 0));
+        const report = (pct, msg) => {
+            if (typeof progressCb === 'function') {
+                try { progressCb(pct, msg); } catch (_) { /* never let UI errors abort export */ }
+            }
+        };
+
+        const workbook = new this.ExcelJS.Workbook();
+        workbook.creator = 'Roulette Tracker Auto Test';
+        workbook.created = new Date();
+
+        report(2, 'Building Overview…');
+        this._createOverviewSheet(workbook, result);
+        await yieldFn();
+
+        const detailSheetMap = {};
+        let totalSessions = 0;
+        for (const strategyNum of [1, 2, 3, 4, 5]) {
+            const data = result.strategies[strategyNum];
+            if (!data || data.sessions.length === 0) continue;
+            for (const session of data.sessions) {
+                const sheetName = `S${strategyNum}-Start${session.startIdx}`.substring(0, 31);
+                detailSheetMap[`${strategyNum}-${session.startIdx}`] = sheetName;
+            }
+            totalSessions += data.sessions.length;
+        }
+
+        const mtOneLine = (result.method === 'manual-test' && result.manualTestConfig)
+            ? AutoTestReport._formatManualTestConfigOneLine(result.manualTestConfig)
+            : null;
+
+        report(6, 'Building strategy sheets…');
+        for (const strategyNum of [1, 2, 3, 4, 5]) {
+            const data = result.strategies[strategyNum];
+            if (data && data.sessions.length > 0) {
+                this._createStrategySheet(workbook, strategyNum, data, detailSheetMap, mtOneLine);
+            }
+            await yieldFn();
+        }
+
+        // Session detail sheets — by far the largest cost.
+        // Yield every BATCH_SIZE sheets so the UI repaints.
+        let done = 0;
+        const totalSheets = Math.max(1, totalSessions);
+        for (const strategyNum of [1, 2, 3, 4, 5]) {
+            const data = result.strategies[strategyNum];
+            if (!data || data.sessions.length === 0) continue;
+            for (let i = 0; i < data.sessions.length; i++) {
+                this._createSessionSheet(workbook, data.sessions[i], strategyNum, mtOneLine);
+                done++;
+                if (done % BATCH_SIZE === 0) {
+                    const pct = 10 + Math.floor((done / totalSheets) * 80);
+                    report(pct, `Building session sheets… ${done}/${totalSheets}`);
+                    await yieldFn();
+                }
+            }
+        }
+
+        report(95, 'Finalising workbook…');
+        await yieldFn();
+        return workbook;
+    }
+
+    /**
      * Get top N best and worst sessions for detailed export.
      */
     _getTopSessions(sessions, n) {
@@ -244,18 +329,35 @@ class AutoTestReport {
      */
     static _formatManualTestConfigLines(cfg) {
         const sels = cfg.selections || {};
-        const t1 = (sels.t1 && sels.t1.length) ? sels.t1.join(', ')  : '(none)';
-        const t2 = (sels.t2 && sels.t2.length) ? sels.t2.join(', ')  : '(none)';
-        const t3 = (sels.t3 && sels.t3.length) ? sels.t3.join(', ')  : '(none)';
         const filters = cfg.filters || {};
         const sets = filters.sets || {};
         const setsList = ['set0','set5','set6'].filter(k => sets[k]).map(k => k.replace('set','')).join('/') || '(none)';
+
+        // Format a pair list — when T1/T2 break is ON, annotate each
+        // entry with its 1/2/3 sub-anchor picks. Falls back to a flat
+        // comma-separated list when the toggle is OFF or refSelections
+        // doesn't carry an entry for the pair.
+        const refSels = cfg.refSelections || { t1: {}, t2: {} };
+        const REF_TO_DIGIT = { first: '1', second: '2', third: '3' };
+        const fmtPairs = (arr, tableKey) => {
+            if (!arr || arr.length === 0) return '(none)';
+            const annotateWithRefs = (cfg.t1t2Breaks === true) && (tableKey === 't1' || tableKey === 't2');
+            if (!annotateWithRefs) return arr.join(', ');
+            const tableRefs = refSels[tableKey] || {};
+            return arr.map(k => {
+                const refs = tableRefs[k];
+                if (!Array.isArray(refs) || refs.length === 0) return k;
+                const digits = refs.map(r => REF_TO_DIGIT[r] || r).join(',');
+                return `${k} [${digits}]`;
+            }).join(', ');
+        };
+
         return [
-            `Env toggles — Inverse: ${cfg.inverse ? 'ON' : 'OFF'}   |   T3 halfs: ${cfg.t3Halfs ? 'ON' : 'OFF'}   |   Include grey: ${cfg.includeGrey ? 'ON' : 'OFF'}`,
+            `Env toggles — Inverse: ${cfg.inverse ? 'ON' : 'OFF'}   |   T3 halfs: ${cfg.t3Halfs ? 'ON' : 'OFF'}   |   Include grey: ${cfg.includeGrey ? 'ON' : 'OFF'}   |   T1/T2 break: ${cfg.t1t2Breaks ? 'ON' : 'OFF'}`,
             `Filters     — Table: ${filters.table || 'both'}   |   Sign: ${filters.sign || 'both'}   |   Set: ${setsList}`,
-            `T1 pairs    : ${t1}`,
-            `T2 pairs    : ${t2}`,
-            `T3 pairs    : ${t3}`
+            `T1 pairs    : ${fmtPairs(sels.t1, 't1')}`,
+            `T2 pairs    : ${fmtPairs(sels.t2, 't2')}`,
+            `T3 pairs    : ${fmtPairs(sels.t3, 't3')}`
         ];
     }
 
@@ -265,13 +367,32 @@ class AutoTestReport {
      */
     static _formatManualTestConfigOneLine(cfg) {
         const sels = cfg.selections || {};
-        const t1 = (sels.t1 && sels.t1.length) ? sels.t1.join(',') : '–';
-        const t2 = (sels.t2 && sels.t2.length) ? sels.t2.join(',') : '–';
-        const t3 = (sels.t3 && sels.t3.length) ? sels.t3.join(',') : '–';
         const filters = cfg.filters || {};
         const sets = filters.sets || {};
         const setsList = ['0','5','6'].filter(k => sets['set'+k]).join('/') || '–';
-        return `manual-test cfg → Inv:${cfg.inverse?'ON':'OFF'} | T3halfs:${cfg.t3Halfs?'ON':'OFF'} | Grey:${cfg.includeGrey?'ON':'OFF'} | Tbl:${filters.table||'both'} | Sgn:${filters.sign||'both'} | Sets:${setsList} | T1:[${t1}] T2:[${t2}] T3:[${t3}]`;
+
+        // Same annotation rule as the multi-line block: when T1/T2
+        // break is ON, append the 1/2/3 sub-anchor digits to each
+        // T1/T2 pair key. T3 always renders raw (no sub-anchors).
+        const refSels = cfg.refSelections || { t1: {}, t2: {} };
+        const REF_TO_DIGIT = { first: '1', second: '2', third: '3' };
+        const fmtCompact = (arr, tableKey) => {
+            if (!arr || arr.length === 0) return '–';
+            const annotateWithRefs = (cfg.t1t2Breaks === true) && (tableKey === 't1' || tableKey === 't2');
+            if (!annotateWithRefs) return arr.join(',');
+            const tableRefs = refSels[tableKey] || {};
+            return arr.map(k => {
+                const refs = tableRefs[k];
+                if (!Array.isArray(refs) || refs.length === 0) return k;
+                return `${k}[${refs.map(r => REF_TO_DIGIT[r] || r).join('')}]`;
+            }).join(',');
+        };
+
+        const t1 = fmtCompact(sels.t1, 't1');
+        const t2 = fmtCompact(sels.t2, 't2');
+        const t3 = fmtCompact(sels.t3, 't3');
+        const brk = cfg.t1t2Breaks ? 'ON' : 'OFF';
+        return `manual-test cfg → Inv:${cfg.inverse?'ON':'OFF'} | T3halfs:${cfg.t3Halfs?'ON':'OFF'} | Grey:${cfg.includeGrey?'ON':'OFF'} | Brk:${brk} | Tbl:${filters.table||'both'} | Sgn:${filters.sign||'both'} | Sets:${setsList} | T1:[${t1}] T2:[${t2}] T3:[${t3}]`;
     }
 
     /**

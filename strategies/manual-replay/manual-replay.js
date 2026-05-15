@@ -347,7 +347,7 @@
     // refs unconditionally, which made every prediction roughly 2×
     // the size it should have been (the source of the auto-vs-live
     // divergence reported in the S4-Start319 comparison).
-    function _t12PairSet(spinHistory, baseKey, half, neighborRange, tableId, includeGrey) {
+    function _t12PairSet(spinHistory, baseKey, half, neighborRange, tableId, includeGrey, explicitRefs) {
         if (spinHistory.length < 1) return new Set();
         const last = spinHistory[spinHistory.length - 1];
         const prevPrev = spinHistory.length >= 2 ? spinHistory[spinHistory.length - 2] : null;
@@ -357,21 +357,32 @@
         const row = getLookupRow(refNum);
         if (!row) return new Set();
 
-        // Auto-ref valid-code set: live ALWAYS uses 'table2' codes for
-        // both T1 and T2 auto-ref selection (see _handleTable12PairToggle
-        // + _refreshAutoPickedPairs in ui/ai-prediction-panel.js — both
-        // compute `lookupTable = (tableId === 'table1') ? 'table2' : tableId`).
-        // So we pass 'table2' here regardless of which table list the
-        // user picked the pair in. The narrower 'table1' valid codes
-        // (±1 only) miss hits that live finds via T2 codes (±1 and ±2),
-        // which caused the spin 12+ divergence in the S4-Start460
-        // auto-vs-live comparison. neighborRange (passed in from the
-        // caller, 1 for T1 and 2 for T2) still drives the final
-        // expandTargetsToBetNumbers call below — only the auto-ref
-        // selection's valid-code list is normalised to 'table2'.
-        const auto = _autoSelectedRefs(spinHistory, baseKey, half, 'table2');
-        const refsToUse = new Set(auto.primaryRefs);
-        if (includeGrey && auto.extraRef) refsToUse.add(auto.extraRef);
+        // Ref selection has two modes:
+        //
+        // (a) Auto mode — default. When the caller passes no
+        //     explicitRefs, fall back to _autoSelectedRefs which walks
+        //     spin history and picks the 2 most-recent-hit columns.
+        //     The 3rd ref is folded in iff includeGrey is true.
+        //
+        // (b) Manual override mode — caller passes explicitRefs (an
+        //     array or Set of 'first'/'second'/'third' subset). This
+        //     is the T1/T2 break path: the user has chosen exactly
+        //     which sub-anchors to use, so we IGNORE auto-pick and
+        //     IGNORE includeGrey (they have full control). Used for
+        //     both the per-pair 1/2/3 sub-toggles in auto-test and,
+        //     in future, for any path that wants deterministic refs.
+        let refsToUse;
+        if (explicitRefs && (Array.isArray(explicitRefs) ? explicitRefs.length : explicitRefs.size) > 0) {
+            refsToUse = new Set(Array.isArray(explicitRefs) ? explicitRefs : [...explicitRefs]);
+        } else {
+            // Auto-ref valid-code set: live ALWAYS uses 'table2' codes
+            // for both T1 and T2 auto-ref selection (see
+            // _handleTable12PairToggle + _refreshAutoPickedPairs in
+            // ui/ai-prediction-panel.js).
+            const auto = _autoSelectedRefs(spinHistory, baseKey, half, 'table2');
+            refsToUse = new Set(auto.primaryRefs);
+            if (includeGrey && auto.extraRef) refsToUse.add(auto.extraRef);
+        }
 
         const out = new Set();
         refsToUse.forEach(k => {
@@ -478,6 +489,20 @@
         // live manual mode's default — so we DON'T fold in the 3rd
         // "extra/grey" ref unless the user explicitly enables it.
         const includeGrey = !!env.includeGrey;
+        // refSelections: per-pair explicit ref override used when the
+        // "T1/T2 break" toggle is ON. Shape:
+        //   { t1: { 'prevPlus1': ['first','second'], ... },
+        //     t2: { 'prevPlus1': ['first'], ... } }
+        // When a pair has an entry, those refs are used INSTEAD OF
+        // auto-pick AND includeGrey is ignored for that pair. When a
+        // pair has no entry (toggle OFF, or that specific pair wasn't
+        // touched), behaviour falls back to auto-pick + includeGrey.
+        const refSelections = (env.refSelections && typeof env.refSelections === 'object') ? env.refSelections : { t1: {}, t2: {} };
+        const _explicitFor = (tk, key) => {
+            const tableRefs = refSelections[tk] || {};
+            const arr = tableRefs[key];
+            return Array.isArray(arr) ? arr : null;
+        };
 
         if (!Array.isArray(spinHistory) || spinHistory.length < 2) {
             return { action:'SKIP', numbers:[], reason:'Insufficient history (need ≥ 2 spins)', perPair:[] };
@@ -489,20 +514,22 @@
         // T1 — neighborRange = 1, valid-code set for auto-ref selection = TABLE1_VALID
         (selections.t1 || []).forEach(k => {
             const { base, half } = _stripHalfSuffix(k);
-            const s = _t12PairSet(spinHistory, base, half, 1, 'table1', includeGrey);
+            const explicit = _explicitFor('t1', k);
+            const s = _t12PairSet(spinHistory, base, half, 1, 'table1', includeGrey, explicit);
             if (s.size > 0) {
                 perPairSets.push(s);
-                perPair.push({ key: k, table: 'T1', count: s.size });
+                perPair.push({ key: k, table: 'T1', count: s.size, refs: explicit || null });
             }
         });
 
         // T2 — neighborRange = 2, valid-code set = TABLE2_VALID
         (selections.t2 || []).forEach(k => {
             const { base, half } = _stripHalfSuffix(k);
-            const s = _t12PairSet(spinHistory, base, half, 2, 'table2', includeGrey);
+            const explicit = _explicitFor('t2', k);
+            const s = _t12PairSet(spinHistory, base, half, 2, 'table2', includeGrey, explicit);
             if (s.size > 0) {
                 perPairSets.push(s);
-                perPair.push({ key: k, table: 'T2', count: s.size });
+                perPair.push({ key: k, table: 'T2', count: s.size, refs: explicit || null });
             }
         });
 

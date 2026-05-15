@@ -119,6 +119,20 @@ class RouletteWheel {
                 ">
                     <input type="checkbox" id="wheelT3HalfsToggle" style="vertical-align:middle;"> T3 halfs
                 </label>
+                <!-- T1/T2 break toggle: when ON, the auto-pick of which
+                     refs (1st/2nd/3rd) are primary STOPS refreshing on
+                     every new spin. Whatever the user has manually
+                     selected stays frozen for the rest of the session.
+                     Auto-test panel also exposes per-pair 1/2/3 sub-
+                     toggles when this is ON. When OFF, the AI panel's
+                     per-spin _refreshAutoPickedPairs runs as before. -->
+                <label id="wheelT1T2BreaksWrap" title="Freeze the 1st/2nd/3rd ref pick for T1 & T2. When ON, your manual ref selection stays put even as new spins come in." style="
+                    display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+                    color:#475569;cursor:pointer;user-select:none;
+                    padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
+                ">
+                    <input type="checkbox" id="wheelT1T2BreaksToggle" style="vertical-align:middle;"> T1/T2 break
+                </label>
                 <button id="wheelInverseBtn" title="Flip the bet set: remove all currently selected wheel numbers, select all the others. Click again to flip back. Mirrors to money panel + AI display + wheel highlights." style="
                     font-size:10px;font-weight:700;cursor:pointer;user-select:none;
                     padding:3px 9px;border:1px solid #94a3b8;border-radius:4px;
@@ -268,6 +282,41 @@ class RouletteWheel {
             window.addEventListener('t3HalfsChanged', (e) => {
                 const v = !!(e && e.detail && e.detail.value);
                 if (wheelT3HalfsCb.checked !== v) wheelT3HalfsCb.checked = v;
+            });
+        }
+
+        // T1/T2 break toggle: freeze the per-spin ref auto-refresh in
+        // the AI prediction panel. Same plumbing pattern as t3Halfs:
+        // window.t1t2Breaks is source of truth, persisted in
+        // localStorage('strategyLab.t1t2Breaks'), broadcast via
+        // 't1t2BreaksChanged' so the AI panel + Auto Test UI stay
+        // in sync. Default OFF — when off, the AI panel's per-spin
+        // _refreshAutoPickedPairs runs exactly as before.
+        const wheelT1T2BreaksCb = document.getElementById('wheelT1T2BreaksToggle');
+        if (wheelT1T2BreaksCb) {
+            let initialT1T2 = false;
+            if (typeof window !== 'undefined' && typeof window.t1t2Breaks === 'boolean') {
+                initialT1T2 = window.t1t2Breaks;
+            } else {
+                try {
+                    const saved = localStorage.getItem('strategyLab.t1t2Breaks');
+                    if (saved === '1') initialT1T2 = true;
+                } catch (_) {}
+            }
+            wheelT1T2BreaksCb.checked = initialT1T2;
+            if (typeof window !== 'undefined') window.t1t2Breaks = initialT1T2;
+
+            wheelT1T2BreaksCb.addEventListener('change', () => {
+                const v = !!wheelT1T2BreaksCb.checked;
+                if (typeof window !== 'undefined') window.t1t2Breaks = v;
+                try { localStorage.setItem('strategyLab.t1t2Breaks', v ? '1' : '0'); } catch (_) {}
+                try {
+                    window.dispatchEvent(new CustomEvent('t1t2BreaksChanged', { detail: { value: v } }));
+                } catch (_) {}
+            });
+            window.addEventListener('t1t2BreaksChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (wheelT1T2BreaksCb.checked !== v) wheelT1T2BreaksCb.checked = v;
             });
         }
 

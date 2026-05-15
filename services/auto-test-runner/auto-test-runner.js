@@ -736,11 +736,17 @@ class AutoTestRunner {
             // own decision path expects.
             const sessionStart = (typeof this._currentSessionStartIdx === 'number') ? this._currentSessionStartIdx : 0;
             const history = testSpins.slice(sessionStart, idx + 1);
+            // Pass through refSelections so manual-replay can honour the
+            // user's per-pair 1/2/3 sub-anchor picks when the T1/T2
+            // break toggle was ON at config-capture time. When OFF,
+            // refSelections is { t1:{}, t2:{} } and manual-replay
+            // falls back to auto-pick + includeGrey as before.
             const result = MR.computeManualPrediction(history, cfg.selections || {}, {
-                inverse:     !!cfg.inverse,
-                includeGrey: !!cfg.includeGrey,
-                t3Halfs:     !!cfg.t3Halfs,
-                filters:     cfg.filters || null
+                inverse:       !!cfg.inverse,
+                includeGrey:   !!cfg.includeGrey,
+                t3Halfs:       !!cfg.t3Halfs,
+                filters:       cfg.filters || null,
+                refSelections: cfg.refSelections || { t1: {}, t2: {} }
             });
 
             if (result.action === 'SKIP') {

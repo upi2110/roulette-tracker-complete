@@ -1362,6 +1362,14 @@ function _renderTable1Head() {
     }).join('');
 
     // ── Row 2: 7 sub-headers per group (+ indicator spacer header) ──
+    // SUB_LABELS = ['Ref','1st','C','2nd','C','3rd','C']. The 1st/2nd/3rd
+    // cells get a `data-sub` attr so the central table click handler
+    // (app/index-3tables.html) can recognise them as sub-anchor toggles
+    // and forward to aiPanel.toggleSubAnchorFromTable instead of the
+    // whole-pair toggle path. SUB_KEYS maps the SUB_LABELS index to the
+    // engine ref key ('first'/'second'/'third'). 'Ref' and 'C' cells
+    // get no data-sub — they keep the original whole-pair click behavior.
+    const SUB_KEYS = [null, 'first', null, 'second', null, 'third', null];
     const row2Cells = VISIBLE.map(grp => {
         const indicatorHeader = (grp.prefix === 'pair-indicator')
             ? `<th class="pair-indicator-col-head"></th>` : '';
@@ -1372,7 +1380,9 @@ function _renderTable1Head() {
                 else if (grp.prefix === 'copair-separator') sepCls = ' copair-separator';
                 else if (grp.prefix === 'pair-indicator')   sepCls = ' pair-separator';
             }
-            return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}">${lbl}</th>`;
+            const subKey = SUB_KEYS[sIdx];
+            const subAttr = subKey ? ` data-sub="${subKey}"` : '';
+            return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}"${subAttr}>${lbl}</th>`;
         }).join('');
         return indicatorHeader + subHeaders;
     }).join('');
@@ -1510,6 +1520,12 @@ function renderTable1() {
             return '';
         };
 
+        // Sub-anchor attrs for the 6 per-pair cells (1st num, 1st code,
+        // 2nd num, 2nd code, 3rd num, 3rd code). Added so clicking any
+        // cell inside the 1st / 2nd / 3rd column toggles that ref when
+        // T1/T2 break is ON (central click handler in index-3tables.html).
+        // Ref/anchor cell stays without data-sub so it keeps whole-pair
+        // toggle behavior.
         const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false, stripeLeftHit = null, stripeRightHit = null) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
             // Pair-indicator stripe mode: when both stripeLeftHit and stripeRightHit
@@ -1531,6 +1547,12 @@ function renderTable1() {
             // instead of literal "null" so the cell stays visually
             // blank, matching how the lookup-row miss path below
             // renders its 6 sub-cells with dashes.
+            // Sub-attrs: 0/1/2 → 'first'/'second'/'third'. Used for the
+            // 6 cells that belong to the 1st / 2nd / 3rd columns so the
+            // central click handler can dispatch to the sub-anchor
+            // toggle when T1/T2 break is ON. Ref cell uses plain `dp`.
+            const _SUB_BY_IDX = ['first', 'second', 'third'];
+            const _dpSub = (anchorIdx) => dataPair ? ` data-pair="${dataPair}" data-sub="${_SUB_BY_IDX[anchorIdx]}"` : '';
             const _anchorContent = (anchorNum === null || anchorNum === undefined || Number.isNaN(anchorNum)) ? '' : anchorNum;
             html.push(`<td class="${anchorClass}"${dp}${stripeAttrs}><strong>${_anchorContent}</strong></td>`);
 
@@ -1539,9 +1561,9 @@ function renderTable1() {
             if (!lookupRow) {
                 const cellClass = is13Opp ? 'opp13-cell' : '';
                 const codeClass = 'code-xx' + (is13Opp ? ' opp13-cell' : '');
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(0)}>-</td><td class="${codeClass}"${_dpSub(0)}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(1)}>-</td><td class="${codeClass}"${_dpSub(1)}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(2)}>-</td><td class="${codeClass}"${_dpSub(2)}>XX</td>`);
                 return;
             }
 
@@ -1557,16 +1579,17 @@ function renderTable1() {
                 const codeClass = codeClassBase + (is13Opp ? ' opp13-cell' : '');
 
                 const flashKey = `${relIdx}:${dataPair}:${anchorIdx}`;
+                const dpAttr = _dpSub(anchorIdx);
                 if (t1FlashTargets.has(flashKey)) {
                     // Slice 3b follow-up: only the C (position-code)
                     // cell gets the gold flash. The target-number
                     // cell (1st / 2nd / 3rd) renders normally so the
                     // user's eye lands directly on the matching code.
-                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                    html.push(`<td class="t1-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
+                    html.push(`<td class="${numClass}"${dpAttr}>${target}</td>`);
+                    html.push(`<td class="t1-flash"${dpAttr} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
                 } else {
-                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                    html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
+                    html.push(`<td class="${numClass}"${dpAttr}>${target}</td>`);
+                    html.push(`<td class="${codeClass}"${dpAttr}>${displayCode}</td>`);
                 }
             });
         };
@@ -1667,6 +1690,12 @@ function renderTable1() {
 
         const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false, asPairIndicator = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            // Sub-attrs for the 1st/2nd/3rd cells in the NEXT row. Same
+            // mapping as renderTargetGroup above — clicking any of the
+            // 6 cells (num + code per sub-anchor) toggles that ref when
+            // T1/T2 break is ON.
+            const _NEXT_SUB_BY_IDX = ['first', 'second', 'third'];
+            const _dpNextSub = (anchorIdx) => dataPair ? ` data-pair="${dataPair}" data-sub="${_NEXT_SUB_BY_IDX[anchorIdx]}"` : '';
             // Pair-match: this pair's ±1-expanded projected numbers cover ≥2
             // members of the active 5/6 set. When true, ALL cells in this
             // pair's NEXT-row segment (anchor + 3 target# + 3 code/dash = 7)
@@ -1693,18 +1722,19 @@ function renderTable1() {
 
             if (!lookupRow) {
                 const cellClass = ((is13Opp ? 'opp13-cell' : '') + matchCls).trim();
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(0)}>-</td><td class="${cellClass}"${_dpNextSub(0)}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(1)}>-</td><td class="${cellClass}"${_dpNextSub(1)}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(2)}>-</td><td class="${cellClass}"${_dpNextSub(2)}>-</td>`);
                 return;
             }
 
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
             const cellClass = ((is13Opp ? 'opp13-cell' : '') + matchCls).trim();
 
-            targets.forEach((target) => {
-                html.push(`<td class="${cellClass}"${dp}>${target}</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td>`);
+            targets.forEach((target, anchorIdx) => {
+                const dpAttr = _dpNextSub(anchorIdx);
+                html.push(`<td class="${cellClass}"${dpAttr}>${target}</td>`);
+                html.push(`<td class="${cellClass}"${dpAttr}>-</td>`);
             });
         };
 
@@ -1826,6 +1856,9 @@ function _renderTable2Head() {
         return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" colspan="7" data-pair="${grp.dataPair}">${grp.label}</th>`;
     }).join('');
 
+    // SUB_KEYS — same mapping as renderTable1Head. 1st/2nd/3rd cells
+    // become per-sub-anchor clickable when T1/T2 break is ON.
+    const SUB_KEYS = [null, 'first', null, 'second', null, 'third', null];
     const row2Cells = VISIBLE.map(grp => {
         return SUB_LABELS.map((lbl, sIdx) => {
             let sepCls = '';
@@ -1833,7 +1866,9 @@ function _renderTable2Head() {
                 if (grp.prefix === 'pair-separator')        sepCls = ' pair-separator';
                 else if (grp.prefix === 'copair-separator') sepCls = ' copair-separator';
             }
-            return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}">${lbl}</th>`;
+            const subKey = SUB_KEYS[sIdx];
+            const subAttr = subKey ? ` data-sub="${subKey}"` : '';
+            return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}"${subAttr}>${lbl}</th>`;
         }).join('');
     }).join('');
 
@@ -1916,6 +1951,9 @@ function renderTable2() {
 
         const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            // Sub-attrs for clickable 1st/2nd/3rd cells (T1/T2 break mode).
+            const _SUB_BY_IDX_T2 = ['first', 'second', 'third'];
+            const _dpSub = (anchorIdx) => dataPair ? ` data-pair="${dataPair}" data-sub="${_SUB_BY_IDX_T2[anchorIdx]}"` : '';
             // Slice 2d-2: copair-separator class supported so the new
             // 13OPP halves of each pair-group can render the subtle
             // white-border within-pair divider, while the main halves
@@ -1934,9 +1972,9 @@ function renderTable2() {
             if (!lookupRow) {
                 const cellClass = is13Opp ? 'opp13-cell' : '';
                 const codeClass = 'code-xx' + (is13Opp ? ' opp13-cell' : '');
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(0)}>-</td><td class="${codeClass}"${_dpSub(0)}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(1)}>-</td><td class="${codeClass}"${_dpSub(1)}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(2)}>-</td><td class="${codeClass}"${_dpSub(2)}>XX</td>`);
                 return;
             }
 
@@ -1952,14 +1990,15 @@ function renderTable2() {
                 const codeClass = codeClassBase + (is13Opp ? ' opp13-cell' : '');
 
                 const flashKey = `${relIdx}:${dataPair}:${anchorIdx}`;
+                const dpAttr = _dpSub(anchorIdx);
                 if (t2FlashTargets.has(flashKey)) {
                     // Slice 3b follow-up: only the C (position-code)
                     // cell flashes — target-number cell renders normally.
-                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                    html.push(`<td class="t2-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
+                    html.push(`<td class="${numClass}"${dpAttr}>${target}</td>`);
+                    html.push(`<td class="t2-flash"${dpAttr} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
                 } else {
-                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                    html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
+                    html.push(`<td class="${numClass}"${dpAttr}>${target}</td>`);
+                    html.push(`<td class="${codeClass}"${dpAttr}>${displayCode}</td>`);
                 }
             });
         };
@@ -1986,6 +2025,9 @@ function renderTable2() {
 
         const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            // Sub-attrs for 1st/2nd/3rd cells in the NEXT row.
+            const _NEXT_SUB_BY_IDX_T2 = ['first', 'second', 'third'];
+            const _dpNextSub = (anchorIdx) => dataPair ? ` data-pair="${dataPair}" data-sub="${_NEXT_SUB_BY_IDX_T2[anchorIdx]}"` : '';
             // Slice 2d-2: copair-separator support; null-handling.
             const anchorClass = 'anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
@@ -1998,18 +2040,19 @@ function renderTable2() {
 
             if (!lookupRow) {
                 const cellClass = is13Opp ? 'opp13-cell' : '';
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(0)}>-</td><td class="${cellClass}"${_dpNextSub(0)}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(1)}>-</td><td class="${cellClass}"${_dpNextSub(1)}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(2)}>-</td><td class="${cellClass}"${_dpNextSub(2)}>-</td>`);
                 return;
             }
 
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
             const cellClass = is13Opp ? 'opp13-cell' : '';
 
-            targets.forEach((target) => {
-                html.push(`<td class="${cellClass}"${dp}>${target}</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td>`);
+            targets.forEach((target, anchorIdx) => {
+                const dpAttr = _dpNextSub(anchorIdx);
+                html.push(`<td class="${cellClass}"${dpAttr}>${target}</td>`);
+                html.push(`<td class="${cellClass}"${dpAttr}>-</td>`);
             });
         };
 

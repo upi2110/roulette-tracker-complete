@@ -248,6 +248,27 @@
                 return;
             }
 
+            // Sub-anchor click: 1st/2nd/3rd sub-header cells in T1/T2
+            // headers carry a `data-sub` attribute (added in
+            // _renderTable1Head / _renderTable2Head). Only handled when
+            // T1/T2 break is ON — otherwise the per-spin auto-refresh
+            // would overwrite the click immediately, so we ignore the
+            // sub-click and fall through to the whole-pair toggle so
+            // the user's click still does *something* visible (mirrors
+            // current behaviour). T3 has no sub-anchors.
+            const subKey = cell.dataset.sub;
+            if (subKey && (tableId === 'table1' || tableId === 'table2')) {
+                const breakOn = (typeof window !== 'undefined' && window.t1t2Breaks === true);
+                if (breakOn && typeof window.aiPanel.toggleSubAnchorFromTable === 'function') {
+                    e.stopPropagation();
+                    console.log(`📊 ${tableId} sub-anchor click → toggle ${pairKey}/${subKey}`);
+                    window.aiPanel.toggleSubAnchorFromTable(pairKey, tableId, subKey);
+                    return;
+                }
+                // T1/T2 break OFF — fall through to whole-pair toggle
+                // (the historical behaviour for these header cells).
+            }
+
             console.log(`📊 ${tableId} click → toggling pair: ${pairKey}`);
             window.aiPanel.togglePairFromTable(pairKey, tableId);
         });

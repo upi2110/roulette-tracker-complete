@@ -710,6 +710,74 @@ class AIPredictionPanel {
         }
     }
 
+    /**
+     * Sub-anchor toggle invoked when the user clicks a "1st" / "2nd"
+     * / "3rd" sub-header in Tables 1 or 2 while T1/T2 break is ON.
+     * Behaviour:
+     *   - If the pair isn't selected yet → select it via the existing
+     *     _handleTable12PairToggle path (which would auto-pick 2 refs)
+     *     and then OVERRIDE the ref set to just {refKey} so the user's
+     *     click is the explicit choice.
+     *   - If the pair IS selected → toggle refKey in/out of its ref set.
+     *     Last-ref-removal is allowed; an empty ref set means the pair
+     *     contributes nothing until at least one ref is re-clicked.
+     *   - Demote auto-pick tracking so _refreshAutoPickedPairs (which
+     *     is already a no-op when T1/T2 break is ON, but defensive)
+     *     wouldn't trample the click later.
+     *   - Trigger re-render of the per-table highlights + re-fire
+     *     getPredictions through the existing onSpinAdded flow.
+     */
+    toggleSubAnchorFromTable(pairKey, tableId, refKey) {
+        if (tableId !== 'table1' && tableId !== 'table2') return;
+        if (refKey !== 'first' && refKey !== 'second' && refKey !== 'third') return;
+
+        const pairs        = tableId === 'table1' ? this.table1Pairs        : this.table2Pairs;
+        const selections   = tableId === 'table1' ? this.table1Selections   : this.table2Selections;
+        const highlightSet = tableId === 'table1' ? this.table1SelectedPairs : this.table2SelectedPairs;
+
+        if (!pairs.some(p => p.key === pairKey)) {
+            console.warn(`⚠️ Sub-anchor toggle: ${pairKey} not available in ${tableId} yet`);
+            return;
+        }
+
+        // Ensure the pair is selected (highlight set + selections map).
+        if (!highlightSet.has(pairKey)) {
+            highlightSet.add(pairKey);
+            selections[pairKey] = new Set();
+        }
+        if (!selections[pairKey] || !(selections[pairKey] instanceof Set)) {
+            selections[pairKey] = new Set();
+        }
+
+        // Toggle the refKey in that pair's primary ref set.
+        if (selections[pairKey].has(refKey)) selections[pairKey].delete(refKey);
+        else                                 selections[pairKey].add(refKey);
+
+        // Demote auto-pick tracking (so the per-spin refresh, if ever
+        // re-enabled, won't snap back). Clear the extra-ref entry too.
+        if (this._autoPickedPairs) delete this._autoPickedPairs[`${tableId}:${pairKey}`];
+        if (this._extraRefs)       delete this._extraRefs[`${tableId}:${pairKey}`];
+
+        // If the user deselected the last ref, demote from highlight too
+        // so the table doesn't show a pair with zero contribution.
+        if (selections[pairKey].size === 0) {
+            highlightSet.delete(pairKey);
+            delete selections[pairKey];
+        }
+
+        // Re-render highlights + re-fire predictions via the existing
+        // public surface. Defensive — both methods exist on this class.
+        if (typeof this.updateSingleTableHighlights === 'function') {
+            this.updateSingleTableHighlights(tableId, highlightSet);
+        }
+        if (typeof this.renderAllCheckboxes === 'function') {
+            this.renderAllCheckboxes();
+        }
+        if (typeof this.getPredictions === 'function') {
+            try { this.getPredictions(); } catch (_) { /* tolerate early state */ }
+        }
+    }
+
     updateSingleTableHighlights(tableId, selectedSet) {
         const table = document.getElementById(tableId);
         if (!table) return;
@@ -718,9 +786,44 @@ class AIPredictionPanel {
             el.classList.remove('t3-pair-selected');
         });
 
+        // When T1/T2 break is ON and we're on T1 or T2, only highlight
+        // the cells whose data-sub matches a ref the user has actually
+        // selected for that pair (plus the anchor/Ref cells, which have
+        // no data-sub so they keep the whole-pair "this is selected"
+        // visual cue). T3 has no sub-anchors so it always uses the
+        // whole-pair highlight regardless of the toggle.
+        //
+        // When the toggle is OFF (or table is T3), behaviour is
+        // byte-identical to before: every cell carrying the pair's
+        // data-pair gets the highlight class.
+        const breakOn = (typeof window !== 'undefined' && window.t1t2Breaks === true);
+        const useSubFilter = breakOn && (tableId === 'table1' || tableId === 'table2');
+        const refsByPair = (tableId === 'table1') ? this.table1Selections
+                          : (tableId === 'table2') ? this.table2Selections
+                          : null;
+
         selectedSet.forEach(pairKey => {
-            table.querySelectorAll(`[data-pair="${pairKey}"]`).forEach(el => {
-                el.classList.add('t3-pair-selected');
+            const cells = table.querySelectorAll(`[data-pair="${pairKey}"]`);
+            if (!useSubFilter) {
+                cells.forEach(el => el.classList.add('t3-pair-selected'));
+                return;
+            }
+            const refSet = refsByPair && refsByPair[pairKey];
+            // Defensive: if no ref set exists yet (rare race) fall back
+            // to whole-pair highlight rather than leaving the pair
+            // visually unselected.
+            if (!refSet || refSet.size === 0) {
+                cells.forEach(el => el.classList.add('t3-pair-selected'));
+                return;
+            }
+            cells.forEach(el => {
+                const sub = el.dataset.sub;
+                // Anchor cells (no data-sub) always light up so the
+                // user can see which pair is active. Sub-anchor cells
+                // only light up if their refKey is in the user's set.
+                if (!sub || refSet.has(sub)) {
+                    el.classList.add('t3-pair-selected');
+                }
             });
         });
     }
@@ -2143,6 +2246,12 @@ class AIPredictionPanel {
     //  any refresh actually changes a stored set.
     // ═══════════════════════════════════════════════════════
     _refreshAutoPickedPairs() {
+        // T1/T2 break: when ON, freeze the auto-pick refresh so the
+        // user's manual 1st/2nd/3rd choice persists across spins. Pure
+        // early-return — no other branch in this function touched, so
+        // the OFF path is byte-identical to before. Mirrored from the
+        // wheel panel via window.t1t2Breaks + 't1t2BreaksChanged'.
+        if (typeof window !== 'undefined' && window.t1t2Breaks === true) return;
         if (!this._autoPickedPairs || !window.getAutoSelectedRefs) return;
         if (!Array.isArray(window.spins) || window.spins.length < 2) return;
         const setsEqual = (a, b) => {

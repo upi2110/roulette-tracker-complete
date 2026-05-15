@@ -120,6 +120,9 @@ class AutoTestUI {
                             <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);">
                                 <input type="checkbox" id="autoTestMtIncludeGrey"> Include grey
                             </label>
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);" title="Freeze the 1st/2nd/3rd ref pick for T1 & T2. When ON, you pick which sub-anchors to use per pair via the 1/2/3 buttons that appear next to each selected pill.">
+                                <input type="checkbox" id="autoTestMtT1T2Breaks"> T1/T2 break
+                            </label>
                         </div>
                         <!-- Table / Sign / Set filters — same controls as the live Wheel panel.
                              Captured into manualTestConfig at Run time and applied to the bet set. -->
@@ -559,6 +562,14 @@ class AutoTestUI {
     async exportExcel() {
         if (!this.result) return;
 
+        // Disable the export / run buttons while building the workbook
+        // so the user can't fire a second export on top of the first.
+        const exportBtn = document.getElementById('autoTestExportBtn');
+        const runBtn    = document.getElementById('autoTestRunBtn');
+        const prevExportLabel = exportBtn ? exportBtn.textContent : null;
+        if (exportBtn) { exportBtn.disabled = true; exportBtn.textContent = '⏳ Exporting…'; }
+        if (runBtn) runBtn.disabled = true;
+
         try {
             const ExcelJSModule = this._getExcelJS();
             if (!ExcelJSModule) {
@@ -573,13 +584,28 @@ class AutoTestUI {
             }
 
             const reportGen = new ReportClass(ExcelJSModule);
-            const workbook = reportGen.generate(this.result);
+            // Prefer the async path so the renderer stays responsive on
+            // large runs (500+ sessions × 5 strategies = thousands of
+            // detail sheets). Falls back to the sync generate() if the
+            // currently-loaded module predates the async addition.
+            const progressCb = (pct, msg) => this.updateProgress(pct, msg);
+            const workbook = (typeof reportGen.generateAsync === 'function')
+                ? await reportGen.generateAsync(this.result, progressCb)
+                : reportGen.generate(this.result);
+            this.updateProgress(98, 'Writing file…');
             await reportGen.saveToFile(workbook);
+            this.updateProgress(100, 'Export complete');
 
             console.log('✅ Excel report exported');
         } catch (err) {
             this._showError(`Export failed: ${err.message}`);
             console.error('❌ Export failed:', err);
+        } finally {
+            if (exportBtn) {
+                exportBtn.disabled = false;
+                exportBtn.textContent = prevExportLabel || '📊 Export Excel';
+            }
+            if (runBtn) runBtn.disabled = false;
         }
     }
 
@@ -1004,6 +1030,47 @@ class AutoTestUI {
         if (!this._mtSelections) {
             this._mtSelections = { t1: new Set(), t2: new Set(), t3: new Set() };
         }
+        // Per-pair primary-ref selections used when "T1/T2 break" is ON.
+        // Shape: { t1: { 'prevPlus1': Set(['first','second']) }, t2: {...} }.
+        // Defaulted to all 3 refs the first time a pair is touched while
+        // the toggle is ON. Persists across re-renders so the user's
+        // 1/2/3 picks survive add/remove operations on other pairs.
+        if (!this._mtRefSelections) {
+            this._mtRefSelections = { t1: {}, t2: {} };
+        }
+        // Mirror the live wheel-panel "T1/T2 break" toggle into the
+        // local checkbox on first render. Read window.t1t2Breaks if
+        // available; otherwise fall back to whatever the local
+        // checkbox currently shows (default OFF).
+        const breakCb = document.getElementById('autoTestMtT1T2Breaks');
+        if (breakCb && !breakCb._autoTestMtSynced) {
+            breakCb._autoTestMtSynced = true;
+            if (typeof window !== 'undefined' && typeof window.t1t2Breaks === 'boolean') {
+                breakCb.checked = window.t1t2Breaks;
+            }
+            // Toggle in the panel broadcasts to the wheel panel via
+            // the shared event so the two stay in sync. Re-renders
+            // pills so sub-toggles appear/disappear.
+            breakCb.addEventListener('change', () => {
+                const v = !!breakCb.checked;
+                if (typeof window !== 'undefined') {
+                    window.t1t2Breaks = v;
+                    try { localStorage.setItem('strategyLab.t1t2Breaks', v ? '1' : '0'); } catch (_) {}
+                    try { window.dispatchEvent(new CustomEvent('t1t2BreaksChanged', { detail: { value: v } })); } catch (_) {}
+                }
+                this._renderManualTestPills();
+            });
+            // Listen for the same event so a wheel-panel flip keeps
+            // this checkbox in sync.
+            window.addEventListener('t1t2BreaksChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (breakCb.checked !== v) {
+                    breakCb.checked = v;
+                    this._renderManualTestPills();
+                }
+            });
+        }
+        const t1t2BreaksOn = !!(breakCb && breakCb.checked);
         // Static pair-key list — doesn't depend on the live AI panel
         // having spins. These are the symbolic ref-keys used across the
         // whole codebase; the runner will compute the actual numbers
@@ -1058,7 +1125,10 @@ class AutoTestUI {
         const t1 = T12_PAIRS;
         const t2 = T12_PAIRS;
 
-        const draw = (hostId, pairs, sel, accent) => {
+        // tableKey ∈ {'t1','t2','t3'} — drives whether sub-anchor 1/2/3
+        // toggles are rendered next to a selected pill (only t1/t2 when
+        // T1/T2 break is ON).
+        const draw = (hostId, pairs, sel, accent, tableKey) => {
             const host = document.getElementById(hostId);
             if (!host) return;
             host.innerHTML = '';
@@ -1067,29 +1137,94 @@ class AutoTestUI {
                 return;
             }
             pairs.forEach(p => {
+                // Inline wrapper so the pill and its 1/2/3 sub-toggles
+                // (when shown) stay glued together as a unit. Adds a
+                // tiny bottom margin so wrapping doesn't crush rows.
+                const wrap = document.createElement('span');
+                wrap.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-bottom:2px;';
+
                 const pill = document.createElement('span');
                 const on = sel.has(p.key);
                 pill.textContent = p.display || p.key;
                 pill.title = p.key;
                 pill.style.cssText = `
-                    padding:2px 8px;font-size:10px;font-weight:700;border-radius:3px;cursor:pointer;
+                    padding:2px 8px;font-size:10px;font-weight:700;border-radius:3px 0 0 3px;cursor:pointer;
                     border:1px solid ${on ? accent : '#475569'};
                     background:${on ? accent : 'rgba(71,85,105,0.2)'};
                     color:${on ? '#0f172a' : '#cbd5e1'};
                     user-select:none;
                 `;
                 pill.addEventListener('click', () => {
-                    if (sel.has(p.key)) sel.delete(p.key);
-                    else                sel.add(p.key);
+                    if (sel.has(p.key)) {
+                        sel.delete(p.key);
+                        // Also drop any ref-selection state for this pair
+                        // so re-selecting it later starts with the
+                        // default-all-3 again.
+                        if ((tableKey === 't1' || tableKey === 't2') && this._mtRefSelections[tableKey]) {
+                            delete this._mtRefSelections[tableKey][p.key];
+                        }
+                    } else {
+                        sel.add(p.key);
+                        // Pre-populate per-pair ref selection to all 3
+                        // refs the first time it's added while
+                        // T1/T2 break is ON.
+                        if ((tableKey === 't1' || tableKey === 't2') && t1t2BreaksOn) {
+                            if (!this._mtRefSelections[tableKey][p.key]) {
+                                this._mtRefSelections[tableKey][p.key] = new Set(['first', 'second', 'third']);
+                            }
+                        }
+                    }
                     this._renderManualTestPills();
                 });
-                host.appendChild(pill);
+                wrap.appendChild(pill);
+
+                // Sub-anchor toggles — only for T1/T2 pairs that are
+                // currently selected AND the T1/T2 break toggle is ON.
+                // T3 pairs never get these (T3 has its own halfs system).
+                if (on && t1t2BreaksOn && (tableKey === 't1' || tableKey === 't2')) {
+                    // Ensure a default ref-selection exists for this pair.
+                    if (!this._mtRefSelections[tableKey][p.key]) {
+                        this._mtRefSelections[tableKey][p.key] = new Set(['first', 'second', 'third']);
+                    }
+                    const refSel = this._mtRefSelections[tableKey][p.key];
+                    const SUB = [
+                        { key: 'first',  label: '1' },
+                        { key: 'second', label: '2' },
+                        { key: 'third',  label: '3' }
+                    ];
+                    SUB.forEach((s, i) => {
+                        const btn = document.createElement('span');
+                        const subOn = refSel.has(s.key);
+                        btn.textContent = s.label;
+                        btn.title = `${s.key} ref`;
+                        const isLast = (i === SUB.length - 1);
+                        btn.style.cssText = `
+                            padding:2px 5px;font-size:10px;font-weight:700;cursor:pointer;
+                            border:1px solid ${subOn ? accent : '#475569'};
+                            border-left:none;
+                            border-radius:${isLast ? '0 3px 3px 0' : '0'};
+                            background:${subOn ? accent : 'rgba(71,85,105,0.2)'};
+                            color:${subOn ? '#0f172a' : '#cbd5e1'};
+                            user-select:none;
+                            min-width:14px;text-align:center;
+                        `;
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (refSel.has(s.key)) refSel.delete(s.key);
+                            else                   refSel.add(s.key);
+                            this._renderManualTestPills();
+                        });
+                        wrap.appendChild(btn);
+                    });
+                }
+
+                host.appendChild(wrap);
             });
         };
 
-        draw('autoTestMtT1Pills', t1, this._mtSelections.t1, '#fbbf24');
-        draw('autoTestMtT2Pills', t2, this._mtSelections.t2, '#34d399');
-        draw('autoTestMtT3Pills', t3, this._mtSelections.t3, '#60a5fa');
+        draw('autoTestMtT1Pills', t1, this._mtSelections.t1, '#fbbf24', 't1');
+        draw('autoTestMtT2Pills', t2, this._mtSelections.t2, '#34d399', 't2');
+        draw('autoTestMtT3Pills', t3, this._mtSelections.t3, '#60a5fa', 't3');
 
         // Wire the T3-halfs checkbox to re-render T3 pills (drop any
         // selected keys that no longer exist in the new list — e.g.,
@@ -1139,10 +1274,30 @@ class AutoTestUI {
             const checked = document.querySelector(`input[name="${name}"]:checked`);
             return checked ? checked.value : null;
         };
+        // Snapshot per-pair ref selections when T1/T2 break is ON.
+        // Only pairs currently selected in T1/T2 contribute; serialised
+        // as plain arrays for the runner / Excel renderer. When the
+        // toggle is OFF the runner ignores refSelections and falls
+        // back to the existing auto-ref + grey logic, so this field
+        // is harmless when present but unused.
+        const t1t2BreaksOn = cb('autoTestMtT1T2Breaks');
+        const refSelections = { t1: {}, t2: {} };
+        if (t1t2BreaksOn && this._mtRefSelections) {
+            ['t1','t2'].forEach(tk => {
+                const sel = (tk === 't1') ? this._mtSelections.t1 : this._mtSelections.t2;
+                sel.forEach(pairKey => {
+                    const refs = this._mtRefSelections[tk] && this._mtRefSelections[tk][pairKey];
+                    refSelections[tk][pairKey] = refs
+                        ? [...refs]
+                        : ['first', 'second', 'third'];
+                });
+            });
+        }
         return {
             inverse:      cb('autoTestMtInverse'),
             t3Halfs:      cb('autoTestMtT3Halfs'),
             includeGrey:  cb('autoTestMtIncludeGrey'),
+            t1t2Breaks:   t1t2BreaksOn,
             filters: {
                 table: radio('autoTestMtTable') || 'both',
                 sign:  radio('autoTestMtSign')  || 'both',
@@ -1156,7 +1311,8 @@ class AutoTestUI {
                 t1: this._mtSelections ? [...this._mtSelections.t1] : [],
                 t2: this._mtSelections ? [...this._mtSelections.t2] : [],
                 t3: this._mtSelections ? [...this._mtSelections.t3] : []
-            }
+            },
+            refSelections: refSelections
         };
     }
 
