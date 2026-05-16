@@ -2766,9 +2766,26 @@ class AIPredictionPanel {
             };
 
             // Build prediction object matching existing updatePrediction() format
+            // T1-only union for the Same-mode trigger gate. The bet pool
+            // (numbers) stays as the full intersection across T1/T2/T3 so
+            // bet sizing is unchanged — but the trigger check should fire
+            // when the spin lands in ANY T1-selected pair, ignoring T2/T3
+            // membership (per user spec: "trigger only checks T1 and
+            // wheel options").
+            const t1TriggerPool = (() => {
+                const s = new Set();
+                pairSets.forEach(ps => {
+                    if (ps.table === 'T1' && ps.numbers) {
+                        ps.numbers.forEach(n => s.add(n));
+                    }
+                });
+                return Array.from(s);
+            })();
+
             const prediction = {
                 signal: 'BET NOW',
                 numbers: finalNumbers,
+                t1TriggerPool: t1TriggerPool,
                 anchors: anchors,
                 loose: loose,
                 anchor_groups: anchorGroups,
@@ -3665,6 +3682,25 @@ class AIPredictionPanel {
 
         if (window.moneyPanel) {
             window.moneyPanel.pendingBet = null;
+            // Reset trigger-gate state so the "TRIGGERED" pill goes back
+            // to WAITING when the user deselects all pairs. Otherwise a
+            // stale sameArmed=true / lingering pool snapshot from the
+            // previous prediction keeps the pill green even though there's
+            // nothing to bet on.
+            if (window.moneyPanel.sessionData) {
+                window.moneyPanel.sessionData.sameArmed = false;
+            }
+            // Clear T1-specific pools (no pairs selected → no T1 trigger
+            // data). Do NOT clear _sameLastPredictedNumbers or
+            // _sameTriggerPool: when wheel mode is ON, the wheel's
+            // _applyFilters synth has just pushed the universe-pool
+            // through setPrediction RIGHT BEFORE this runs (via
+            // clearHighlights → _applyFilters → _syncMoneyPanel). Wiping
+            // them here would erase that fresh state and leave the
+            // trigger gate with no pool to evaluate against.
+            window.moneyPanel._sameT1TriggerPool = [];
+            window.moneyPanel._sameT1TriggerPoolPrev = [];
+            try { window.dispatchEvent(new CustomEvent('triggerArmedChanged', { detail: { armed: false } })); } catch (_) {}
             if (typeof window.moneyPanel.render === 'function') {
                 window.moneyPanel.render();
             }

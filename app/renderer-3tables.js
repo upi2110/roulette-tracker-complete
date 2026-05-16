@@ -912,7 +912,13 @@ function resetAll() {
                     s5WinsToDecrease:   1, s5WinDecrement:  1,
                     s5StartingBet:      2, s5SessionTarget: 100,
                     s5MinBet:           2, s5ReferenceN:    4,
-                    s5LossUnits:        0, s5WinUnits:      0
+                    s5LossUnits:        0, s5WinUnits:      0,
+                    // Strategy-6 SUPER CAUTIOUS tunables (defaults)
+                    s6LossesToIncrease: 3, s6LossIncrement: 1,
+                    s6WinsToDecrease:   1, s6WinDecrement:  1,
+                    s6StartingBet:      2, s6SessionTarget: 100,
+                    s6MinBet:           2, s6MaxBet:        5,
+                    sameArmed: false
                 };
                 window.moneyPanel.betHistory = [];
                 window.moneyPanel.pendingBet = null;

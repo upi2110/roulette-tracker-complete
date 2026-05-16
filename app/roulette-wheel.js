@@ -93,52 +93,95 @@ class RouletteWheel {
         panel.className = 'wheel-panel';
         panel.id = 'wheelPanel';
         panel.innerHTML = `
-            <div class="panel-header" style="display:flex;align-items:center;gap:10px;">
-                <h3 style="margin:0;flex:1;">European Wheel</h3>
-                <!-- Strategy-Lab grey-numbers toggle. Mirrored with the
-                     AI-panel checkbox and Auto Test params row via the
-                     'strategyLabIncludeGreyChanged' window event so all
-                     three UIs stay in sync. Tick = include grey numbers
-                     in the Strategy-Lab bet; untick = exclude them. -->
-                <label id="wheelGreyToggleWrap" title="Include grey numbers in Strategy-Lab bets (live + lab). Mirrored with AI panel + Auto Test params." style="
-                    display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
-                    color:#475569;cursor:pointer;user-select:none;
-                    padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
-                ">
-                    <input type="checkbox" id="wheelGreyToggle" checked style="vertical-align:middle;"> include grey
-                </label>
-                <!-- T3 halfs toggle: when ON, each Table-3 pair group
-                     splits into a "pair" half (P+1) and a "13opp" half
-                     (P+1-13opp) that can be selected independently —
-                     matching how T1 / T2 already work. When OFF, T3
-                     keeps the original single-entry-per-pair behaviour. -->
-                <label id="wheelT3HalfsWrap" title="Split each Table-3 pair group into pair / 13opp halves so they can be selected independently (like Table 1 and Table 2)." style="
-                    display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
-                    color:#475569;cursor:pointer;user-select:none;
-                    padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
-                ">
-                    <input type="checkbox" id="wheelT3HalfsToggle" style="vertical-align:middle;"> T3 halfs
-                </label>
-                <!-- T1/T2 break toggle: when ON, the auto-pick of which
-                     refs (1st/2nd/3rd) are primary STOPS refreshing on
-                     every new spin. Whatever the user has manually
-                     selected stays frozen for the rest of the session.
-                     Auto-test panel also exposes per-pair 1/2/3 sub-
-                     toggles when this is ON. When OFF, the AI panel's
-                     per-spin _refreshAutoPickedPairs runs as before. -->
-                <label id="wheelT1T2BreaksWrap" title="Freeze the 1st/2nd/3rd ref pick for T1 & T2. When ON, your manual ref selection stays put even as new spins come in." style="
-                    display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
-                    color:#475569;cursor:pointer;user-select:none;
-                    padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
-                ">
-                    <input type="checkbox" id="wheelT1T2BreaksToggle" style="vertical-align:middle;"> T1/T2 break
-                </label>
-                <button id="wheelInverseBtn" title="Flip the bet set: remove all currently selected wheel numbers, select all the others. Click again to flip back. Mirrors to money panel + AI display + wheel highlights." style="
-                    font-size:10px;font-weight:700;cursor:pointer;user-select:none;
-                    padding:3px 9px;border:1px solid #94a3b8;border-radius:4px;
-                    background:#f8fafc;color:#1e293b;letter-spacing:.2px;line-height:1;
-                ">⇄ Inverse</button>
-                <button class="btn-toggle" id="toggleWheelPanel">−</button>
+            <div class="panel-header" style="display:flex;flex-direction:column;gap:6px;align-items:stretch;">
+                <!-- Row 1: title (left) + collapse (right). Always single
+                     line so the title doesn't wrap to its own row when
+                     the toggle buttons crowd it. -->
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <h3 style="margin:0;flex:1;">European Wheel</h3>
+                    <button class="btn-toggle" id="toggleWheelPanel">−</button>
+                </div>
+                <!-- Row 2: the four structural toggles + Inverse. Wraps
+                     to multiple lines if the panel is narrow. -->
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <!-- Strategy-Lab grey-numbers toggle. Mirrored with the
+                         AI-panel checkbox and Auto Test params row via the
+                         'strategyLabIncludeGreyChanged' window event so all
+                         three UIs stay in sync. Tick = include grey numbers
+                         in the Strategy-Lab bet; untick = exclude them. -->
+                    <label id="wheelGreyToggleWrap" title="Include grey numbers in Strategy-Lab bets (live + lab). Mirrored with AI panel + Auto Test params." style="
+                        display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+                        color:#475569;cursor:pointer;user-select:none;
+                        padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
+                    ">
+                        <input type="checkbox" id="wheelGreyToggle" checked style="vertical-align:middle;"> include grey
+                    </label>
+                    <!-- T3 halfs toggle: when ON, each Table-3 pair group
+                         splits into a "pair" half (P+1) and a "13opp" half
+                         (P+1-13opp) that can be selected independently —
+                         matching how T1 / T2 already work. When OFF, T3
+                         keeps the original single-entry-per-pair behaviour. -->
+                    <label id="wheelT3HalfsWrap" title="Split each Table-3 pair group into pair / 13opp halves so they can be selected independently (like Table 1 and Table 2)." style="
+                        display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+                        color:#475569;cursor:pointer;user-select:none;
+                        padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
+                    ">
+                        <input type="checkbox" id="wheelT3HalfsToggle" style="vertical-align:middle;"> T3 halfs
+                    </label>
+                    <!-- T1/T2 break toggle: when ON, the auto-pick of which
+                         refs (1st/2nd/3rd) are primary STOPS refreshing on
+                         every new spin. Whatever the user has manually
+                         selected stays frozen for the rest of the session.
+                         Auto-test panel also exposes per-pair 1/2/3 sub-
+                         toggles when this is ON. When OFF, the AI panel's
+                         per-spin _refreshAutoPickedPairs runs as before. -->
+                    <label id="wheelT1T2BreaksWrap" title="Freeze the 1st/2nd/3rd ref pick for T1 & T2. When ON, your manual ref selection stays put even as new spins come in." style="
+                        display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+                        color:#475569;cursor:pointer;user-select:none;
+                        padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
+                    ">
+                        <input type="checkbox" id="wheelT1T2BreaksToggle" style="vertical-align:middle;"> T1/T2 break
+                    </label>
+                    <button id="wheelInverseBtn" title="Flip the bet set: remove all currently selected wheel numbers, select all the others. Click again to flip back. Mirrors to money panel + AI display + wheel highlights." style="
+                        font-size:10px;font-weight:700;cursor:pointer;user-select:none;
+                        padding:3px 9px;border:1px solid #94a3b8;border-radius:4px;
+                        background:#f8fafc;color:#1e293b;letter-spacing:.2px;line-height:1;
+                    ">⇄ Inverse</button>
+                </div>
+                <!-- Row 2: bet-trigger toggles (Same + Wheel mode). Grouped on
+                     their own row so the link between them is visible at a
+                     glance (Wheel mode supplies the pool, Same gates when to
+                     bet against it). -->
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 8px;background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:1px solid #f59e0b;border-radius:5px;">
+                    <span style="font-size:10px;font-weight:800;color:#92400e;letter-spacing:.6px;background:#f59e0b;color:#fff;padding:2px 8px;border-radius:3px;">⚡ BET TRIGGER</span>
+                    <!-- Same toggle: wait-for-trigger betting. When ON, no
+                         bet is placed until a spin lands in the current bet
+                         pool (the predicted numbers). After that trigger,
+                         bet on the next spin; WIN stays armed (keep
+                         betting), LOSS disarms (wait for next trigger).
+                         Mirrored to Auto Test via 'sameModeChanged' event. -->
+                    <label id="wheelSameModeWrap" title="Wait-for-trigger: only place a bet AFTER a spin lands in the current bet pool. Win → keep betting. Loss → wait for the next trigger." style="
+                        display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+                        color:#475569;cursor:pointer;user-select:none;
+                        padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
+                    ">
+                        <input type="checkbox" id="wheelSameModeToggle" style="vertical-align:middle;"> Same
+                    </label>
+                    <!-- Wheel mode toggle: when ON, the bet pool is derived
+                         from the wheel's Table / Sign / Set filters applied
+                         to the full 0–36 universe (instead of T1/T2/T3 pair
+                         predictions). If pairs are also selected, the wheel
+                         pool intersects with the pair-pool — wheel filters
+                         act as a hard mask. When OFF, behaviour is exactly
+                         as today. Same trigger respects the active pool. -->
+                    <label id="wheelWheelModeWrap" title="Bet on the wheel's filtered numbers (Table/Sign/Set/Inverse) instead of pair-derived predictions. With pairs selected, intersects pair-pool ∩ wheel-pool. Use this when you want to bet on a set without selecting any T1/T2/T3 pair." style="
+                        display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+                        color:#475569;cursor:pointer;user-select:none;
+                        padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
+                    ">
+                        <input type="checkbox" id="wheelWheelModeToggle" style="vertical-align:middle;"> Wheel mode
+                    </label>
+                </div>
             </div>
             <div class="panel-content">
                 <div id="wheelFilters" style="display:flex; flex-direction:column; gap:4px; padding:6px 8px; background:#f1f5f9; border-radius:6px; margin-bottom:4px;">
@@ -178,6 +221,36 @@ class RouletteWheel {
                         <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#7c3aed;">
                             <input type="checkbox" id="filterSet6" checked class="set-cb" style="accent-color:#7c3aed;"> 6
                         </label>
+                        <!-- Trigger status pill — visual indicator of
+                             whether the Same/Wheel trigger gate is
+                             currently ARMED (will bet on next spin)
+                             or WAITING (no trigger fired yet). Only
+                             shown when at least one trigger toggle is
+                             ON; hidden when both are OFF (every-spin
+                             betting, no gate). Updated by
+                             _refreshTriggerStatus(). -->
+                        <span id="wheelTriggerStatus" title="Bet-trigger status — green = armed (bet on next spin), red = waiting for a spin in the bet pool. Only shown when Same or Wheel mode is ON." style="
+                            display:none;margin-left:auto;font-size:10px;font-weight:800;letter-spacing:.4px;
+                            padding:3px 10px;border-radius:12px;border:1px solid transparent;
+                            background:#64748b;color:#fff;user-select:none;
+                        ">—</span>
+                        <!-- Trigger-status "why?" info button. Visible
+                             only when the pill is shown. Click to
+                             toggle the explanation popup below. -->
+                        <button id="wheelTriggerInfoBtn" type="button" title="Click for details on why the trigger is/isn't armed" style="
+                            display:none;width:18px;height:18px;font-size:11px;font-weight:800;
+                            border:1px solid #94a3b8;border-radius:50%;cursor:pointer;
+                            background:#fff;color:#475569;line-height:1;padding:0;
+                        ">ⓘ</button>
+                    </div>
+                    <!-- Trigger-status explanation popup. Painted by
+                         _refreshTriggerStatus when active; toggled by
+                         the info button. Inside wheelFilters so it
+                         sits naturally below the Set row. -->
+                    <div id="wheelTriggerInfo" style="
+                        display:none;margin-top:4px;padding:6px 8px;font-size:10px;line-height:1.4;
+                        background:#fffbeb;border:1px solid #fbbf24;border-radius:4px;color:#78350f;
+                    "></div>
                     </div>
                 </div>
                 <div id="wheelNumberLists" style="font-size:11px; padding:4px 8px; line-height:1.6;"></div>
@@ -320,6 +393,140 @@ class RouletteWheel {
             });
         }
 
+        // Same toggle: wait-for-trigger betting. Source-of-truth global
+        // is window.sameMode, persisted in localStorage('strategyLab.sameMode'),
+        // broadcast via 'sameModeChanged' so the Auto Test panel + money
+        // panel + runner stay in sync. Default OFF — when off, every
+        // code path is byte-identical to today.
+        const wheelSameModeCb = document.getElementById('wheelSameModeToggle');
+        if (wheelSameModeCb) {
+            // Same / Wheel mode default OFF on EVERY app start regardless
+            // of any previous localStorage value. Per user spec — these
+            // shouldn't persist across reloads (in-session sync between
+            // live ↔ auto-test still works via the broadcast events).
+            const initialSame = false;
+            wheelSameModeCb.checked = initialSame;
+            if (typeof window !== 'undefined') window.sameMode = initialSame;
+            // Wipe any prior persisted value so future re-init doesn't
+            // accidentally pick it back up if this code path changes.
+            try { localStorage.removeItem('strategyLab.sameMode'); } catch (_) {}
+
+            wheelSameModeCb.addEventListener('change', () => {
+                const v = !!wheelSameModeCb.checked;
+                if (typeof window !== 'undefined') window.sameMode = v;
+                // No localStorage write — toggle is session-only.
+                try {
+                    window.dispatchEvent(new CustomEvent('sameModeChanged', { detail: { value: v } }));
+                } catch (_) {}
+                this._refreshTriggerStatus();
+            });
+            window.addEventListener('sameModeChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (wheelSameModeCb.checked !== v) wheelSameModeCb.checked = v;
+                this._refreshTriggerStatus();
+            });
+        }
+
+        // Wheel mode toggle: derive the bet pool from the wheel's
+        // Table/Sign/Set/Inverse filters applied to the full 0–36
+        // universe (instead of relying on T1/T2/T3 pair predictions).
+        // Same plumbing as the other live/auto-test mirrored toggles:
+        // window.wheelMode is source of truth, persisted in
+        // localStorage('strategyLab.wheelMode'), broadcast via
+        // 'wheelModeChanged'. Default OFF — when off, pair predictions
+        // drive the bet pool exactly as today.
+        const wheelWheelModeCb = document.getElementById('wheelWheelModeToggle');
+        if (wheelWheelModeCb) {
+            // Default OFF every app start (no localStorage persistence
+            // — see Same toggle above for rationale).
+            const initialWheel = false;
+            wheelWheelModeCb.checked = initialWheel;
+            if (typeof window !== 'undefined') window.wheelMode = initialWheel;
+            try { localStorage.removeItem('strategyLab.wheelMode'); } catch (_) {}
+
+            wheelWheelModeCb.addEventListener('change', () => {
+                const v = !!wheelWheelModeCb.checked;
+                if (typeof window !== 'undefined') window.wheelMode = v;
+                // No localStorage write — toggle is session-only.
+                try {
+                    window.dispatchEvent(new CustomEvent('wheelModeChanged', { detail: { value: v } }));
+                } catch (_) {}
+                this._refreshTriggerStatus();
+                if (v) {
+                    // Toggled ON: re-run filter pipeline so the wheel
+                    // synthesises the universe and pushes the
+                    // filtered pool to the money panel.
+                    try { this._applyFilters(); } catch (_) {}
+                } else {
+                    // Toggled OFF: when a real pair-derived prediction
+                    // exists, re-run filters so the pair path takes
+                    // over again. When NO pair prediction exists, the
+                    // wheel's stale synthesised pool would otherwise
+                    // remain live in the money + AI panels forever
+                    // (setPrediction early-returns on empty numbers).
+                    // We clear those panels directly here so the bet
+                    // pool collapses to nothing immediately.
+                    try {
+                        if (this._rawPrediction && this._rawPrediction.prediction
+                            && Array.isArray(this._rawPrediction.prediction.numbers)
+                            && this._rawPrediction.prediction.numbers.length > 0) {
+                            this._applyFilters();
+                        } else {
+                            // Reset wheel visuals to no-highlight state.
+                            this._updateFromRaw([], [], [], []);
+                            this._updateFilteredCount(null);
+                            // Wipe money panel's bet pool + Same mode
+                            // memory so a stale "armed" state can't
+                            // place a bet against the wheel pool that
+                            // no longer applies.
+                            if (window.moneyPanel) {
+                                window.moneyPanel.pendingBet = null;
+                                window.moneyPanel._sameLastPredictedNumbers = [];
+                                if (window.moneyPanel.sessionData) {
+                                    window.moneyPanel.sessionData.lastBetAmount = 0;
+                                    window.moneyPanel.sessionData.lastBetNumbers = 0;
+                                    // Also disarm Same mode — there's
+                                    // nothing left to trigger against.
+                                    window.moneyPanel.sessionData.sameArmed = false;
+                                }
+                                if (typeof window.moneyPanel.render === 'function') {
+                                    window.moneyPanel.render();
+                                }
+                            }
+                            // Also clear the AI panel's display so the
+                            // user sees "no prediction" instead of the
+                            // stale wheel pool.
+                            if (window.aiPanel && typeof window.aiPanel._clearAllPredictionDisplays === 'function') {
+                                try { window.aiPanel._clearAllPredictionDisplays(); } catch (_) {}
+                            }
+                            console.log('🧹 Wheel mode OFF → cleared synthesised bet pool (no pair prediction to fall back to)');
+                        }
+                    } catch (_) {}
+                }
+            });
+            window.addEventListener('wheelModeChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (wheelWheelModeCb.checked !== v) wheelWheelModeCb.checked = v;
+                this._refreshTriggerStatus();
+            });
+        }
+
+        // Trigger-status pill updates: listen for armed-state changes
+        // broadcast by the money panel (see _setSameArmed callers in
+        // money-management-panel.js). Also do an initial refresh so
+        // the pill shows its hidden/waiting state from the moment the
+        // panel renders. Outside the wheelWheelModeCb block so the
+        // listener still binds even if the wheel-mode checkbox is
+        // somehow missing from the DOM.
+        if (typeof window !== 'undefined') {
+            window.addEventListener('triggerArmedChanged', () => {
+                this._refreshTriggerStatus();
+            });
+            // Small delay so moneyPanel can finish init before our
+            // first read of its sameArmed state.
+            setTimeout(() => { this._refreshTriggerStatus(); }, 250);
+        }
+
         // Wheel panel collapse/expand toggle
         const wheelToggleBtn = document.getElementById('toggleWheelPanel');
         const wheelPanelContent = panel.querySelector('.panel-content');
@@ -409,7 +616,14 @@ class RouletteWheel {
 
         console.log('🔄 Filters changed:', this.filters);
 
-        if (this._rawPrediction) {
+        // Run the filter pipeline if:
+        //   - there's a real pair-derived prediction to filter, OR
+        //   - Wheel mode is ON (in which case _applyFilters synthesises
+        //     the 0–36 universe and applies the user's Table/Sign/Set
+        //     selections to it). Without this branch, ticking/unticking
+        //     a Set checkbox with no pair selected would do nothing.
+        const wheelModeOn = (typeof window !== 'undefined' && window.wheelMode === true);
+        if (this._rawPrediction || wheelModeOn) {
             this._applyFilters();
         }
     }
@@ -448,7 +662,37 @@ class RouletteWheel {
     }
 
     _applyFilters() {
-        const raw = this._rawPrediction;
+        let raw = this._rawPrediction;
+        const wheelModeOn = (typeof window !== 'undefined' && window.wheelMode === true);
+
+        // Wheel mode: when ON, the bet pool starts from the full 0–36
+        // universe instead of pair-derived predictions. If a real
+        // pair-prediction is already present we keep it (so the wheel
+        // filters will intersect against it). When no pair is
+        // selected and we'd normally have nothing to do, synthesise
+        // a universe-prediction so the filter pipeline below produces
+        // the wheel-only bet set.
+        //
+        // IMPORTANT: the synthesised raw is LOCAL — we deliberately do
+        // NOT write it to this._rawPrediction. Caching would leak into
+        // the wheelMode-OFF path (the wheel would keep producing the
+        // universe-filtered bet pool even after the user unticks the
+        // toggle). Each _applyFilters call re-synthesises on demand.
+        if (wheelModeOn) {
+            const hasPrediction = !!(raw && raw.prediction && Array.isArray(raw.prediction.numbers) && raw.prediction.numbers.length > 0);
+            if (!hasPrediction) {
+                const universe = [];
+                for (let n = 0; n <= 36; n++) universe.push(n);
+                raw = {
+                    prediction: { numbers: universe, extraNumbers: [], anchors: [], loose: universe, anchor_groups: [], bet_per_number: 2 },
+                    anchors: [],
+                    loose: universe,
+                    anchorGroups: [],
+                    extraNumbers: []
+                };
+            }
+        }
+
         if (!raw) return;
 
         const allOn = this.filters.zeroTable && this.filters.nineteenTable &&
@@ -534,6 +778,174 @@ class RouletteWheel {
             el.textContent = `Bet: ${count} nums`;
             el.style.color = count > 0 ? '#16a34a' : '#dc2626';
         }
+    }
+
+    /**
+     * Trigger-status pill (next to the Set checkboxes). Three states:
+     *   - Hidden:        both Same and Wheel mode are OFF (no gate)
+     *   - 🟢 TRIGGERED:  gate is ON and money panel is armed for next spin
+     *   - 🔴 WAITING:    gate is ON but waiting for a spin in pool
+     *
+     * Reads window.moneyPanel.sessionData.sameArmed for the armed
+     * flag. Safe to call when moneyPanel isn't ready yet (renders
+     * the WAITING state). Idempotent.
+     */
+    _refreshTriggerStatus() {
+        const el = document.getElementById('wheelTriggerStatus');
+        const infoBtn = document.getElementById('wheelTriggerInfoBtn');
+        const infoPanel = document.getElementById('wheelTriggerInfo');
+        if (!el) return;
+        const sameOn  = (typeof window !== 'undefined' && window.sameMode  === true);
+        const wheelOn = (typeof window !== 'undefined' && window.wheelMode === true);
+        const gateOn = sameOn || wheelOn;
+        if (!gateOn) {
+            el.style.display = 'none';
+            if (infoBtn) infoBtn.style.display = 'none';
+            if (infoPanel) infoPanel.style.display = 'none';
+            return;
+        }
+        const armed = !!(window.moneyPanel
+            && window.moneyPanel.sessionData
+            && window.moneyPanel.sessionData.sameArmed === true);
+        el.style.display = 'inline-block';
+        if (armed) {
+            el.textContent = '🟢 TRIGGERED';
+            el.style.background    = '#16a34a';
+            el.style.borderColor   = '#15803d';
+            el.style.color         = '#fff';
+        } else {
+            el.textContent = '🔴 WAITING';
+            el.style.background    = '#dc2626';
+            el.style.borderColor   = '#b91c1c';
+            el.style.color         = '#fff';
+        }
+        // Info button is visible whenever the pill is.
+        if (infoBtn) infoBtn.style.display = 'inline-block';
+        // If the info popup is currently open, refresh its contents
+        // so the explanation reflects the latest state. Closed → no
+        // need to re-paint; it'll re-paint when the user reopens it.
+        if (infoPanel && infoPanel.style.display !== 'none') {
+            infoPanel.innerHTML = this._buildTriggerInfoHtml({ sameOn, wheelOn, armed });
+        }
+
+        // Bind the info-button click once. Wire the toggle here (not in
+        // createPanel) because the button only exists after this HTML
+        // renders, and we want the wheel class to own its handlers.
+        if (infoBtn && infoPanel && !infoBtn._wheelBound) {
+            infoBtn._wheelBound = true;
+            infoBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isOpen = (infoPanel.style.display !== 'none');
+                if (isOpen) {
+                    infoPanel.style.display = 'none';
+                } else {
+                    infoPanel.innerHTML = this._buildTriggerInfoHtml({
+                        sameOn:  (window.sameMode  === true),
+                        wheelOn: (window.wheelMode === true),
+                        armed:   !!(window.moneyPanel && window.moneyPanel.sessionData && window.moneyPanel.sessionData.sameArmed)
+                    });
+                    infoPanel.style.display = 'block';
+                }
+            });
+        }
+    }
+
+    /**
+     * Build the human-readable explanation shown in the trigger-info
+     * popup. Pure function of the current state — receives the
+     * armed/toggle flags, reads supporting data from window.moneyPanel
+     * (bet pool, last spin's actual). Safe when moneyPanel isn't
+     * present (degrades to "—" placeholders).
+     */
+    _buildTriggerInfoHtml({ sameOn, wheelOn, armed }) {
+        const mp = (typeof window !== 'undefined') ? window.moneyPanel : null;
+        // Two pools to consider:
+        //   nextPool    = the pool we'd bet on if armed (for the NEXT spin)
+        //   triggerPool = snapshot pool used to evaluate the LAST spin
+        // Effective trigger pool = triggerPool intersected with the
+        // CURRENT wheel filters when Wheel mode is on. That gives the
+        // user a faithful view of what would actually trigger right
+        // now (covers the case where filters were changed after the
+        // last spin: snapshot might be wide, but the effective gate
+        // is narrower).
+        const nextPool    = (mp && Array.isArray(mp._sameLastPredictedNumbers)) ? mp._sameLastPredictedNumbers : [];
+        const triggerPool = (mp && Array.isArray(mp._sameTriggerPool) && mp._sameTriggerPool.length > 0)
+            ? mp._sameTriggerPool
+            : nextPool;
+        const passesWheel = (n) => {
+            if (!wheelOn) return true;
+            if (typeof this._passesFilter !== 'function') return true;
+            let p = this._passesFilter(n);
+            if (this.filters && this.filters.inverse) p = !p;
+            return p;
+        };
+        const effectivePool = triggerPool.filter(passesWheel);
+        const spins = (typeof window !== 'undefined' && Array.isArray(window.spins)) ? window.spins : [];
+        const lastSpin = (spins.length > 0)
+            ? (spins[spins.length - 1] && typeof spins[spins.length - 1].actual === 'number'
+                ? spins[spins.length - 1].actual
+                : null)
+            : null;
+        const lastInTriggerPool = (lastSpin !== null) && triggerPool.includes(lastSpin);
+        const lastPassesWheel  = (lastSpin !== null) && passesWheel(lastSpin);
+
+        // Friendly text for the reason. Reads like a sentence so the
+        // user can quickly understand WHY armed/waiting.
+        const reasonLines = [];
+        const modes = [];
+        if (sameOn)  modes.push('<b>Same</b>');
+        if (wheelOn) modes.push('<b>Wheel mode</b>');
+        const modesText = modes.join(' + ');
+
+        if (armed) {
+            reasonLines.push(`🟢 <b>TRIGGERED</b> — ${modesText} gate is armed. The next spin will place a bet.`);
+            if (lastSpin !== null) {
+                if (wheelOn && !lastPassesWheel) {
+                    reasonLines.push(`Why: previously armed; the last spin (<b>${lastSpin}</b>) is now outside the current wheel filters, but the trigger had already fired earlier.`);
+                } else {
+                    reasonLines.push(`Why: the last spin (<b>${lastSpin}</b>) was in the trigger pool AND passed the wheel filters, so the trigger fired.`);
+                }
+            } else {
+                reasonLines.push('Why: trigger fired during the last bet (WIN re-stamp keeps the gate armed).');
+            }
+        } else {
+            reasonLines.push(`🔴 <b>WAITING</b> — ${modesText} gate is NOT armed. No bet on the next spin.`);
+            if (lastSpin === null) {
+                reasonLines.push('Why: no spin has been entered yet. Add a spin that lands in the trigger pool to arm the gate.');
+            } else if (triggerPool.length === 0) {
+                reasonLines.push('Why: the trigger pool is empty (no pair selected and/or wheel filters drop everything). Pick a pair or adjust filters.');
+            } else if (lastInTriggerPool && wheelOn && !lastPassesWheel) {
+                // The pool contained the spin but the wheel filter
+                // (e.g. Set 5) rejected it. Most common failure mode
+                // when the user expects "trigger should also satisfy
+                // wheel filters".
+                reasonLines.push(`Why: the last spin (<b>${lastSpin}</b>) IS in the trigger pool but FAILED the current wheel filters (e.g. wrong Set). All conditions must pass.`);
+            } else if (lastInTriggerPool) {
+                // Pool contains spin AND wheel passes — but still not armed.
+                // Likely just after a LOSS disarmed in the same tick.
+                reasonLines.push(`Why: the last spin (<b>${lastSpin}</b>) IS in the trigger pool, but a recent LOSS disarmed the gate. The very next spin in pool will re-arm.`);
+            } else {
+                reasonLines.push(`Why: the last spin (<b>${lastSpin}</b>) was NOT in the trigger pool active for it, so the trigger didn't fire.`);
+            }
+        }
+
+        const fmtPool = (p) => p.length === 0
+            ? '<i>(empty)</i>'
+            : (p.length <= 25
+                ? p.slice().sort((a, b) => a - b).join(', ')
+                : p.slice().sort((a, b) => a - b).slice(0, 25).join(', ') + ` … (+${p.length - 25} more)`);
+
+        return `
+            <div style="margin-bottom:4px;">${reasonLines.join('<br>')}</div>
+            <div style="border-top:1px dashed #fbbf24;padding-top:4px;margin-top:4px;">
+                <b>Effective trigger pool</b> (${effectivePool.length}): ${fmtPool(effectivePool)}<br>
+                <b>Snapshot pool</b> for last spin (${triggerPool.length}): ${fmtPool(triggerPool)}<br>
+                <b>Next bet pool</b> (${nextPool.length}): ${fmtPool(nextPool)}
+            </div>
+            <div style="margin-top:3px;font-size:9px;color:#92400e;">
+                <b>Same</b>: ${sameOn ? 'ON' : 'OFF'} · <b>Wheel mode</b>: ${wheelOn ? 'ON' : 'OFF'} · <b>Last spin</b>: ${lastSpin === null ? '—' : lastSpin}${wheelOn && lastSpin !== null ? ' · <b>Wheel filter for last</b>: ' + (lastPassesWheel ? 'PASS' : 'FAIL') : ''}
+            </div>
+        `;
     }
 
     _syncMoneyPanel(prediction) {
@@ -972,6 +1384,16 @@ class RouletteWheel {
         this._updateFilteredCount(null);
 
         if (this.ctx) this.drawWheel();
+
+        // When wheel mode is ON and pairs are fully deselected, the bet
+        // pool should fall back to the wheel-synthesised universe (Set/
+        // Table/Sign/Inverse filters applied to 0-36). _applyFilters
+        // handles that synthesis path when _rawPrediction is null.
+        try {
+            if (typeof window !== 'undefined' && window.wheelMode === true) {
+                this._applyFilters();
+            }
+        } catch (_) {}
         console.log('🎡 Wheel highlights cleared');
     }
 }

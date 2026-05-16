@@ -12,7 +12,8 @@ const STRATEGY_LABELS = {
     2: 'Strategy 2 - Conservative',
     3: 'Strategy 3 - Cautious',
     4: 'Strategy 4 - Defensive',
-    5: 'Strategy 5 - Logical'
+    5: 'Strategy 5 - Logical',
+    6: 'Strategy 6 - Super Cautious'
 };
 
 class AutoTestReport {
@@ -42,7 +43,7 @@ class AutoTestReport {
 
         // Build map of ALL detail sheet names (for hyperlinks in strategy sheets)
         const detailSheetMap = {};
-        for (const strategyNum of [1, 2, 3, 4, 5]) {
+        for (const strategyNum of [1, 2, 3, 4, 5, 6]) {
             const data = result.strategies[strategyNum];
             if (!data || data.sessions.length === 0) continue;
             for (const session of data.sessions) {
@@ -60,7 +61,7 @@ class AutoTestReport {
             : null;
 
         // Sheet 2-4: One per strategy (with hyperlinks to detail tabs)
-        for (const strategyNum of [1, 2, 3, 4, 5]) {
+        for (const strategyNum of [1, 2, 3, 4, 5, 6]) {
             const data = result.strategies[strategyNum];
             if (data && data.sessions.length > 0) {
                 this._createStrategySheet(workbook, strategyNum, data, detailSheetMap, mtOneLine);
@@ -68,7 +69,7 @@ class AutoTestReport {
         }
 
         // Sheet 5+: Session detail sheets for EVERY session (in order)
-        for (const strategyNum of [1, 2, 3, 4, 5]) {
+        for (const strategyNum of [1, 2, 3, 4, 5, 6]) {
             const data = result.strategies[strategyNum];
             if (!data || data.sessions.length === 0) continue;
             for (const session of data.sessions) {
@@ -118,7 +119,7 @@ class AutoTestReport {
 
         const detailSheetMap = {};
         let totalSessions = 0;
-        for (const strategyNum of [1, 2, 3, 4, 5]) {
+        for (const strategyNum of [1, 2, 3, 4, 5, 6]) {
             const data = result.strategies[strategyNum];
             if (!data || data.sessions.length === 0) continue;
             for (const session of data.sessions) {
@@ -133,7 +134,7 @@ class AutoTestReport {
             : null;
 
         report(6, 'Building strategy sheets…');
-        for (const strategyNum of [1, 2, 3, 4, 5]) {
+        for (const strategyNum of [1, 2, 3, 4, 5, 6]) {
             const data = result.strategies[strategyNum];
             if (data && data.sessions.length > 0) {
                 this._createStrategySheet(workbook, strategyNum, data, detailSheetMap, mtOneLine);
@@ -145,7 +146,7 @@ class AutoTestReport {
         // Yield every BATCH_SIZE sheets so the UI repaints.
         let done = 0;
         const totalSheets = Math.max(1, totalSessions);
-        for (const strategyNum of [1, 2, 3, 4, 5]) {
+        for (const strategyNum of [1, 2, 3, 4, 5, 6]) {
             const data = result.strategies[strategyNum];
             if (!data || data.sessions.length === 0) continue;
             for (let i = 0; i < data.sessions.length; i++) {
@@ -226,7 +227,7 @@ class AutoTestReport {
         });
 
         // Data rows (6-8)
-        for (const strategyNum of [1, 2, 3, 4, 5]) {
+        for (const strategyNum of [1, 2, 3, 4, 5, 6]) {
             const summary = result.strategies[strategyNum].summary;
             const row = sheet.getRow(5 + strategyNum);
             // Dollar totals — defensive fallback to 0 if an older summary
@@ -276,6 +277,8 @@ class AutoTestReport {
                 nameCell.font = { bold: true, color: { argb: 'FF007BFF' } };
             } else if (strategyNum === 5) {
                 nameCell.font = { bold: true, color: { argb: 'FF4338CA' } };
+            } else if (strategyNum === 6) {
+                nameCell.font = { bold: true, color: { argb: 'FF475569' } };
             } else {
                 nameCell.font = { bold: true, color: { argb: 'FF6F42C1' } };
             }
@@ -353,7 +356,7 @@ class AutoTestReport {
         };
 
         return [
-            `Env toggles — Inverse: ${cfg.inverse ? 'ON' : 'OFF'}   |   T3 halfs: ${cfg.t3Halfs ? 'ON' : 'OFF'}   |   Include grey: ${cfg.includeGrey ? 'ON' : 'OFF'}   |   T1/T2 break: ${cfg.t1t2Breaks ? 'ON' : 'OFF'}`,
+            `Env toggles — Inverse: ${cfg.inverse ? 'ON' : 'OFF'}   |   T3 halfs: ${cfg.t3Halfs ? 'ON' : 'OFF'}   |   Include grey: ${cfg.includeGrey ? 'ON' : 'OFF'}   |   T1/T2 break: ${cfg.t1t2Breaks ? 'ON' : 'OFF'}   |   Same: ${cfg.sameMode ? 'ON' : 'OFF'}   |   Wheel mode: ${cfg.wheelMode ? 'ON' : 'OFF'}`,
             `Filters     — Table: ${filters.table || 'both'}   |   Sign: ${filters.sign || 'both'}   |   Set: ${setsList}`,
             `T1 pairs    : ${fmtPairs(sels.t1, 't1')}`,
             `T2 pairs    : ${fmtPairs(sels.t2, 't2')}`,
@@ -392,7 +395,9 @@ class AutoTestReport {
         const t2 = fmtCompact(sels.t2, 't2');
         const t3 = fmtCompact(sels.t3, 't3');
         const brk = cfg.t1t2Breaks ? 'ON' : 'OFF';
-        return `manual-test cfg → Inv:${cfg.inverse?'ON':'OFF'} | T3halfs:${cfg.t3Halfs?'ON':'OFF'} | Grey:${cfg.includeGrey?'ON':'OFF'} | Brk:${brk} | Tbl:${filters.table||'both'} | Sgn:${filters.sign||'both'} | Sets:${setsList} | T1:[${t1}] T2:[${t2}] T3:[${t3}]`;
+        const sm = cfg.sameMode  ? 'ON' : 'OFF';
+        const wm = cfg.wheelMode ? 'ON' : 'OFF';
+        return `manual-test cfg → Inv:${cfg.inverse?'ON':'OFF'} | T3halfs:${cfg.t3Halfs?'ON':'OFF'} | Grey:${cfg.includeGrey?'ON':'OFF'} | Brk:${brk} | Same:${sm} | Wheel:${wm} | Tbl:${filters.table||'both'} | Sgn:${filters.sign||'both'} | Sets:${setsList} | T1:[${t1}] T2:[${t2}] T3:[${t3}]`;
     }
 
     /**

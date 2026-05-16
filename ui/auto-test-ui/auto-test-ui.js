@@ -123,6 +123,12 @@ class AutoTestUI {
                             <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);" title="Freeze the 1st/2nd/3rd ref pick for T1 & T2. When ON, you pick which sub-anchors to use per pair via the 1/2/3 buttons that appear next to each selected pill.">
                                 <input type="checkbox" id="autoTestMtT1T2Breaks"> T1/T2 break
                             </label>
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);" title="Wait-for-trigger: only place a bet AFTER a spin lands in the current bet pool. Win → keep betting. Loss → wait for next trigger.">
+                                <input type="checkbox" id="autoTestMtSameMode"> Same
+                            </label>
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);" title="Bet on the wheel filters (Table/Sign/Set/Inverse) instead of pair predictions. If pairs are also selected, intersects pair-pool ∩ wheel-pool.">
+                                <input type="checkbox" id="autoTestMtWheelMode"> Wheel mode
+                            </label>
                         </div>
                         <!-- Table / Sign / Set filters — same controls as the live Wheel panel.
                              Captured into manualTestConfig at Run time and applied to the bet set. -->
@@ -201,6 +207,7 @@ class AutoTestUI {
                         <button class="auto-test-tab" data-tab="strategy3" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 3</button>
                         <button class="auto-test-tab" data-tab="strategy4" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 4</button>
                         <button class="auto-test-tab" data-tab="strategy5" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 5</button>
+                        <button class="auto-test-tab" data-tab="strategy6" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 6</button>
                     </div>
                 </div>
 
@@ -703,12 +710,12 @@ class AutoTestUI {
             return;
         }
 
-        const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious', 4: '🛡️ Defensive', 5: '🧠 Logical' };
-        const colors = { 1: '#28a745', 2: '#007bff', 3: '#6f42c1', 4: '#0f766e' };
+        const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious', 4: '🛡️ Defensive', 5: '🧠 Logical', 6: '🪶 Super Cautious' };
+        const colors = { 1: '#28a745', 2: '#007bff', 3: '#6f42c1', 4: '#0f766e', 5: '#4338ca', 6: '#475569' };
 
         let bestStrategy = 1;
         let bestWinRate = 0;
-        for (const num of [1, 2, 3, 4, 5]) {
+        for (const num of [1, 2, 3, 4, 5, 6]) {
             const wr = result.strategies[num].summary.winRate;
             if (wr > bestWinRate) { bestWinRate = wr; bestStrategy = num; }
         }
@@ -739,7 +746,7 @@ class AutoTestUI {
                 </thead>
                 <tbody>`;
 
-        for (const num of [1, 2, 3, 4, 5]) {
+        for (const num of [1, 2, 3, 4, 5, 6]) {
             const s = result.strategies[num].summary;
             const isBest = num === bestStrategy && bestWinRate > 0;
             const rowBg = isBest ? 'rgba(34,197,94,0.1)' : 'transparent';
@@ -773,7 +780,7 @@ class AutoTestUI {
 
         // Bar charts
         html += '<div style="margin-top:16px;">';
-        for (const num of [1, 2, 3, 4, 5]) {
+        for (const num of [1, 2, 3, 4, 5, 6]) {
             const s = result.strategies[num].summary;
             const total = s.totalSessions || 1;
             const winPct = (s.wins / total * 100).toFixed(0);
@@ -1071,6 +1078,50 @@ class AutoTestUI {
             });
         }
         const t1t2BreaksOn = !!(breakCb && breakCb.checked);
+
+        // Mirror the live wheel-panel "Same" toggle into the local
+        // checkbox on first render. Same plumbing pattern as T1/T2
+        // break: bidirectional sync via 'sameModeChanged' event.
+        const sameCb = document.getElementById('autoTestMtSameMode');
+        if (sameCb && !sameCb._autoTestMtSynced) {
+            sameCb._autoTestMtSynced = true;
+            if (typeof window !== 'undefined' && typeof window.sameMode === 'boolean') {
+                sameCb.checked = window.sameMode;
+            }
+            sameCb.addEventListener('change', () => {
+                const v = !!sameCb.checked;
+                if (typeof window !== 'undefined') {
+                    window.sameMode = v;
+                    try { localStorage.setItem('strategyLab.sameMode', v ? '1' : '0'); } catch (_) {}
+                    try { window.dispatchEvent(new CustomEvent('sameModeChanged', { detail: { value: v } })); } catch (_) {}
+                }
+            });
+            window.addEventListener('sameModeChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (sameCb.checked !== v) sameCb.checked = v;
+            });
+        }
+
+        // Mirror the live wheel-panel "Wheel mode" toggle.
+        const wheelCb = document.getElementById('autoTestMtWheelMode');
+        if (wheelCb && !wheelCb._autoTestMtSynced) {
+            wheelCb._autoTestMtSynced = true;
+            if (typeof window !== 'undefined' && typeof window.wheelMode === 'boolean') {
+                wheelCb.checked = window.wheelMode;
+            }
+            wheelCb.addEventListener('change', () => {
+                const v = !!wheelCb.checked;
+                if (typeof window !== 'undefined') {
+                    window.wheelMode = v;
+                    try { localStorage.setItem('strategyLab.wheelMode', v ? '1' : '0'); } catch (_) {}
+                    try { window.dispatchEvent(new CustomEvent('wheelModeChanged', { detail: { value: v } })); } catch (_) {}
+                }
+            });
+            window.addEventListener('wheelModeChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (wheelCb.checked !== v) wheelCb.checked = v;
+            });
+        }
         // Static pair-key list — doesn't depend on the live AI panel
         // having spins. These are the symbolic ref-keys used across the
         // whole codebase; the runner will compute the actual numbers
@@ -1298,6 +1349,8 @@ class AutoTestUI {
             t3Halfs:      cb('autoTestMtT3Halfs'),
             includeGrey:  cb('autoTestMtIncludeGrey'),
             t1t2Breaks:   t1t2BreaksOn,
+            sameMode:     cb('autoTestMtSameMode'),
+            wheelMode:    cb('autoTestMtWheelMode'),
             filters: {
                 table: radio('autoTestMtTable') || 'both',
                 sign:  radio('autoTestMtSign')  || 'both',

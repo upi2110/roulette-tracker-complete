@@ -60,8 +60,68 @@ const STRATEGY_NAMES = {
     1: 'Aggressive',
     2: 'Conservative',
     3: 'Cautious',
-    4: 'Defensive'
+    4: 'Defensive',
+    5: 'Logical',
+    6: 'Super Cautious'
 };
+
+// ─────────────────────────────────────────────────────────────────
+// Wheel-mode helper sets — mirror the live Wheel panel's Table /
+// Sign / Set / Inverse filters. Numbers grouped identically to the
+// matching sets in strategies/manual-replay/manual-replay.js so the
+// auto-test wheel-pool matches what the live wheel produces from
+// the same toggles. Used only when manual-test config has
+// wheelMode: true; otherwise unreferenced.
+// ─────────────────────────────────────────────────────────────────
+const _MT_WHEEL_TABLE_0  = new Set([0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5]);
+const _MT_WHEEL_TABLE_19 = new Set([19,15,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26]);
+const _MT_WHEEL_POSITIVE = new Set([3,26,0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23]);
+const _MT_WHEEL_NEGATIVE = new Set([10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35]);
+const _MT_WHEEL_SET0 = new Set([0,26,3,35,12,28,7,29,18,22,9,31,14,20,1,33,16,24,5,10]);
+const _MT_WHEEL_SET5 = new Set([23,8,30,11,36,13,27,6,34,17,25,2,21,4,19,15,32]);
+const _MT_WHEEL_SET6 = new Set([0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26]);
+
+/**
+ * Build the wheel-mode bet pool for a manual-test run. Applies
+ * Table → Sign → Set membership against the 0–36 universe, then
+ * optionally inverts. When no set boxes are ticked the function
+ * treats it as "all sets allowed" (matches the live wheel's
+ * implicit fallback so the user doesn't end up with an empty pool
+ * by ticking no Set checkboxes).
+ *
+ * @param {{filters:Object, inverse:boolean}} cfg
+ * @returns {number[]} sorted array of bet numbers
+ */
+function _manualTestWheelPool(cfg) {
+    const filters = (cfg && cfg.filters) || {};
+    const sets = filters.sets || {};
+    const setsAny = !!(sets.set0 || sets.set5 || sets.set6);
+
+    const passes = (n) => {
+        if (filters.table === '0'  && !_MT_WHEEL_TABLE_0.has(n))  return false;
+        if (filters.table === '19' && !_MT_WHEEL_TABLE_19.has(n)) return false;
+        if (filters.sign === 'positive' && !_MT_WHEEL_POSITIVE.has(n)) return false;
+        if (filters.sign === 'negative' && !_MT_WHEEL_NEGATIVE.has(n)) return false;
+        if (setsAny) {
+            const inAllowedSet =
+                (sets.set0 && _MT_WHEEL_SET0.has(n)) ||
+                (sets.set5 && _MT_WHEEL_SET5.has(n)) ||
+                (sets.set6 && _MT_WHEEL_SET6.has(n));
+            if (!inAllowedSet) return false;
+        }
+        return true;
+    };
+
+    let pool = [];
+    for (let n = 0; n <= 36; n++) if (passes(n)) pool.push(n);
+    if (cfg && cfg.inverse) {
+        const sel = new Set(pool);
+        const universe = [];
+        for (let n = 0; n <= 36; n++) universe.push(n);
+        pool = universe.filter(n => !sel.has(n));
+    }
+    return pool;
+}
 
 class AutoTestRunner {
     /**
@@ -257,7 +317,7 @@ class AutoTestRunner {
         // Backlog C — pair-rotation parity for method='test'. Pre-fetch
         // the persisted training records once so the AT runner can build
         // a per-session active-pair schedule using the same recommender
-        const allSessions = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+        const allSessions = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
 
         // Total work: each starting position × 3 strategies
         // We need at least 4 spins from startIdx, so max start = testSpins.length - 5
@@ -297,7 +357,7 @@ class AutoTestRunner {
         };
 
         for (let startIdx = 0; startIdx <= maxStart; startIdx++) {
-            for (const strategy of [1, 2, 3, 4, 5]) {
+            for (const strategy of [1, 2, 3, 4, 5, 6]) {
                 // Reset engine session between simulations
                 this.engine.resetSession();
                 // Restore the trained pair-model baseline so each
@@ -345,7 +405,8 @@ class AutoTestRunner {
                 2: { sessions: allSessions[2], summary: this._computeSummary(allSessions[2]) },
                 3: { sessions: allSessions[3], summary: this._computeSummary(allSessions[3]) },
                 4: { sessions: allSessions[4], summary: this._computeSummary(allSessions[4]) },
-                5: { sessions: allSessions[5], summary: this._computeSummary(allSessions[5]) }
+                5: { sessions: allSessions[5], summary: this._computeSummary(allSessions[5]) },
+                6: { sessions: allSessions[6], summary: this._computeSummary(allSessions[6]) }
             }
         };
 
@@ -456,8 +517,56 @@ class AutoTestRunner {
         }
 
         // ── PHASE 2: LIVE — bet with risk management ──
+        // Trigger gate: Same OR Wheel mode (manualTestConfig) →
+        // wait-for-trigger betting. Starts WAITING; arms when the
+        // latest spin lands in the current bet pool; bets on the
+        // next spin; WIN keeps armed; LOSS disarms. With BOTH ON,
+        // the bet pool is already pair ∩ wheel (intersection happens
+        // in _simulateDecision), so "spin in pool" naturally
+        // satisfies the AND condition the user specified. When BOTH
+        // toggles are OFF (or any other method runs), the gate is
+        // inactive and every BET proceeds as today.
+        const triggerGateOn = !!(this._manualTestConfig
+            && (this._manualTestConfig.sameMode === true || this._manualTestConfig.wheelMode === true));
+        sessionState.sameArmed = false;
+
         for (let i = startIdx + 3; i < testSpins.length - 1; i++) {
             const decision = this._simulateDecision(testSpins, i);
+
+            // Trigger gate: when active, only allow the BET path if
+            // we're armed. Otherwise, check if the LATEST spin
+            // (testSpins[i]) is in the predicted pool — if yes,
+            // arm; either way emit a SKIP step for this spin so
+            // the per-spin log stays continuous, and DO NOT touch
+            // consecutiveLosses / consecutiveSkips / bankroll.
+            if (triggerGateOn && decision.action === 'BET' && !sessionState.sameArmed) {
+                const latest = testSpins[i];
+                if (decision.numbers.includes(latest)) {
+                    sessionState.sameArmed = true;
+                }
+                steps.push({
+                    spinIdx: i,
+                    spinNumber: testSpins[i],
+                    nextNumber: testSpins[i + 1],
+                    action: 'SKIP',
+                    selectedPair: decision.selectedPair,
+                    selectedFilter: decision.selectedFilter,
+                    predictedNumbers: decision.numbers,
+                    confidence: 0,
+                    betPerNumber: sessionState.betPerNumber,
+                    numbersCount: decision.numbers.length,
+                    hit: false,
+                    pnl: 0,
+                    bankroll: sessionState.bankroll,
+                    cumulativeProfit: sessionState.profit,
+                    sameWaiting: !sessionState.sameArmed,
+                    sameArmedNow: sessionState.sameArmed,
+                    reason: sessionState.sameArmed
+                        ? 'trigger-gate: armed (' + latest + ' in pool)'
+                        : 'trigger-gate: waiting for trigger'
+                });
+                continue;
+            }
 
             if (decision.action === 'BET') {
                 const nextActual = testSpins[i + 1];
@@ -476,6 +585,32 @@ class AutoTestRunner {
                     const ref     = 4;
                     const N_managed = Math.max(1, Math.min(numbersCount, ref));
                     betUsed = Math.max(1, Math.floor(baseBet * (N_managed / ref)));
+                } else if (strategy === 6) {
+                    // S6 Super Cautious — two-cap bet placement:
+                    //   1) Hard ceiling: s6MaxBet (default 5) — already
+                    //      enforced by _applyStrategy on each loss step,
+                    //      but clamp here defensively in case the base
+                    //      bet drifted (e.g. switch from another S).
+                    //   2) Smart cap: scale so a normal win does NOT
+                    //      overshoot remaining-to-target. floor at $1
+                    //      (not MIN_BET) per the live spec — allow a
+                    //      sub-min bet to LAND the target precisely.
+                    const S6_MAX = 5;
+                    const S6_MIN = 2;
+                    const target    = STARTING_BANKROLL + 100;
+                    const remaining = target - sessionState.bankroll;
+                    let baseBet = Math.min(sessionState.betPerNumber, S6_MAX);
+                    if (remaining > 0 && numbersCount < 36) {
+                        const maxProfitIfWin = baseBet * (36 - numbersCount);
+                        if (maxProfitIfWin > remaining) {
+                            const safe = Math.max(1, Math.floor(remaining / (36 - numbersCount)));
+                            baseBet = Math.min(baseBet, safe);
+                        }
+                    }
+                    betUsed = Math.max(1, Math.min(baseBet, S6_MAX));
+                    // Note: betUsed CAN be below S6_MIN ($2) when the
+                    // smart-cap demands it to avoid overshooting target.
+                    void S6_MIN; // silence-the-linter (declared for spec clarity)
                 } else {
                     betUsed = sessionState.betPerNumber; // save BEFORE strategy adjusts it
                 }
@@ -490,10 +625,14 @@ class AutoTestRunner {
                     sessionState.wins++;
                     sessionState.consecutiveWins++;
                     sessionState.consecutiveLosses = 0;
+                    // Trigger gate: WIN keeps us armed (continue betting).
                 } else {
                     sessionState.losses++;
                     sessionState.consecutiveLosses++;
                     sessionState.consecutiveWins = 0;
+                    // Trigger gate (Same OR Wheel mode): LOSS disarms —
+                    // wait for next trigger spin in pool.
+                    if (triggerGateOn) sessionState.sameArmed = false;
                 }
                 // A BET breaks any active SKIP streak.
                 sessionState.consecutiveSkips = 0;
@@ -749,7 +888,44 @@ class AutoTestRunner {
                 refSelections: cfg.refSelections || { t1: {}, t2: {} }
             });
 
+            // Wheel mode override: when ON, the wheel's Table/Sign/Set
+            // filters become the bet pool source. Two interactions
+            // (matches the live behaviour from the wheel panel):
+            //
+            //   - With pair selections + non-empty manual-replay BET:
+            //     intersect pair-pool ∩ wheel-pool. Wheel filters act
+            //     as a hard mask. Already applied INSIDE manual-replay
+            //     via cfg.filters (computeManualPrediction filters its
+            //     output through the same Table/Sign/Set sets), so
+            //     here we re-apply against the 0–36 universe only when
+            //     fallback is needed.
+            //   - With NO pair selections (manual-replay returns
+            //     SKIP "No pairs produced a number set"): synthesise
+            //     a BET from the wheel-pool directly.
+            //
+            // The wheel-pool itself uses cfg.filters via the helper
+            // _manualTestWheelPool. The inverse toggle is applied
+            // there too so a flipped wheel reads correctly.
+            const wheelOn = !!cfg.wheelMode;
+            let wheelPool = null;
+            if (wheelOn) {
+                wheelPool = _manualTestWheelPool(cfg);
+            }
+
             if (result.action === 'SKIP') {
+                // Wheel-only fallback: no pair pool → use wheel-pool
+                // as the bet (when wheelMode is ON and wheel-pool is
+                // non-empty). Otherwise the original SKIP stands.
+                if (wheelOn && Array.isArray(wheelPool) && wheelPool.length > 0) {
+                    return {
+                        action: 'BET',
+                        selectedPair: 'wheel',
+                        selectedFilter: 'wheel-mode',
+                        numbers: wheelPool.slice().sort((a, b) => a - b),
+                        confidence: 100,
+                        reason: 'wheel-mode: bet ' + wheelPool.length + ' numbers from wheel filters (no pair selected)'
+                    };
+                }
                 return {
                     action: 'SKIP',
                     selectedPair: null,
@@ -771,13 +947,35 @@ class AutoTestRunner {
                 ...(cfg.selections?.t3 || [])
             ];
             const label = (allKeys.length === 1) ? allKeys[0] : 'manual';
+
+            // Pair-pool ∩ wheel-pool intersection when both modes apply.
+            // result.numbers has already been filtered by cfg.filters
+            // inside manual-replay; the wheel-pool reapplication here
+            // is idempotent. Kept explicit so the path is obvious in
+            // the log + so a future change to manual-replay's filter
+            // order can't silently drop wheel-mode coverage.
+            let finalNumbers = result.numbers;
+            if (wheelOn && Array.isArray(wheelPool)) {
+                const wp = new Set(wheelPool);
+                finalNumbers = finalNumbers.filter(n => wp.has(n));
+                if (finalNumbers.length === 0) {
+                    return {
+                        action: 'SKIP',
+                        selectedPair: null,
+                        selectedFilter: null,
+                        numbers: [],
+                        confidence: 0,
+                        reason: 'manual-test: empty after wheel-pool intersection'
+                    };
+                }
+            }
             return {
                 action: 'BET',
                 selectedPair: label,
                 selectedFilter: 'manual-test',
-                numbers: result.numbers,
+                numbers: finalNumbers,
                 confidence: 100,
-                reason: 'manual-test: ' + result.reason
+                reason: 'manual-test: ' + result.reason + (wheelOn ? ' [wheel-mode]' : '')
             };
         }
 
@@ -1169,6 +1367,29 @@ class AutoTestRunner {
                 if (state.s5LossUnits >= lossesNeeded) {
                     bet = bet + lossInc;
                     state.s5LossUnits = 0;
+                }
+            }
+        } else if (strategy === 6) {
+            // Strategy 6: SUPER CAUTIOUS — Defensive escalation with a
+            // HARD max-bet ceiling. Smart-bet target cap is applied at
+            // BET PLACEMENT (see the strategy === 6 block above in
+            // _runSession), not here — this block only handles the
+            // per-result base-bet escalation/de-escalation.
+            const lossesNeeded = 3;   // default — runner-side mirror of live
+            const lossInc      = 1;
+            const winsNeeded   = 1;
+            const winDec       = 1;
+            const S6_MIN       = 2;
+            const S6_MAX       = 5;
+            if (hit) {
+                if (state.consecutiveWins >= winsNeeded) {
+                    bet = Math.max(S6_MIN, bet - winDec);
+                    state.consecutiveWins = 0;
+                }
+            } else {
+                if (state.consecutiveLosses >= lossesNeeded) {
+                    bet = Math.min(S6_MAX, bet + lossInc);
+                    state.consecutiveLosses = 0;
                 }
             }
         }
