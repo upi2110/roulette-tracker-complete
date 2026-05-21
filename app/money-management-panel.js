@@ -149,6 +149,25 @@ class MoneyManagementPanel {
                             color: white;
                             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                         ">⚙️</button>
+                    <button id="strategyInfoBtn" type="button" title="Show what the active strategy does (click to toggle)" style="
+                            padding: 8px 12px;
+                            font-size: 14px;
+                            font-weight: 700;
+                            border: none;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            background: #0ea5e9;
+                            color: white;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        ">ℹ️</button>
+                </div>
+                <!-- Strategy info popup — shows a one-paragraph description
+                     of the currently active strategy. Toggled by ℹ️ button.
+                     Pure read-only display; no logic changes anywhere else. -->
+                <div id="strategyInfoPanel" style="display:none;margin-top:6px;background:#f0f9ff;border:1px solid #0ea5e9;border-radius:4px;padding:8px 24px 8px 8px;font-size:11px;color:#0c4a6e;position:relative;line-height:1.5;">
+                    <button id="strategyInfoClose" type="button" title="Close" style="position:absolute;top:4px;right:4px;width:20px;height:20px;line-height:18px;font-size:14px;font-weight:700;border:1px solid #93c5fd;background:#fff;color:#0c4a6e;border-radius:3px;cursor:pointer;padding:0;">×</button>
+                    <div id="strategyInfoTitle" style="font-weight:800;margin-bottom:4px;">Strategy info</div>
+                    <div id="strategyInfoBody">Click ℹ️ to refresh.</div>
                 </div>
                 <!-- Variables editor (Strategy-4 tunables). Hidden until
                      the ⚙️ button is clicked. Save commits values into
@@ -464,6 +483,97 @@ class MoneyManagementPanel {
             s6CloseBtn.hasListener = true;
             s6CloseBtn.addEventListener('click', () => this.closeStrategyVarsEditor());
         }
+
+        // ℹ️ Strategy info popup — shows what the active strategy does.
+        const infoBtn = document.getElementById('strategyInfoBtn');
+        if (infoBtn && !infoBtn.hasListener) {
+            infoBtn.hasListener = true;
+            infoBtn.addEventListener('click', () => this.toggleStrategyInfo());
+        }
+        const infoCloseBtn = document.getElementById('strategyInfoClose');
+        if (infoCloseBtn && !infoCloseBtn.hasListener) {
+            infoCloseBtn.hasListener = true;
+            infoCloseBtn.addEventListener('click', () => {
+                const p = document.getElementById('strategyInfoPanel');
+                if (p) p.style.display = 'none';
+            });
+        }
+    }
+
+    // ℹ️ Toggles the strategy info popup. Reads the currently active
+    // strategy (1–6) and renders a short description into the popup.
+    // Read-only — does not change any session state.
+    toggleStrategyInfo() {
+        const panel = document.getElementById('strategyInfoPanel');
+        const title = document.getElementById('strategyInfoTitle');
+        const body  = document.getElementById('strategyInfoBody');
+        if (!panel || !title || !body) return;
+
+        // Toggle off if already visible.
+        if (panel.style.display === 'block') {
+            panel.style.display = 'none';
+            return;
+        }
+
+        const DESCRIPTIONS = {
+            1: {
+                title: 'Strategy 1 — Aggressive 🟢',
+                body:
+                    '<b>Adjustment:</b> +$1 per number after every <b>loss</b>; −$1 per number after every <b>win</b>.<br>' +
+                    '<b>Behaviour:</b> Fast escalation — bet grows quickly during a losing run and shrinks quickly on wins.<br>' +
+                    '<b>Use when:</b> You expect short losing streaks and want to recover fast on the next hit.<br>' +
+                    '<b>Risk:</b> Highest — bet can climb rapidly with no built-in cap.'
+            },
+            2: {
+                title: 'Strategy 2 — Conservative 🔵',
+                body:
+                    '<b>Adjustment:</b> +$1 per number after <b>2 consecutive losses</b>; −$1 per number after <b>2 consecutive wins</b>.<br>' +
+                    '<b>Behaviour:</b> Slower escalation than Aggressive — requires confirmation before changing bet size.<br>' +
+                    '<b>Use when:</b> You want smoother bankroll changes and fewer reactive jumps.<br>' +
+                    '<b>Risk:</b> Moderate.'
+            },
+            3: {
+                title: 'Strategy 3 — Cautious 🟣',
+                body:
+                    '<b>Adjustment:</b> +$2 per number after <b>3 consecutive losses</b>; −$1 per number after <b>2 consecutive wins</b>.<br>' +
+                    '<b>Behaviour:</b> Holds steady through small dips; raises bet decisively only when the streak gets long.<br>' +
+                    '<b>Use when:</b> You expect choppy results and want to avoid reacting to noise.<br>' +
+                    '<b>Risk:</b> Moderate — larger increment but rarer.'
+            },
+            4: {
+                title: 'Strategy 4 — Defensive 🛡️',
+                body:
+                    '<b>Adjustment:</b> +$1 per number after <b>6 consecutive losses</b> (configurable via ⚙️); −$1 per number after <b>1 win</b>.<br>' +
+                    '<b>Behaviour:</b> Very slow to escalate, quick to de-escalate. Most parameters are editable in the ⚙️ Variables panel.<br>' +
+                    '<b>Use when:</b> You want to ride out losing streaks at the base bet and only react to extended runs.<br>' +
+                    '<b>Risk:</b> Low — bet stays small for long stretches.'
+            },
+            5: {
+                title: 'Strategy 5 — Logical 🧠',
+                body:
+                    '<b>Base:</b> Defensive escalation (same trigger as S4).<br>' +
+                    '<b>Extras:</b> Bet scales by <b>N/4</b> (N = numbers covered), accumulates fractional loss, and is <b>capped to the session target</b> so a single bet never exceeds remaining profit goal.<br>' +
+                    '<b>Use when:</b> You want size to follow coverage and have a hard ceiling tied to your target.<br>' +
+                    '<b>Risk:</b> Low–Moderate — capped by session target.'
+            },
+            6: {
+                title: 'Strategy 6 — Super Cautious 🪶',
+                body:
+                    '<b>Base:</b> Defensive escalation with fully editable thresholds (⚙️).<br>' +
+                    '<b>Extras:</b> <b>Hard max-bet cap</b> (default $5/number) and a <b>smart-bet target cap</b> so the bet never exceeds what is needed to reach the session target.<br>' +
+                    '<b>Use when:</b> Protecting bankroll matters more than chasing recovery.<br>' +
+                    '<b>Risk:</b> Lowest — bet is bounded on both sides.'
+            },
+        };
+
+        const strat = this.sessionData.bettingStrategy;
+        const info = DESCRIPTIONS[strat] || {
+            title: 'Strategy info',
+            body: 'No description available for the active strategy.'
+        };
+        title.textContent = info.title;
+        body.innerHTML = info.body;
+        panel.style.display = 'block';
     }
 
     openStrategyVarsEditor() {
