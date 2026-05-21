@@ -14,6 +14,12 @@ class MoneyManagementPanel {
             totalWins: 0,
             totalLosses: 0,
             consecutiveLosses: 0,
+            // Strategy 2 (Conservative) — cumulative loss tally that is
+            // NOT reset by an isolated win. Increments on every loss;
+            // a +$1 escalation (every 3 losses) resets it; so does a
+            // -$1 de-escalation after 2 consecutive wins. Separate from
+            // consecutiveLosses (which other strategies still use).
+            s2LossTally: 0,
             lastBetAmount: 0,
             lastBetNumbers: 12,
             isSessionActive: false,
@@ -138,28 +144,55 @@ class MoneyManagementPanel {
                             color: white;
                             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                         ">🛡️ Strategy 4: Defensive</button>
-                    <button id="strategyVarsBtn" type="button" title="Edit defensive-strategy variables (loss/win thresholds + bet step sizes)" style="
-                            padding: 8px 12px;
-                            font-size: 14px;
+                    <button id="strategyVarsBtn" type="button" title="Edit active-strategy variables (loss/win thresholds + bet step sizes)" style="
+                            padding: 3px 6px;
+                            font-size: 11px;
                             font-weight: 700;
+                            line-height: 1;
                             border: none;
-                            border-radius: 4px;
+                            border-radius: 3px;
                             cursor: pointer;
                             background: #475569;
                             color: white;
-                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                         ">⚙️</button>
                     <button id="strategyInfoBtn" type="button" title="Show what the active strategy does (click to toggle)" style="
-                            padding: 8px 12px;
-                            font-size: 14px;
+                            padding: 3px 6px;
+                            font-size: 11px;
                             font-weight: 700;
+                            line-height: 1;
                             border: none;
-                            border-radius: 4px;
+                            border-radius: 3px;
                             cursor: pointer;
                             background: #0ea5e9;
                             color: white;
-                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                         ">ℹ️</button>
+                    <button id="adjustStakeBtn" type="button" title="Manually override the current bet/number. Strategy continues from the new base." style="
+                            padding: 3px 6px;
+                            font-size: 11px;
+                            font-weight: 700;
+                            line-height: 1;
+                            border: none;
+                            border-radius: 3px;
+                            cursor: pointer;
+                            background: #f59e0b;
+                            color: white;
+                        ">💲</button>
+                </div>
+                <!-- Adjust-stake editor — manual override of the current
+                     bet/number to cut losses. After Save the strategy's
+                     own win/loss adjustment block (S1–S6) continues
+                     from the new base. -->
+                <div id="adjustStakePanel" style="display:none;margin-top:6px;background:#fff7ed;border:1px solid #f59e0b;border-radius:4px;padding:8px 24px 8px 8px;font-size:11px;color:#7c2d12;position:relative;">
+                    <button id="adjustStakeClose" type="button" title="Close" style="position:absolute;top:4px;right:4px;width:20px;height:20px;line-height:18px;font-size:14px;font-weight:700;border:1px solid #fdba74;background:#fff;color:#7c2d12;border-radius:3px;cursor:pointer;padding:0;">×</button>
+                    <div style="font-weight:700;margin-bottom:6px;">💲 Adjust bet/number</div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <label for="adjustStakeIn" style="font-weight:600;">New $:</label>
+                        <input id="adjustStakeIn" type="number" min="1" step="1" style="width:70px;padding:3px 4px;border:1px solid #fdba74;border-radius:3px;font-size:12px;" />
+                        <button id="adjustStakeSave" type="button" style="padding:3px 10px;font-size:11px;font-weight:700;border:none;border-radius:3px;background:#f59e0b;color:white;cursor:pointer;">Save</button>
+                        <button id="adjustStakeCancel" type="button" style="padding:3px 10px;font-size:11px;font-weight:700;border:1px solid #fdba74;border-radius:3px;background:#fff;color:#7c2d12;cursor:pointer;">Cancel</button>
+                        <span id="adjustStakeStatus" style="font-size:11px;color:#16a34a;font-weight:600;"></span>
+                    </div>
+                    <div style="margin-top:4px;font-size:10px;color:#9a3412;">Current: <span id="adjustStakeCurrent">$2</span>. Strategy continues from the new base.</div>
                 </div>
                 <!-- Strategy info popup — shows a one-paragraph description
                      of the currently active strategy. Toggled by ℹ️ button.
@@ -347,6 +380,7 @@ class MoneyManagementPanel {
 
         // Reset counters when switching strategies
         this.sessionData.consecutiveWins = 0;
+        this.sessionData.s2LossTally     = 0;  // S2 cumulative tally
         this.sessionData.currentBetPerNumber = 2; // Reset to minimum
         // Strategy-5 fractional accumulators reset on every strategy switch
         // (matches the "fresh start" semantics for s1–s4 consec counters).
@@ -498,6 +532,96 @@ class MoneyManagementPanel {
                 if (p) p.style.display = 'none';
             });
         }
+
+        // 💲 Adjust-stake — open editor, save override, cancel/close.
+        const adjBtn = document.getElementById('adjustStakeBtn');
+        if (adjBtn && !adjBtn.hasListener) {
+            adjBtn.hasListener = true;
+            adjBtn.addEventListener('click', () => this.openAdjustStake());
+        }
+        const adjSave = document.getElementById('adjustStakeSave');
+        if (adjSave && !adjSave.hasListener) {
+            adjSave.hasListener = true;
+            adjSave.addEventListener('click', () => this.saveAdjustStake());
+        }
+        const adjCancel = document.getElementById('adjustStakeCancel');
+        if (adjCancel && !adjCancel.hasListener) {
+            adjCancel.hasListener = true;
+            adjCancel.addEventListener('click', () => {
+                const p = document.getElementById('adjustStakePanel');
+                if (p) p.style.display = 'none';
+            });
+        }
+        const adjClose = document.getElementById('adjustStakeClose');
+        if (adjClose && !adjClose.hasListener) {
+            adjClose.hasListener = true;
+            adjClose.addEventListener('click', () => {
+                const p = document.getElementById('adjustStakePanel');
+                if (p) p.style.display = 'none';
+            });
+        }
+    }
+
+    // 💲 Open the Adjust-stake editor — prefill with the current
+    // bet/number so the user can tweak from where the strategy is.
+    openAdjustStake() {
+        const panel  = document.getElementById('adjustStakePanel');
+        const input  = document.getElementById('adjustStakeIn');
+        const curEl  = document.getElementById('adjustStakeCurrent');
+        const status = document.getElementById('adjustStakeStatus');
+        if (!panel) return;
+        const cur = this.sessionData.currentBetPerNumber || 2;
+        if (input)  input.value = cur;
+        if (curEl)  curEl.textContent = `$${cur}`;
+        if (status) status.textContent = '';
+        panel.style.display = 'block';
+    }
+
+    // 💲 Save the manual override.
+    // Resets the active strategy's win/loss streak counters so the
+    // adjustment block (S1–S6) treats the new value as a fresh base.
+    // Also resets s5/s6 derived counters when those strategies are
+    // active. Bankroll, session profit, and total bets are unchanged
+    // — this is a stake adjustment, not a session reset.
+    saveAdjustStake() {
+        const input  = document.getElementById('adjustStakeIn');
+        const status = document.getElementById('adjustStakeStatus');
+        const curEl  = document.getElementById('adjustStakeCurrent');
+        const v = input ? parseInt(input.value, 10) : NaN;
+        if (!Number.isFinite(v) || v < 1) {
+            if (status) {
+                status.style.color = '#dc2626';
+                status.textContent = '⚠ enter a positive whole number';
+            }
+            return;
+        }
+        const old = this.sessionData.currentBetPerNumber;
+        this.sessionData.currentBetPerNumber = v;
+
+        // Reset streak counters so the next win/loss is treated as
+        // the first event against this new base. Without this, e.g.
+        // a S2/S3 that was 1-loss-deep at $5 would jump straight up
+        // on the next miss even though we just lowered the base.
+        this.sessionData.consecutiveLosses = 0;
+        this.sessionData.consecutiveWins   = 0;
+        this.sessionData.s2LossTally       = 0;  // S2 cumulative tally
+        // S5 — fractional unit accumulators reset.
+        if (this.sessionData.s5LossUnits != null) this.sessionData.s5LossUnits = 0;
+        if (this.sessionData.s5WinUnits  != null) this.sessionData.s5WinUnits  = 0;
+        // S6 — keep its own loss/win streaks aligned.
+        if (this.sessionData.s6LossStreak != null) this.sessionData.s6LossStreak = 0;
+        if (this.sessionData.s6WinStreak  != null) this.sessionData.s6WinStreak  = 0;
+        // lastBetAmount drives the "Next Bet" display.
+        this.sessionData.lastBetAmount = v;
+
+        // Refresh visible labels.
+        if (curEl)  curEl.textContent = `$${v}`;
+        if (status) {
+            status.style.color = '#16a34a';
+            status.textContent = `✓ stake set to $${v} (was $${old})`;
+        }
+        try { this.render && this.render(); } catch (_) {}
+        console.log(`💲 Adjust stake: $${old}/num → $${v}/num — streak counters reset, strategy resumes from new base`);
     }
 
     // ℹ️ Toggles the strategy info popup. Reads the currently active
@@ -527,8 +651,8 @@ class MoneyManagementPanel {
             2: {
                 title: 'Strategy 2 — Conservative 🔵',
                 body:
-                    '<b>Adjustment:</b> +$1 per number after <b>2 consecutive losses</b>; −$1 per number after <b>2 consecutive wins</b>.<br>' +
-                    '<b>Behaviour:</b> Slower escalation than Aggressive — requires confirmation before changing bet size.<br>' +
+                    '<b>Adjustment:</b> +$1 per number after <b>3 cumulative losses</b> (single wins do not reset); −$1 per number after <b>2 consecutive wins</b>.<br>' +
+                    '<b>Behaviour:</b> Slow, gentle progression. Bet stays in the $2–$5 range at typical hit rates.<br>' +
                     '<b>Use when:</b> You want smoother bankroll changes and fewer reactive jumps.<br>' +
                     '<b>Risk:</b> Moderate.'
             },
@@ -602,14 +726,50 @@ class MoneyManagementPanel {
             const status = document.getElementById('s6VarsStatus');
             if (status) status.textContent = '';
         } else {
-            // Default: S4 editor (also shown for S1/2/3/5 today —
-            // they ignore the values since their adjustment blocks
-            // don't read s4* fields, but keeping the gear open is
-            // the existing behaviour).
-            set('s4LossesIn',  this.sessionData.s4LossesToIncrease);
-            set('s4LossIncIn', this.sessionData.s4LossIncrement);
-            set('s4WinsIn',    this.sessionData.s4WinsToDecrease);
-            set('s4WinDecIn',  this.sessionData.s4WinDecrement);
+            // Default panel (reused for S1/2/3/4/5). The S4 adjustment
+            // block in recordBetResult() reads s4* fields when S4 is
+            // active. For S1/2/3/5 we prefill the inputs with each
+            // strategy's HARDCODED rule values so users see the
+            // active strategy's actual thresholds instead of S4's "6".
+            // S1/2/3/5 still don't read s4* at runtime (their blocks
+            // use their own constants), so editing the panel for them
+            // doesn't change behaviour — but the displayed defaults
+            // match the active strategy.
+            const STRAT_DEFAULTS = {
+                1: { lossesToInc: 1, lossInc: 1, winsToDec: 1, winDec: 1 }, // Aggressive
+                2: { lossesToInc: 3, lossInc: 1, winsToDec: 2, winDec: 1 }, // Conservative
+                3: { lossesToInc: 3, lossInc: 2, winsToDec: 2, winDec: 1 }, // Cautious (+$2)
+                4: {
+                    lossesToInc: this.sessionData.s4LossesToIncrease,
+                    lossInc:     this.sessionData.s4LossIncrement,
+                    winsToDec:   this.sessionData.s4WinsToDecrease,
+                    winDec:      this.sessionData.s4WinDecrement,
+                },
+                5: { lossesToInc: this.sessionData.s4LossesToIncrease,
+                     lossInc:     this.sessionData.s4LossIncrement,
+                     winsToDec:   this.sessionData.s4WinsToDecrease,
+                     winDec:      this.sessionData.s4WinDecrement }, // S5 inherits S4 thresholds
+            };
+            const d = STRAT_DEFAULTS[strat] || STRAT_DEFAULTS[4];
+            set('s4LossesIn',  d.lossesToInc);
+            set('s4LossIncIn', d.lossInc);
+            set('s4WinsIn',    d.winsToDec);
+            set('s4WinDecIn',  d.winDec);
+
+            // Re-label the panel header so it's clear which strategy
+            // is being edited (was hard-coded to "Strategy 4").
+            const header = s4Panel ? s4Panel.querySelector('div[style*="font-weight:700"]') : null;
+            if (header) {
+                const NAMES = {
+                    1: '🟢 Strategy 1 — Aggressive',
+                    2: '🔵 Strategy 2 — Conservative',
+                    3: '🟣 Strategy 3 — Cautious',
+                    4: '🛡️ Strategy 4 — Defensive',
+                    5: '🧠 Strategy 5 — Logical',
+                };
+                header.textContent = `${NAMES[strat] || NAMES[4]} variables`;
+            }
+
             if (s4Panel) s4Panel.style.display = 'block';
             const status = document.getElementById('s4VarsStatus');
             if (status) status.textContent = '';
@@ -1127,22 +1287,30 @@ class MoneyManagementPanel {
             
         } else if (this.sessionData.bettingStrategy === 2) {
             // ═══ STRATEGY 2: CONSERVATIVE ═══
-            // +$1 after 2 CONSECUTIVE losses, -$1 after 2 CONSECUTIVE wins
+            //   +$1 after every 3 LOSSES (cumulative, NOT consecutive —
+            //     an isolated win does not reset the loss tally).
+            //   −$1 after 2 CONSECUTIVE wins (an isolated win does
+            //     nothing because consecutiveWins reset to 0 on any
+            //     loss above in the shared streak block).
+            //   Both adjustments reset s2LossTally so we restart fresh
+            //   at the new bet level.
             if (hit) {
                 if (this.sessionData.consecutiveWins >= 2) {
                     this.sessionData.currentBetPerNumber = Math.max(2, this.sessionData.currentBetPerNumber - 1);
-                    this.sessionData.consecutiveWins = 0; // Reset after adjustment
-                    console.log(`🔵 Strategy 2: 2 CONSECUTIVE WINS → Decreased bet to $${this.sessionData.currentBetPerNumber}`);
+                    this.sessionData.consecutiveWins = 0;
+                    this.sessionData.s2LossTally     = 0;
+                    console.log(`🔵 Strategy 2: 2 CONSECUTIVE WINS → Decreased bet to $${this.sessionData.currentBetPerNumber} (loss tally reset)`);
                 } else {
                     console.log(`🔵 Strategy 2: ${this.sessionData.consecutiveWins} consecutive win(s) - Need ${2 - this.sessionData.consecutiveWins} more to decrease bet`);
                 }
             } else {
-                if (this.sessionData.consecutiveLosses >= 2) {
+                this.sessionData.s2LossTally = (this.sessionData.s2LossTally || 0) + 1;
+                if (this.sessionData.s2LossTally >= 3) {
                     this.sessionData.currentBetPerNumber += 1;
-                    this.sessionData.consecutiveLosses = 0;  // RESET COUNTER AFTER ADJUSTMENT
-                    console.log(`🔵 Strategy 2: 2 CONSECUTIVE LOSSES → Increased bet to $${this.sessionData.currentBetPerNumber}`);
+                    this.sessionData.s2LossTally = 0;
+                    console.log(`🔵 Strategy 2: 3 LOSSES (cumulative) → Increased bet to $${this.sessionData.currentBetPerNumber} (tally reset)`);
                 } else {
-                    console.log(`🔵 Strategy 2: ${this.sessionData.consecutiveLosses} consecutive loss(es) - Need ${2 - this.sessionData.consecutiveLosses} more to increase bet`);
+                    console.log(`🔵 Strategy 2: loss tally ${this.sessionData.s2LossTally}/3 (cumulative — isolated wins do not reset)`);
                 }
             }
             

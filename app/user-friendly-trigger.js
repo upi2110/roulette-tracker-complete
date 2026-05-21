@@ -362,11 +362,11 @@
             const el = document.getElementById('ufRules');
             if (!el) return;
             if (mode === 'T1') {
-                el.textContent = 'T1: 2-in-a-row pair → 12 nums incl. opp · $2/num, +$1 after 3 bets, −$1 after win';
+                el.textContent = 'T1: 2-in-a-row pair → 12 nums incl. opp · sizing follows the active money-management strategy';
             } else if (mode === 'T2') {
-                el.textContent = 'T2: 2-in-a-row pair SAME SIDE → 10 nums same-side only · $2/num, +$1 after 4 losses, −$1 after win';
+                el.textContent = 'T2: 2-in-a-row pair SAME SIDE → 10 nums same-side only · sizing follows the active money-management strategy';
             } else if (mode === 'T3') {
-                el.textContent = 'T3: half-pair 2-in-a-row → 18 nums incl. opp · $2/num, +$1 after 3 losses, −$1 after win';
+                el.textContent = 'T3: half-pair 2-in-a-row → 18 nums incl. opp · sizing follows the active money-management strategy';
             }
         }
 
@@ -435,9 +435,14 @@
                 const sign  = this.ufSessionProfit >= 0 ? '+' : '−';
                 const abs   = Math.abs(this.ufSessionProfit);
                 const color = this.ufSessionProfit >= 0 ? '#22c55e' : '#ef4444';
+                // bet/num now comes from the money panel (the active
+                // S1–S6 strategy is the single source of truth).
+                const mpBet = (window.moneyPanel && window.moneyPanel.sessionData
+                               && window.moneyPanel.sessionData.currentBetPerNumber)
+                            || this.ufBetPerNumber;
                 pnl.innerHTML = `P&L: <span style="color:${color};font-weight:700;">${sign}$${abs}</span>`
                     + ` · bets ${this.ufTotalBets} · ${this.ufWins}W/${this.ufLosses}L`
-                    + ` · bet/num $${this.ufBetPerNumber}`;
+                    + ` · bet/num $${mpBet}`;
             }
         }
 
@@ -669,22 +674,10 @@
         }
 
         _outcomeT1(betHit, actual, pairHit) {
-            // Bet sizing:
-            //   - WIN → -$1 (floored at min)
-            //   - LOSS (any pair-miss or bet-miss) → counter++. After
-            //     N bets without a win → +$1.
-            if (betHit) {
-                this.ufBetPerNumber = Math.max(DEFAULT_MIN_BET, this.ufBetPerNumber - 1);
-                this.ufBetsPlacedT1 = 0;
-                console.log(`🤝 UF (T1): WIN on ${actual} → bet/num $${this.ufBetPerNumber}`);
-            } else {
-                this.ufBetsPlacedT1 += 1;
-                if (this.ufBetsPlacedT1 >= DEFAULT_T1_BETS_TO_INCREASE) {
-                    this.ufBetPerNumber += 1;
-                    this.ufBetsPlacedT1 = 0;
-                    console.log(`🤝 UF (T1): ${DEFAULT_T1_BETS_TO_INCREASE} bets without win → +$1 → bet/num $${this.ufBetPerNumber}`);
-                }
-            }
+            // Bet sizing is handled entirely by the money panel (the
+            // active S1–S6 strategy adjusts currentBetPerNumber on
+            // every win/loss). UF only logs the outcome here.
+            console.log(`🤝 UF (T1): ${betHit ? 'WIN' : 'MISS'} on ${actual} (sizing → money mgmt strategy)`);
             // Pair lifecycle: keep pair on any pair-hit (re-calibrate
             // sub-anchors). Exit pair on pair-miss.
             if (pairHit) {
@@ -705,18 +698,8 @@
         }
 
         _outcomeT2(betHit, actual, pairHit) {
-            if (betHit) {
-                this.ufBetPerNumber = Math.max(DEFAULT_MIN_BET, this.ufBetPerNumber - 1);
-                this.ufLossesT2 = 0;
-                console.log(`🤝 UF (T2): WIN on ${actual} → bet/num $${this.ufBetPerNumber}`);
-            } else {
-                this.ufLossesT2 += 1;
-                if (this.ufLossesT2 >= DEFAULT_T2_LOSSES_TO_INCREASE) {
-                    this.ufBetPerNumber += 1;
-                    this.ufLossesT2 = 0;
-                    console.log(`🤝 UF (T2): ${DEFAULT_T2_LOSSES_TO_INCREASE} losses → +$1 → bet/num $${this.ufBetPerNumber}`);
-                }
-            }
+            // Bet sizing is handled by the money panel — see _outcomeT1.
+            console.log(`🤝 UF (T2): ${betHit ? 'WIN' : 'MISS'} on ${actual} (sizing → money mgmt strategy)`);
 
             // Side check for T2: pair must hit on the LOCKED side.
             let sideStillValid = true;
@@ -752,28 +735,17 @@
         }
 
         _outcomeT3(betHit, actual, pairHit) {
-            // T3 money rule = same as T1:
-            //   WIN  → bet/num -$1 (floored at min), reset counter.
-            //   LOSS → counter++; every N bets without a win → +$1.
+            // Bet sizing handled by the money panel (S1–S6).
             // Lifecycle:
             //   HIT  → keep pair, rebuild pool against shifted projection.
             //   MISS → exit pair; next spin re-triggers fresh.
             if (betHit) {
-                this.ufBetPerNumber = Math.max(DEFAULT_MIN_BET, this.ufBetPerNumber - 1);
-                this.ufBetsPlacedT1 = 0;
-                console.log(`🤝 UF (T3): WIN on ${actual} → bet/num $${this.ufBetPerNumber} — keep pair ${this.activePairKey}`);
+                console.log(`🤝 UF (T3): WIN on ${actual} — keep pair ${this.activePairKey} (sizing → money mgmt strategy)`);
                 this.currentBetPool = this._buildBetPool();
                 this._syncAiPanelSelection();
                 return;
             }
-            this.ufBetsPlacedT1 += 1;
-            if (this.ufBetsPlacedT1 >= DEFAULT_T1_BETS_TO_INCREASE) {
-                this.ufBetPerNumber += 1;
-                this.ufBetsPlacedT1 = 0;
-                console.log(`🤝 UF (T3): ${DEFAULT_T1_BETS_TO_INCREASE} bets without win → +$1 → bet/num $${this.ufBetPerNumber} — exit ${this.activePairKey}`);
-            } else {
-                console.log(`🤝 UF (T3): MISS → bet/num $${this.ufBetPerNumber} (counter ${this.ufBetsPlacedT1}/${DEFAULT_T1_BETS_TO_INCREASE}) — exit ${this.activePairKey}`);
-            }
+            console.log(`🤝 UF (T3): MISS on ${actual} — exit ${this.activePairKey} (sizing → money mgmt strategy)`);
             this._resetActiveState();
         }
 
@@ -865,7 +837,11 @@
             const a = this.spinLogs[this.spinLogs.length - 1];
             const b = this.spinLogs[this.spinLogs.length - 2];
             const candidates = [];
-            const HALVES = ['pair', 'opp'];
+            // Only the PAIR half triggers. The 13-opp half can still
+            // CONTRIBUTE numbers to the bet pool when close on the
+            // wheel (see _buildBetPool t3 branch), but never fires
+            // the trigger on its own.
+            const HALVES = ['pair'];
             for (const pk of Object.keys(a.t3)) {
                 const ea = a.t3[pk], eb = b.t3[pk];
                 if (!ea || !eb) continue;
@@ -936,6 +912,11 @@
                 .map(c => `${c.pk}:${c.side}(d=${c.dist})`)
                 .join(', ');
             console.log(`🤝 UF (T3): TRIGGER pair=${pick.pk} side=${pick.side} consec=${pick.consec} dist=${pick.dist} (${pick.prevCode}→${pick.currCode})${others ? ' · others: ' + others : ''}`);
+            // Stash the trigger codes so _buildBetPool can:
+            //   - expand opposites when currCode offset is 0 (Change 2)
+            //   - borrow 13-opp anchors when |currCode offset| ≤ 3 (Change 3)
+            this._t3TriggerPrevCode = pick.prevCode;
+            this._t3TriggerCurrCode = pick.currCode;
             this._activate('t3', pick.pk, [], pick.side);
         }
 
@@ -1164,34 +1145,81 @@
             if (this.activeTable === 't3') {
                 const proj = window.table3DisplayProjections && window.table3DisplayProjections[this.activePairKey];
                 if (!proj) return [];
-                // activeSide is one of: 'pair' (pair half = pairPurple ∪
-                // pairGreen) or 'opp' (13opp half = oppPurple ∪ oppGreen).
-                // Bet pool = those anchors + ±1 neighbours, plus each
-                // anchor's regular opposite + ±1 neighbours.
-                let halfAnchors;
-                if (this.activeSide === 'pair') {
-                    halfAnchors = [
-                        ...(proj.pairPurple || []),
-                        ...(proj.pairGreen  || []),
-                    ];
-                } else if (this.activeSide === 'opp') {
-                    halfAnchors = [
-                        ...(proj.oppPurple || []),
-                        ...(proj.oppGreen  || []),
-                    ];
-                } else if (this.activeSide === 'purple') {
-                    halfAnchors = proj.purple || [];
-                } else if (this.activeSide === 'green') {
-                    halfAnchors = proj.green || [];
-                } else {
-                    halfAnchors = proj[this.activeSide] || [];
+
+                // Pair anchors are the only trigger source now. 13-opp
+                // anchors are only borrowed (Change 3) when close on
+                // the wheel, never used as a primary half.
+                const pairAnchors = [
+                    ...(proj.pairPurple || []),
+                    ...(proj.pairGreen  || []),
+                ];
+                const oppAnchors = [
+                    ...(proj.oppPurple || []),
+                    ...(proj.oppGreen  || []),
+                ];
+
+                // Trigger code from the JUST-LANDED spin — used for the
+                // ±0 opposite-expansion and the |offset|≤3 borrow rule.
+                // Read fresh from spinLogs each rebuild so the rules
+                // re-evaluate when the pair is retained spin-to-spin.
+                let currCode = null;
+                if (this.spinLogs.length > 0) {
+                    const last = this.spinLogs[this.spinLogs.length - 1];
+                    const ent = last && last.t3 && last.t3[this.activePairKey];
+                    if (ent) currCode = ent.pairCode || null;
                 }
+                const offsetAbs = _posCodeOffset(currCode);  // Infinity when XX
+
                 const pool = new Set();
-                for (const anchor of halfAnchors) {
-                    _addNeighbours(pool, anchor, 1);
-                    const opp = _regularOpposite(anchor);
-                    if (opp != null) _addNeighbours(pool, opp, 1);
+
+                // Base: pair anchors + ±1 wheel neighbours.
+                for (const a of pairAnchors) _addNeighbours(pool, a, 1);
+
+                // ── CHANGE 2 — current code offset == 0 ──────────────
+                // The 4 anchors cluster tightly (spin was right on top
+                // of one of them). Expand by including each anchor's
+                // regular opposite (+ ±1) to push the pool back up to
+                // 12-13 nums.
+                if (offsetAbs === 0) {
+                    for (const a of pairAnchors) {
+                        const opp = _regularOpposite(a);
+                        if (opp != null) _addNeighbours(pool, opp, 1);
+                    }
                 }
+
+                // ── CHANGE 3 — borrow 13-opp anchors when |offset| ≤ 3 ─
+                // Scan the 13-opp anchors. If any is within ±1 wheel
+                // pocket of a number already in the pair pool, add ONE
+                // such 13-opp anchor (and its regular opposite) to the
+                // pool. Hard cap: max 1 borrowed anchor.
+                if (offsetAbs >= 1 && offsetAbs <= 3 && oppAnchors.length > 0) {
+                    const ADJ_TOL = 1; // ±1 wheel pocket
+                    // Pre-compute current pool's wheel indices for the
+                    // adjacency check.
+                    const poolWheelIdx = new Set();
+                    for (const n of pool) {
+                        const i = _getWheel36Idx(n);
+                        if (i !== -1) poolWheelIdx.add(i);
+                    }
+                    for (const o of oppAnchors) {
+                        if (pool.has(o)) continue; // already in pool
+                        const oi = _getWheel36Idx(o);
+                        if (oi === -1) continue;
+                        let adjacent = false;
+                        for (let d = -ADJ_TOL; d <= ADJ_TOL; d++) {
+                            const probe = ((oi + d) % 36 + 36) % 36;
+                            if (poolWheelIdx.has(probe)) { adjacent = true; break; }
+                        }
+                        if (adjacent) {
+                            pool.add(o);
+                            const oopp = _regularOpposite(o);
+                            if (oopp != null) pool.add(oopp);
+                            // Hard cap — only ONE borrow per pool rebuild.
+                            break;
+                        }
+                    }
+                }
+
                 return Array.from(pool);
             }
             return [];
@@ -1229,6 +1257,9 @@
             this.activeSubAnchors = [];
             this.activeSide       = null;
             this.currentBetPool   = [];
+            // Clear T3 trigger-code stash so the next trigger starts fresh.
+            this._t3TriggerPrevCode = null;
+            this._t3TriggerCurrCode = null;
             // Clear money panel + wheel visuals so display matches state.
             try {
                 if (window.moneyPanel) {
@@ -1259,30 +1290,23 @@
                 return;
             }
 
-            // Smart-cap (only when down > triggerLoss): scale bet-per-num
-            // toward s7 session target so a win lands near +$target.
-            let betPerNum = this.ufBetPerNumber;
-            if (this.ufSessionProfit < -DEFAULT_SMART_CAP_TRIGGER_LOSS) {
-                const N = this.currentBetPool.length;
-                const remaining = DEFAULT_SESSION_TARGET - this.ufSessionProfit;
-                if (remaining > 0 && N < 36) {
-                    const profitIfWin = betPerNum * (36 - N);
-                    if (profitIfWin > remaining) {
-                        betPerNum = Math.max(DEFAULT_MIN_BET, Math.floor(remaining / (36 - N)));
-                    }
-                }
-            }
-            // Min floor.
-            if (betPerNum < DEFAULT_MIN_BET) betPerNum = DEFAULT_MIN_BET;
-            // Bankroll safety.
-            const bankroll = window.moneyPanel.sessionData
-                ? (window.moneyPanel.sessionData.currentBankroll || 0) : 0;
+            // Bet sizing is delegated to the money panel — the active
+            // money-management strategy (S1 Aggressive, S2 Conservative,
+            // S3 Cautious, S4 Defensive, S5 Logical, S6 Super Cautious)
+            // owns all win/loss adjustments. UF picks numbers; the
+            // money panel sizes the bet. This way switching strategy
+            // in the header (or clicking 💲 Adjust stake) changes UF
+            // bets exactly as it would change any other selection's
+            // bets — universal money management.
             const N = this.currentBetPool.length;
-            if (bankroll > 0) {
-                const maxAfford = Math.floor(bankroll / (N * 2));
-                if (maxAfford > 0 && betPerNum > maxAfford) betPerNum = maxAfford;
+            let betPerNum = (typeof window.moneyPanel.calculateBetAmount === 'function')
+                ? window.moneyPanel.calculateBetAmount(N)
+                : (window.moneyPanel.sessionData
+                   && window.moneyPanel.sessionData.currentBetPerNumber)
+                  || DEFAULT_MIN_BET;
+            if (!Number.isFinite(betPerNum) || betPerNum < DEFAULT_MIN_BET) {
+                betPerNum = DEFAULT_MIN_BET;
             }
-            betPerNum = Math.max(DEFAULT_MIN_BET, betPerNum);
 
             // Activate the money panel session if not active.
             if (!window.moneyPanel.sessionData.isSessionActive) {
