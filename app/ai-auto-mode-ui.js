@@ -519,6 +519,22 @@ class AIAutoModeUI {
             }
         }
 
+        // ── Disable User-Friendly on any mode change ──
+        // UF is its own overlay (T1/T2/T3 sub-row injected at runtime).
+        // It stays "enabled" across mode switches unless we explicitly
+        // tear it down — which left a Manual mode session still
+        // auto-stamping bets and showing the UF status pill. Disable
+        // it here so switching modes always lands in a clean state;
+        // the user re-enables by clicking T1/T2/T3 again.
+        try {
+            if (typeof window !== 'undefined'
+             && window.userFriendlyTrigger
+             && window.userFriendlyTrigger.enabled
+             && typeof window.userFriendlyTrigger.disable === 'function') {
+                window.userFriendlyTrigger.disable();
+            }
+        } catch (_) { /* defensive — never block setMode */ }
+
         // Auto-sync the visible tab to the tab that owns the new mode so
         // a programmatic setMode() (or sub-button click) keeps the UI
         // coherent without requiring the user to also click a tab.
@@ -601,6 +617,27 @@ class AIAutoModeUI {
     _setActiveTab(tab) {
         const allowed = ['manual', 'auto', 'test'];
         if (allowed.indexOf(tab) === -1) tab = 'manual';
+
+        // ── Disable User-Friendly when leaving the Auto tab ──
+        // The USER-FRIENDLY sub-button + panel live in data-tab-group=
+        // "auto". When the user clicks Manual or Test up top, the sub-
+        // row visibility flips but UF would otherwise stay armed in
+        // the background (still listening for spins, still stamping
+        // bets via the interceptors). Tear it down here so UF only
+        // runs while the Auto tab is the visible one. The user
+        // re-arms by switching back to Auto + clicking 🤝 USER-FRIENDLY.
+        const leavingAuto = (this.activeTab === 'auto' && tab !== 'auto');
+        if (leavingAuto) {
+            try {
+                if (typeof window !== 'undefined'
+                 && window.userFriendlyTrigger
+                 && window.userFriendlyTrigger.enabled
+                 && typeof window.userFriendlyTrigger.disable === 'function') {
+                    window.userFriendlyTrigger.disable();
+                }
+            } catch (_) { /* defensive — never block tab switch */ }
+        }
+
         this.activeTab = tab;
 
         // Tab highlight: blue accent for whichever tab is active.

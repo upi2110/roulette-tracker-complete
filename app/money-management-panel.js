@@ -30,7 +30,13 @@ class MoneyManagementPanel {
             // Default escalation:
             //   +$1 after 6 consecutive losses, -$1 after 1 consecutive win.
             // Edited via the ⚙️ Variables button next to the strategy button.
-            s4LossesToIncrease: 6,
+            s4LossesToIncrease: 8,
+            // S4 cumulative loss tally (mirrors s2LossTally idea).
+            // Single wins do NOT reset it — only an explicit +$1
+            // escalation or -$1 de-escalation does. Lives alongside
+            // the shared consecutiveLosses counter (other strategies
+            // still use that).
+            s4LossTally: 0,
             s4LossIncrement:    1,
             s4WinsToDecrease:   1,
             s4WinDecrement:     1,
@@ -210,7 +216,7 @@ class MoneyManagementPanel {
                     <button id="s4VarsClose" type="button" title="Close" style="position:absolute;top:4px;right:4px;width:20px;height:20px;line-height:18px;font-size:14px;font-weight:700;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:3px;cursor:pointer;padding:0;">×</button>
                     <div style="font-weight:700;color:#0f766e;margin-bottom:6px;padding-right:24px;">🛡️ Strategy 4 — Defensive variables</div>
                     <div style="display:grid;grid-template-columns:1fr 60px;gap:4px 6px;align-items:center;">
-                        <label for="s4LossesIn" title="How many consecutive LOSSES before the bet is increased.">Increase bet after every</label>
+                        <label for="s4LossesIn" title="How many CUMULATIVE losses (single wins do not reset) before the bet is increased.">Increase bet after every</label>
                         <input id="s4LossesIn" type="number" min="1" max="50" step="1" style="padding:3px;font-size:11px;width:55px;">
                         <label for="s4LossIncIn" title="Dollar amount added to the per-number bet on each escalation.">Increase $</label>
                         <input id="s4LossIncIn" type="number" min="0" max="100" step="1" style="padding:3px;font-size:11px;width:55px;">
@@ -375,12 +381,13 @@ class MoneyManagementPanel {
     }
 
     toggleStrategy() {
-        // Cycle through strategies: 1 → 2 → 3 → 4 → 5 → 6 → 1
-        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 6) + 1;
+        // Cycle through strategies: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 1
+        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 7) + 1;
 
         // Reset counters when switching strategies
         this.sessionData.consecutiveWins = 0;
         this.sessionData.s2LossTally     = 0;  // S2 cumulative tally
+        this.sessionData.s4LossTally     = 0;  // S4 cumulative tally
         this.sessionData.currentBetPerNumber = 2; // Reset to minimum
         // Strategy-5 fractional accumulators reset on every strategy switch
         // (matches the "fresh start" semantics for s1–s4 consec counters).
@@ -437,7 +444,7 @@ class MoneyManagementPanel {
             console.log('   • -$1 after 1 HIT (any hit counts as full win)');
             console.log(`   • Bet capped to max($2, floor((target − profit) / 32))`);
             console.log(`   • Session target +$${this.sessionData.s5SessionTarget}`);
-        } else {
+        } else if (this.sessionData.bettingStrategy === 6) {
             // Strategy 6: SUPER CAUTIOUS (Slate) — Defensive escalation
             // with HARD max-bet cap + smart-bet target cap. Default
             // 3-loss escalation, +$1, cap $5, smart-bet keeps wins
@@ -451,6 +458,16 @@ class MoneyManagementPanel {
             console.log(`   • +$1 after ${this.sessionData.s6LossesToIncrease} CONSECUTIVE losses (capped at $${this.sessionData.s6MaxBet})`);
             console.log(`   • -$1 after ${this.sessionData.s6WinsToDecrease} CONSECUTIVE wins`);
             console.log(`   • Smart cap: scale bet down so wins don't overshoot +$${this.sessionData.s6SessionTarget}`);
+        } else {
+            // Strategy 7: FLAT BET (Amber) — bet/num NEVER auto-adjusts.
+            // User sets the amount via 💲 Adjust stake. Every spin
+            // wagers exactly currentBetPerNumber × N. No streak counters,
+            // no escalation, no de-escalation. Cleanest baseline.
+            btn.textContent = '➖ Strategy 7: Flat Bet';
+            btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)';
+            console.log('✅ Strategy 7: Flat Bet');
+            console.log(`   • Bet/num stays at $${this.sessionData.currentBetPerNumber} until you change it with 💲 Adjust stake`);
+            console.log('   • No win/loss adjustments');
         }
 
         // Show/hide variables panel based on strategy (s4/s5 have one).
@@ -605,6 +622,7 @@ class MoneyManagementPanel {
         this.sessionData.consecutiveLosses = 0;
         this.sessionData.consecutiveWins   = 0;
         this.sessionData.s2LossTally       = 0;  // S2 cumulative tally
+        this.sessionData.s4LossTally       = 0;  // S4 cumulative tally
         // S5 — fractional unit accumulators reset.
         if (this.sessionData.s5LossUnits != null) this.sessionData.s5LossUnits = 0;
         if (this.sessionData.s5WinUnits  != null) this.sessionData.s5WinUnits  = 0;
@@ -667,7 +685,7 @@ class MoneyManagementPanel {
             4: {
                 title: 'Strategy 4 — Defensive 🛡️',
                 body:
-                    '<b>Adjustment:</b> +$1 per number after <b>6 consecutive losses</b> (configurable via ⚙️); −$1 per number after <b>1 win</b>.<br>' +
+                    '<b>Adjustment:</b> +$1 per number after <b>8 cumulative losses</b> (single wins do not reset; configurable via ⚙️); −$1 per number after <b>1 win</b>.<br>' +
                     '<b>Behaviour:</b> Very slow to escalate, quick to de-escalate. Most parameters are editable in the ⚙️ Variables panel.<br>' +
                     '<b>Use when:</b> You want to ride out losing streaks at the base bet and only react to extended runs.<br>' +
                     '<b>Risk:</b> Low — bet stays small for long stretches.'
@@ -679,6 +697,14 @@ class MoneyManagementPanel {
                     '<b>Extras:</b> Bet scales by <b>N/4</b> (N = numbers covered), accumulates fractional loss, and is <b>capped to the session target</b> so a single bet never exceeds remaining profit goal.<br>' +
                     '<b>Use when:</b> You want size to follow coverage and have a hard ceiling tied to your target.<br>' +
                     '<b>Risk:</b> Low–Moderate — capped by session target.'
+            },
+            7: {
+                title: 'Strategy 7 — Flat Bet ➖',
+                body:
+                    '<b>Adjustment:</b> <b>none</b> — the bet/number stays exactly where you set it.<br>' +
+                    '<b>Behaviour:</b> Wagers <code>currentBetPerNumber × N</code> on every spin. No streak counters, no escalation, no de-escalation. Use 💲 Adjust stake to change the amount manually.<br>' +
+                    '<b>Use when:</b> You want a clean baseline to test prediction quality without confounding from progression rules.<br>' +
+                    '<b>Risk:</b> Pure exposure — same per-spin risk as your chosen stake.'
             },
             6: {
                 title: 'Strategy 6 — Super Cautious 🪶',
@@ -713,6 +739,13 @@ class MoneyManagementPanel {
         // Always close both first so we never show two at once.
         if (s4Panel) s4Panel.style.display = 'none';
         if (s6Panel) s6Panel.style.display = 'none';
+
+        // Strategy 7 (Flat Bet) has no variables — ⚙️ is a no-op.
+        // The user adjusts the stake directly via 💲 Adjust stake.
+        if (strat === 7) {
+            console.log('⚙️ Strategy 7 (Flat Bet) has no variables — use 💲 Adjust stake to change bet/number.');
+            return;
+        }
 
         if (strat === 6) {
             set('s6LossesIn',  this.sessionData.s6LossesToIncrease);
@@ -1337,28 +1370,36 @@ class MoneyManagementPanel {
 
         } else if (this.sessionData.bettingStrategy === 4) {
             // ═══ STRATEGY 4: DEFENSIVE (user-tunable) ═══
-            // Variables edited via the ⚙️ button next to the strategy
-            // toggle. Defaults: +$1 after 6 losses, -$1 after 1 win.
-            // Floor remains $2 regardless of decrement size.
-            const lossesNeeded = Math.max(1, parseInt(this.sessionData.s4LossesToIncrease, 10) || 6);
+            //   +$lossInc after every <lossesNeeded> CUMULATIVE losses
+            //     (single wins do NOT reset the loss tally — matches
+            //     the S2 Conservative model). Default threshold: 8.
+            //   −$winDec after <winsNeeded> CONSECUTIVE wins (default 1).
+            //   Both adjustments reset s4LossTally so we restart fresh
+            //   at the new bet level.
+            //   Floor remains $2 regardless of decrement size.
+            const lossesNeeded = Math.max(1, parseInt(this.sessionData.s4LossesToIncrease, 10) || 8);
             const lossInc      = Math.max(0, parseInt(this.sessionData.s4LossIncrement,    10) || 1);
             const winsNeeded   = Math.max(1, parseInt(this.sessionData.s4WinsToDecrease,   10) || 1);
             const winDec       = Math.max(0, parseInt(this.sessionData.s4WinDecrement,     10) || 1);
             if (hit) {
                 if (this.sessionData.consecutiveWins >= winsNeeded) {
                     this.sessionData.currentBetPerNumber = Math.max(2, this.sessionData.currentBetPerNumber - winDec);
-                    this.sessionData.consecutiveWins = 0; // Reset after adjustment
-                    console.log(`🛡️ Strategy 4: ${winsNeeded} CONSECUTIVE WINS → Decreased bet by $${winDec} to $${this.sessionData.currentBetPerNumber}`);
+                    this.sessionData.consecutiveWins = 0;
+                    this.sessionData.s4LossTally     = 0;  // restart loss count at new base
+                    console.log(`🛡️ Strategy 4: ${winsNeeded} CONSECUTIVE WINS → Decreased bet by $${winDec} to $${this.sessionData.currentBetPerNumber} (loss tally reset)`);
                 } else {
                     console.log(`🛡️ Strategy 4: ${this.sessionData.consecutiveWins} consecutive win(s) - Need ${winsNeeded - this.sessionData.consecutiveWins} more to decrease bet`);
                 }
             } else {
-                if (this.sessionData.consecutiveLosses >= lossesNeeded) {
+                // Cumulative tally — increments on every loss, isolated
+                // wins do NOT reset it (only an actual bet-size change does).
+                this.sessionData.s4LossTally = (this.sessionData.s4LossTally || 0) + 1;
+                if (this.sessionData.s4LossTally >= lossesNeeded) {
                     this.sessionData.currentBetPerNumber += lossInc;
-                    this.sessionData.consecutiveLosses = 0;  // RESET COUNTER AFTER ADJUSTMENT
-                    console.log(`🛡️ Strategy 4: ${lossesNeeded} CONSECUTIVE LOSSES → Increased bet by $${lossInc} to $${this.sessionData.currentBetPerNumber}`);
+                    this.sessionData.s4LossTally = 0;
+                    console.log(`🛡️ Strategy 4: ${lossesNeeded} LOSSES (cumulative) → Increased bet by $${lossInc} to $${this.sessionData.currentBetPerNumber} (tally reset)`);
                 } else {
-                    console.log(`🛡️ Strategy 4: ${this.sessionData.consecutiveLosses} consecutive loss(es) - Need ${lossesNeeded - this.sessionData.consecutiveLosses} more to increase bet`);
+                    console.log(`🛡️ Strategy 4: loss tally ${this.sessionData.s4LossTally}/${lossesNeeded} (cumulative — isolated wins do not reset)`);
                 }
             }
         } else if (this.sessionData.bettingStrategy === 5) {
@@ -1435,6 +1476,12 @@ class MoneyManagementPanel {
                     console.log(`🪶 Strategy 6: ${this.sessionData.consecutiveLosses} consecutive loss(es) — need ${lossesNeeded - this.sessionData.consecutiveLosses} more to increase`);
                 }
             }
+        } else if (this.sessionData.bettingStrategy === 7) {
+            // ═══ STRATEGY 7: FLAT BET ═══
+            // No auto-adjustment. currentBetPerNumber stays exactly
+            // where the user (or 💲 Adjust stake) set it. Logged for
+            // visibility only.
+            console.log(`➖ Strategy 7 (Flat): ${hit ? 'WIN' : 'LOSS'} → bet/num stays at $${this.sessionData.currentBetPerNumber}`);
         }
 
         console.log(`💵 Next bet amount: $${this.sessionData.currentBetPerNumber}/number`);

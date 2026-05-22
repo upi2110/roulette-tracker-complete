@@ -448,6 +448,11 @@ class AutoTestRunner {
             losses: 0,
             consecutiveLosses: 0,
             consecutiveWins: 0,
+            // Cumulative loss tallies — mirror live money panel
+            // (sessionData.s2LossTally / s4LossTally). Single wins do
+            // NOT reset these; only an explicit bet-size change does.
+            s2LossTally: 0,
+            s4LossTally: 0,
             // Streak peaks captured per session for the report.
             maxConsecutiveLosses: 0,
             maxConsecutiveWins: 0,
@@ -1298,16 +1303,23 @@ class AutoTestRunner {
                 bet = bet + 1;
             }
         } else if (strategy === 2) {
-            // Strategy 2: Conservative — +$1 after 2 consecutive losses, -$1 after 2 consecutive wins
+            // Strategy 2: Conservative — CUMULATIVE losses model.
+            //   +$1 after every 3 cumulative losses (single wins do
+            //     NOT reset s2LossTally — only an explicit bet change does).
+            //   −$1 after 2 consecutive wins.
+            //   Both adjustments reset s2LossTally.
+            // Mirrors live app/money-management-panel.js Strategy 2 block.
             if (hit) {
                 if (state.consecutiveWins >= 2) {
                     bet = Math.max(MIN_BET, bet - 1);
-                    state.consecutiveWins = 0; // Reset after adjustment
+                    state.consecutiveWins = 0;
+                    state.s2LossTally    = 0;
                 }
             } else {
-                if (state.consecutiveLosses >= 2) {
+                state.s2LossTally = (state.s2LossTally || 0) + 1;
+                if (state.s2LossTally >= 3) {
                     bet = bet + 1;
-                    state.consecutiveLosses = 0; // Reset after adjustment
+                    state.s2LossTally = 0;
                 }
             }
         } else if (strategy === 3) {
@@ -1324,22 +1336,24 @@ class AutoTestRunner {
                 }
             }
         } else if (strategy === 4) {
-            // Strategy 4: Defensive — match live money panel defaults
-            // (app/money-management-panel.js):
-            //   s4LossesToIncrease = 6 → +$1 after 6 consecutive losses
-            //   s4WinsToDecrease   = 1 → -$1 after 1 consecutive win
-            // Previously hardcoded 5/2 which diverged from live and made
-            // auto-test S4 escalate one spin earlier than a live session
-            // (and held the higher bet longer after a win). Min bet $2.
+            // Strategy 4: Defensive — CUMULATIVE losses model (matches
+            // live app/money-management-panel.js defaults):
+            //   s4LossesToIncrease = 8 → +$1 after 8 cumulative losses
+            //     (single wins do NOT reset s4LossTally — only an
+            //     explicit bet change does).
+            //   s4WinsToDecrease   = 1 → -$1 after 1 consecutive win.
+            //   Both adjustments reset s4LossTally.
             if (hit) {
                 if (state.consecutiveWins >= 1) {
                     bet = Math.max(MIN_BET, bet - 1);
-                    state.consecutiveWins = 0; // Reset after adjustment
+                    state.consecutiveWins = 0;
+                    state.s4LossTally    = 0;
                 }
             } else {
-                if (state.consecutiveLosses >= 6) {
+                state.s4LossTally = (state.s4LossTally || 0) + 1;
+                if (state.s4LossTally >= 8) {
                     bet = bet + 1;
-                    state.consecutiveLosses = 0; // Reset after adjustment
+                    state.s4LossTally = 0;
                 }
             }
         } else if (strategy === 5) {

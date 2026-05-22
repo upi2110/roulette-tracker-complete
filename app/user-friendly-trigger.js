@@ -236,6 +236,14 @@
                 clearInterval(this._intervalId);
                 this._intervalId = null;
             }
+            // Tear down the visible UI too — collapse the panel and
+            // unhighlight the USER-FRIENDLY sub-button. Without this,
+            // any external caller (e.g. ai-auto-mode-ui.js setMode hook
+            // that disables UF on mode switch) leaves the panel on
+            // screen showing a stale "ACTIVE" state, so the user
+            // thinks UF is still running even though it isn't.
+            try { this._showPanel(false); }      catch (_) {}
+            try { this._highlightButton(false); } catch (_) {}
             console.log('🤝 UF: DISABLED');
             this._renderStatus();
         }
@@ -1366,7 +1374,14 @@
             // Intercept only when User Friendly is enabled AND has an
             // active pair. Otherwise pass through — other strategies
             // and modes operate normally.
-            const shouldIntercept = () => self.enabled && !!self.activePairKey;
+            // Block the AI-panel auto pipeline whenever UF is enabled —
+            // even between triggers (no active pair yet). Otherwise
+            // setPrediction writes lastBetAmount/lastBetNumbers from
+            // its own default 12-num pool, and the money panel's
+            // "Next Bet" tile shows a stale value (e.g. "$2 × 12 = $24")
+            // that doesn't match what UF will actually stamp on the
+            // next trigger.
+            const shouldIntercept = () => self.enabled;
 
             const origSP = mp.setPrediction.bind(mp);
             this._origSetPrediction = origSP;

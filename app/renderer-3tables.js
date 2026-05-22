@@ -690,7 +690,21 @@ function addSpin() {
     
     spins.push({ direction: dir, actual: num });
     render();
-    
+
+    // Push-notify the money panel immediately instead of relying on
+    // its 200ms polling interval. In wheel/same mode this matters
+    // visibly — the trigger-gate's "armed" decision and hit/miss
+    // resolution drive the "Next Bet" tile, and waiting up to 200ms
+    // for the next poll made it feel like the system "didn't react"
+    // (user had to undo + re-enter to get a fresh poll).
+    try {
+        if (window.moneyPanel && typeof window.moneyPanel.checkForNewSpin === 'function') {
+            window.moneyPanel.checkForNewSpin();
+        }
+    } catch (e) {
+        console.warn('⚠️ Money panel sync after addSpin failed:', e && e.message);
+    }
+
     document.getElementById('spinNumber').value = '';
     document.getElementById('spinNumber').focus();
 }
@@ -904,9 +918,12 @@ function resetAll() {
                     bettingStrategy: currentStrategy,
                     currentBetPerNumber: 2,
                     spinsWithBets: [],
+                    // Strategy-2 cumulative loss tally (single wins don't reset it)
+                    s2LossTally: 0,
                     // Strategy-4 user-tunable defaults
-                    s4LossesToIncrease: 6, s4LossIncrement: 1,
+                    s4LossesToIncrease: 8, s4LossIncrement: 1,
                     s4WinsToDecrease:   1, s4WinDecrement:  1,
+                    s4LossTally:        0,
                     // Strategy-5 LOGICAL state + tunables
                     s5LossesToIncrease: 6, s5LossIncrement: 1,
                     s5WinsToDecrease:   1, s5WinDecrement:  1,
@@ -955,8 +972,21 @@ function resetAll() {
                 window.aiPanel.table1Pairs = [];
                 window.aiPanel.table2Pairs = [];
                 window.aiPanel.availablePairs = [];
+                // Wipe the cached prediction so the PREDICTIONS /
+                // GREY-EXTRA rows under the SELECTION panel re-render
+                // empty (clearSelections only clears the selections,
+                // not the prediction cache).
+                window.aiPanel.currentPrediction = null;
                 window.aiPanel.renderAllCheckboxes();
-                console.log('✅ AI panel reset');
+                // Refresh the summary dashboard so PREDICTIONS row is
+                // immediately empty instead of waiting for the next
+                // render() to pick it up.
+                try {
+                    if (typeof window.aiPanel._renderSummaryDashboard === 'function') {
+                        window.aiPanel._renderSummaryDashboard();
+                    }
+                } catch (_) {}
+                console.log('✅ AI panel reset (selections + prediction cache cleared)');
             }
         } catch (e) {
             console.warn('⚠️ AI panel reset failed:', e.message);
@@ -973,6 +1003,60 @@ function resetAll() {
             }
         } catch (e) {
             console.warn('⚠️ Wheel reset failed:', e.message);
+        }
+
+        // Reset Same / Wheel mode toggles — these live on window.*
+        // globals + checkboxes in the wheel header. resetAll wasn't
+        // touching them so the toggles stayed ON across resets, which
+        // kept the trigger-gate logic armed and showed stale next-bet
+        // numbers. Clear globals, uncheck boxes, broadcast change so
+        // every listener (money panel, auto-test) syncs.
+        try {
+            if (typeof window !== 'undefined') {
+                if (window.sameMode === true) {
+                    window.sameMode = false;
+                    try { window.dispatchEvent(new CustomEvent('sameModeChanged',  { detail: { value: false } })); } catch (_) {}
+                }
+                if (window.wheelMode === true) {
+                    window.wheelMode = false;
+                    try { window.dispatchEvent(new CustomEvent('wheelModeChanged', { detail: { value: false } })); } catch (_) {}
+                }
+                const sameCb  = document.getElementById('wheelSameModeToggle');
+                const wheelCb = document.getElementById('wheelWheelModeToggle');
+                if (sameCb)  sameCb.checked  = false;
+                if (wheelCb) wheelCb.checked = false;
+
+                // Restore 0/19 and 2/12 Table filters to "Both" default
+                // and re-run filter pipeline so the wheel display
+                // refreshes to match.
+                const bothT   = document.getElementById('filterBothTables');
+                const both212 = document.getElementById('filterBoth212Tables');
+                if (bothT)   bothT.checked   = true;
+                if (both212) both212.checked = true;
+                if (window.rouletteWheel
+                 && typeof window.rouletteWheel._onFilterChange === 'function') {
+                    try { window.rouletteWheel._onFilterChange(); } catch (_) {}
+                }
+            }
+            console.log('✅ Same / Wheel modes reset');
+        } catch (e) {
+            console.warn('⚠️ Same / Wheel mode reset failed:', e.message);
+        }
+
+        // Reset User-Friendly module — disable() clears active pair,
+        // bet pool, AI-panel selection sync, wheel highlight, and
+        // tears down the setPrediction / wheel interceptors. The
+        // mode-tab buttons (T1/T2/T3) keep their visual state in the
+        // sub-row UI; user re-enables by clicking a tab again.
+        try {
+            if (window.userFriendlyTrigger
+             && typeof window.userFriendlyTrigger.disable === 'function'
+             && window.userFriendlyTrigger.enabled) {
+                window.userFriendlyTrigger.disable();
+                console.log('✅ User-Friendly module reset (disabled)');
+            }
+        } catch (e) {
+            console.warn('⚠️ UF reset failed:', e.message);
         }
 
         // Reset backend session

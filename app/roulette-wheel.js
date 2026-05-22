@@ -11,6 +11,15 @@
 // 0 Table and 19 Table definitions
 const ZERO_TABLE_NUMS = new Set([3, 26, 0, 32, 21, 2, 25, 27, 13, 36, 23, 10, 5, 1, 20, 14, 18, 29, 7]);
 const NINETEEN_TABLE_NUMS = new Set([15, 19, 4, 17, 34, 6, 11, 30, 8, 24, 16, 33, 31, 9, 22, 28, 12, 35]);
+
+// 2 / 12 Table filter — second wheel partition, orthogonal to 0/19.
+//   2  Table = number 2 ±4 wheel neighbours + their regular opposites
+//   12 Table = number 12 ±4 wheel neighbours + their regular opposites
+// Together they cover all 37 numbers exactly once (verified — no
+// overlap, no gap). 12 Table includes 0 (which shares a wheel pocket
+// with 26) bringing its count to 19 vs 2 Table's 18.
+const TWO_TABLE_NUMS    = new Set([1, 2, 4, 6, 9, 14, 15, 16, 17, 19, 20, 21, 22, 24, 25, 31, 33, 34]);
+const TWELVE_TABLE_NUMS = new Set([0, 3, 5, 7, 8, 10, 11, 12, 13, 18, 23, 26, 27, 28, 29, 30, 32, 35, 36]);
 const POSITIVE_NUMS = new Set([3, 26, 0, 32, 15, 19, 4, 27, 13, 36, 11, 30, 8, 1, 20, 14, 31, 9, 22]);
 const NEGATIVE_NUMS = new Set([21, 2, 25, 17, 34, 6, 23, 10, 5, 24, 16, 33, 18, 29, 7, 28, 12, 35]);
 
@@ -69,7 +78,12 @@ class RouletteWheel {
         // HTML template below. Keeps this initial state in sync with the
         // DOM so the first _onFilterChange()/drawWheel() call sees the
         // same truth whether it reads this.filters or the radio group.
-        this.filters = { zeroTable: true, nineteenTable: true, positive: true, negative: true,
+        this.filters = { zeroTable: true, nineteenTable: true,
+                         // 2/12 Table filter (added later — second wheel
+                         // partition). Default Both ON to preserve
+                         // existing behaviour byte-identically.
+                         twoTable: true, twelveTable: true,
+                         positive: true, negative: true,
                          set0: true, set5: true, set6: true,
                          // When true, the final bet set is inverted: every
                          // wheel number NOT currently selected becomes the
@@ -199,6 +213,18 @@ class RouletteWheel {
                         <span id="filteredCount" style="margin-left:auto;font-size:11px;font-weight:700;color:#64748b;"></span>
                     </div>
                     <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:10px;font-weight:700;color:#475569;min-width:40px;">2/12:</span>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#0369a1;">
+                            <input type="radio" name="table212Filter" id="filter2Table" value="2" style="accent-color:#0284c7;"> 2
+                        </label>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#a16207;">
+                            <input type="radio" name="table212Filter" id="filter12Table" value="12" style="accent-color:#ca8a04;"> 12
+                        </label>
+                        <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#1e40af;">
+                            <input type="radio" name="table212Filter" id="filterBoth212Tables" value="both" checked style="accent-color:#3b82f6;"> Both
+                        </label>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
                         <span style="font-size:10px;font-weight:700;color:#475569;min-width:40px;">Sign:</span>
                         <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#16a34a;">
                             <input type="radio" name="signFilter" id="filterPositive" value="positive" style="accent-color:#22c55e;"> +ve
@@ -271,7 +297,9 @@ class RouletteWheel {
         this.ctx = this.canvas.getContext('2d');
 
         // Attach filter radio button listeners
-        ['filter0Table', 'filter19Table', 'filterBothTables', 'filterPositive', 'filterNegative', 'filterBothSigns'].forEach(id => {
+        ['filter0Table', 'filter19Table', 'filterBothTables',
+         'filter2Table', 'filter12Table', 'filterBoth212Tables',
+         'filterPositive', 'filterNegative', 'filterBothSigns'].forEach(id => {
             const rb = document.getElementById(id);
             if (rb) rb.addEventListener('change', () => this._onFilterChange());
         });
@@ -586,6 +614,25 @@ class RouletteWheel {
             this.filters.nineteenTable = false;
         }
 
+        // 2/12 Table radio group — second wheel partition.
+        const f2  = document.getElementById('filter2Table');
+        const f12 = document.getElementById('filter12Table');
+        const fBoth212 = document.getElementById('filterBoth212Tables');
+        if (fBoth212 && fBoth212.checked) {
+            this.filters.twoTable    = true;
+            this.filters.twelveTable = true;
+        } else if (f12 && f12.checked) {
+            this.filters.twoTable    = false;
+            this.filters.twelveTable = true;
+        } else if (f2 && f2.checked) {
+            this.filters.twoTable    = true;
+            this.filters.twelveTable = false;
+        } else {
+            // Default — both ON (matches checkbox default and prior behaviour).
+            this.filters.twoTable    = true;
+            this.filters.twelveTable = true;
+        }
+
         // Read sign radio group by ID
         const fPos = document.getElementById('filterPositive');
         const fNeg = document.getElementById('filterNegative');
@@ -637,11 +684,19 @@ class RouletteWheel {
     }
 
     _passesFilterIgnoreInverse(num) {
-        // Table filter: number must be in at least one CHECKED table
+        // Table filter (0/19): number must be in at least one CHECKED table
         const inZero = ZERO_TABLE_NUMS.has(num);
         const inNineteen = NINETEEN_TABLE_NUMS.has(num);
         const tablePass = (this.filters.zeroTable && inZero) || (this.filters.nineteenTable && inNineteen);
         if (!tablePass) return false;
+
+        // Table filter (2/12): orthogonal second partition. Number must
+        // be in at least one CHECKED side. When Both are on (default),
+        // this is a no-op — every number passes.
+        const in2  = TWO_TABLE_NUMS.has(num);
+        const in12 = TWELVE_TABLE_NUMS.has(num);
+        const table212Pass = (this.filters.twoTable && in2) || (this.filters.twelveTable && in12);
+        if (!table212Pass) return false;
 
         // Pos/Neg filter: number must match at least one CHECKED type
         const isPos = POSITIVE_NUMS.has(num);
@@ -696,6 +751,7 @@ class RouletteWheel {
         if (!raw) return;
 
         const allOn = this.filters.zeroTable && this.filters.nineteenTable &&
+                      this.filters.twoTable && this.filters.twelveTable &&
                       this.filters.positive && this.filters.negative &&
                       this.filters.set0 && this.filters.set5 && this.filters.set6;
 
@@ -1237,6 +1293,16 @@ class RouletteWheel {
         };
 
         // ── Build a clean boxed section ────────────────────
+        // Map each section's accent colour → a light pastel background.
+        // Keeps the existing accent (border + header text) and adds a
+        // subtle tinted backdrop so the user can tell sections apart
+        // at a glance without reading the labels.
+        const LIGHT_BG = {
+            '#7c3aed': '#ede9fe', // ±2 Anchors  → light violet
+            '#2563eb': '#dbeafe', // ±1 Anchors  → light blue
+            '#475569': '#f1f5f9', // Loose       → light slate
+            '#a8a29e': '#f5f5f4', // Grey *      → light warm grey
+        };
         const renderBox = (title, accent, nums, aInfo, isGrey) => {
             if (nums.length === 0) return '';
             const { pairs, unpaired } = this._pairByOpposites(nums);
@@ -1271,7 +1337,8 @@ class RouletteWheel {
                 content += `<div style="padding:2px 5px;">${line}</div>`;
             }
 
-            return `<div style="min-width:0;border:1px solid ${accent};border-radius:4px;margin-bottom:3px;"><div style="padding:1px 6px;font-size:10px;font-weight:700;color:${accent};border-bottom:1px solid ${accent}25;">${title} (${nums.length})</div>${content}</div>`;
+            const bg = LIGHT_BG[accent] || '#ffffff';
+            return `<div style="min-width:0;border:1px solid ${accent};border-radius:4px;margin-bottom:3px;background:${bg};"><div style="padding:1px 6px;font-size:10px;font-weight:700;color:${accent};border-bottom:1px solid ${accent}25;background:${bg};">${title} (${nums.length})</div>${content}</div>`;
         };
 
         // ── Collect sections — subtle accent per type ──────

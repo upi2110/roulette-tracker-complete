@@ -56,6 +56,9 @@ class AutoTestUI {
                     <h3 style="margin:0;color:white;font-size:14px;font-weight:700;">🧪 AUTO TEST</h3>
                     <div style="display:flex;gap:8px;align-items:center;">
                         <button id="autoTestLoadBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">📂 Load File</button>
+                        <select id="autoTestDataFolderSelect" title="Select a file from app/data/ — populates testSpins instantly. Same effect as Load File, but no native dialog." style="padding:6px 8px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;max-width:180px;">
+                            <option value="">— data/ folder —</option>
+                        </select>
                         <select id="autoTestMethodSelect" title="Auto Test method" style="padding:6px 8px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">
                             <option value="auto-test" selected>auto-test</option>
                             <option value="T1-strategy">T1-strategy</option>
@@ -146,6 +149,18 @@ class AutoTestUI {
                                 </label>
                             </div>
                             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <span style="font-size:10px;font-weight:700;color:#22d3ee;min-width:40px;">2/12:</span>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#7dd3fc;">
+                                    <input type="radio" name="autoTestMt212" value="2"> 2
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#fde047;">
+                                    <input type="radio" name="autoTestMt212" value="12"> 12
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#93c5fd;">
+                                    <input type="radio" name="autoTestMt212" value="both" checked> Both
+                                </label>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                                 <span style="font-size:10px;font-weight:700;color:#22d3ee;min-width:40px;">Sign:</span>
                                 <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#86efac;">
                                     <input type="radio" name="autoTestMtSign" value="positive"> +ve
@@ -208,6 +223,7 @@ class AutoTestUI {
                         <button class="auto-test-tab" data-tab="strategy4" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 4</button>
                         <button class="auto-test-tab" data-tab="strategy5" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 5</button>
                         <button class="auto-test-tab" data-tab="strategy6" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 6</button>
+                        <button class="auto-test-tab" data-tab="strategy7" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 7</button>
                     </div>
                 </div>
 
@@ -231,6 +247,52 @@ class AutoTestUI {
         const methodSel = document.getElementById('autoTestMethodSelect');
 
         if (loadBtn) loadBtn.addEventListener('click', () => this.loadTestFile());
+
+        // 📂 data/ folder dropdown — populate once on init via the
+        // existing aiAPI.loadHistoricalData() IPC handler (reads .txt
+        // files from app/data/). When the user picks a file, parse its
+        // content via _parseAndStore — exactly what Load File does
+        // after the open-file dialog, just without the dialog.
+        const folderSel = document.getElementById('autoTestDataFolderSelect');
+        if (folderSel) {
+            this._dataFolderCache = null;   // {filename: content, ...}
+            const populate = async () => {
+                try {
+                    if (!window.aiAPI || typeof window.aiAPI.loadHistoricalData !== 'function') return;
+                    const res = await window.aiAPI.loadHistoricalData();
+                    const files = (res && Array.isArray(res.files)) ? res.files : [];
+                    this._dataFolderCache = {};
+                    // Reset options to the placeholder, then append.
+                    while (folderSel.options.length > 1) folderSel.remove(1);
+                    files.sort((a, b) => a.filename.localeCompare(b.filename));
+                    for (const f of files) {
+                        this._dataFolderCache[f.filename] = f.content;
+                        const opt = document.createElement('option');
+                        opt.value = f.filename;
+                        opt.textContent = f.filename;
+                        folderSel.appendChild(opt);
+                    }
+                    if (files.length === 0) {
+                        folderSel.options[0].textContent = '— data/ folder (empty) —';
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Failed to populate data folder list:', e && e.message);
+                }
+            };
+            populate();
+            folderSel.addEventListener('change', () => {
+                const name = folderSel.value;
+                if (!name) return;
+                const content = this._dataFolderCache && this._dataFolderCache[name];
+                if (content == null) {
+                    console.warn(`⚠️ No cached content for ${name}; re-loading folder…`);
+                    populate();
+                    return;
+                }
+                this._parseAndStore(content, name);
+            });
+        }
+
         if (runBtn) runBtn.addEventListener('click', () => this.runTest());
         if (exportBtn) exportBtn.addEventListener('click', () => this.exportExcel());
         if (submitBtn) submitBtn.addEventListener('click', () => this.submitToResultTesting());
@@ -710,12 +772,15 @@ class AutoTestUI {
             return;
         }
 
-        const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious', 4: '🛡️ Defensive', 5: '🧠 Logical', 6: '🪶 Super Cautious' };
+        const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious', 4: '🛡️ Defensive', 5: '🧠 Logical', 6: '🪶 Super Cautious', 7: '➖ Flat Bet' };
         const colors = { 1: '#28a745', 2: '#007bff', 3: '#6f42c1', 4: '#0f766e', 5: '#4338ca', 6: '#475569' };
 
         let bestStrategy = 1;
         let bestWinRate = 0;
-        for (const num of [1, 2, 3, 4, 5, 6]) {
+        for (const num of [1, 2, 3, 4, 5, 6, 7]) {
+            // Defensive: runner may not emit every strategy slot
+            // (e.g. Flat Bet S7 was added later — older runners skip it).
+            if (!result.strategies[num] || !result.strategies[num].summary) continue;
             const wr = result.strategies[num].summary.winRate;
             if (wr > bestWinRate) { bestWinRate = wr; bestStrategy = num; }
         }
@@ -746,7 +811,8 @@ class AutoTestUI {
                 </thead>
                 <tbody>`;
 
-        for (const num of [1, 2, 3, 4, 5, 6]) {
+        for (const num of [1, 2, 3, 4, 5, 6, 7]) {
+            if (!result.strategies[num] || !result.strategies[num].summary) continue;
             const s = result.strategies[num].summary;
             const isBest = num === bestStrategy && bestWinRate > 0;
             const rowBg = isBest ? 'rgba(34,197,94,0.1)' : 'transparent';
@@ -780,7 +846,8 @@ class AutoTestUI {
 
         // Bar charts
         html += '<div style="margin-top:16px;">';
-        for (const num of [1, 2, 3, 4, 5, 6]) {
+        for (const num of [1, 2, 3, 4, 5, 6, 7]) {
+            if (!result.strategies[num] || !result.strategies[num].summary) continue;
             const s = result.strategies[num].summary;
             const total = s.totalSessions || 1;
             const winPct = (s.wins / total * 100).toFixed(0);
@@ -1352,9 +1419,10 @@ class AutoTestUI {
             sameMode:     cb('autoTestMtSameMode'),
             wheelMode:    cb('autoTestMtWheelMode'),
             filters: {
-                table: radio('autoTestMtTable') || 'both',
-                sign:  radio('autoTestMtSign')  || 'both',
-                sets:  {
+                table:   radio('autoTestMtTable') || 'both',
+                table212: radio('autoTestMt212')  || 'both',
+                sign:    radio('autoTestMtSign')  || 'both',
+                sets:    {
                     set0: cb('autoTestMtSet0'),
                     set5: cb('autoTestMtSet5'),
                     set6: cb('autoTestMtSet6')

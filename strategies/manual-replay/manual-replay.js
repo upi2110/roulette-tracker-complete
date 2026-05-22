@@ -443,6 +443,11 @@
     // ── Filter sets (mirror the live Wheel panel) ──
     const TABLE_0_NUMS  = new Set([0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5]);
     const TABLE_19_NUMS = new Set([19,15,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26]);
+    // 2/12 Table partition (mirror of TWO_TABLE_NUMS / TWELVE_TABLE_NUMS
+    // in app/roulette-wheel.js). 2 ±4 wheel neighbours + opposites, and
+    // 12 ±4 + opposites. Together: 37 numbers, no overlap.
+    const TABLE_2_NUMS  = new Set([1, 2, 4, 6, 9, 14, 15, 16, 17, 19, 20, 21, 22, 24, 25, 31, 33, 34]);
+    const TABLE_12_NUMS = new Set([0, 3, 5, 7, 8, 10, 11, 12, 13, 18, 23, 26, 27, 28, 29, 30, 32, 35, 36]);
     const POSITIVE_NUMS = new Set([3,26,0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23]);
     const NEGATIVE_NUMS = new Set([10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35]);
     const SET0_NUMS = new Set([0,26,3,35,12,28,7,29,18,22,9,31,14,20,1,33,16,24,5,10]);
@@ -454,6 +459,9 @@
         let out = nums.slice();
         if (filters.table === '0')  out = out.filter(n => TABLE_0_NUMS.has(n));
         if (filters.table === '19') out = out.filter(n => TABLE_19_NUMS.has(n));
+        // 2/12 Table partition (orthogonal to 0/19). Default 'both' = no-op.
+        if (filters.table212 === '2')  out = out.filter(n => TABLE_2_NUMS.has(n));
+        if (filters.table212 === '12') out = out.filter(n => TABLE_12_NUMS.has(n));
         if (filters.sign === 'positive') out = out.filter(n => POSITIVE_NUMS.has(n));
         if (filters.sign === 'negative') out = out.filter(n => NEGATIVE_NUMS.has(n));
         if (filters.sets) {

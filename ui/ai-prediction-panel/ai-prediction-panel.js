@@ -3366,6 +3366,19 @@ class AIPredictionPanel {
 
         console.log(`🔄 AI Panel: Updating display with ${mergedPrediction.numbers.length} filtered numbers (was ${this.currentPrediction.numbers?.length || 0} unfiltered)`);
 
+        // Sync the live prediction reference to the merged-filtered
+        // view so OTHER readers (SELECTION panel's PREDICTIONS row,
+        // research panels, etc.) see the same filtered set. Re-render
+        // the summary dashboard so the PREDICTIONS / GREY-EXTRA rows
+        // repaint immediately when the user flips a wheel filter
+        // (otherwise the old unfiltered numbers would linger).
+        this.currentPrediction = mergedPrediction;
+        try {
+            if (typeof this._renderSummaryDashboard === 'function') {
+                this._renderSummaryDashboard();
+            }
+        } catch (_) {}
+
         const anchors = mergedPrediction.anchors || [];
         const loose = mergedPrediction.loose || [];
         const allNumbers = mergedPrediction.numbers || [];
