@@ -1338,7 +1338,18 @@ class RouletteWheel {
             }
 
             const bg = LIGHT_BG[accent] || '#ffffff';
-            return `<div style="min-width:0;border:1px solid ${accent};border-radius:4px;margin-bottom:3px;background:${bg};"><div style="padding:1px 6px;font-size:10px;font-weight:700;color:${accent};border-bottom:1px solid ${accent}25;background:${bg};">${title} (${nums.length})</div>${content}</div>`;
+            // Bold highlighted badge INSIDE the panel body — a solid
+            // accent-filled chip (±2 / ±1 / L / G) so the section type
+            // is unmistakable at a glance, not just a faint watermark.
+            let badgeText = '';
+            if (/^±?2/.test(title) || /\b±2\b/.test(title)) badgeText = '±2';
+            else if (/^±?1/.test(title) || /\b±1\b/.test(title)) badgeText = '±1';
+            else if (/Loose/i.test(title)) badgeText = 'L';
+            else if (/Grey/i.test(title))  badgeText = 'G';
+            const badgeHtml = badgeText
+                ? `<span style="position:absolute;top:22px;right:6px;z-index:2;display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:24px;padding:0 7px;font-size:16px;font-weight:900;color:#fff;background:${accent};border:2px solid #fff;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.35);line-height:1;letter-spacing:-0.5px;pointer-events:none;">${badgeText}</span>`
+                : '';
+            return `<div style="position:relative;min-width:0;border:1px solid ${accent};border-radius:4px;margin-bottom:3px;background:${bg};">${badgeHtml}<div style="padding:1px 6px;font-size:10px;font-weight:700;color:${accent};border-bottom:1px solid ${accent}25;background:${bg};">${title} (${nums.length})</div>${content}</div>`;
         };
 
         // ── Collect sections — subtle accent per type ──────
