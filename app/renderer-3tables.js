@@ -2860,8 +2860,29 @@ function renderTable3() {
                 ${emptyCells.join('')}
             `;
         } else {
-            const refs = calculateReferences(prev, prevPrev || prev);
-            
+            // FIX (TABLE 3 only): PP+1 / PP-1 / PP+2 / PP-2 columns
+            // were leaking false values in two ways:
+            //   1) `prevPrev || prev` is a JS-truthiness bug — when
+            //      the spin TWO back is 0 (a valid pocket), `0 || prev`
+            //      falls back to `prev`, so PP* refs computed from
+            //      prev instead of 0. Use nullish-coalescing so 0
+            //      is preserved.
+            //   2) When prevPrev does not exist (row is too early in
+            //      the session), the PP* refs should be EMPTY — not
+            //      synthesised from the fallback. After the call we
+            //      null-out the prev_prev family so the cell-rendering
+            //      paths below render blank cells.
+            // TABLE 1 and TABLE 2 do NOT use prev_prev refs, so their
+            // formation is untouched.
+            const refs = calculateReferences(prev, prevPrev != null ? prevPrev : prev);
+            if (prevPrev == null) {
+                refs.prev_prev          = null;
+                refs.prev_prev_plus_1   = null;
+                refs.prev_prev_plus_2   = null;
+                refs.prev_prev_minus_1  = null;
+                refs.prev_prev_minus_2  = null;
+            }
+
             // Slice 2e-1: derive the per-pair `data` and `projections`
             // maps from T3_COLUMN_GROUPS instead of a hardcoded refKey
             // list. Each entry's engineRefKey indexes into the
@@ -2871,6 +2892,14 @@ function renderTable3() {
             VISIBLE.forEach(grp => {
                 const refKey = grp.engineRefKey;
                 const refNum = refs[refKey];
+                // PP* family with no two-back spin → emit a placeholder
+                // cell. ref/ref13Opp left null so the groupHtml renders
+                // blank, and pair/pair13Opp set to 'XX' so cellClass
+                // returns no highlight (matches the unrendered look).
+                if (refNum == null) {
+                    data[refKey] = { ref: null, ref13Opp: null, pair: 'XX', pair13Opp: 'XX' };
+                    return;
+                }
                 const ref13Opp = DIGIT_13_OPPOSITES[refNum];
 
                 data[refKey] = {
@@ -2890,6 +2919,10 @@ function renderTable3() {
 
                 VISIBLE.forEach(grp => {
                     const refKey = grp.engineRefKey;
+                    // PP* column with null ref (no two-back spin) → no
+                    // projection to compute. Leave projections[refKey]
+                    // undefined so projHtml + projClass render blank.
+                    if (refs[refKey] == null) return;
                     const prevRefNum = prevRefs[refKey];
                     const prevRef13Opp = DIGIT_13_OPPOSITES[prevRefNum];
 
@@ -2962,10 +2995,16 @@ function renderTable3() {
                 const dp = grp.dataPair;
                 const dpPair = _dpFor(dp, 'pair');
                 const dp13   = _dpFor(dp, '13opp');
+                // Null ref → render empty cell content for the Ref +
+                // 13Ref columns. POS cells already handle 'XX' (no
+                // highlight); PRJ skipped via projections[refKey]
+                // being undefined.
+                const refTxt   = (data[refKey].ref      != null) ? data[refKey].ref      : '';
+                const ref13Txt = (data[refKey].ref13Opp != null) ? data[refKey].ref13Opp : '';
                 return `
-                    <td class="${cellClass(refKey, 'pair', true)}" data-pair="${dpPair}">${data[refKey].ref}</td>
+                    <td class="${cellClass(refKey, 'pair', true)}" data-pair="${dpPair}">${refTxt}</td>
                     ${posCell(refKey, 'pair')}
-                    <td class="${cellClass(refKey, 'pair13Opp')}" data-pair="${dp13}">${data[refKey].ref13Opp}</td>
+                    <td class="${cellClass(refKey, 'pair13Opp')}" data-pair="${dp13}">${ref13Txt}</td>
                     ${posCell(refKey, 'pair13Opp')}
                     <td class="${projClass(refKey)}" data-pair="${dp}">${projHtml(refKey)}</td>
                 `;
