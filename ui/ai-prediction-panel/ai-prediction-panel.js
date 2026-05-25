@@ -668,16 +668,20 @@ class AIPredictionPanel {
         }
     }
 
-    _autoTriggerPredictions() {
+    _autoTriggerPredictions(immediate) {
         if (this._predictionDebounce) {
             clearTimeout(this._predictionDebounce);
         }
 
         const total = this._getTotalSelectionCount();
         if (total >= 1) {
+            // `immediate` (a real new spin) → near-instant so the
+            // prediction + bet are ready right away. The 800ms debounce
+            // is only to coalesce rapid MANUAL pair-toggling, not spins.
+            const delay = immediate ? 20 : 800;
             this._predictionDebounce = setTimeout(() => {
                 this.getPredictions();
-            }, 800);
+            }, delay);
         } else {
             this._clearAllPredictionDisplays();
         }
@@ -1873,8 +1877,8 @@ class AIPredictionPanel {
         // Re-trigger predictions if any pairs selected (use debounce to avoid duplicates)
         const total = this._getTotalSelectionCount();
         if (total >= 1 && window.spins && window.spins.length >= 3) {
-            console.log('🔄 Spin added — re-triggering predictions');
-            this._autoTriggerPredictions();
+            console.log('🔄 Spin added — re-triggering predictions (immediate)');
+            this._autoTriggerPredictions(true);   // new spin → no 800ms wait
         } else if (window.spins && window.spins.length < 3) {
             console.log('⚠️ Not enough spins for predictions (need 3+)');
         }

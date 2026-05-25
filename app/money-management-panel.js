@@ -1274,6 +1274,15 @@ class MoneyManagementPanel {
                 console.log(`❌ MISS! Number ${actualNumber} - Lost $${Math.abs(netChange)}`);
             }
 
+        // INSTANT DISPLAY: bankroll / profit / win-rate are already
+        // updated synchronously above, so paint them NOW — before the
+        // async backend round-trip below. Without this the panel only
+        // refreshed after `await aiIntegration.processResult`, so the
+        // network latency made the money panel look "slow" (the result
+        // showed a beat late; undo+re-enter masked it). The final
+        // render() at the end still runs after strategy adjustment.
+        try { this.render(); } catch (_) {}
+
         // CRITICAL: Tell backend about result to calculate next bet
         if (typeof aiIntegration !== 'undefined') {
             try {
