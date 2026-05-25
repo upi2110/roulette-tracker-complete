@@ -663,7 +663,14 @@ function formatPos(code) {
 // so there are zero CSS specificity battles.
 function formatPosFlash(code) {
     if (!code) return '';
-    return `<span style="background:#fbbf24 !important;color:#000 !important;padding:1px 2px;border-radius:2px;display:inline-block;white-space:nowrap;font-weight:900;font-size:9px;min-width:28px;text-align:center">${code}</span>`;
+    // Outline-only flash: re-use the same .pos-s / .pos-o / .pos-xx
+    // class as non-flashed cells so S codes stay green, O codes stay
+    // blue, XX stays peach. The amber outline lives on the <td>, not
+    // on the inner span — so highlight + position color coexist.
+    let cls = 'pos-xx';
+    if (code.startsWith('S')) cls = 'pos-s';
+    else if (code.startsWith('O')) cls = 'pos-o';
+    return `<span class="${cls}" style="font-weight:900">${code}</span>`;
 }
 
 function addSpin() {
@@ -683,7 +690,21 @@ function addSpin() {
     
     spins.push({ direction: dir, actual: num });
     render();
-    
+
+    // Push-notify the money panel immediately instead of relying on
+    // its 200ms polling interval. In wheel/same mode this matters
+    // visibly — the trigger-gate's "armed" decision and hit/miss
+    // resolution drive the "Next Bet" tile, and waiting up to 200ms
+    // for the next poll made it feel like the system "didn't react"
+    // (user had to undo + re-enter to get a fresh poll).
+    try {
+        if (window.moneyPanel && typeof window.moneyPanel.checkForNewSpin === 'function') {
+            window.moneyPanel.checkForNewSpin();
+        }
+    } catch (e) {
+        console.warn('⚠️ Money panel sync after addSpin failed:', e && e.message);
+    }
+
     document.getElementById('spinNumber').value = '';
     document.getElementById('spinNumber').focus();
 }
@@ -888,13 +909,33 @@ function resetAll() {
                     totalLosses: 0,
                     consecutiveLosses: 0,
                     consecutiveWins: 0,
+                    peakBankroll: 4000,
+                    maxDrawdown: 0,
                     lastBetAmount: 0,
                     lastBetNumbers: 12,
                     isSessionActive: false,
                     isBettingEnabled: false,
                     bettingStrategy: currentStrategy,
                     currentBetPerNumber: 2,
-                    spinsWithBets: []
+                    spinsWithBets: [],
+                    // Strategy-2 cumulative loss tally (single wins don't reset it)
+                    s2LossTally: 0,
+                    // Strategy-4 user-tunable defaults
+                    s4LossesToIncrease: 8, s4LossIncrement: 1,
+                    s4WinsToDecrease:   1, s4WinDecrement:  1,
+                    s4LossTally:        0,
+                    // Strategy-5 LOGICAL state + tunables
+                    s5LossesToIncrease: 6, s5LossIncrement: 1,
+                    s5WinsToDecrease:   1, s5WinDecrement:  1,
+                    s5StartingBet:      2, s5SessionTarget: 100,
+                    s5MinBet:           2, s5ReferenceN:    4,
+                    s5LossUnits:        0, s5WinUnits:      0,
+                    // Strategy-6 SUPER CAUTIOUS tunables (defaults)
+                    s6LossesToIncrease: 3, s6LossIncrement: 1,
+                    s6WinsToDecrease:   1, s6WinDecrement:  1,
+                    s6StartingBet:      2, s6SessionTarget: 100,
+                    s6MinBet:           2, s6MaxBet:        5,
+                    sameArmed: false
                 };
                 window.moneyPanel.betHistory = [];
                 window.moneyPanel.pendingBet = null;
@@ -931,8 +972,21 @@ function resetAll() {
                 window.aiPanel.table1Pairs = [];
                 window.aiPanel.table2Pairs = [];
                 window.aiPanel.availablePairs = [];
+                // Wipe the cached prediction so the PREDICTIONS /
+                // GREY-EXTRA rows under the SELECTION panel re-render
+                // empty (clearSelections only clears the selections,
+                // not the prediction cache).
+                window.aiPanel.currentPrediction = null;
                 window.aiPanel.renderAllCheckboxes();
-                console.log('✅ AI panel reset');
+                // Refresh the summary dashboard so PREDICTIONS row is
+                // immediately empty instead of waiting for the next
+                // render() to pick it up.
+                try {
+                    if (typeof window.aiPanel._renderSummaryDashboard === 'function') {
+                        window.aiPanel._renderSummaryDashboard();
+                    }
+                } catch (_) {}
+                console.log('✅ AI panel reset (selections + prediction cache cleared)');
             }
         } catch (e) {
             console.warn('⚠️ AI panel reset failed:', e.message);
@@ -949,6 +1003,60 @@ function resetAll() {
             }
         } catch (e) {
             console.warn('⚠️ Wheel reset failed:', e.message);
+        }
+
+        // Reset Same / Wheel mode toggles — these live on window.*
+        // globals + checkboxes in the wheel header. resetAll wasn't
+        // touching them so the toggles stayed ON across resets, which
+        // kept the trigger-gate logic armed and showed stale next-bet
+        // numbers. Clear globals, uncheck boxes, broadcast change so
+        // every listener (money panel, auto-test) syncs.
+        try {
+            if (typeof window !== 'undefined') {
+                if (window.sameMode === true) {
+                    window.sameMode = false;
+                    try { window.dispatchEvent(new CustomEvent('sameModeChanged',  { detail: { value: false } })); } catch (_) {}
+                }
+                if (window.wheelMode === true) {
+                    window.wheelMode = false;
+                    try { window.dispatchEvent(new CustomEvent('wheelModeChanged', { detail: { value: false } })); } catch (_) {}
+                }
+                const sameCb  = document.getElementById('wheelSameModeToggle');
+                const wheelCb = document.getElementById('wheelWheelModeToggle');
+                if (sameCb)  sameCb.checked  = false;
+                if (wheelCb) wheelCb.checked = false;
+
+                // Restore 0/19 and 2/12 Table filters to "Both" default
+                // and re-run filter pipeline so the wheel display
+                // refreshes to match.
+                const bothT   = document.getElementById('filterBothTables');
+                const both212 = document.getElementById('filterBoth212Tables');
+                if (bothT)   bothT.checked   = true;
+                if (both212) both212.checked = true;
+                if (window.rouletteWheel
+                 && typeof window.rouletteWheel._onFilterChange === 'function') {
+                    try { window.rouletteWheel._onFilterChange(); } catch (_) {}
+                }
+            }
+            console.log('✅ Same / Wheel modes reset');
+        } catch (e) {
+            console.warn('⚠️ Same / Wheel mode reset failed:', e.message);
+        }
+
+        // Reset User-Friendly module — disable() clears active pair,
+        // bet pool, AI-panel selection sync, wheel highlight, and
+        // tears down the setPrediction / wheel interceptors. The
+        // mode-tab buttons (T1/T2/T3) keep their visual state in the
+        // sub-row UI; user re-enables by clicking a tab again.
+        try {
+            if (window.userFriendlyTrigger
+             && typeof window.userFriendlyTrigger.disable === 'function'
+             && window.userFriendlyTrigger.enabled) {
+                window.userFriendlyTrigger.disable();
+                console.log('✅ User-Friendly module reset (disabled)');
+            }
+        } catch (e) {
+            console.warn('⚠️ UF reset failed:', e.message);
         }
 
         // Reset backend session
@@ -1344,6 +1452,14 @@ function _renderTable1Head() {
     }).join('');
 
     // ── Row 2: 7 sub-headers per group (+ indicator spacer header) ──
+    // SUB_LABELS = ['Ref','1st','C','2nd','C','3rd','C']. The 1st/2nd/3rd
+    // cells get a `data-sub` attr so the central table click handler
+    // (app/index-3tables.html) can recognise them as sub-anchor toggles
+    // and forward to aiPanel.toggleSubAnchorFromTable instead of the
+    // whole-pair toggle path. SUB_KEYS maps the SUB_LABELS index to the
+    // engine ref key ('first'/'second'/'third'). 'Ref' and 'C' cells
+    // get no data-sub — they keep the original whole-pair click behavior.
+    const SUB_KEYS = [null, 'first', null, 'second', null, 'third', null];
     const row2Cells = VISIBLE.map(grp => {
         const indicatorHeader = (grp.prefix === 'pair-indicator')
             ? `<th class="pair-indicator-col-head"></th>` : '';
@@ -1354,7 +1470,9 @@ function _renderTable1Head() {
                 else if (grp.prefix === 'copair-separator') sepCls = ' copair-separator';
                 else if (grp.prefix === 'pair-indicator')   sepCls = ' pair-separator';
             }
-            return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}">${lbl}</th>`;
+            const subKey = SUB_KEYS[sIdx];
+            const subAttr = subKey ? ` data-sub="${subKey}"` : '';
+            return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}"${subAttr}>${lbl}</th>`;
         }).join('');
         return indicatorHeader + subHeaders;
     }).join('');
@@ -1492,6 +1610,12 @@ function renderTable1() {
             return '';
         };
 
+        // Sub-anchor attrs for the 6 per-pair cells (1st num, 1st code,
+        // 2nd num, 2nd code, 3rd num, 3rd code). Added so clicking any
+        // cell inside the 1st / 2nd / 3rd column toggles that ref when
+        // T1/T2 break is ON (central click handler in index-3tables.html).
+        // Ref/anchor cell stays without data-sub so it keeps whole-pair
+        // toggle behavior.
         const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false, stripeLeftHit = null, stripeRightHit = null) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
             // Pair-indicator stripe mode: when both stripeLeftHit and stripeRightHit
@@ -1513,6 +1637,12 @@ function renderTable1() {
             // instead of literal "null" so the cell stays visually
             // blank, matching how the lookup-row miss path below
             // renders its 6 sub-cells with dashes.
+            // Sub-attrs: 0/1/2 → 'first'/'second'/'third'. Used for the
+            // 6 cells that belong to the 1st / 2nd / 3rd columns so the
+            // central click handler can dispatch to the sub-anchor
+            // toggle when T1/T2 break is ON. Ref cell uses plain `dp`.
+            const _SUB_BY_IDX = ['first', 'second', 'third'];
+            const _dpSub = (anchorIdx) => dataPair ? ` data-pair="${dataPair}" data-sub="${_SUB_BY_IDX[anchorIdx]}"` : '';
             const _anchorContent = (anchorNum === null || anchorNum === undefined || Number.isNaN(anchorNum)) ? '' : anchorNum;
             html.push(`<td class="${anchorClass}"${dp}${stripeAttrs}><strong>${_anchorContent}</strong></td>`);
 
@@ -1521,9 +1651,9 @@ function renderTable1() {
             if (!lookupRow) {
                 const cellClass = is13Opp ? 'opp13-cell' : '';
                 const codeClass = 'code-xx' + (is13Opp ? ' opp13-cell' : '');
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(0)}>-</td><td class="${codeClass}"${_dpSub(0)}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(1)}>-</td><td class="${codeClass}"${_dpSub(1)}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(2)}>-</td><td class="${codeClass}"${_dpSub(2)}>XX</td>`);
                 return;
             }
 
@@ -1539,16 +1669,17 @@ function renderTable1() {
                 const codeClass = codeClassBase + (is13Opp ? ' opp13-cell' : '');
 
                 const flashKey = `${relIdx}:${dataPair}:${anchorIdx}`;
+                const dpAttr = _dpSub(anchorIdx);
                 if (t1FlashTargets.has(flashKey)) {
                     // Slice 3b follow-up: only the C (position-code)
                     // cell gets the gold flash. The target-number
                     // cell (1st / 2nd / 3rd) renders normally so the
                     // user's eye lands directly on the matching code.
-                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                    html.push(`<td class="t1-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
+                    html.push(`<td class="${numClass}"${dpAttr}>${target}</td>`);
+                    html.push(`<td class="t1-flash"${dpAttr} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
                 } else {
-                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                    html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
+                    html.push(`<td class="${numClass}"${dpAttr}>${target}</td>`);
+                    html.push(`<td class="${codeClass}"${dpAttr}>${displayCode}</td>`);
                 }
             });
         };
@@ -1649,6 +1780,12 @@ function renderTable1() {
 
         const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false, asPairIndicator = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            // Sub-attrs for the 1st/2nd/3rd cells in the NEXT row. Same
+            // mapping as renderTargetGroup above — clicking any of the
+            // 6 cells (num + code per sub-anchor) toggles that ref when
+            // T1/T2 break is ON.
+            const _NEXT_SUB_BY_IDX = ['first', 'second', 'third'];
+            const _dpNextSub = (anchorIdx) => dataPair ? ` data-pair="${dataPair}" data-sub="${_NEXT_SUB_BY_IDX[anchorIdx]}"` : '';
             // Pair-match: this pair's ±1-expanded projected numbers cover ≥2
             // members of the active 5/6 set. When true, ALL cells in this
             // pair's NEXT-row segment (anchor + 3 target# + 3 code/dash = 7)
@@ -1675,18 +1812,19 @@ function renderTable1() {
 
             if (!lookupRow) {
                 const cellClass = ((is13Opp ? 'opp13-cell' : '') + matchCls).trim();
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(0)}>-</td><td class="${cellClass}"${_dpNextSub(0)}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(1)}>-</td><td class="${cellClass}"${_dpNextSub(1)}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(2)}>-</td><td class="${cellClass}"${_dpNextSub(2)}>-</td>`);
                 return;
             }
 
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
             const cellClass = ((is13Opp ? 'opp13-cell' : '') + matchCls).trim();
 
-            targets.forEach((target) => {
-                html.push(`<td class="${cellClass}"${dp}>${target}</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td>`);
+            targets.forEach((target, anchorIdx) => {
+                const dpAttr = _dpNextSub(anchorIdx);
+                html.push(`<td class="${cellClass}"${dpAttr}>${target}</td>`);
+                html.push(`<td class="${cellClass}"${dpAttr}>-</td>`);
             });
         };
 
@@ -1808,6 +1946,9 @@ function _renderTable2Head() {
         return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" colspan="7" data-pair="${grp.dataPair}">${grp.label}</th>`;
     }).join('');
 
+    // SUB_KEYS — same mapping as renderTable1Head. 1st/2nd/3rd cells
+    // become per-sub-anchor clickable when T1/T2 break is ON.
+    const SUB_KEYS = [null, 'first', null, 'second', null, 'third', null];
     const row2Cells = VISIBLE.map(grp => {
         return SUB_LABELS.map((lbl, sIdx) => {
             let sepCls = '';
@@ -1815,7 +1956,9 @@ function _renderTable2Head() {
                 if (grp.prefix === 'pair-separator')        sepCls = ' pair-separator';
                 else if (grp.prefix === 'copair-separator') sepCls = ' copair-separator';
             }
-            return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}">${lbl}</th>`;
+            const subKey = SUB_KEYS[sIdx];
+            const subAttr = subKey ? ` data-sub="${subKey}"` : '';
+            return `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}"${subAttr}>${lbl}</th>`;
         }).join('');
     }).join('');
 
@@ -1898,6 +2041,9 @@ function renderTable2() {
 
         const renderTargetGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            // Sub-attrs for clickable 1st/2nd/3rd cells (T1/T2 break mode).
+            const _SUB_BY_IDX_T2 = ['first', 'second', 'third'];
+            const _dpSub = (anchorIdx) => dataPair ? ` data-pair="${dataPair}" data-sub="${_SUB_BY_IDX_T2[anchorIdx]}"` : '';
             // Slice 2d-2: copair-separator class supported so the new
             // 13OPP halves of each pair-group can render the subtle
             // white-border within-pair divider, while the main halves
@@ -1916,9 +2062,9 @@ function renderTable2() {
             if (!lookupRow) {
                 const cellClass = is13Opp ? 'opp13-cell' : '';
                 const codeClass = 'code-xx' + (is13Opp ? ' opp13-cell' : '');
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${codeClass}"${dp}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(0)}>-</td><td class="${codeClass}"${_dpSub(0)}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(1)}>-</td><td class="${codeClass}"${_dpSub(1)}>XX</td>`);
+                html.push(`<td class="${cellClass}"${_dpSub(2)}>-</td><td class="${codeClass}"${_dpSub(2)}>XX</td>`);
                 return;
             }
 
@@ -1934,14 +2080,15 @@ function renderTable2() {
                 const codeClass = codeClassBase + (is13Opp ? ' opp13-cell' : '');
 
                 const flashKey = `${relIdx}:${dataPair}:${anchorIdx}`;
+                const dpAttr = _dpSub(anchorIdx);
                 if (t2FlashTargets.has(flashKey)) {
                     // Slice 3b follow-up: only the C (position-code)
                     // cell flashes — target-number cell renders normally.
-                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                    html.push(`<td class="t2-flash"${dp} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
+                    html.push(`<td class="${numClass}"${dpAttr}>${target}</td>`);
+                    html.push(`<td class="t2-flash"${dpAttr} style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(displayCode)}</td>`);
                 } else {
-                    html.push(`<td class="${numClass}"${dp}>${target}</td>`);
-                    html.push(`<td class="${codeClass}"${dp}>${displayCode}</td>`);
+                    html.push(`<td class="${numClass}"${dpAttr}>${target}</td>`);
+                    html.push(`<td class="${codeClass}"${dpAttr}>${displayCode}</td>`);
                 }
             });
         };
@@ -1968,6 +2115,9 @@ function renderTable2() {
 
         const renderNextGroup = (anchorNum, refNum, addSeparator = false, is13Opp = false, dataPair = '', addCopairSep = false) => {
             const dp = dataPair ? ` data-pair="${dataPair}"` : '';
+            // Sub-attrs for 1st/2nd/3rd cells in the NEXT row.
+            const _NEXT_SUB_BY_IDX_T2 = ['first', 'second', 'third'];
+            const _dpNextSub = (anchorIdx) => dataPair ? ` data-pair="${dataPair}" data-sub="${_NEXT_SUB_BY_IDX_T2[anchorIdx]}"` : '';
             // Slice 2d-2: copair-separator support; null-handling.
             const anchorClass = 'anchor-cell' +
                 (addSeparator ? ' pair-separator' : '') +
@@ -1980,18 +2130,19 @@ function renderTable2() {
 
             if (!lookupRow) {
                 const cellClass = is13Opp ? 'opp13-cell' : '';
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td><td class="${cellClass}"${dp}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(0)}>-</td><td class="${cellClass}"${_dpNextSub(0)}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(1)}>-</td><td class="${cellClass}"${_dpNextSub(1)}>-</td>`);
+                html.push(`<td class="${cellClass}"${_dpNextSub(2)}>-</td><td class="${cellClass}"${_dpNextSub(2)}>-</td>`);
                 return;
             }
 
             const targets = [lookupRow.first, lookupRow.second, lookupRow.third];
             const cellClass = is13Opp ? 'opp13-cell' : '';
 
-            targets.forEach((target) => {
-                html.push(`<td class="${cellClass}"${dp}>${target}</td>`);
-                html.push(`<td class="${cellClass}"${dp}>-</td>`);
+            targets.forEach((target, anchorIdx) => {
+                const dpAttr = _dpNextSub(anchorIdx);
+                html.push(`<td class="${cellClass}"${dpAttr}>${target}</td>`);
+                html.push(`<td class="${cellClass}"${dpAttr}>-</td>`);
             });
         };
 
@@ -2031,7 +2182,17 @@ const _PAIR_REFKEY_TO_DATA_PAIR = {
     'prev_minus_1': 'prevMinus1',
     'prev_plus_2': 'prevPlus2',
     'prev_minus_2': 'prevMinus2',
-    'prev_prev': 'prevPrev'
+    'prev_prev': 'prevPrev',
+    // Previously missing — caused Table-3 POS cells in the PP±1 / PP±2
+    // groups to render `data-pair="undefined"`, so clicks on those cells
+    // logged "Pair undefined not available yet" and silently failed.
+    // Users had to click a different cell (number / PRJ) to land the
+    // selection. Adding these makes every Table-3 POS cell clickable
+    // first-try across all 10 pair families.
+    'prev_prev_plus_1':  'prevPrevPlus1',
+    'prev_prev_minus_1': 'prevPrevMinus1',
+    'prev_prev_plus_2':  'prevPrevPlus2',
+    'prev_prev_minus_2': 'prevPrevMinus2'
 };
 
 /**
@@ -2506,14 +2667,17 @@ function _flashPairCell(row, dataPair, hitCellType) {
         cell.style.setProperty('outline-offset', '-1px', 'important');
         cell.style.setProperty('position', 'relative', 'important');
         cell.style.setProperty('z-index', '10', 'important');
-        cell.style.setProperty('background', '#fef3c7', 'important');
+        // Outline-only flash: do NOT paint a background — let the cell's
+        // own green/blue/red color show through.
+        cell.style.removeProperty('background');
         cell.style.setProperty('box-shadow', '0 0 8px rgba(245, 158, 11, 0.6)', 'important');
 
-        // INLINE STYLES on SPAN — override .pos-s/.pos-o/.pos-xx !important backgrounds
+        // SPAN: clear any prior amber bg/color paint so the span's own
+        // .pos-s / .pos-o / .pos-xx green/blue/peach styling shows.
         const span = cell.querySelector('span');
         if (span) {
-            span.style.setProperty('background', '#fef3c7', 'important');
-            span.style.setProperty('color', '#92400e', 'important');
+            span.style.removeProperty('background');
+            span.style.removeProperty('color');
         }
 
         console.log(`⚡ DOM: Added t3-pm1-flash to ${dataPair}[${cellIdx}] (${hitCellType}), text="${cell.textContent}"`);
@@ -2596,16 +2760,24 @@ function _renderTable3Head() {
     ];
     // Slice 2f: filter by global pair-family dropdown.
     const VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS);
+    // T3-halfs aware header data-pair: pair-half (label + first POS)
+    // gets "_pair", 13opp-half (label13 + second POS) gets "_13opp",
+    // PRJ keeps the base key. When halfs is OFF every header uses
+    // the base key as before — no behavioural change.
+    const _hdrHalfsOn = (typeof window !== 'undefined' && window.t3Halfs === true);
+    const _hdrDpFor = (baseDp, half) => _hdrHalfsOn ? `${baseDp}_${half}` : baseDp;
     VISIBLE.forEach((grp, gi) => {
         // Match the existing thead convention: first pair-group
         // omits pair-separator on its label cell; later groups carry
         // it on the FIRST sub-header (the main label).
         const sepCls = (gi > 0) ? ' pair-separator' : '';
+        const dpPair = _hdrDpFor(grp.dataPair, 'pair');
+        const dp13   = _hdrDpFor(grp.dataPair, '13opp');
         cells.push(
-            `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${grp.dataPair}">${grp.label}</th>`,
-            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">POS</th>`,
-            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">${grp.label13}</th>`,
-            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">POS</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${dpPair}">${grp.label}</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dpPair}">POS</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dp13}">${grp.label13}</th>`,
+            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dp13}">POS</th>`,
             `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">PRJ</th>`
         );
     });
@@ -2688,8 +2860,29 @@ function renderTable3() {
                 ${emptyCells.join('')}
             `;
         } else {
-            const refs = calculateReferences(prev, prevPrev || prev);
-            
+            // FIX (TABLE 3 only): PP+1 / PP-1 / PP+2 / PP-2 columns
+            // were leaking false values in two ways:
+            //   1) `prevPrev || prev` is a JS-truthiness bug — when
+            //      the spin TWO back is 0 (a valid pocket), `0 || prev`
+            //      falls back to `prev`, so PP* refs computed from
+            //      prev instead of 0. Use nullish-coalescing so 0
+            //      is preserved.
+            //   2) When prevPrev does not exist (row is too early in
+            //      the session), the PP* refs should be EMPTY — not
+            //      synthesised from the fallback. After the call we
+            //      null-out the prev_prev family so the cell-rendering
+            //      paths below render blank cells.
+            // TABLE 1 and TABLE 2 do NOT use prev_prev refs, so their
+            // formation is untouched.
+            const refs = calculateReferences(prev, prevPrev != null ? prevPrev : prev);
+            if (prevPrev == null) {
+                refs.prev_prev          = null;
+                refs.prev_prev_plus_1   = null;
+                refs.prev_prev_plus_2   = null;
+                refs.prev_prev_minus_1  = null;
+                refs.prev_prev_minus_2  = null;
+            }
+
             // Slice 2e-1: derive the per-pair `data` and `projections`
             // maps from T3_COLUMN_GROUPS instead of a hardcoded refKey
             // list. Each entry's engineRefKey indexes into the
@@ -2699,6 +2892,14 @@ function renderTable3() {
             VISIBLE.forEach(grp => {
                 const refKey = grp.engineRefKey;
                 const refNum = refs[refKey];
+                // PP* family with no two-back spin → emit a placeholder
+                // cell. ref/ref13Opp left null so the groupHtml renders
+                // blank, and pair/pair13Opp set to 'XX' so cellClass
+                // returns no highlight (matches the unrendered look).
+                if (refNum == null) {
+                    data[refKey] = { ref: null, ref13Opp: null, pair: 'XX', pair13Opp: 'XX' };
+                    return;
+                }
                 const ref13Opp = DIGIT_13_OPPOSITES[refNum];
 
                 data[refKey] = {
@@ -2718,6 +2919,10 @@ function renderTable3() {
 
                 VISIBLE.forEach(grp => {
                     const refKey = grp.engineRefKey;
+                    // PP* column with null ref (no two-back spin) → no
+                    // projection to compute. Leave projections[refKey]
+                    // undefined so projHtml + projClass render blank.
+                    if (refs[refKey] == null) return;
                     const prevRefNum = prevRefs[refKey];
                     const prevRef13Opp = DIGIT_13_OPPOSITES[prevRefNum];
 
@@ -2756,13 +2961,23 @@ function renderTable3() {
             // When a cell is a flash target, it gets class="t3-pm1-flash" (no
             // cell-has-position) and a span with inline amber styles (no pos-s/
             // pos-o/pos-xx classes). This eliminates ALL CSS specificity battles.
+            // T3-halfs mode: when ON, the Ref + first POS cells carry
+            // the "_pair" half key, the 13Opp ref + second POS cells
+            // carry the "_13opp" half key. PRJ keeps the base key
+            // (clicks on PRJ aren't intended as half-specific). When
+            // OFF, every cell uses the base key as before.
+            const _halfsOn = (typeof window !== 'undefined' && window.t3Halfs === true);
+            const _dpFor = (baseDp, half) => _halfsOn ? `${baseDp}_${half}` : baseDp;
+
             const posCell = (refKey, field) => {
                 const posCode = data[refKey][field];
-                const dataPairAttr = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
+                const baseDp = _PAIR_REFKEY_TO_DATA_PAIR[refKey];
+                const half = (field === 'pair') ? 'pair' : '13opp';
+                const dataPairAttr = _dpFor(baseDp, half);
                 const cellType = field === 'pair' ? 'pair' : 'pair13Opp';
                 const flash = flashTargets.has(`${relIdx}:${refKey}:${cellType}`);
                 if (flash) {
-                    return `<td class="t3-pm1-flash" data-pair="${dataPairAttr}" style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;background:#fef3c7 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(posCode)}</td>`;
+                    return `<td class="t3-pm1-flash" data-pair="${dataPairAttr}" style="outline:3px solid #f59e0b !important;outline-offset:-1px !important;position:relative !important;z-index:10 !important;box-shadow:0 0 8px rgba(245,158,11,0.6) !important">${formatPosFlash(posCode)}</td>`;
                 }
                 const cls = posCode && posCode !== 'XX' ? 'cell-has-position' : '';
                 return `<td class="${cls}" data-pair="${dataPairAttr}">${formatPos(posCode)}</td>`;
@@ -2778,10 +2993,18 @@ function renderTable3() {
             const groupHtml = VISIBLE.map(grp => {
                 const refKey = grp.engineRefKey;
                 const dp = grp.dataPair;
+                const dpPair = _dpFor(dp, 'pair');
+                const dp13   = _dpFor(dp, '13opp');
+                // Null ref → render empty cell content for the Ref +
+                // 13Ref columns. POS cells already handle 'XX' (no
+                // highlight); PRJ skipped via projections[refKey]
+                // being undefined.
+                const refTxt   = (data[refKey].ref      != null) ? data[refKey].ref      : '';
+                const ref13Txt = (data[refKey].ref13Opp != null) ? data[refKey].ref13Opp : '';
                 return `
-                    <td class="${cellClass(refKey, 'pair', true)}" data-pair="${dp}">${data[refKey].ref}</td>
+                    <td class="${cellClass(refKey, 'pair', true)}" data-pair="${dpPair}">${refTxt}</td>
                     ${posCell(refKey, 'pair')}
-                    <td class="${cellClass(refKey, 'pair13Opp')}" data-pair="${dp}">${data[refKey].ref13Opp}</td>
+                    <td class="${cellClass(refKey, 'pair13Opp')}" data-pair="${dp13}">${ref13Txt}</td>
                     ${posCell(refKey, 'pair13Opp')}
                     <td class="${projClass(refKey)}" data-pair="${dp}">${projHtml(refKey)}</td>
                 `;
@@ -2837,8 +3060,35 @@ function renderTable3() {
             const prevPair13 = calculatePositionCode(prevRef13Opp, prevSpin.actual);
             const usePosCode = prevPair !== 'XX' ? prevPair : prevPair13;
 
-            const { purple, green } = generateAnchors(refs[refKey], DIGIT_13_OPPOSITES[refs[refKey]], usePosCode);
-            nextProjections[refKey] = { purple, green };
+            const refNum = refs[refKey];
+            const ref13Opp = DIGIT_13_OPPOSITES[refNum];
+            const { purple, green } = generateAnchors(refNum, ref13Opp, usePosCode);
+
+            // T3-halfs: derive the pair-half anchors and the
+            // 13opp-half anchors separately so getNextRowProjections
+            // can emit independently selectable halves. The merged
+            // (purple, green) above is kept for the existing
+            // single-entry path; halves use the per-side anchors.
+            let pairAnchors = [];
+            let oppAnchors  = [];
+            if (usePosCode && usePosCode !== 'XX') {
+                const aPairA = getNumberAtPosition(refNum, usePosCode);
+                const aPairB = getNumberAtPosition(refNum, flipPositionCode(usePosCode));
+                const aOppA  = getNumberAtPosition(ref13Opp, usePosCode);
+                const aOppB  = getNumberAtPosition(ref13Opp, flipPositionCode(usePosCode));
+                [aPairA, aPairB].forEach(a => { if (a !== null && !pairAnchors.includes(a)) pairAnchors.push(a); });
+                [aOppA,  aOppB ].forEach(a => { if (a !== null && !oppAnchors .includes(a)) oppAnchors .push(a); });
+            }
+            const pairGreen = pairAnchors.map(a => REGULAR_OPPOSITES[a]).filter(a => a !== undefined);
+            const oppGreen  = oppAnchors .map(a => REGULAR_OPPOSITES[a]).filter(a => a !== undefined);
+
+            nextProjections[refKey] = {
+                purple, green,                 // merged (existing behaviour)
+                pairPurple: pairAnchors,       // T3-halfs: pair half only
+                pairGreen,
+                oppPurple:  oppAnchors,        // T3-halfs: 13opp half only
+                oppGreen
+            };
         });
         
         // Store for backend to use
@@ -2855,14 +3105,20 @@ function renderTable3() {
         // Slice 2e-1: NEXT row driven from T3_COLUMN_GROUPS. Same
         // 5-cell-per-group pattern as the previous hardcoded form,
         // including pair-separator on every group's Ref cell.
+        // T3-halfs aware: ref + first dash carry "_pair" half, 13Opp
+        // ref + second dash carry "_13opp" half. PRJ keeps base key.
+        const _nextHalfsOn = (typeof window !== 'undefined' && window.t3Halfs === true);
+        const _nextDpFor = (baseDp, half) => _nextHalfsOn ? `${baseDp}_${half}` : baseDp;
         const nextGroupHtml = VISIBLE.map(grp => {
             const refKey = grp.engineRefKey;
             const dp = grp.dataPair;
+            const dpPair = _nextDpFor(dp, 'pair');
+            const dp13   = _nextDpFor(dp, '13opp');
             return `
-                <td class="pair-separator" data-pair="${dp}">${data[refKey].ref}</td>
-                <td data-pair="${dp}">-</td>
-                <td data-pair="${dp}">${data[refKey].ref13Opp}</td>
-                <td data-pair="${dp}">-</td>
+                <td class="pair-separator" data-pair="${dpPair}">${data[refKey].ref}</td>
+                <td data-pair="${dpPair}">-</td>
+                <td data-pair="${dp13}">${data[refKey].ref13Opp}</td>
+                <td data-pair="${dp13}">-</td>
                 <td class="col-prj" data-pair="${dp}">${nextProjHtml(refKey)}</td>
             `;
         }).join('');
@@ -2918,6 +3174,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     render();
+
+    // T3-halfs toggle: when flipped from the wheel panel we need to
+    // re-render Table 3 (so cell data-pair attrs pick up _pair /
+    // _13opp suffixes) and re-prime the AI panel so its pair list
+    // shows the halves. Clearing existing T3 selections avoids stale
+    // keys that no longer exist in the new pair list.
+    window.addEventListener('t3HalfsChanged', () => {
+        try {
+            if (window.aiPanel && window.aiPanel.table3Selections) {
+                window.aiPanel.table3Selections.clear();
+                if (window.aiPanel.table1SelectedPairs) {
+                    // Refresh highlights (drops stale t3-pair-selected classes)
+                    document.querySelectorAll('.t3-pair-selected').forEach(el => el.classList.remove('t3-pair-selected'));
+                }
+            }
+        } catch (_) {}
+        try { render(); } catch (_) {}
+        try {
+            if (window.aiPanel && typeof window.aiPanel.loadAvailablePairs === 'function') {
+                const data = (typeof window.getAIDataV6 === 'function') ? window.getAIDataV6() : null;
+                if (data) window.aiPanel.loadAvailablePairs(data);
+            }
+        } catch (_) {}
+    });
 });
 
 // COMPLETE FIX FOR DATA EXPORT
@@ -3159,30 +3439,67 @@ function getNextRowProjections() {
     const keyMap = {};
     _filterVisibleColumnGroups(T3_COLUMN_GROUPS).forEach(g => { keyMap[g.engineRefKey] = g.dataPair; });
     
+    // T3-halfs mode: when window.t3Halfs is true, split each pair
+    // group into a "_pair" half (purple anchors only — the ref pair)
+    // and a "_13opp" half (green anchors only — its 13-opposite),
+    // each independently selectable downstream. When false, keep
+    // the original single-entry merged behaviour.
+    const halfsOn = (typeof window !== 'undefined' && window.t3Halfs === true);
+
     // Use stored projections from table display
     Object.keys(keyMap).forEach(frontendKey => {
         const backendKey = keyMap[frontendKey];
         const displayProj = window.table3DisplayProjections[frontendKey];
-        
+
         if (!displayProj || !displayProj.purple) {
             return;
         }
-        
+
         const purple = displayProj.purple || [];
         const green = displayProj.green || [];
-        
+
         console.log(`   ${backendKey}: purple=${JSON.stringify(purple)}, green=${JSON.stringify(green)}`);
-        
-        // Expand to include wheel neighbors
-        const betNumbers = expandAnchorsToBetNumbers(purple, green);
-        
-        projections[backendKey] = {
-            anchors: purple,         // From table display
-            neighbors: green,        // From table display
-            numbers: betNumbers      // Expanded
-        };
-        
-        console.log(`   ✅ ${backendKey}: purple=${purple.length}, green=${green.length}, total=${betNumbers.length}`);
+
+        if (halfsOn) {
+            // Pair-half anchors / 13opp-half anchors are pre-computed
+            // by renderTable3's NEXT projection step using the same
+            // four-anchor breakdown generateAnchors uses internally
+            // (a1, a2 = pair half; a3, a4 = 13opp half). Each half's
+            // purple anchors are expanded with their own green
+            // wheel-opposites so the bet neighborhood is symmetric
+            // around just that half.
+            const pairPurple = displayProj.pairPurple || [];
+            const pairGreen  = displayProj.pairGreen  || [];
+            const oppPurple  = displayProj.oppPurple  || [];
+            const oppGreen   = displayProj.oppGreen   || [];
+            const pairBet = expandAnchorsToBetNumbers(pairPurple, pairGreen);
+            const oppBet  = expandAnchorsToBetNumbers(oppPurple,  oppGreen);
+            if (pairPurple.length > 0) {
+                projections[backendKey + '_pair'] = {
+                    anchors: pairPurple,
+                    neighbors: pairGreen,
+                    numbers: pairBet
+                };
+                console.log(`   ✅ ${backendKey}_pair (halfs): purple=${pairPurple.length}, green=${pairGreen.length}, total=${pairBet.length}`);
+            }
+            if (oppPurple.length > 0) {
+                projections[backendKey + '_13opp'] = {
+                    anchors: oppPurple,
+                    neighbors: oppGreen,
+                    numbers: oppBet
+                };
+                console.log(`   ✅ ${backendKey}_13opp (halfs): purple=${oppPurple.length}, green=${oppGreen.length}, total=${oppBet.length}`);
+            }
+        } else {
+            // Expand to include wheel neighbors (merged — purple + green)
+            const betNumbers = expandAnchorsToBetNumbers(purple, green);
+            projections[backendKey] = {
+                anchors: purple,         // From table display
+                neighbors: green,        // From table display
+                numbers: betNumbers      // Expanded
+            };
+            console.log(`   ✅ ${backendKey}: purple=${purple.length}, green=${green.length}, total=${betNumbers.length}`);
+        }
     });
     
     console.log(`\n📊 Using table display projections for ${Object.keys(projections).length} pairs`);

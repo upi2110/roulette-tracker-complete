@@ -60,8 +60,68 @@ const STRATEGY_NAMES = {
     1: 'Aggressive',
     2: 'Conservative',
     3: 'Cautious',
-    4: 'Defensive'
+    4: 'Defensive',
+    5: 'Logical',
+    6: 'Super Cautious'
 };
+
+// ─────────────────────────────────────────────────────────────────
+// Wheel-mode helper sets — mirror the live Wheel panel's Table /
+// Sign / Set / Inverse filters. Numbers grouped identically to the
+// matching sets in strategies/manual-replay/manual-replay.js so the
+// auto-test wheel-pool matches what the live wheel produces from
+// the same toggles. Used only when manual-test config has
+// wheelMode: true; otherwise unreferenced.
+// ─────────────────────────────────────────────────────────────────
+const _MT_WHEEL_TABLE_0  = new Set([0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5]);
+const _MT_WHEEL_TABLE_19 = new Set([19,15,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26]);
+const _MT_WHEEL_POSITIVE = new Set([3,26,0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23]);
+const _MT_WHEEL_NEGATIVE = new Set([10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35]);
+const _MT_WHEEL_SET0 = new Set([0,26,3,35,12,28,7,29,18,22,9,31,14,20,1,33,16,24,5,10]);
+const _MT_WHEEL_SET5 = new Set([23,8,30,11,36,13,27,6,34,17,25,2,21,4,19,15,32]);
+const _MT_WHEEL_SET6 = new Set([0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26]);
+
+/**
+ * Build the wheel-mode bet pool for a manual-test run. Applies
+ * Table → Sign → Set membership against the 0–36 universe, then
+ * optionally inverts. When no set boxes are ticked the function
+ * treats it as "all sets allowed" (matches the live wheel's
+ * implicit fallback so the user doesn't end up with an empty pool
+ * by ticking no Set checkboxes).
+ *
+ * @param {{filters:Object, inverse:boolean}} cfg
+ * @returns {number[]} sorted array of bet numbers
+ */
+function _manualTestWheelPool(cfg) {
+    const filters = (cfg && cfg.filters) || {};
+    const sets = filters.sets || {};
+    const setsAny = !!(sets.set0 || sets.set5 || sets.set6);
+
+    const passes = (n) => {
+        if (filters.table === '0'  && !_MT_WHEEL_TABLE_0.has(n))  return false;
+        if (filters.table === '19' && !_MT_WHEEL_TABLE_19.has(n)) return false;
+        if (filters.sign === 'positive' && !_MT_WHEEL_POSITIVE.has(n)) return false;
+        if (filters.sign === 'negative' && !_MT_WHEEL_NEGATIVE.has(n)) return false;
+        if (setsAny) {
+            const inAllowedSet =
+                (sets.set0 && _MT_WHEEL_SET0.has(n)) ||
+                (sets.set5 && _MT_WHEEL_SET5.has(n)) ||
+                (sets.set6 && _MT_WHEEL_SET6.has(n));
+            if (!inAllowedSet) return false;
+        }
+        return true;
+    };
+
+    let pool = [];
+    for (let n = 0; n <= 36; n++) if (passes(n)) pool.push(n);
+    if (cfg && cfg.inverse) {
+        const sel = new Set(pool);
+        const universe = [];
+        for (let n = 0; n <= 36; n++) universe.push(n);
+        pool = universe.filter(n => !sel.has(n));
+    }
+    return pool;
+}
 
 class AutoTestRunner {
     /**
@@ -145,6 +205,14 @@ class AutoTestRunner {
         this._currentMethod  = (method === 'manual') ? requestedManualStrat : method;
         this._reportedMethod = method;
 
+        // manual-test: snapshot the user's UI config on the runner so
+        // _simulateDecision can read it without touching any globals.
+        // Pure additive — when method !== 'manual-test' this field is
+        // null and no existing code path is affected.
+        this._manualTestConfig = (method === 'manual-test' && options.manualTestConfig)
+            ? options.manualTestConfig
+            : null;
+
         // Strategy-Lab parity: if the include-grey flag wasn't already
         // set on this runner (e.g. AI panel mirrored it when the user
         // toggled the checkbox), pull the latest value from window /
@@ -182,7 +250,10 @@ class AutoTestRunner {
         // engine.isTrained gate. Without this, manual→AI-trained returns
         // ENGINE_NOT_TRAINED with empty strategies and the renderer
         // crashes on result.strategies[1].summary.
-        if (this._engineMaybeUntrained && this._currentMethod !== 'AI-trained') {
+        // manual-test uses user-supplied pair keys + a self-contained
+        // projection helper — no engine training required. Same
+        // exemption AI-trained has.
+        if (this._engineMaybeUntrained && this._currentMethod !== 'AI-trained' && this._currentMethod !== 'manual-test') {
             return {
                 testFile,
                 method,
@@ -237,7 +308,8 @@ class AutoTestRunner {
                     1: { sessions: [], summary: this._emptyStrategySummary() },
                     2: { sessions: [], summary: this._emptyStrategySummary() },
                     3: { sessions: [], summary: this._emptyStrategySummary() },
-                    4: { sessions: [], summary: this._emptyStrategySummary() }
+                    4: { sessions: [], summary: this._emptyStrategySummary() },
+                    5: { sessions: [], summary: this._emptyStrategySummary() }
                 }
             };
         }
@@ -245,7 +317,7 @@ class AutoTestRunner {
         // Backlog C — pair-rotation parity for method='test'. Pre-fetch
         // the persisted training records once so the AT runner can build
         // a per-session active-pair schedule using the same recommender
-        const allSessions = { 1: [], 2: [], 3: [], 4: [] };
+        const allSessions = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
 
         // Total work: each starting position × 3 strategies
         // We need at least 4 spins from startIdx, so max start = testSpins.length - 5
@@ -285,7 +357,7 @@ class AutoTestRunner {
         };
 
         for (let startIdx = 0; startIdx <= maxStart; startIdx++) {
-            for (const strategy of [1, 2, 3, 4]) {
+            for (const strategy of [1, 2, 3, 4, 5, 6]) {
                 // Reset engine session between simulations
                 this.engine.resetSession();
                 // Restore the trained pair-model baseline so each
@@ -322,11 +394,19 @@ class AutoTestRunner {
             totalTestSpins: testSpins.length,
             trainedOn: `${Object.keys(this.engine.pairModels).length} pairs trained`,
             timestamp: new Date().toISOString(),
+            // Surface the manual-test config (env toggles + filters +
+            // pair selections) on the result so the Excel report can
+            // echo exactly what the user picked. Null for every other
+            // method — the report only renders the config block when
+            // method === 'manual-test' AND this is populated.
+            manualTestConfig: (method === 'manual-test') ? this._manualTestConfig : null,
             strategies: {
                 1: { sessions: allSessions[1], summary: this._computeSummary(allSessions[1]) },
                 2: { sessions: allSessions[2], summary: this._computeSummary(allSessions[2]) },
                 3: { sessions: allSessions[3], summary: this._computeSummary(allSessions[3]) },
-                4: { sessions: allSessions[4], summary: this._computeSummary(allSessions[4]) }
+                4: { sessions: allSessions[4], summary: this._computeSummary(allSessions[4]) },
+                5: { sessions: allSessions[5], summary: this._computeSummary(allSessions[5]) },
+                6: { sessions: allSessions[6], summary: this._computeSummary(allSessions[6]) }
             }
         };
 
@@ -349,6 +429,15 @@ class AutoTestRunner {
     _runSession(testSpins, startIdx, strategy) {
         const { STARTING_BANKROLL, TARGET_PROFIT, MIN_BET, MAX_BET, LOSS_STREAK_RESET, MAX_RESETS, STOP_LOSS } = this._sessionConfig;
 
+        // Expose the session's start index on the runner so the
+        // manual-test branch in _simulateDecision can slice history
+        // to session-only spins (matches a fresh live session's
+        // auto-ref walk-back depth). Pure additive — only the
+        // manual-test branch reads this field; every other path
+        // ignores it. Reset per-session so multi-session runs are
+        // independent.
+        this._currentSessionStartIdx = startIdx;
+
         const sessionState = {
             bankroll: STARTING_BANKROLL,
             profit: 0,
@@ -359,6 +448,11 @@ class AutoTestRunner {
             losses: 0,
             consecutiveLosses: 0,
             consecutiveWins: 0,
+            // Cumulative loss tallies — mirror live money panel
+            // (sessionData.s2LossTally / s4LossTally). Single wins do
+            // NOT reset these; only an explicit bet-size change does.
+            s2LossTally: 0,
+            s4LossTally: 0,
             // Streak peaks captured per session for the report.
             maxConsecutiveLosses: 0,
             maxConsecutiveWins: 0,
@@ -366,7 +460,11 @@ class AutoTestRunner {
             maxConsecutiveSkips: 0,
             maxDrawdown: 0,
             peakProfit: 0,
-            reanalyzeCount: 0
+            reanalyzeCount: 0,
+            // Strategy-5 LOGICAL — fractional escalation accumulators
+            // (miss adds N/4, hit adds 1.0). Reset per session.
+            s5LossUnits: 0,
+            s5WinUnits:  0
         };
 
         const steps = [];
@@ -424,14 +522,103 @@ class AutoTestRunner {
         }
 
         // ── PHASE 2: LIVE — bet with risk management ──
+        // Trigger gate: Same OR Wheel mode (manualTestConfig) →
+        // wait-for-trigger betting. Starts WAITING; arms when the
+        // latest spin lands in the current bet pool; bets on the
+        // next spin; WIN keeps armed; LOSS disarms. With BOTH ON,
+        // the bet pool is already pair ∩ wheel (intersection happens
+        // in _simulateDecision), so "spin in pool" naturally
+        // satisfies the AND condition the user specified. When BOTH
+        // toggles are OFF (or any other method runs), the gate is
+        // inactive and every BET proceeds as today.
+        const triggerGateOn = !!(this._manualTestConfig
+            && (this._manualTestConfig.sameMode === true || this._manualTestConfig.wheelMode === true));
+        sessionState.sameArmed = false;
+
         for (let i = startIdx + 3; i < testSpins.length - 1; i++) {
             const decision = this._simulateDecision(testSpins, i);
+
+            // Trigger gate: when active, only allow the BET path if
+            // we're armed. Otherwise, check if the LATEST spin
+            // (testSpins[i]) is in the predicted pool — if yes,
+            // arm; either way emit a SKIP step for this spin so
+            // the per-spin log stays continuous, and DO NOT touch
+            // consecutiveLosses / consecutiveSkips / bankroll.
+            if (triggerGateOn && decision.action === 'BET' && !sessionState.sameArmed) {
+                const latest = testSpins[i];
+                if (decision.numbers.includes(latest)) {
+                    sessionState.sameArmed = true;
+                }
+                steps.push({
+                    spinIdx: i,
+                    spinNumber: testSpins[i],
+                    nextNumber: testSpins[i + 1],
+                    action: 'SKIP',
+                    selectedPair: decision.selectedPair,
+                    selectedFilter: decision.selectedFilter,
+                    predictedNumbers: decision.numbers,
+                    confidence: 0,
+                    betPerNumber: sessionState.betPerNumber,
+                    numbersCount: decision.numbers.length,
+                    hit: false,
+                    pnl: 0,
+                    bankroll: sessionState.bankroll,
+                    cumulativeProfit: sessionState.profit,
+                    sameWaiting: !sessionState.sameArmed,
+                    sameArmedNow: sessionState.sameArmed,
+                    reason: sessionState.sameArmed
+                        ? 'trigger-gate: armed (' + latest + ' in pool)'
+                        : 'trigger-gate: waiting for trigger'
+                });
+                continue;
+            }
 
             if (decision.action === 'BET') {
                 const nextActual = testSpins[i + 1];
                 const hit = decision.numbers.includes(nextActual);
                 const numbersCount = decision.numbers.length;
-                const betUsed = sessionState.betPerNumber; // save BEFORE strategy adjusts it
+                // Strategy 5 applies session-target cap + N/4 linear
+                // scaling at bet placement. Other strategies use the
+                // base bet directly.
+                let betUsed;
+                if (strategy === 5) {
+                    const target  = STARTING_BANKROLL + 100;
+                    const remaining = target - sessionState.bankroll;
+                    const fromCap = (remaining > 0) ? Math.floor(remaining / 32) : 0;
+                    const capped  = Math.max(MIN_BET, fromCap);
+                    const baseBet = Math.min(sessionState.betPerNumber, capped);
+                    const ref     = 4;
+                    const N_managed = Math.max(1, Math.min(numbersCount, ref));
+                    betUsed = Math.max(1, Math.floor(baseBet * (N_managed / ref)));
+                } else if (strategy === 6) {
+                    // S6 Super Cautious — two-cap bet placement:
+                    //   1) Hard ceiling: s6MaxBet (default 5) — already
+                    //      enforced by _applyStrategy on each loss step,
+                    //      but clamp here defensively in case the base
+                    //      bet drifted (e.g. switch from another S).
+                    //   2) Smart cap: scale so a normal win does NOT
+                    //      overshoot remaining-to-target. floor at $1
+                    //      (not MIN_BET) per the live spec — allow a
+                    //      sub-min bet to LAND the target precisely.
+                    const S6_MAX = 5;
+                    const S6_MIN = 2;
+                    const target    = STARTING_BANKROLL + 100;
+                    const remaining = target - sessionState.bankroll;
+                    let baseBet = Math.min(sessionState.betPerNumber, S6_MAX);
+                    if (remaining > 0 && numbersCount < 36) {
+                        const maxProfitIfWin = baseBet * (36 - numbersCount);
+                        if (maxProfitIfWin > remaining) {
+                            const safe = Math.max(1, Math.floor(remaining / (36 - numbersCount)));
+                            baseBet = Math.min(baseBet, safe);
+                        }
+                    }
+                    betUsed = Math.max(1, Math.min(baseBet, S6_MAX));
+                    // Note: betUsed CAN be below S6_MIN ($2) when the
+                    // smart-cap demands it to avoid overshooting target.
+                    void S6_MIN; // silence-the-linter (declared for spec clarity)
+                } else {
+                    betUsed = sessionState.betPerNumber; // save BEFORE strategy adjusts it
+                }
                 const pnl = this._calculatePnL(betUsed, numbersCount, hit);
 
                 // Update bankroll
@@ -443,10 +630,14 @@ class AutoTestRunner {
                     sessionState.wins++;
                     sessionState.consecutiveWins++;
                     sessionState.consecutiveLosses = 0;
+                    // Trigger gate: WIN keeps us armed (continue betting).
                 } else {
                     sessionState.losses++;
                     sessionState.consecutiveLosses++;
                     sessionState.consecutiveWins = 0;
+                    // Trigger gate (Same OR Wheel mode): LOSS disarms —
+                    // wait for next trigger spin in pool.
+                    if (triggerGateOn) sessionState.sameArmed = false;
                 }
                 // A BET breaks any active SKIP streak.
                 sessionState.consecutiveSkips = 0;
@@ -469,7 +660,7 @@ class AutoTestRunner {
 
                 // Apply strategy for next bet, then enforce MAX_BET cap
                 sessionState.betPerNumber = Math.min(
-                    this._applyStrategy(strategy, hit, sessionState),
+                    this._applyStrategy(strategy, hit, sessionState, numbersCount),
                     MAX_BET
                 );
 
@@ -508,7 +699,16 @@ class AutoTestRunner {
                 }
 
                 // ── LOSS STREAK PROTECTION: reset bet to stop escalation ──
-                if (sessionState.consecutiveLosses >= LOSS_STREAK_RESET && sessionState.reanalyzeCount < MAX_RESETS) {
+                // Scoped OFF for manual-test — live has no anti-death-spiral
+                // reset, so the auto-test must not introduce one. Without
+                // this guard, the runner silently caps S4 escalation at 5
+                // consecutive losses (resetting bet to $2) which prevents
+                // the S4 6-loss escalation from ever firing and emits the
+                // "BET RESET / Loss streak" step rows the user observed.
+                // Other methods keep the existing safety net unchanged.
+                if (this._currentMethod !== 'manual-test'
+                    && sessionState.consecutiveLosses >= LOSS_STREAK_RESET
+                    && sessionState.reanalyzeCount < MAX_RESETS) {
                     sessionState.reanalyzeCount++;
 
                     // Reset bet to minimum — stops escalation death spiral
@@ -637,6 +837,151 @@ class AutoTestRunner {
         }
         if (this._currentMethod === 'AI-trained') {
             return this._aiTrainedAdapter(testSpins, idx);
+        }
+
+        // ── manual-test ──────────────────────────────────────────
+        // Pure-math replay of the live manual-mode prediction. Reads
+        // ONLY the spin history (testSpins[0..idx]) + the user's
+        // locked env / pair selections. Does NOT call engine methods
+        // or touch DOM globals — see strategies/manual-replay for
+        // the parity contract with the live UI.
+        if (this._currentMethod === 'manual-test') {
+            const cfg = this._manualTestConfig;
+            if (!cfg) {
+                return { action:'SKIP', selectedPair:null, selectedFilter:null, numbers:[], confidence:0, reason:'manual-test: no config' };
+            }
+            // Lazy-load (same pattern as the 'test' branch below).
+            let MR = null;
+            try {
+                if (typeof require === 'function') MR = require('../../strategies/manual-replay/manual-replay.js');
+            } catch (_) { /* fall through */ }
+            if (!MR && typeof window !== 'undefined' && window.ManualReplay) MR = window.ManualReplay;
+            if (!MR || typeof MR.computeManualPrediction !== 'function') {
+                return { action:'SKIP', selectedPair:null, selectedFilter:null, numbers:[], confidence:0, reason:'manual-test: manual-replay module unavailable' };
+            }
+
+            // Session-scope walk-back: only the current session's spins
+            // are visible to the auto-ref selector inside manual-replay.
+            // This mirrors a fresh live session that enters spins from
+            // the session's start point — without this, the runner
+            // feeds the entire file (testSpins[0..idx]) and the
+            // auto-ref walk-back finds different "most recent hits"
+            // than a short live session would, producing different
+            // 2-of-3 ref picks and divergent predictions.
+            //
+            // sessionStart is stashed on the runner by _runSession (see
+            // this._currentSessionStartIdx). Defensive fallback to 0 so
+            // a direct call to _simulateDecision (tests etc.) still
+            // works — that path was unreachable in normal runs anyway.
+            //
+            // Scoped to manual-test only — every other method (auto,
+            // T1-strategy, test, 3t-selection, AI-trained, manual) is
+            // untouched and continues to receive whatever history its
+            // own decision path expects.
+            const sessionStart = (typeof this._currentSessionStartIdx === 'number') ? this._currentSessionStartIdx : 0;
+            const history = testSpins.slice(sessionStart, idx + 1);
+            // Pass through refSelections so manual-replay can honour the
+            // user's per-pair 1/2/3 sub-anchor picks when the T1/T2
+            // break toggle was ON at config-capture time. When OFF,
+            // refSelections is { t1:{}, t2:{} } and manual-replay
+            // falls back to auto-pick + includeGrey as before.
+            const result = MR.computeManualPrediction(history, cfg.selections || {}, {
+                inverse:       !!cfg.inverse,
+                includeGrey:   !!cfg.includeGrey,
+                t3Halfs:       !!cfg.t3Halfs,
+                filters:       cfg.filters || null,
+                refSelections: cfg.refSelections || { t1: {}, t2: {} }
+            });
+
+            // Wheel mode override: when ON, the wheel's Table/Sign/Set
+            // filters become the bet pool source. Two interactions
+            // (matches the live behaviour from the wheel panel):
+            //
+            //   - With pair selections + non-empty manual-replay BET:
+            //     intersect pair-pool ∩ wheel-pool. Wheel filters act
+            //     as a hard mask. Already applied INSIDE manual-replay
+            //     via cfg.filters (computeManualPrediction filters its
+            //     output through the same Table/Sign/Set sets), so
+            //     here we re-apply against the 0–36 universe only when
+            //     fallback is needed.
+            //   - With NO pair selections (manual-replay returns
+            //     SKIP "No pairs produced a number set"): synthesise
+            //     a BET from the wheel-pool directly.
+            //
+            // The wheel-pool itself uses cfg.filters via the helper
+            // _manualTestWheelPool. The inverse toggle is applied
+            // there too so a flipped wheel reads correctly.
+            const wheelOn = !!cfg.wheelMode;
+            let wheelPool = null;
+            if (wheelOn) {
+                wheelPool = _manualTestWheelPool(cfg);
+            }
+
+            if (result.action === 'SKIP') {
+                // Wheel-only fallback: no pair pool → use wheel-pool
+                // as the bet (when wheelMode is ON and wheel-pool is
+                // non-empty). Otherwise the original SKIP stands.
+                if (wheelOn && Array.isArray(wheelPool) && wheelPool.length > 0) {
+                    return {
+                        action: 'BET',
+                        selectedPair: 'wheel',
+                        selectedFilter: 'wheel-mode',
+                        numbers: wheelPool.slice().sort((a, b) => a - b),
+                        confidence: 100,
+                        reason: 'wheel-mode: bet ' + wheelPool.length + ' numbers from wheel filters (no pair selected)'
+                    };
+                }
+                return {
+                    action: 'SKIP',
+                    selectedPair: null,
+                    selectedFilter: null,
+                    numbers: [],
+                    confidence: 0,
+                    reason: 'manual-test: ' + result.reason
+                };
+            }
+            // selectedPair = a stable label so the report's "Pair"
+            // column doesn't misleadingly show only one of multiple
+            // selected keys. The full set of selections is surfaced
+            // by the Overview "Manual-test Config" block and the
+            // per-sheet one-liner header (auto-test-report.js).
+            // Money management / hit detection only need result.numbers.
+            const allKeys = [
+                ...(cfg.selections?.t1 || []),
+                ...(cfg.selections?.t2 || []),
+                ...(cfg.selections?.t3 || [])
+            ];
+            const label = (allKeys.length === 1) ? allKeys[0] : 'manual';
+
+            // Pair-pool ∩ wheel-pool intersection when both modes apply.
+            // result.numbers has already been filtered by cfg.filters
+            // inside manual-replay; the wheel-pool reapplication here
+            // is idempotent. Kept explicit so the path is obvious in
+            // the log + so a future change to manual-replay's filter
+            // order can't silently drop wheel-mode coverage.
+            let finalNumbers = result.numbers;
+            if (wheelOn && Array.isArray(wheelPool)) {
+                const wp = new Set(wheelPool);
+                finalNumbers = finalNumbers.filter(n => wp.has(n));
+                if (finalNumbers.length === 0) {
+                    return {
+                        action: 'SKIP',
+                        selectedPair: null,
+                        selectedFilter: null,
+                        numbers: [],
+                        confidence: 0,
+                        reason: 'manual-test: empty after wheel-pool intersection'
+                    };
+                }
+            }
+            return {
+                action: 'BET',
+                selectedPair: label,
+                selectedFilter: 'manual-test',
+                numbers: finalNumbers,
+                confidence: 100,
+                reason: 'manual-test: ' + result.reason + (wheelOn ? ' [wheel-mode]' : '')
+            };
         }
 
         // ── Strategy-Lab ('test' method) ──
@@ -946,7 +1291,7 @@ class AutoTestRunner {
      * @param {Object} state - Session state with consecutiveLosses, consecutiveWins, betPerNumber
      * @returns {number} New betPerNumber (min $2)
      */
-    _applyStrategy(strategy, hit, state) {
+    _applyStrategy(strategy, hit, state, numbersCount) {
         const MIN_BET = 2;
         let bet = state.betPerNumber;
 
@@ -958,16 +1303,23 @@ class AutoTestRunner {
                 bet = bet + 1;
             }
         } else if (strategy === 2) {
-            // Strategy 2: Conservative — +$1 after 2 consecutive losses, -$1 after 2 consecutive wins
+            // Strategy 2: Conservative — CUMULATIVE losses model.
+            //   +$1 after every 3 cumulative losses (single wins do
+            //     NOT reset s2LossTally — only an explicit bet change does).
+            //   −$1 after 2 consecutive wins.
+            //   Both adjustments reset s2LossTally.
+            // Mirrors live app/money-management-panel.js Strategy 2 block.
             if (hit) {
                 if (state.consecutiveWins >= 2) {
                     bet = Math.max(MIN_BET, bet - 1);
-                    state.consecutiveWins = 0; // Reset after adjustment
+                    state.consecutiveWins = 0;
+                    state.s2LossTally    = 0;
                 }
             } else {
-                if (state.consecutiveLosses >= 2) {
+                state.s2LossTally = (state.s2LossTally || 0) + 1;
+                if (state.s2LossTally >= 3) {
                     bet = bet + 1;
-                    state.consecutiveLosses = 0; // Reset after adjustment
+                    state.s2LossTally = 0;
                 }
             }
         } else if (strategy === 3) {
@@ -984,17 +1336,74 @@ class AutoTestRunner {
                 }
             }
         } else if (strategy === 4) {
-            // Strategy 4: Defensive — +$1 after 5 consecutive losses, -$1 after 2 consecutive wins
-            // Min bet is $2; slowest escalation profile.
+            // Strategy 4: Defensive — CUMULATIVE losses model (matches
+            // live app/money-management-panel.js defaults):
+            //   s4LossesToIncrease = 8 → +$1 after 8 cumulative losses
+            //     (single wins do NOT reset s4LossTally — only an
+            //     explicit bet change does).
+            //   s4WinsToDecrease   = 1 → -$1 after 1 consecutive win.
+            //   Both adjustments reset s4LossTally.
             if (hit) {
-                if (state.consecutiveWins >= 2) {
+                if (state.consecutiveWins >= 1) {
                     bet = Math.max(MIN_BET, bet - 1);
-                    state.consecutiveWins = 0; // Reset after adjustment
+                    state.consecutiveWins = 0;
+                    state.s4LossTally    = 0;
                 }
             } else {
-                if (state.consecutiveLosses >= 5) {
+                state.s4LossTally = (state.s4LossTally || 0) + 1;
+                if (state.s4LossTally >= 8) {
                     bet = bet + 1;
-                    state.consecutiveLosses = 0; // Reset after adjustment
+                    state.s4LossTally = 0;
+                }
+            }
+        } else if (strategy === 5) {
+            // Strategy 5: LOGICAL — same N/4 fractional model as live.
+            //   miss adds N_managed/4 to s5LossUnits (N_managed ≤ 4)
+            //   hit  adds 1.0 to s5WinUnits (any hit = full win)
+            // Triggers: 6 cumulative loss-units → +$1 base; 1 win-unit → −$1.
+            // Min bet $2. Cap-to-target is applied at bet PLACEMENT, not here.
+            const lossesNeeded = 6;
+            const lossInc      = 1;
+            const winsNeeded   = 1;
+            const winDec       = 1;
+            const ref          = 4;
+            const N_managed    = Math.max(1, Math.min(parseInt(numbersCount, 10) || ref, ref));
+            if (hit) {
+                state.s5WinUnits  = (state.s5WinUnits || 0) + 1.0;
+                state.s5LossUnits = 0;
+                if (state.s5WinUnits >= winsNeeded) {
+                    bet = Math.max(MIN_BET, bet - winDec);
+                    state.s5WinUnits = 0;
+                }
+            } else {
+                state.s5LossUnits = (state.s5LossUnits || 0) + (N_managed / ref);
+                state.s5WinUnits  = 0;
+                if (state.s5LossUnits >= lossesNeeded) {
+                    bet = bet + lossInc;
+                    state.s5LossUnits = 0;
+                }
+            }
+        } else if (strategy === 6) {
+            // Strategy 6: SUPER CAUTIOUS — Defensive escalation with a
+            // HARD max-bet ceiling. Smart-bet target cap is applied at
+            // BET PLACEMENT (see the strategy === 6 block above in
+            // _runSession), not here — this block only handles the
+            // per-result base-bet escalation/de-escalation.
+            const lossesNeeded = 3;   // default — runner-side mirror of live
+            const lossInc      = 1;
+            const winsNeeded   = 1;
+            const winDec       = 1;
+            const S6_MIN       = 2;
+            const S6_MAX       = 5;
+            if (hit) {
+                if (state.consecutiveWins >= winsNeeded) {
+                    bet = Math.max(S6_MIN, bet - winDec);
+                    state.consecutiveWins = 0;
+                }
+            } else {
+                if (state.consecutiveLosses >= lossesNeeded) {
+                    bet = Math.min(S6_MAX, bet + lossInc);
+                    state.consecutiveLosses = 0;
                 }
             }
         }

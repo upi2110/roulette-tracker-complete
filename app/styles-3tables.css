@@ -508,19 +508,20 @@ th.t3-pair-selected {
    (#fbbf24) chosen as the static colour (the brightness peak
    of the previous pulse) so the highlight remains noticeable
    without the motion. */
+/* Golden flash: outline-only — keep the amber border + glow so
+   the matched cell is still spottable, but let the cell's own
+   background (green/blue/red hit/miss/position colors) show
+   through instead of being painted over. */
 td.t3-pm1-flash,
 .t3-pm1-flash {
     outline: 3px solid #f59e0b !important;
     outline-offset: -1px !important;
     z-index: 10 !important;
     position: relative !important;
-    background: #fbbf24 !important;
     box-shadow: 0 0 8px rgba(245, 158, 11, 0.6) !important;
 }
 
 .t3-flash-span {
-    background: #fbbf24;
-    color: #92400e;
     padding: 1px 2px;
     border-radius: 2px;
     display: inline-block;
@@ -531,37 +532,25 @@ td.t3-pm1-flash,
     text-align: center;
 }
 
-td.t3-pm1-flash span,
-.t3-pm1-flash span {
-    background: #fbbf24;
-    color: #92400e;
-}
+/* Flash spans keep their own .pos-s/.pos-o/.pos-xx coloring —
+   the amber outline is on the <td>, the inner span stays green/
+   blue/peach so the position code is readable at a glance. */
 
 td.t3-pm1-flash.t3-pair-selected,
 .t3-pm1-flash.t3-pair-selected {
     outline: 3px solid #f59e0b !important;
     outline-offset: -1px !important;
-    background: #fbbf24;
 }
-td.t3-pm1-flash.t3-pair-selected span,
-.t3-pm1-flash.t3-pair-selected span {
-    background: #fbbf24;
-    color: #92400e;
-}
-
 td.t1-flash, td.t2-flash {
     outline: 3px solid #f59e0b !important;
     outline-offset: -1px !important;
     z-index: 10 !important;
     position: relative !important;
-    background: #fbbf24 !important;
     box-shadow: 0 0 8px rgba(245, 158, 11, 0.6) !important;
 }
 
-td.t1-flash span, td.t2-flash span {
-    background: #fbbf24;
-    color: #92400e;
-}
+/* t1-flash / t2-flash inner spans: no color override — they keep
+   their .pos-s/.pos-o/.pos-xx green/blue/peach text. */
 
 /* Anchors in projections */
 .anchor-purple {

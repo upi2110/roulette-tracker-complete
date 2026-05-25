@@ -341,6 +341,22 @@ class AIPredictionPanel {
             'prevPrevMinus2_13opp': 'PP-2-13OPP'
         };
 
+        // T3-halfs split labels: when window.t3Halfs is ON the T3
+        // projections come back with "_pair" and "_13opp" suffixes
+        // (renderer-3tables.js getNextRowProjections). Provide
+        // matching display names so the AI-panel pair list shows
+        // them with readable labels instead of raw keys.
+        const _halfBases = [
+            ['prev','P'], ['prevPlus1','P+1'], ['prevMinus1','P-1'],
+            ['prevPlus2','P+2'], ['prevMinus2','P-2'], ['prevPrev','PP'],
+            ['prevPrevPlus1','PP+1'], ['prevPrevMinus1','PP-1'],
+            ['prevPrevPlus2','PP+2'], ['prevPrevMinus2','PP-2']
+        ];
+        _halfBases.forEach(([k, lbl]) => {
+            pairDisplayNames[k + '_pair']  = lbl;
+            pairDisplayNames[k + '_13opp'] = lbl + '-13OPP';
+        });
+
         // Cache for the summary dashboard so display labels stay in sync
         // with whatever loadAvailablePairs uses.
         this._summaryPairNames = pairDisplayNames;
@@ -652,16 +668,20 @@ class AIPredictionPanel {
         }
     }
 
-    _autoTriggerPredictions() {
+    _autoTriggerPredictions(immediate) {
         if (this._predictionDebounce) {
             clearTimeout(this._predictionDebounce);
         }
 
         const total = this._getTotalSelectionCount();
         if (total >= 1) {
+            // `immediate` (a real new spin) → near-instant so the
+            // prediction + bet are ready right away. The 800ms debounce
+            // is only to coalesce rapid MANUAL pair-toggling, not spins.
+            const delay = immediate ? 20 : 800;
             this._predictionDebounce = setTimeout(() => {
                 this.getPredictions();
-            }, 800);
+            }, delay);
         } else {
             this._clearAllPredictionDisplays();
         }
@@ -694,6 +714,74 @@ class AIPredictionPanel {
         }
     }
 
+    /**
+     * Sub-anchor toggle invoked when the user clicks a "1st" / "2nd"
+     * / "3rd" sub-header in Tables 1 or 2 while T1/T2 break is ON.
+     * Behaviour:
+     *   - If the pair isn't selected yet → select it via the existing
+     *     _handleTable12PairToggle path (which would auto-pick 2 refs)
+     *     and then OVERRIDE the ref set to just {refKey} so the user's
+     *     click is the explicit choice.
+     *   - If the pair IS selected → toggle refKey in/out of its ref set.
+     *     Last-ref-removal is allowed; an empty ref set means the pair
+     *     contributes nothing until at least one ref is re-clicked.
+     *   - Demote auto-pick tracking so _refreshAutoPickedPairs (which
+     *     is already a no-op when T1/T2 break is ON, but defensive)
+     *     wouldn't trample the click later.
+     *   - Trigger re-render of the per-table highlights + re-fire
+     *     getPredictions through the existing onSpinAdded flow.
+     */
+    toggleSubAnchorFromTable(pairKey, tableId, refKey) {
+        if (tableId !== 'table1' && tableId !== 'table2') return;
+        if (refKey !== 'first' && refKey !== 'second' && refKey !== 'third') return;
+
+        const pairs        = tableId === 'table1' ? this.table1Pairs        : this.table2Pairs;
+        const selections   = tableId === 'table1' ? this.table1Selections   : this.table2Selections;
+        const highlightSet = tableId === 'table1' ? this.table1SelectedPairs : this.table2SelectedPairs;
+
+        if (!pairs.some(p => p.key === pairKey)) {
+            console.warn(`⚠️ Sub-anchor toggle: ${pairKey} not available in ${tableId} yet`);
+            return;
+        }
+
+        // Ensure the pair is selected (highlight set + selections map).
+        if (!highlightSet.has(pairKey)) {
+            highlightSet.add(pairKey);
+            selections[pairKey] = new Set();
+        }
+        if (!selections[pairKey] || !(selections[pairKey] instanceof Set)) {
+            selections[pairKey] = new Set();
+        }
+
+        // Toggle the refKey in that pair's primary ref set.
+        if (selections[pairKey].has(refKey)) selections[pairKey].delete(refKey);
+        else                                 selections[pairKey].add(refKey);
+
+        // Demote auto-pick tracking (so the per-spin refresh, if ever
+        // re-enabled, won't snap back). Clear the extra-ref entry too.
+        if (this._autoPickedPairs) delete this._autoPickedPairs[`${tableId}:${pairKey}`];
+        if (this._extraRefs)       delete this._extraRefs[`${tableId}:${pairKey}`];
+
+        // If the user deselected the last ref, demote from highlight too
+        // so the table doesn't show a pair with zero contribution.
+        if (selections[pairKey].size === 0) {
+            highlightSet.delete(pairKey);
+            delete selections[pairKey];
+        }
+
+        // Re-render highlights + re-fire predictions via the existing
+        // public surface. Defensive — both methods exist on this class.
+        if (typeof this.updateSingleTableHighlights === 'function') {
+            this.updateSingleTableHighlights(tableId, highlightSet);
+        }
+        if (typeof this.renderAllCheckboxes === 'function') {
+            this.renderAllCheckboxes();
+        }
+        if (typeof this.getPredictions === 'function') {
+            try { this.getPredictions(); } catch (_) { /* tolerate early state */ }
+        }
+    }
+
     updateSingleTableHighlights(tableId, selectedSet) {
         const table = document.getElementById(tableId);
         if (!table) return;
@@ -702,9 +790,44 @@ class AIPredictionPanel {
             el.classList.remove('t3-pair-selected');
         });
 
+        // When T1/T2 break is ON and we're on T1 or T2, only highlight
+        // the cells whose data-sub matches a ref the user has actually
+        // selected for that pair (plus the anchor/Ref cells, which have
+        // no data-sub so they keep the whole-pair "this is selected"
+        // visual cue). T3 has no sub-anchors so it always uses the
+        // whole-pair highlight regardless of the toggle.
+        //
+        // When the toggle is OFF (or table is T3), behaviour is
+        // byte-identical to before: every cell carrying the pair's
+        // data-pair gets the highlight class.
+        const breakOn = (typeof window !== 'undefined' && window.t1t2Breaks === true);
+        const useSubFilter = breakOn && (tableId === 'table1' || tableId === 'table2');
+        const refsByPair = (tableId === 'table1') ? this.table1Selections
+                          : (tableId === 'table2') ? this.table2Selections
+                          : null;
+
         selectedSet.forEach(pairKey => {
-            table.querySelectorAll(`[data-pair="${pairKey}"]`).forEach(el => {
-                el.classList.add('t3-pair-selected');
+            const cells = table.querySelectorAll(`[data-pair="${pairKey}"]`);
+            if (!useSubFilter) {
+                cells.forEach(el => el.classList.add('t3-pair-selected'));
+                return;
+            }
+            const refSet = refsByPair && refsByPair[pairKey];
+            // Defensive: if no ref set exists yet (rare race) fall back
+            // to whole-pair highlight rather than leaving the pair
+            // visually unselected.
+            if (!refSet || refSet.size === 0) {
+                cells.forEach(el => el.classList.add('t3-pair-selected'));
+                return;
+            }
+            cells.forEach(el => {
+                const sub = el.dataset.sub;
+                // Anchor cells (no data-sub) always light up so the
+                // user can see which pair is active. Sub-anchor cells
+                // only light up if their refKey is in the user's set.
+                if (!sub || refSet.has(sub)) {
+                    el.classList.add('t3-pair-selected');
+                }
             });
         });
     }
@@ -860,13 +983,26 @@ class AIPredictionPanel {
             this._selectionProcessWin.focus();
             return;
         }
+        // Open at the full available screen size so the wheel +
+        // stacked rows + pair selections are visible without manual
+        // resizing. `screen.availWidth/availHeight` excludes OS
+        // chrome (dock / menu bar) which is what we want.
+        const _availW = (typeof screen !== 'undefined' && screen.availWidth)  ? screen.availWidth  : 1600;
+        const _availH = (typeof screen !== 'undefined' && screen.availHeight) ? screen.availHeight : 1000;
         const w = window.open('', 'aiSelectionProcess',
-            'width=820,height=940,resizable=yes,scrollbars=yes');
+            `width=${_availW},height=${_availH},left=0,top=0,resizable=yes,scrollbars=yes`);
         if (!w) {
             alert('Popup blocked — please allow popups for this site.');
             return;
         }
         this._selectionProcessWin = w;
+        // Belt-and-braces: some platforms ignore width/height in
+        // window.open features and use a default size. Explicitly
+        // resize + reposition once the window exists.
+        try {
+            w.moveTo(0, 0);
+            w.resizeTo(_availW, _availH);
+        } catch (_) { /* cross-origin guard — popup is same-origin so this is safe, but keep tolerant */ }
         try { w._opener_panel = this; } catch (_) { /* cross-origin guard */ }
         w.document.open();
         w.document.write(this._buildSelectionProcessHTML());
@@ -982,9 +1118,22 @@ class AIPredictionPanel {
     mode: 'rows',
     picked: { t1: new Set(), t2: new Set(), t3: new Set() },
     pickedInitialized: false,
+    // True once the user toggles a pill inside this popup. Until then,
+    // the popup's pickers mirror the main panel on every refresh so
+    // newly-added main-panel selections show up. Once dirty, the
+    // popup keeps the user's in-progress edits and only re-syncs on
+    // Apply or Revert.
+    pickedDirty: false,
     anchors: [],
     anchorsActive: true
   };
+
+  // Set/array equality helper for resync decision.
+  function _setsEqual(a, b) {
+    if (a.size !== b.length) return false;
+    for (const x of b) if (!a.has(x)) return false;
+    return true;
+  }
 
   function pullSnapshot() {
     try {
@@ -1003,6 +1152,22 @@ class AIPredictionPanel {
         state.picked.t2 = new Set(snap.current.t2);
         state.picked.t3 = new Set(snap.current.t3);
         state.pickedInitialized = true;
+      } else if (!state.pickedDirty) {
+        // Re-sync from the main panel so multi-pair selections made
+        // AFTER the popup opened are reflected in the picker pills.
+        // Skipped once the user has started editing locally (dirty
+        // flag set on first pill toggle) to avoid clobbering their
+        // in-progress edits. Revert / Apply both clear the dirty
+        // flag, which resumes auto-sync.
+        if (!_setsEqual(state.picked.t1, snap.current.t1)) {
+            state.picked.t1 = new Set(snap.current.t1);
+        }
+        if (!_setsEqual(state.picked.t2, snap.current.t2)) {
+            state.picked.t2 = new Set(snap.current.t2);
+        }
+        if (!_setsEqual(state.picked.t3, snap.current.t3)) {
+            state.picked.t3 = new Set(snap.current.t3);
+        }
       }
       document.getElementById('ts').textContent = 'updated ' + new Date().toLocaleTimeString();
       render();
@@ -1136,15 +1301,48 @@ class AIPredictionPanel {
     if (!state.snap) return host;
     const data = computeLayerData(state.snap);
     const researchSet = (state.anchorsActive && state.anchors.length) ? new Set(state.anchors) : null;
+
+    // Expand a per-table snap group ({ pk: {display, primary, grey} })
+    // into one row per selected pair so the user can see how each
+    // individual pair contributes — rather than the previous behaviour
+    // which merged every selection in T1 / T3 into a single combined
+    // row. T2 was already split into pair / 13opp; this generalises
+    // the same idea so multi-pair selections in any table become
+    // one row per pair. If the user has selected only one pair in a
+    // table, the output is identical to before. If nothing is
+    // selected, falls back to the merged row so the panel never
+    // collapses to zero rows for that table.
+    const expandGroup = (group, opts) => {
+      const entries = Object.entries(group || {});
+      if (entries.length === 0) {
+        return [{
+          id: opts.id, label: opts.label, accent: opts.accent, bg: opts.bg,
+          primary: opts.merged.primary, grey: opts.merged.grey
+        }];
+      }
+      return entries.map(([pk, v]) => ({
+        id: opts.id + ':' + pk,
+        label: opts.label + ' · ' + (v.display || pk),
+        accent: opts.accent,
+        bg: opts.bg,
+        primary: new Set(v.primary || []),
+        grey:    new Set(v.grey    || [])
+      }));
+    };
+
     const rowOrder = [];
     if (researchSet) rowOrder.push({ id:'research', label:'RESEARCH', accent:'#c2410c', bg:'#ffedd5', primary: researchSet, grey: new Set() });
     rowOrder.push(
-      { id:'final',  label:'FINAL DECISION', accent:'#a855f7', bg:'#faf5ff', primary: data.final.primary,  grey: data.final.grey },
-      { id:'t3',     label:'T3',             accent:'#60a5fa', bg:'#dbeafe', primary: data.t3.primary,     grey: data.t3.grey },
-      { id:'t2opp',  label:'T2 ·13opp',      accent:'#10b981', bg:'#d1fae5', primary: data.t2opp.primary,  grey: data.t2opp.grey },
-      { id:'t2pair', label:'T2 pair',        accent:'#34d399', bg:'#ecfdf5', primary: data.t2pair.primary, grey: data.t2pair.grey },
-      { id:'t1',     label:'T1',             accent:'#fbbf24', bg:'#fef3c7', primary: data.t1.primary,     grey: data.t1.grey }
+      { id:'final',  label:'FINAL DECISION', accent:'#a855f7', bg:'#faf5ff', primary: data.final.primary,  grey: data.final.grey }
     );
+    // T3 — one row per selected T3 pair
+    rowOrder.push(...expandGroup(state.snap.t3,     { id:'t3',     label:'T3',        accent:'#60a5fa', bg:'#dbeafe', merged: data.t3 }));
+    // T2 ·13opp — one row per selected *_13opp pair
+    rowOrder.push(...expandGroup(state.snap.t2opp,  { id:'t2opp',  label:'T2 ·13opp', accent:'#10b981', bg:'#d1fae5', merged: data.t2opp }));
+    // T2 pair — one row per selected base pair
+    rowOrder.push(...expandGroup(state.snap.t2pair, { id:'t2pair', label:'T2 pair',   accent:'#34d399', bg:'#ecfdf5', merged: data.t2pair }));
+    // T1 — one row per selected T1 pair
+    rowOrder.push(...expandGroup(state.snap.t1,     { id:'t1',     label:'T1',        accent:'#fbbf24', bg:'#fef3c7', merged: data.t1 }));
 
     const headerRow = document.createElement('div');
     headerRow.style.cssText = 'display:grid;grid-template-columns:120px repeat(37, 1fr);gap:2px;align-items:center;padding:2px 4px 4px;font-size:9px;color:#64748b;';
@@ -1223,6 +1421,9 @@ class AIPredictionPanel {
         el.addEventListener('click', () => {
           if (picked.has(p.key)) picked.delete(p.key);
           else                   picked.add(p.key);
+          // User has begun editing — pause auto-resync from main
+          // panel until they Apply or Revert.
+          state.pickedDirty = true;
           renderPickers();
         });
         host.appendChild(el);
@@ -1297,6 +1498,8 @@ class AIPredictionPanel {
       state.picked.t1 = new Set(state.snap.current.t1);
       state.picked.t2 = new Set(state.snap.current.t2);
       state.picked.t3 = new Set(state.snap.current.t3);
+      // Resume auto-sync from main panel.
+      state.pickedDirty = false;
       renderPickers();
       const s = document.getElementById('applyStatus');
       s.className = 'status'; s.textContent = 'Reverted to live state.';
@@ -1312,7 +1515,12 @@ class AIPredictionPanel {
         t2: [...state.picked.t2],
         t3: [...state.picked.t3]
       });
-      if (r && r.ok) { s.className = 'status'; s.textContent = '✓ Applied at ' + new Date().toLocaleTimeString(); }
+      if (r && r.ok) {
+        // Popup state is now in sync with the main panel — resume
+        // auto-sync from the next pullSnapshot tick.
+        state.pickedDirty = false;
+        s.className = 'status'; s.textContent = '✓ Applied at ' + new Date().toLocaleTimeString();
+      }
       else           { s.className = 'status err'; s.textContent = 'Apply failed: ' + (r && r.error || ''); }
     } catch (e) {
       s.className = 'status err';
@@ -1669,8 +1877,8 @@ class AIPredictionPanel {
         // Re-trigger predictions if any pairs selected (use debounce to avoid duplicates)
         const total = this._getTotalSelectionCount();
         if (total >= 1 && window.spins && window.spins.length >= 3) {
-            console.log('🔄 Spin added — re-triggering predictions');
-            this._autoTriggerPredictions();
+            console.log('🔄 Spin added — re-triggering predictions (immediate)');
+            this._autoTriggerPredictions(true);   // new spin → no 800ms wait
         } else if (window.spins && window.spins.length < 3) {
             console.log('⚠️ Not enough spins for predictions (need 3+)');
         }
@@ -2042,6 +2250,12 @@ class AIPredictionPanel {
     //  any refresh actually changes a stored set.
     // ═══════════════════════════════════════════════════════
     _refreshAutoPickedPairs() {
+        // T1/T2 break: when ON, freeze the auto-pick refresh so the
+        // user's manual 1st/2nd/3rd choice persists across spins. Pure
+        // early-return — no other branch in this function touched, so
+        // the OFF path is byte-identical to before. Mirrored from the
+        // wheel panel via window.t1t2Breaks + 't1t2BreaksChanged'.
+        if (typeof window !== 'undefined' && window.t1t2Breaks === true) return;
         if (!this._autoPickedPairs || !window.getAutoSelectedRefs) return;
         if (!Array.isArray(window.spins) || window.spins.length < 2) return;
         const setsEqual = (a, b) => {
@@ -2323,7 +2537,7 @@ class AIPredictionPanel {
             })));
 
             // --- INTERSECTION across ALL pairs (PRIMARY) ---
-            // Every selected pair must contain the number for it to be in the final result
+            // Every selected pair must contain the number for it to be in the final result.
             let intersection;
             if (pairSets.length === 1) {
                 intersection = new Set(pairSets[0].numbers);
@@ -2556,9 +2770,26 @@ class AIPredictionPanel {
             };
 
             // Build prediction object matching existing updatePrediction() format
+            // T1-only union for the Same-mode trigger gate. The bet pool
+            // (numbers) stays as the full intersection across T1/T2/T3 so
+            // bet sizing is unchanged — but the trigger check should fire
+            // when the spin lands in ANY T1-selected pair, ignoring T2/T3
+            // membership (per user spec: "trigger only checks T1 and
+            // wheel options").
+            const t1TriggerPool = (() => {
+                const s = new Set();
+                pairSets.forEach(ps => {
+                    if (ps.table === 'T1' && ps.numbers) {
+                        ps.numbers.forEach(n => s.add(n));
+                    }
+                });
+                return Array.from(s);
+            })();
+
             const prediction = {
                 signal: 'BET NOW',
                 numbers: finalNumbers,
+                t1TriggerPool: t1TriggerPool,
                 anchors: anchors,
                 loose: loose,
                 anchor_groups: anchorGroups,
@@ -3139,6 +3370,19 @@ class AIPredictionPanel {
 
         console.log(`🔄 AI Panel: Updating display with ${mergedPrediction.numbers.length} filtered numbers (was ${this.currentPrediction.numbers?.length || 0} unfiltered)`);
 
+        // Sync the live prediction reference to the merged-filtered
+        // view so OTHER readers (SELECTION panel's PREDICTIONS row,
+        // research panels, etc.) see the same filtered set. Re-render
+        // the summary dashboard so the PREDICTIONS / GREY-EXTRA rows
+        // repaint immediately when the user flips a wheel filter
+        // (otherwise the old unfiltered numbers would linger).
+        this.currentPrediction = mergedPrediction;
+        try {
+            if (typeof this._renderSummaryDashboard === 'function') {
+                this._renderSummaryDashboard();
+            }
+        } catch (_) {}
+
         const anchors = mergedPrediction.anchors || [];
         const loose = mergedPrediction.loose || [];
         const allNumbers = mergedPrediction.numbers || [];
@@ -3455,6 +3699,25 @@ class AIPredictionPanel {
 
         if (window.moneyPanel) {
             window.moneyPanel.pendingBet = null;
+            // Reset trigger-gate state so the "TRIGGERED" pill goes back
+            // to WAITING when the user deselects all pairs. Otherwise a
+            // stale sameArmed=true / lingering pool snapshot from the
+            // previous prediction keeps the pill green even though there's
+            // nothing to bet on.
+            if (window.moneyPanel.sessionData) {
+                window.moneyPanel.sessionData.sameArmed = false;
+            }
+            // Clear T1-specific pools (no pairs selected → no T1 trigger
+            // data). Do NOT clear _sameLastPredictedNumbers or
+            // _sameTriggerPool: when wheel mode is ON, the wheel's
+            // _applyFilters synth has just pushed the universe-pool
+            // through setPrediction RIGHT BEFORE this runs (via
+            // clearHighlights → _applyFilters → _syncMoneyPanel). Wiping
+            // them here would erase that fresh state and leave the
+            // trigger gate with no pool to evaluate against.
+            window.moneyPanel._sameT1TriggerPool = [];
+            window.moneyPanel._sameT1TriggerPoolPrev = [];
+            try { window.dispatchEvent(new CustomEvent('triggerArmedChanged', { detail: { armed: false } })); } catch (_) {}
             if (typeof window.moneyPanel.render === 'function') {
                 window.moneyPanel.render();
             }

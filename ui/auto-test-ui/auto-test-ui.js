@@ -18,7 +18,7 @@
 // share behaviour today. This constant exists so the canonical list and
 // default cannot drift out of sync between the UI, the runner's runAll
 // default, and the tests.
-const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test', 'AI-trained', 'manual'];
+const AUTO_TEST_METHODS = ['auto-test', 'T1-strategy', 'test', 'AI-trained', 'manual', 'manual-test'];
 const AUTO_TEST_DEFAULT_METHOD = 'auto-test';
 
 class AutoTestUI {
@@ -56,6 +56,9 @@ class AutoTestUI {
                     <h3 style="margin:0;color:white;font-size:14px;font-weight:700;">🧪 AUTO TEST</h3>
                     <div style="display:flex;gap:8px;align-items:center;">
                         <button id="autoTestLoadBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">📂 Load File</button>
+                        <select id="autoTestDataFolderSelect" title="Select a file from app/data/ — populates testSpins instantly. Same effect as Load File, but no native dialog." style="padding:6px 8px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;max-width:180px;">
+                            <option value="">— data/ folder —</option>
+                        </select>
                         <select id="autoTestMethodSelect" title="Auto Test method" style="padding:6px 8px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.3);border-radius:5px;cursor:pointer;background:rgba(255,255,255,0.15);color:white;">
                             <option value="auto-test" selected>auto-test</option>
                             <option value="T1-strategy">T1-strategy</option>
@@ -63,6 +66,7 @@ class AutoTestUI {
                             <option value="3t-selection">3T-Selection</option>
                             <option value="AI-trained">AI-trained</option>
                             <option value="manual">manual</option>
+                            <option value="manual-test">manual-test (file + manual selections)</option>
                         </select>
                         <button id="autoTestRunBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #22c55e;border-radius:5px;cursor:pointer;background:#22c55e;color:#000;" disabled>▶ Run Test</button>
                         <button id="autoTestExportBtn" style="padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #3b82f6;border-radius:5px;cursor:pointer;background:#3b82f6;color:white;" disabled>📊 Export Excel</button>
@@ -100,6 +104,105 @@ class AutoTestUI {
                             <span id="autoTestManualStatus" style="font-size:11px;color:#94a3b8;"></span>
                         </div>
                     </div>
+
+                    <!-- Manual-test config (separate from the 'manual' textarea-based
+                         comparison mode). Visible only when method === 'manual-test'.
+                         User picks pairs (one or more) per table + a few env toggles
+                         that mirror the live wheel/AI panel's manual-mode controls,
+                         then clicks Run as usual. Selections are snapshot-locked at
+                         run time and held for the whole session. -->
+                    <div id="autoTestManualTestSection" style="display:none;color:#cbd5e1;font-size:11px;margin-top:4px;border-top:1px dashed #334155;padding-top:6px;">
+                        <div style="margin-bottom:6px;font-weight:600;color:#22d3ee;">🛠️ manual-test — load a file, pick env toggles + pairs, then Run (no engine training required)</div>
+                        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);">
+                                <input type="checkbox" id="autoTestMtInverse"> Inverse
+                            </label>
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);">
+                                <input type="checkbox" id="autoTestMtT3Halfs"> T3 halfs
+                            </label>
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);">
+                                <input type="checkbox" id="autoTestMtIncludeGrey"> Include grey
+                            </label>
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);" title="Freeze the 1st/2nd/3rd ref pick for T1 & T2. When ON, you pick which sub-anchors to use per pair via the 1/2/3 buttons that appear next to each selected pill.">
+                                <input type="checkbox" id="autoTestMtT1T2Breaks"> T1/T2 break
+                            </label>
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);" title="Wait-for-trigger: only place a bet AFTER a spin lands in the current bet pool. Win → keep betting. Loss → wait for next trigger.">
+                                <input type="checkbox" id="autoTestMtSameMode"> Same
+                            </label>
+                            <label style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #22d3ee;border-radius:4px;background:rgba(34,211,238,0.08);" title="Bet on the wheel filters (Table/Sign/Set/Inverse) instead of pair predictions. If pairs are also selected, intersects pair-pool ∩ wheel-pool.">
+                                <input type="checkbox" id="autoTestMtWheelMode"> Wheel mode
+                            </label>
+                        </div>
+                        <!-- Table / Sign / Set filters — same controls as the live Wheel panel.
+                             Captured into manualTestConfig at Run time and applied to the bet set. -->
+                        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;padding:6px 8px;background:rgba(15,23,42,0.5);border-radius:5px;">
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <span style="font-size:10px;font-weight:700;color:#22d3ee;min-width:40px;">Table:</span>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#86efac;">
+                                    <input type="radio" name="autoTestMtTable" value="0"> 0
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#c4b5fd;">
+                                    <input type="radio" name="autoTestMtTable" value="19"> 19
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#93c5fd;">
+                                    <input type="radio" name="autoTestMtTable" value="both" checked> Both
+                                </label>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <span style="font-size:10px;font-weight:700;color:#22d3ee;min-width:40px;">2/12:</span>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#7dd3fc;">
+                                    <input type="radio" name="autoTestMt212" value="2"> 2
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#fde047;">
+                                    <input type="radio" name="autoTestMt212" value="12"> 12
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#93c5fd;">
+                                    <input type="radio" name="autoTestMt212" value="both" checked> Both
+                                </label>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <span style="font-size:10px;font-weight:700;color:#22d3ee;min-width:40px;">Sign:</span>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#86efac;">
+                                    <input type="radio" name="autoTestMtSign" value="positive"> +ve
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#cbd5e1;">
+                                    <input type="radio" name="autoTestMtSign" value="negative"> -ve
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#93c5fd;">
+                                    <input type="radio" name="autoTestMtSign" value="both" checked> Both
+                                </label>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <span style="font-size:10px;font-weight:700;color:#22d3ee;min-width:40px;">Set:</span>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#fbbf24;">
+                                    <input type="checkbox" id="autoTestMtSet0" checked> 0
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#10b981;">
+                                    <input type="checkbox" id="autoTestMtSet5" checked> 5
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;color:#a78bfa;">
+                                    <input type="checkbox" id="autoTestMtSet6" checked> 6
+                                </label>
+                            </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:5px;">
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <strong style="color:#fbbf24;min-width:30px;">T1:</strong>
+                                <div id="autoTestMtT1Pills" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <strong style="color:#34d399;min-width:30px;">T2:</strong>
+                                <div id="autoTestMtT2Pills" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <strong style="color:#60a5fa;min-width:30px;">T3:</strong>
+                                <div id="autoTestMtT3Pills" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+                            </div>
+                        </div>
+                        <div style="margin-top:6px;font-size:10px;color:#94a3b8;">
+                            <span id="autoTestMtSummary">No pairs selected. Use the live tables to see which pair keys are available, or click pills below to toggle.</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Progress -->
@@ -118,6 +221,9 @@ class AutoTestUI {
                         <button class="auto-test-tab" data-tab="strategy2" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 2</button>
                         <button class="auto-test-tab" data-tab="strategy3" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 3</button>
                         <button class="auto-test-tab" data-tab="strategy4" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 4</button>
+                        <button class="auto-test-tab" data-tab="strategy5" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 5</button>
+                        <button class="auto-test-tab" data-tab="strategy6" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 6</button>
+                        <button class="auto-test-tab" data-tab="strategy7" style="padding:8px 16px;font-size:11px;font-weight:600;border:none;border-bottom:2px solid transparent;cursor:pointer;background:transparent;color:#94a3b8;">Strategy 7</button>
                     </div>
                 </div>
 
@@ -141,6 +247,52 @@ class AutoTestUI {
         const methodSel = document.getElementById('autoTestMethodSelect');
 
         if (loadBtn) loadBtn.addEventListener('click', () => this.loadTestFile());
+
+        // 📂 data/ folder dropdown — populate once on init via the
+        // existing aiAPI.loadHistoricalData() IPC handler (reads .txt
+        // files from app/data/). When the user picks a file, parse its
+        // content via _parseAndStore — exactly what Load File does
+        // after the open-file dialog, just without the dialog.
+        const folderSel = document.getElementById('autoTestDataFolderSelect');
+        if (folderSel) {
+            this._dataFolderCache = null;   // {filename: content, ...}
+            const populate = async () => {
+                try {
+                    if (!window.aiAPI || typeof window.aiAPI.loadHistoricalData !== 'function') return;
+                    const res = await window.aiAPI.loadHistoricalData();
+                    const files = (res && Array.isArray(res.files)) ? res.files : [];
+                    this._dataFolderCache = {};
+                    // Reset options to the placeholder, then append.
+                    while (folderSel.options.length > 1) folderSel.remove(1);
+                    files.sort((a, b) => a.filename.localeCompare(b.filename));
+                    for (const f of files) {
+                        this._dataFolderCache[f.filename] = f.content;
+                        const opt = document.createElement('option');
+                        opt.value = f.filename;
+                        opt.textContent = f.filename;
+                        folderSel.appendChild(opt);
+                    }
+                    if (files.length === 0) {
+                        folderSel.options[0].textContent = '— data/ folder (empty) —';
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Failed to populate data folder list:', e && e.message);
+                }
+            };
+            populate();
+            folderSel.addEventListener('change', () => {
+                const name = folderSel.value;
+                if (!name) return;
+                const content = this._dataFolderCache && this._dataFolderCache[name];
+                if (content == null) {
+                    console.warn(`⚠️ No cached content for ${name}; re-loading folder…`);
+                    populate();
+                    return;
+                }
+                this._parseAndStore(content, name);
+            });
+        }
+
         if (runBtn) runBtn.addEventListener('click', () => this.runTest());
         if (exportBtn) exportBtn.addEventListener('click', () => this.exportExcel());
         if (submitBtn) submitBtn.addEventListener('click', () => this.submitToResultTesting());
@@ -330,7 +482,9 @@ class AutoTestUI {
             const sel = document.getElementById('autoTestManualStrategy');
             if (sel && sel.value) effectiveMethod = sel.value;
         }
-        if (effectiveMethod !== 'AI-trained' && !engine.isTrained) {
+        // manual-test uses user-supplied pair selections — no engine
+        // training needed. Same exemption AI-trained already has.
+        if (effectiveMethod !== 'AI-trained' && effectiveMethod !== 'manual-test' && !engine.isTrained) {
             // Surface WHY the method is blocked: which TRAIN mode the
             // method requires, and which mode is currently active. The
             // user may have clicked TRAIN with a placeholder mode
@@ -400,13 +554,24 @@ class AutoTestUI {
                 const sel = document.getElementById('autoTestManualStrategy');
                 if (sel && sel.value) manualStrategy = sel.value;
             }
+            // Step 1 (UI only): snapshot the manual-test config so it's
+            // visible in the console for verification. The runner does
+            // NOT consume it yet — that's Step 2. Until then a
+            // manual-test run executes the existing default pipeline
+            // (auto-test behaviour) so it never blows up.
+            let manualTestConfig = null;
+            if (this.testMethod === 'manual-test') {
+                manualTestConfig = this._captureManualTestConfig();
+                console.log('🛠️ manual-test config snapshot (Step 1 — runner integration pending):', manualTestConfig);
+            }
             this.result = await runner.runAll(
                 this.testSpins,
                 {
                     testFile: this.testFileName || 'manual',
                     batchSize: 20,
                     method: this.testMethod,
-                    manualStrategy: manualStrategy
+                    manualStrategy: manualStrategy,
+                    manualTestConfig: manualTestConfig
                 },
                 (pct, msg) => this.updateProgress(pct, msg)
             );
@@ -466,6 +631,14 @@ class AutoTestUI {
     async exportExcel() {
         if (!this.result) return;
 
+        // Disable the export / run buttons while building the workbook
+        // so the user can't fire a second export on top of the first.
+        const exportBtn = document.getElementById('autoTestExportBtn');
+        const runBtn    = document.getElementById('autoTestRunBtn');
+        const prevExportLabel = exportBtn ? exportBtn.textContent : null;
+        if (exportBtn) { exportBtn.disabled = true; exportBtn.textContent = '⏳ Exporting…'; }
+        if (runBtn) runBtn.disabled = true;
+
         try {
             const ExcelJSModule = this._getExcelJS();
             if (!ExcelJSModule) {
@@ -480,13 +653,28 @@ class AutoTestUI {
             }
 
             const reportGen = new ReportClass(ExcelJSModule);
-            const workbook = reportGen.generate(this.result);
+            // Prefer the async path so the renderer stays responsive on
+            // large runs (500+ sessions × 5 strategies = thousands of
+            // detail sheets). Falls back to the sync generate() if the
+            // currently-loaded module predates the async addition.
+            const progressCb = (pct, msg) => this.updateProgress(pct, msg);
+            const workbook = (typeof reportGen.generateAsync === 'function')
+                ? await reportGen.generateAsync(this.result, progressCb)
+                : reportGen.generate(this.result);
+            this.updateProgress(98, 'Writing file…');
             await reportGen.saveToFile(workbook);
+            this.updateProgress(100, 'Export complete');
 
             console.log('✅ Excel report exported');
         } catch (err) {
             this._showError(`Export failed: ${err.message}`);
             console.error('❌ Export failed:', err);
+        } finally {
+            if (exportBtn) {
+                exportBtn.disabled = false;
+                exportBtn.textContent = prevExportLabel || '📊 Export Excel';
+            }
+            if (runBtn) runBtn.disabled = false;
         }
     }
 
@@ -584,12 +772,15 @@ class AutoTestUI {
             return;
         }
 
-        const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious', 4: '🛡️ Defensive' };
-        const colors = { 1: '#28a745', 2: '#007bff', 3: '#6f42c1', 4: '#0f766e' };
+        const strategyNames = { 1: '🟢 Aggressive', 2: '🔵 Conservative', 3: '🟣 Cautious', 4: '🛡️ Defensive', 5: '🧠 Logical', 6: '🪶 Super Cautious', 7: '➖ Flat Bet' };
+        const colors = { 1: '#28a745', 2: '#007bff', 3: '#6f42c1', 4: '#0f766e', 5: '#4338ca', 6: '#475569' };
 
         let bestStrategy = 1;
         let bestWinRate = 0;
-        for (const num of [1, 2, 3, 4]) {
+        for (const num of [1, 2, 3, 4, 5, 6, 7]) {
+            // Defensive: runner may not emit every strategy slot
+            // (e.g. Flat Bet S7 was added later — older runners skip it).
+            if (!result.strategies[num] || !result.strategies[num].summary) continue;
             const wr = result.strategies[num].summary.winRate;
             if (wr > bestWinRate) { bestWinRate = wr; bestStrategy = num; }
         }
@@ -620,7 +811,8 @@ class AutoTestUI {
                 </thead>
                 <tbody>`;
 
-        for (const num of [1, 2, 3, 4]) {
+        for (const num of [1, 2, 3, 4, 5, 6, 7]) {
+            if (!result.strategies[num] || !result.strategies[num].summary) continue;
             const s = result.strategies[num].summary;
             const isBest = num === bestStrategy && bestWinRate > 0;
             const rowBg = isBest ? 'rgba(34,197,94,0.1)' : 'transparent';
@@ -654,7 +846,8 @@ class AutoTestUI {
 
         // Bar charts
         html += '<div style="margin-top:16px;">';
-        for (const num of [1, 2, 3, 4]) {
+        for (const num of [1, 2, 3, 4, 5, 6, 7]) {
+            if (!result.strategies[num] || !result.strategies[num].summary) continue;
             const s = result.strategies[num].summary;
             const total = s.totalSessions || 1;
             const winPct = (s.wins / total * 100).toFixed(0);
@@ -878,10 +1071,370 @@ class AutoTestUI {
     _applyMethodVisibility() {
         if (typeof document === 'undefined') return;
         const isManual = (this.testMethod === 'manual');
+        const isManualTest = (this.testMethod === 'manual-test');
         const manualSec = document.getElementById('autoTestManualSection');
+        const manualTestSec = document.getElementById('autoTestManualTestSection');
         const loadBtn   = document.getElementById('autoTestLoadBtn');
-        if (manualSec) manualSec.style.display = isManual ? 'block' : 'none';
-        if (loadBtn)   loadBtn.style.display   = isManual ? 'none'  : '';
+        // 'manual'      — textarea entry, hides Load File.
+        // 'manual-test' — file-loaded run with manual env + pair config,
+        //                 keeps Load File visible. The two sections live
+        //                 in the same container so we toggle them
+        //                 independently.
+        if (manualSec)     manualSec.style.display     = isManual     ? 'block' : 'none';
+        if (manualTestSec) manualTestSec.style.display = isManualTest ? 'block' : 'none';
+        if (loadBtn)       loadBtn.style.display       = isManual     ? 'none'  : '';
+        if (isManualTest) this._renderManualTestPills();
+    }
+
+    /**
+     * Render the pair-selection pills for manual-test mode. Pulls the
+     * currently-available pair lists from window.aiPanel (which keeps
+     * them in sync with the live tables) so the user sees the same
+     * pair keys they'd see in the live AI prediction panel. Pills are
+     * click-to-toggle; the in-memory selection is held on this
+     * instance and snapshotted into the run options when Run is
+     * pressed.
+     *
+     * Defensive: if aiPanel hasn't loaded pairs yet (not enough spins)
+     * the pills areas show a placeholder note. Idempotent — safe to
+     * re-call when the user adds more spins.
+     */
+    _renderManualTestPills() {
+        if (typeof document === 'undefined') return;
+        if (!this._mtSelections) {
+            this._mtSelections = { t1: new Set(), t2: new Set(), t3: new Set() };
+        }
+        // Per-pair primary-ref selections used when "T1/T2 break" is ON.
+        // Shape: { t1: { 'prevPlus1': Set(['first','second']) }, t2: {...} }.
+        // Defaulted to all 3 refs the first time a pair is touched while
+        // the toggle is ON. Persists across re-renders so the user's
+        // 1/2/3 picks survive add/remove operations on other pairs.
+        if (!this._mtRefSelections) {
+            this._mtRefSelections = { t1: {}, t2: {} };
+        }
+        // Mirror the live wheel-panel "T1/T2 break" toggle into the
+        // local checkbox on first render. Read window.t1t2Breaks if
+        // available; otherwise fall back to whatever the local
+        // checkbox currently shows (default OFF).
+        const breakCb = document.getElementById('autoTestMtT1T2Breaks');
+        if (breakCb && !breakCb._autoTestMtSynced) {
+            breakCb._autoTestMtSynced = true;
+            if (typeof window !== 'undefined' && typeof window.t1t2Breaks === 'boolean') {
+                breakCb.checked = window.t1t2Breaks;
+            }
+            // Toggle in the panel broadcasts to the wheel panel via
+            // the shared event so the two stay in sync. Re-renders
+            // pills so sub-toggles appear/disappear.
+            breakCb.addEventListener('change', () => {
+                const v = !!breakCb.checked;
+                if (typeof window !== 'undefined') {
+                    window.t1t2Breaks = v;
+                    try { localStorage.setItem('strategyLab.t1t2Breaks', v ? '1' : '0'); } catch (_) {}
+                    try { window.dispatchEvent(new CustomEvent('t1t2BreaksChanged', { detail: { value: v } })); } catch (_) {}
+                }
+                this._renderManualTestPills();
+            });
+            // Listen for the same event so a wheel-panel flip keeps
+            // this checkbox in sync.
+            window.addEventListener('t1t2BreaksChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (breakCb.checked !== v) {
+                    breakCb.checked = v;
+                    this._renderManualTestPills();
+                }
+            });
+        }
+        const t1t2BreaksOn = !!(breakCb && breakCb.checked);
+
+        // Mirror the live wheel-panel "Same" toggle into the local
+        // checkbox on first render. Same plumbing pattern as T1/T2
+        // break: bidirectional sync via 'sameModeChanged' event.
+        const sameCb = document.getElementById('autoTestMtSameMode');
+        if (sameCb && !sameCb._autoTestMtSynced) {
+            sameCb._autoTestMtSynced = true;
+            if (typeof window !== 'undefined' && typeof window.sameMode === 'boolean') {
+                sameCb.checked = window.sameMode;
+            }
+            sameCb.addEventListener('change', () => {
+                const v = !!sameCb.checked;
+                if (typeof window !== 'undefined') {
+                    window.sameMode = v;
+                    try { localStorage.setItem('strategyLab.sameMode', v ? '1' : '0'); } catch (_) {}
+                    try { window.dispatchEvent(new CustomEvent('sameModeChanged', { detail: { value: v } })); } catch (_) {}
+                }
+            });
+            window.addEventListener('sameModeChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (sameCb.checked !== v) sameCb.checked = v;
+            });
+        }
+
+        // Mirror the live wheel-panel "Wheel mode" toggle.
+        const wheelCb = document.getElementById('autoTestMtWheelMode');
+        if (wheelCb && !wheelCb._autoTestMtSynced) {
+            wheelCb._autoTestMtSynced = true;
+            if (typeof window !== 'undefined' && typeof window.wheelMode === 'boolean') {
+                wheelCb.checked = window.wheelMode;
+            }
+            wheelCb.addEventListener('change', () => {
+                const v = !!wheelCb.checked;
+                if (typeof window !== 'undefined') {
+                    window.wheelMode = v;
+                    try { localStorage.setItem('strategyLab.wheelMode', v ? '1' : '0'); } catch (_) {}
+                    try { window.dispatchEvent(new CustomEvent('wheelModeChanged', { detail: { value: v } })); } catch (_) {}
+                }
+            });
+            window.addEventListener('wheelModeChanged', (e) => {
+                const v = !!(e && e.detail && e.detail.value);
+                if (wheelCb.checked !== v) wheelCb.checked = v;
+            });
+        }
+        // Static pair-key list — doesn't depend on the live AI panel
+        // having spins. These are the symbolic ref-keys used across the
+        // whole codebase; the runner will compute the actual numbers
+        // per spin from the loaded test file.
+        const T12_PAIRS = [
+            { key: 'ref0',                   display: '0' },
+            { key: 'ref19',                  display: '19' },
+            { key: 'prev',                   display: 'P' },
+            { key: 'prev_13opp',             display: 'P-13OPP' },
+            { key: 'prevPlus1',              display: 'P+1' },
+            { key: 'prevPlus1_13opp',        display: 'P+1-13OPP' },
+            { key: 'prevMinus1',             display: 'P-1' },
+            { key: 'prevMinus1_13opp',       display: 'P-1-13OPP' },
+            { key: 'prevPlus2',              display: 'P+2' },
+            { key: 'prevPlus2_13opp',        display: 'P+2-13OPP' },
+            { key: 'prevMinus2',             display: 'P-2' },
+            { key: 'prevMinus2_13opp',       display: 'P-2-13OPP' },
+            { key: 'prevPrev',               display: 'PP' },
+            { key: 'prevPrev_13opp',         display: 'PP-13OPP' },
+            { key: 'prevPrevPlus1',          display: 'PP+1' },
+            { key: 'prevPrevPlus1_13opp',    display: 'PP+1-13OPP' },
+            { key: 'prevPrevMinus1',         display: 'PP-1' },
+            { key: 'prevPrevMinus1_13opp',   display: 'PP-1-13OPP' },
+            { key: 'prevPrevPlus2',          display: 'PP+2' },
+            { key: 'prevPrevPlus2_13opp',    display: 'PP+2-13OPP' },
+            { key: 'prevPrevMinus2',         display: 'PP-2' },
+            { key: 'prevPrevMinus2_13opp',   display: 'PP-2-13OPP' }
+        ];
+        // T3 uses the same 10 base pair families (no _13opp variants
+        // unless T3-halfs is ON — in that case each splits into _pair
+        // and _13opp half).
+        const T3_BASE = [
+            { key: 'prev',           display: 'P' },
+            { key: 'prevPlus1',      display: 'P+1' },
+            { key: 'prevMinus1',     display: 'P-1' },
+            { key: 'prevPlus2',      display: 'P+2' },
+            { key: 'prevMinus2',     display: 'P-2' },
+            { key: 'prevPrev',       display: 'PP' },
+            { key: 'prevPrevPlus1',  display: 'PP+1' },
+            { key: 'prevPrevMinus1', display: 'PP-1' },
+            { key: 'prevPrevPlus2',  display: 'PP+2' },
+            { key: 'prevPrevMinus2', display: 'PP-2' }
+        ];
+        const t3HalfsCb = document.getElementById('autoTestMtT3Halfs');
+        const halfsOn = !!(t3HalfsCb && t3HalfsCb.checked);
+        const t3 = halfsOn
+            ? T3_BASE.flatMap(p => [
+                { key: p.key + '_pair',  display: p.display },
+                { key: p.key + '_13opp', display: p.display + '-13OPP' }
+            ])
+            : T3_BASE;
+        const t1 = T12_PAIRS;
+        const t2 = T12_PAIRS;
+
+        // tableKey ∈ {'t1','t2','t3'} — drives whether sub-anchor 1/2/3
+        // toggles are rendered next to a selected pill (only t1/t2 when
+        // T1/T2 break is ON).
+        const draw = (hostId, pairs, sel, accent, tableKey) => {
+            const host = document.getElementById(hostId);
+            if (!host) return;
+            host.innerHTML = '';
+            if (pairs.length === 0) {
+                host.innerHTML = '<span style="color:#64748b;font-size:10px;font-style:italic;">no pairs available (add spins)</span>';
+                return;
+            }
+            pairs.forEach(p => {
+                // Inline wrapper so the pill and its 1/2/3 sub-toggles
+                // (when shown) stay glued together as a unit. Adds a
+                // tiny bottom margin so wrapping doesn't crush rows.
+                const wrap = document.createElement('span');
+                wrap.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-bottom:2px;';
+
+                const pill = document.createElement('span');
+                const on = sel.has(p.key);
+                pill.textContent = p.display || p.key;
+                pill.title = p.key;
+                pill.style.cssText = `
+                    padding:2px 8px;font-size:10px;font-weight:700;border-radius:3px 0 0 3px;cursor:pointer;
+                    border:1px solid ${on ? accent : '#475569'};
+                    background:${on ? accent : 'rgba(71,85,105,0.2)'};
+                    color:${on ? '#0f172a' : '#cbd5e1'};
+                    user-select:none;
+                `;
+                pill.addEventListener('click', () => {
+                    if (sel.has(p.key)) {
+                        sel.delete(p.key);
+                        // Also drop any ref-selection state for this pair
+                        // so re-selecting it later starts with the
+                        // default-all-3 again.
+                        if ((tableKey === 't1' || tableKey === 't2') && this._mtRefSelections[tableKey]) {
+                            delete this._mtRefSelections[tableKey][p.key];
+                        }
+                    } else {
+                        sel.add(p.key);
+                        // Pre-populate per-pair ref selection to all 3
+                        // refs the first time it's added while
+                        // T1/T2 break is ON.
+                        if ((tableKey === 't1' || tableKey === 't2') && t1t2BreaksOn) {
+                            if (!this._mtRefSelections[tableKey][p.key]) {
+                                this._mtRefSelections[tableKey][p.key] = new Set(['first', 'second', 'third']);
+                            }
+                        }
+                    }
+                    this._renderManualTestPills();
+                });
+                wrap.appendChild(pill);
+
+                // Sub-anchor toggles — only for T1/T2 pairs that are
+                // currently selected AND the T1/T2 break toggle is ON.
+                // T3 pairs never get these (T3 has its own halfs system).
+                if (on && t1t2BreaksOn && (tableKey === 't1' || tableKey === 't2')) {
+                    // Ensure a default ref-selection exists for this pair.
+                    if (!this._mtRefSelections[tableKey][p.key]) {
+                        this._mtRefSelections[tableKey][p.key] = new Set(['first', 'second', 'third']);
+                    }
+                    const refSel = this._mtRefSelections[tableKey][p.key];
+                    const SUB = [
+                        { key: 'first',  label: '1' },
+                        { key: 'second', label: '2' },
+                        { key: 'third',  label: '3' }
+                    ];
+                    SUB.forEach((s, i) => {
+                        const btn = document.createElement('span');
+                        const subOn = refSel.has(s.key);
+                        btn.textContent = s.label;
+                        btn.title = `${s.key} ref`;
+                        const isLast = (i === SUB.length - 1);
+                        btn.style.cssText = `
+                            padding:2px 5px;font-size:10px;font-weight:700;cursor:pointer;
+                            border:1px solid ${subOn ? accent : '#475569'};
+                            border-left:none;
+                            border-radius:${isLast ? '0 3px 3px 0' : '0'};
+                            background:${subOn ? accent : 'rgba(71,85,105,0.2)'};
+                            color:${subOn ? '#0f172a' : '#cbd5e1'};
+                            user-select:none;
+                            min-width:14px;text-align:center;
+                        `;
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (refSel.has(s.key)) refSel.delete(s.key);
+                            else                   refSel.add(s.key);
+                            this._renderManualTestPills();
+                        });
+                        wrap.appendChild(btn);
+                    });
+                }
+
+                host.appendChild(wrap);
+            });
+        };
+
+        draw('autoTestMtT1Pills', t1, this._mtSelections.t1, '#fbbf24', 't1');
+        draw('autoTestMtT2Pills', t2, this._mtSelections.t2, '#34d399', 't2');
+        draw('autoTestMtT3Pills', t3, this._mtSelections.t3, '#60a5fa', 't3');
+
+        // Wire the T3-halfs checkbox to re-render T3 pills (drop any
+        // selected keys that no longer exist in the new list — e.g.,
+        // switching halfs ON drops 'prevPlus1' since it becomes
+        // 'prevPlus1_pair' / 'prevPlus1_13opp'). Bind once.
+        if (t3HalfsCb && !t3HalfsCb._autoTestMtBound) {
+            t3HalfsCb._autoTestMtBound = true;
+            t3HalfsCb.addEventListener('change', () => {
+                // Drop selections that don't exist in the new t3 key set
+                const newKeys = new Set((t3HalfsCb.checked
+                    ? T3_BASE.flatMap(p => [p.key + '_pair', p.key + '_13opp'])
+                    : T3_BASE.map(p => p.key)));
+                this._mtSelections.t3.forEach(k => { if (!newKeys.has(k)) this._mtSelections.t3.delete(k); });
+                this._renderManualTestPills();
+            });
+        }
+
+        const summary = document.getElementById('autoTestMtSummary');
+        if (summary) {
+            const total = this._mtSelections.t1.size + this._mtSelections.t2.size + this._mtSelections.t3.size;
+            if (total === 0) {
+                summary.textContent = 'No pairs selected. Click pills above to choose. Toggles + selections lock at Run time.';
+                summary.style.color = '#94a3b8';
+            } else {
+                const t1Sel = [...this._mtSelections.t1].join(', ') || '—';
+                const t2Sel = [...this._mtSelections.t2].join(', ') || '—';
+                const t3Sel = [...this._mtSelections.t3].join(', ') || '—';
+                summary.textContent = `${total} pair(s) selected | T1: ${t1Sel} | T2: ${t2Sel} | T3: ${t3Sel}`;
+                summary.style.color = '#cbd5e1';
+            }
+        }
+    }
+
+    /**
+     * Snapshot the manual-test config when the user presses Run. The
+     * runner consumes this object via options.manualTestConfig in
+     * Step 2 (runner integration — not yet wired). For Step 1 we
+     * just capture and log it so the UI can be verified visually.
+     */
+    _captureManualTestConfig() {
+        if (typeof document === 'undefined') return null;
+        const cb = (id) => {
+            const el = document.getElementById(id);
+            return !!(el && el.checked);
+        };
+        const radio = (name) => {
+            const checked = document.querySelector(`input[name="${name}"]:checked`);
+            return checked ? checked.value : null;
+        };
+        // Snapshot per-pair ref selections when T1/T2 break is ON.
+        // Only pairs currently selected in T1/T2 contribute; serialised
+        // as plain arrays for the runner / Excel renderer. When the
+        // toggle is OFF the runner ignores refSelections and falls
+        // back to the existing auto-ref + grey logic, so this field
+        // is harmless when present but unused.
+        const t1t2BreaksOn = cb('autoTestMtT1T2Breaks');
+        const refSelections = { t1: {}, t2: {} };
+        if (t1t2BreaksOn && this._mtRefSelections) {
+            ['t1','t2'].forEach(tk => {
+                const sel = (tk === 't1') ? this._mtSelections.t1 : this._mtSelections.t2;
+                sel.forEach(pairKey => {
+                    const refs = this._mtRefSelections[tk] && this._mtRefSelections[tk][pairKey];
+                    refSelections[tk][pairKey] = refs
+                        ? [...refs]
+                        : ['first', 'second', 'third'];
+                });
+            });
+        }
+        return {
+            inverse:      cb('autoTestMtInverse'),
+            t3Halfs:      cb('autoTestMtT3Halfs'),
+            includeGrey:  cb('autoTestMtIncludeGrey'),
+            t1t2Breaks:   t1t2BreaksOn,
+            sameMode:     cb('autoTestMtSameMode'),
+            wheelMode:    cb('autoTestMtWheelMode'),
+            filters: {
+                table:   radio('autoTestMtTable') || 'both',
+                table212: radio('autoTestMt212')  || 'both',
+                sign:    radio('autoTestMtSign')  || 'both',
+                sets:    {
+                    set0: cb('autoTestMtSet0'),
+                    set5: cb('autoTestMtSet5'),
+                    set6: cb('autoTestMtSet6')
+                }
+            },
+            selections: {
+                t1: this._mtSelections ? [...this._mtSelections.t1] : [],
+                t2: this._mtSelections ? [...this._mtSelections.t2] : [],
+                t3: this._mtSelections ? [...this._mtSelections.t3] : []
+            },
+            refSelections: refSelections
+        };
     }
 
     /**
