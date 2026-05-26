@@ -349,7 +349,36 @@ class MoneyManagementPanel {
                 status.style.color = '#155724';  // Dark green
             }
             console.log('✅ Betting ENABLED - System will place bets automatically');
-    
+
+            // EVERY-SPIN (wheel/manual) resume: if the gate is armed and
+            // we have a pool but no pendingBet (because pausing cleared it
+            // and arming-while-paused never stamped), stamp one NOW so
+            // betting restarts on the next spin without waiting for the
+            // gate to re-arm. Same mode is excluded — it must wait for a
+            // real trigger spin. This is the immediate counterpart to the
+            // recovery stamp in checkForNewSpin.
+            const everySpinMode = (typeof window !== 'undefined' && (window.wheelMode === true || window.manualMode === true));
+            if (everySpinMode
+                && this.sessionData.sameArmed
+                && !this.pendingBet
+                && Array.isArray(this._sameLastPredictedNumbers)
+                && this._sameLastPredictedNumbers.length > 0) {
+                const numbers = this._sameLastPredictedNumbers.slice();
+                const numbersCount = numbers.length;
+                const betAmount = this.calculateBetAmount(numbersCount);
+                if (betAmount > 0) {
+                    const spins = window.spins || window.spinData;
+                    const currentCount = (spins && spins.length) ? spins.length : (this.lastSpinCount || 0);
+                    this.pendingBet = {
+                        betAmount: betAmount,
+                        numbersCount: numbersCount,
+                        predictedNumbers: numbers,
+                        placedAtSpinCount: currentCount
+                    };
+                    console.log(`✅ Every-spin resume: stamped pendingBet at count=${currentCount} (${numbersCount} numbers, $${betAmount}/num)`);
+                }
+            }
+
             // CRITICAL: Get fresh prediction immediately when starting
             if (window.aiPanel && window.aiPanel.getPredictions) {
                 setTimeout(() => {
@@ -1130,6 +1159,34 @@ class MoneyManagementPanel {
                                 };
                                 console.log(`✅ Same mode: pendingBet stamped at count=${currentCount} (${numbersCount} numbers, $${betAmount}/num) — will resolve on next spin`);
                             }
+                        }
+                    } else if (wheelEveryGate
+                        && this.sessionData.sameArmed
+                        && this.sessionData.isBettingEnabled
+                        && !this.pendingBet
+                        && Array.isArray(this._sameLastPredictedNumbers)
+                        && this._sameLastPredictedNumbers.length > 0) {
+                        // EVERY-SPIN (wheel/manual) recovery stamp: we are
+                        // already armed but have no pendingBet. This happens
+                        // when the gate armed while betting was PAUSED (the
+                        // arm block above skips stamping when betting is
+                        // disabled), then betting was re-enabled — leaving
+                        // sameArmed=true forever with nothing to resolve, so
+                        // every spin logged "waiting, armed=true" and no bet
+                        // was placed (exactly the user's report). Stamp now
+                        // so the next spin bets. Same mode deliberately does
+                        // NOT do this — it must wait for a real trigger.
+                        const numbers = this._sameLastPredictedNumbers.slice();
+                        const numbersCount = numbers.length;
+                        const betAmount = this.calculateBetAmount(numbersCount);
+                        if (betAmount > 0) {
+                            this.pendingBet = {
+                                betAmount: betAmount,
+                                numbersCount: numbersCount,
+                                predictedNumbers: numbers,
+                                placedAtSpinCount: currentCount
+                            };
+                            console.log(`✅ Every-spin: recovery-stamped pendingBet at count=${currentCount} (${numbersCount} numbers, $${betAmount}/num) — armed while paused, betting now enabled`);
                         }
                     } else {
                         // Explain the two gates separately so the reason
