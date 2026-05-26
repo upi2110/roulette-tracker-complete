@@ -481,12 +481,31 @@ class RouletteWheel {
                 } catch (_) {}
                 this._refreshTriggerStatus();
                 if (v) {
-                    // Toggled ON: re-run filter pipeline so the wheel
-                    // synthesises the universe and pushes the
-                    // filtered pool to the money panel.
+                    // Toggled ON: wheel mode bets EVERY spin on whatever
+                    // options the user selected — so arm the money panel
+                    // immediately. Without this the gate stays disarmed
+                    // until the first spin lands, costing one spin of
+                    // betting. Arming here lets the very next prediction
+                    // stamp a pendingBet (gateBlocks is false when armed).
+                    if (window.moneyPanel && window.moneyPanel.sessionData) {
+                        window.moneyPanel.sessionData.sameArmed = true;
+                        try { window.dispatchEvent(new CustomEvent('triggerArmedChanged', { detail: { armed: true } })); } catch (_) {}
+                    }
+                    // Re-run filter pipeline so the wheel synthesises the
+                    // universe and pushes the filtered pool to the money
+                    // panel.
                     try { this._applyFilters(); } catch (_) {}
                 } else {
-                    // Toggled OFF: when a real pair-derived prediction
+                    // Toggled OFF: wheel mode's every-spin auto-arm no
+                    // longer applies. Disarm unless Same mode is ON (which
+                    // owns its own wait-for-trigger lifecycle). This stops
+                    // a leftover armed state from auto-betting once wheel
+                    // mode is off.
+                    if (window.sameMode !== true && window.moneyPanel && window.moneyPanel.sessionData) {
+                        window.moneyPanel.sessionData.sameArmed = false;
+                        try { window.dispatchEvent(new CustomEvent('triggerArmedChanged', { detail: { armed: false } })); } catch (_) {}
+                    }
+                    // When a real pair-derived prediction
                     // exists, re-run filters so the pair path takes
                     // over again. When NO pair prediction exists, the
                     // wheel's stale synthesised pool would otherwise
@@ -864,7 +883,16 @@ class RouletteWheel {
             && window.moneyPanel.sessionData
             && window.moneyPanel.sessionData.sameArmed === true);
         el.style.display = 'inline-block';
-        if (armed) {
+        if (wheelOn) {
+            // WHEEL mode bets EVERY spin on whatever options the user
+            // selected — there is no wait-for-trigger, so the pill must
+            // NOT show "TRIGGERED/WAITING" (that wrongly implied the user
+            // had clicked Same). Show a steady every-spin state instead.
+            el.textContent = '🟢 BETTING (every spin)';
+            el.style.background    = '#2563eb';
+            el.style.borderColor   = '#1d4ed8';
+            el.style.color         = '#fff';
+        } else if (armed) {
             el.textContent = '🟢 TRIGGERED';
             el.style.background    = '#16a34a';
             el.style.borderColor   = '#15803d';
@@ -1346,10 +1374,15 @@ class RouletteWheel {
             else if (/^±?1/.test(title) || /\b±1\b/.test(title)) badgeText = '±1';
             else if (/Loose/i.test(title)) badgeText = 'L';
             else if (/Grey/i.test(title))  badgeText = 'G';
+            // Bold accent chip lives INSIDE the header bar (right-aligned)
+            // so it never overlaps the prediction numbers in the body.
+            // Previously this was absolutely positioned over the body
+            // (top:22px) which covered numbers — see the Loose "L"
+            // sitting on top of a predicted number.
             const badgeHtml = badgeText
-                ? `<span style="position:absolute;top:22px;right:6px;z-index:2;display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:24px;padding:0 7px;font-size:16px;font-weight:900;color:#fff;background:${accent};border:2px solid #fff;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.35);line-height:1;letter-spacing:-0.5px;pointer-events:none;">${badgeText}</span>`
+                ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:16px;padding:0 5px;font-size:12px;font-weight:900;color:#fff;background:${accent};border:1px solid #fff;border-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,0.25);line-height:1;letter-spacing:-0.5px;">${badgeText}</span>`
                 : '';
-            return `<div style="position:relative;min-width:0;border:1px solid ${accent};border-radius:4px;margin-bottom:3px;background:${bg};">${badgeHtml}<div style="padding:1px 6px;font-size:10px;font-weight:700;color:${accent};border-bottom:1px solid ${accent}25;background:${bg};">${title} (${nums.length})</div>${content}</div>`;
+            return `<div style="position:relative;min-width:0;border:1px solid ${accent};border-radius:4px;margin-bottom:3px;background:${bg};"><div style="display:flex;align-items:center;justify-content:space-between;gap:4px;padding:1px 6px;font-size:10px;font-weight:700;color:${accent};border-bottom:1px solid ${accent}25;background:${bg};"><span>${title} (${nums.length})</span>${badgeHtml}</div>${content}</div>`;
         };
 
         // ── Collect sections — subtle accent per type ──────
