@@ -93,6 +93,26 @@ class RouletteWheel {
         // Store the raw/unfiltered prediction for re-filtering
         this._rawPrediction = null;
 
+        // ── Manual mode state ──────────────────────────────
+        // When manual mode is ON the user builds the bet pool by
+        // clicking pockets on the wheel. manualSelected is the live set
+        // of chosen numbers; manualNeighbours is the ±N radius applied
+        // to each click (0 = just the clicked pocket, up to ±9 wheel
+        // neighbours on each side). Source-of-truth flag is
+        // window.manualMode (parallel to window.wheelMode/sameMode so
+        // the money panel's every-spin betting path recognises it).
+        this.manualSelected = new Set();
+        this.manualNeighbours = 0;
+
+        // 36-pocket wheel order: identical to WHEEL_36 used everywhere
+        // else in the app (renderer-3tables.js / user-friendly-trigger.js).
+        // 0 and 26 SHARE one physical pocket (index 0). wheelOrder is the
+        // 37-entry visual order with a trailing 26; dropping it yields the
+        // 36-pocket order where index 0 represents both 0 and 26. Manual
+        // mode uses this so neighbour counts and clicks treat 0/26 as ONE
+        // pocket, matching the rest of the system.
+        this.wheel36 = this.wheelOrder.slice(0, 36);
+
         this.createWheel();
     }
 
@@ -195,6 +215,20 @@ class RouletteWheel {
                     ">
                         <input type="checkbox" id="wheelWheelModeToggle" style="vertical-align:middle;"> Wheel mode
                     </label>
+                    <!-- Manual toggle: when ON, the bet pool is built by
+                         clicking pockets directly on the wheel below.
+                         Pair predictions and Wheel-mode filters are
+                         ignored (exclusive) — the pool is exactly the
+                         numbers you pick (each click expands by the ±N
+                         neighbour control shown by the wheel). Bets are
+                         placed every spin on the picked numbers. -->
+                    <label id="wheelManualModeWrap" title="Pick your own numbers by clicking the wheel. Each click adds that pocket plus ±N wheel-neighbours (set N below). Bets every spin on your picks. Ignores pairs and wheel filters." style="
+                        display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+                        color:#475569;cursor:pointer;user-select:none;
+                        padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
+                    ">
+                        <input type="checkbox" id="wheelManualModeToggle" style="vertical-align:middle;"> ✋ Manual
+                    </label>
                 </div>
             </div>
             <div class="panel-content">
@@ -280,6 +314,24 @@ class RouletteWheel {
                     </div>
                 </div>
                 <div id="wheelNumberLists" style="font-size:11px; padding:4px 8px; line-height:1.6;"></div>
+                <!-- Manual-mode controls: ±N neighbour picker + clear.
+                     Hidden unless Manual mode is ON. The ±N buttons set
+                     how many wheel-neighbours on EACH side are added with
+                     every pocket you click (0 = just that pocket). -->
+                <div id="manualControls" style="display:none; flex-direction:column; gap:4px; padding:6px 8px; margin-bottom:4px; background:linear-gradient(135deg,#ecfeff 0%,#cffafe 100%); border:1px solid #06b6d4; border-radius:6px;">
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-size:10px;font-weight:800;color:#0e7490;letter-spacing:.4px;">✋ MANUAL — click the wheel to pick numbers</span>
+                        <span id="manualSelCount" style="margin-left:auto;font-size:11px;font-weight:700;color:#0e7490;">0 picked</span>
+                        <button id="manualClearBtn" type="button" title="Clear all picked numbers" style="
+                            font-size:10px;font-weight:700;cursor:pointer;padding:2px 8px;
+                            border:1px solid #dc2626;border-radius:4px;background:#fff;color:#dc2626;line-height:1;
+                        ">Clear</button>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                        <span style="font-size:10px;font-weight:700;color:#0e7490;">Neighbours ±</span>
+                        <span id="manualNeighbourBtns" style="display:inline-flex; gap:3px; flex-wrap:wrap;"></span>
+                    </div>
+                </div>
                 <div class="wheel-container" id="wheelContainer" style="position: relative; width: 400px; height: 420px; margin: 0 auto;">
                     <canvas id="wheelCanvas" width="400" height="420" style="display: block;"></canvas>
                 </div>
@@ -558,6 +610,93 @@ class RouletteWheel {
             });
         }
 
+        // ── Manual mode: pick-your-own-numbers by clicking the wheel ──
+        const wheelManualCb = document.getElementById('wheelManualModeToggle');
+        if (wheelManualCb) {
+            // Default OFF on every app start (session-only, like Same/Wheel).
+            wheelManualCb.checked = false;
+            if (typeof window !== 'undefined') window.manualMode = false;
+
+            // Build the ±N neighbour picker (0..9). 0 = just the clicked
+            // pocket; N = that pocket plus N wheel-neighbours each side.
+            this._renderNeighbourButtons();
+
+            // Clear button — wipe all picks.
+            const clearBtn = document.getElementById('manualClearBtn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.manualSelected.clear();
+                    this._renderManualSelection();
+                });
+            }
+
+            wheelManualCb.addEventListener('change', () => {
+                const v = !!wheelManualCb.checked;
+                if (typeof window !== 'undefined') window.manualMode = v;
+                const controls = document.getElementById('manualControls');
+                if (controls) controls.style.display = v ? 'flex' : 'none';
+                if (this.canvas) this.canvas.style.cursor = v ? 'pointer' : 'default';
+                if (v) {
+                    // Manual mode is exclusive: turn Wheel mode OFF so the
+                    // bet pool is purely the user's clicks (no filter mask,
+                    // no pair prediction). Same can stay as the user set it.
+                    if (wheelWheelModeCb && wheelWheelModeCb.checked) {
+                        wheelWheelModeCb.checked = false;
+                        if (typeof window !== 'undefined') window.wheelMode = false;
+                        try { window.dispatchEvent(new CustomEvent('wheelModeChanged', { detail: { value: false } })); } catch (_) {}
+                    }
+                    // Arm the money panel immediately so the very next spin
+                    // bets on the picks (every-spin behaviour, like Wheel).
+                    if (window.moneyPanel && window.moneyPanel.sessionData) {
+                        window.moneyPanel.sessionData.sameArmed = true;
+                        try { window.dispatchEvent(new CustomEvent('triggerArmedChanged', { detail: { armed: true } })); } catch (_) {}
+                    }
+                    this._renderManualSelection();
+                } else {
+                    // Manual OFF: clear the manual pool from the panels and
+                    // fall back to the pair/wheel pipeline. Disarm unless
+                    // Same mode owns the gate.
+                    if (window.sameMode !== true && window.moneyPanel && window.moneyPanel.sessionData) {
+                        window.moneyPanel.sessionData.sameArmed = false;
+                        try { window.dispatchEvent(new CustomEvent('triggerArmedChanged', { detail: { armed: false } })); } catch (_) {}
+                    }
+                    if (window.moneyPanel) {
+                        window.moneyPanel.pendingBet = null;
+                        window.moneyPanel._sameLastPredictedNumbers = [];
+                        if (window.moneyPanel.sessionData) {
+                            window.moneyPanel.sessionData.lastBetAmount = 0;
+                            window.moneyPanel.sessionData.lastBetNumbers = 0;
+                        }
+                    }
+                    // Restore pair/wheel view if a real prediction exists.
+                    if (this._rawPrediction) { try { this._applyFilters(); } catch (_) {} }
+                    else {
+                        this._updateFromRaw([], [], [], []);
+                        this._updateFilteredCount(null);
+                        if (window.aiPanel && typeof window.aiPanel._clearAllPredictionDisplays === 'function') {
+                            try { window.aiPanel._clearAllPredictionDisplays(); } catch (_) {}
+                        }
+                        if (window.moneyPanel && typeof window.moneyPanel.render === 'function') window.moneyPanel.render();
+                    }
+                    this.drawWheel();
+                }
+                this._refreshTriggerStatus();
+            });
+
+            // Canvas click → pocket → toggle pick (with ±N expansion).
+            if (this.canvas) {
+                this.canvas.addEventListener('click', (e) => {
+                    if (window.manualMode !== true) return;
+                    const num = this._pocketFromClick(e);
+                    if (num === null) return;
+                    this._toggleManualPick(num);
+                });
+                // Pointer cursor hint when manual mode is on.
+                this.canvas.style.cursor = 'default';
+            }
+        }
+
         // Trigger-status pill updates: listen for armed-state changes
         // broadcast by the money panel (see _setSameArmed callers in
         // money-management-panel.js). Also do an initial refresh so
@@ -735,7 +874,189 @@ class RouletteWheel {
         return true;
     }
 
+    // ── Manual mode helpers ───────────────────────────────────
+
+    /**
+     * Render the ±N neighbour picker buttons (0..9) into
+     * #manualNeighbourBtns. The active value is highlighted.
+     */
+    _renderNeighbourButtons() {
+        const wrap = document.getElementById('manualNeighbourBtns');
+        if (!wrap) return;
+        let html = '';
+        for (let n = 0; n <= 9; n++) {
+            const active = (n === this.manualNeighbours);
+            html += `<button type="button" data-n="${n}" style="
+                min-width:24px;font-size:10px;font-weight:800;cursor:pointer;
+                padding:2px 6px;border-radius:4px;line-height:1;
+                border:1px solid ${active ? '#0e7490' : '#94a3b8'};
+                background:${active ? '#0e7490' : '#fff'};
+                color:${active ? '#fff' : '#475569'};
+            ">${n}</button>`;
+        }
+        wrap.innerHTML = html;
+        wrap.querySelectorAll('button[data-n]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.manualNeighbours = parseInt(btn.getAttribute('data-n'), 10) || 0;
+                this._renderNeighbourButtons();
+            });
+        });
+    }
+
+    /**
+     * Map a canvas click event to the roulette pocket number it lands
+     * on, or null if the click is outside the number ring / on the hub.
+     * Mirrors drawWheel geometry: center (200,210), 37 pockets of
+     * 2π/37 each, pocket idx 0 (number 0) starts at -π/2 (top).
+     */
+    _pocketFromClick(e) {
+        if (!this.canvas) return null;
+        const rect = this.canvas.getBoundingClientRect();
+        // Scale CSS pixels → canvas coordinate space.
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+        const dx = x - 200;
+        const dy = y - 210;
+        const r = Math.sqrt(dx * dx + dy * dy);
+        // Accept clicks anywhere from just inside the hub out to the rim
+        // (a little slack beyond outerRadius=150 for easy tapping).
+        if (r < 45 || r > 160) return null;
+        const step = (2 * Math.PI) / 37;
+        let a = Math.atan2(dy, dx) + Math.PI / 2; // shift so idx 0 at top
+        a = ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        const idx = Math.floor(a / step) % 37;
+        const num = this.wheelOrder[idx];
+        return (typeof num === 'number') ? num : null;
+    }
+
+    /**
+     * 36-pocket index of a number. 0 and 26 SHARE pocket index 0
+     * (matches WHEEL_36 everywhere else in the app). Returns -1 if not
+     * found.
+     */
+    _pocketIndexOf(num) {
+        if (num === 0 || num === 26) return 0;
+        return this.wheel36.indexOf(num);
+    }
+
+    /**
+     * The number(s) occupying a 36-pocket index. Index 0 holds BOTH
+     * 0 and 26 (shared pocket); every other index holds a single number.
+     */
+    _numbersAtPocket(idx) {
+        if (idx === 0) return [0, 26];
+        const n = this.wheel36[idx];
+        return (typeof n === 'number') ? [n] : [];
+    }
+
+    /**
+     * Wheel-neighbour group for a center pocket: the center pocket plus
+     * N physical neighbour POCKETS on each side, wrapping around the
+     * wheel. Uses the 36-pocket model (0/26 = one pocket), so the
+     * shared pocket counts as a single step and contributes BOTH 0 and
+     * 26 to the resulting number list. This is exactly what "neighbours
+     * both sides" means on the real wheel.
+     */
+    _manualNeighbourGroup(center) {
+        const len = this.wheel36.length; // 36
+        const pos = this._pocketIndexOf(center);
+        if (pos < 0) return (center === 0 || center === 26) ? [0, 26] : [center];
+        const N = this.manualNeighbours || 0;
+        const group = [];
+        for (let k = -N; k <= N; k++) {
+            const idx = ((pos + k) % len + len) % len;
+            this._numbersAtPocket(idx).forEach(n => group.push(n));
+        }
+        return group;
+    }
+
+    /**
+     * Toggle a clicked pocket (with its ±N neighbour expansion). If the
+     * clicked CENTER pocket is already selected, remove the whole group;
+     * otherwise add it. For the shared 0/26 pocket, selecting either 0
+     * or 26 toggles BOTH. Then re-render the pool + panels.
+     */
+    _toggleManualPick(center) {
+        const group = this._manualNeighbourGroup(center);
+        // The center pocket is "selected" if ANY of its numbers are in
+        // the set (covers the 0/26 shared pocket).
+        const centerNums = this._numbersAtPocket(this._pocketIndexOf(center));
+        const alreadySelected = centerNums.some(n => this.manualSelected.has(n));
+        if (alreadySelected) {
+            group.forEach(n => this.manualSelected.delete(n));
+        } else {
+            group.forEach(n => this.manualSelected.add(n));
+        }
+        this._renderManualSelection();
+    }
+
+    /**
+     * Push the current manual selection to the money + AI panels and
+     * highlight it on the wheel. Treats every picked number as "loose"
+     * (no anchor structure) so the existing rendering/bet pipeline
+     * works unchanged. Bet amount comes from the active money strategy.
+     */
+    _renderManualSelection() {
+        const nums = Array.from(this.manualSelected)
+            .sort((a, b) => (this.wheelPos[a] ?? 99) - (this.wheelPos[b] ?? 99));
+
+        // Update the picked-count label.
+        const countEl = document.getElementById('manualSelCount');
+        if (countEl) countEl.textContent = `${nums.length} picked`;
+
+        // Per-number bet: use the money panel's current per-number stake
+        // when available, else a sensible default of $2.
+        let betPerNumber = 2;
+        try {
+            if (window.moneyPanel && window.moneyPanel.sessionData) {
+                betPerNumber = window.moneyPanel.sessionData.currentBetPerNumber || 2;
+            }
+        } catch (_) {}
+
+        const prediction = {
+            numbers: nums,
+            extraNumbers: [],
+            anchors: [],
+            loose: nums,
+            anchor_groups: [],
+            bet_per_number: betPerNumber,
+            signal: nums.length > 0 ? 'BET NOW' : 'NO BET',
+            confidence: 90
+        };
+
+        // Sync panels (money first so number-list reads current bet),
+        // then redraw the wheel highlight + bet count.
+        if (nums.length > 0) {
+            this._syncMoneyPanel(prediction);
+            this._syncAIPanel(prediction);
+        } else if (window.moneyPanel) {
+            // No picks → clear the bet pool but keep manual mode on.
+            window.moneyPanel.pendingBet = null;
+            window.moneyPanel._sameLastPredictedNumbers = [];
+            if (window.moneyPanel.sessionData) {
+                window.moneyPanel.sessionData.lastBetAmount = 0;
+                window.moneyPanel.sessionData.lastBetNumbers = 0;
+            }
+            if (typeof window.moneyPanel.render === 'function') window.moneyPanel.render();
+            if (window.aiPanel && typeof window.aiPanel._clearAllPredictionDisplays === 'function') {
+                try { window.aiPanel._clearAllPredictionDisplays(); } catch (_) {}
+            }
+        }
+        this._updateFromRaw([], nums, [], []);
+        this._updateFilteredCount(nums.length);
+    }
+
     _applyFilters() {
+        // Manual mode owns the bet pool exclusively — never let an
+        // incoming pair prediction or filter change overwrite the
+        // user's hand-picked numbers. Re-render the manual pool instead.
+        if (typeof window !== 'undefined' && window.manualMode === true) {
+            this._renderManualSelection();
+            return;
+        }
         let raw = this._rawPrediction;
         const wheelModeOn = (typeof window !== 'undefined' && window.wheelMode === true);
 
@@ -870,9 +1191,10 @@ class RouletteWheel {
         const infoBtn = document.getElementById('wheelTriggerInfoBtn');
         const infoPanel = document.getElementById('wheelTriggerInfo');
         if (!el) return;
-        const sameOn  = (typeof window !== 'undefined' && window.sameMode  === true);
-        const wheelOn = (typeof window !== 'undefined' && window.wheelMode === true);
-        const gateOn = sameOn || wheelOn;
+        const sameOn   = (typeof window !== 'undefined' && window.sameMode   === true);
+        const wheelOn  = (typeof window !== 'undefined' && window.wheelMode  === true);
+        const manualOn = (typeof window !== 'undefined' && window.manualMode === true);
+        const gateOn = sameOn || wheelOn || manualOn;
         if (!gateOn) {
             el.style.display = 'none';
             if (infoBtn) infoBtn.style.display = 'none';
@@ -883,7 +1205,14 @@ class RouletteWheel {
             && window.moneyPanel.sessionData
             && window.moneyPanel.sessionData.sameArmed === true);
         el.style.display = 'inline-block';
-        if (wheelOn) {
+        if (manualOn) {
+            // MANUAL mode bets EVERY spin on the user's hand-picked
+            // numbers — same every-spin semantics as Wheel mode.
+            el.textContent = '🟢 BETTING (manual picks)';
+            el.style.background    = '#0e7490';
+            el.style.borderColor   = '#155e75';
+            el.style.color         = '#fff';
+        } else if (wheelOn) {
             // WHEEL mode bets EVERY spin on whatever options the user
             // selected — there is no wait-for-trigger, so the pill must
             // NOT show "TRIGGERED/WAITING" (that wrongly implied the user

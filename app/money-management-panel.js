@@ -1021,7 +1021,7 @@ class MoneyManagementPanel {
                     //     win OR loss (no waiting, never disarms).
                     //   • SAME mode = re-stamp only after a WIN (a loss
                     //     disarms and waits for the next trigger).
-                    const wheelEvery = (typeof window !== 'undefined' && window.wheelMode === true);
+                    const wheelEvery = (typeof window !== 'undefined' && (window.wheelMode === true || window.manualMode === true));
                     const sameWin    = (typeof window !== 'undefined' && window.sameMode === true && hit);
                     const reStamp = (wheelEvery || sameWin)
                         && this.sessionData.sameArmed
@@ -1050,7 +1050,7 @@ class MoneyManagementPanel {
                 // change at the trigger spin itself. When BOTH toggles
                 // are OFF the gate doesn't apply and regular every-
                 // spin betting takes over via setPrediction.
-                const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true);
+                const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true || window.manualMode === true);
                 // Trigger check uses _sameTriggerPool (the pool that was
                 // active WHEN this spin was unknown), NOT _sameLast
                 // PredictedNumbers (which was overwritten with the
@@ -1099,7 +1099,7 @@ class MoneyManagementPanel {
                 // selected. It must arm unconditionally (no pool wait) so
                 // the first spin already places a bet. SAME mode keeps the
                 // wait-for-trigger behaviour (arm only when spin in pool).
-                const wheelEveryGate = (typeof window !== 'undefined' && window.wheelMode === true);
+                const wheelEveryGate = (typeof window !== 'undefined' && (window.wheelMode === true || window.manualMode === true));
                 if ((triggerGateOn && triggerPool.length > 0) || wheelEveryGate) {
                     const inPoolRaw = triggerPool.includes(actualNumber);
                     const inPool = (inPoolRaw && wheelFilterPass) || wheelEveryGate;
@@ -1214,7 +1214,7 @@ class MoneyManagementPanel {
             // sameArmed flag tracks both gates (they share the
             // armed/disarmed lifecycle). When BOTH toggles are OFF,
             // regular every-spin betting fires below.
-            const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true);
+            const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true || window.manualMode === true);
             const gateBlocks = triggerGateOn && !this.sessionData.sameArmed;
             if (this.sessionData.isSessionActive && betAmount > 0 && this.sessionData.isBettingEnabled && !gateBlocks) {
                 this.pendingBet = {
@@ -1283,7 +1283,7 @@ class MoneyManagementPanel {
                 // selected, so it must NEVER disarm on a loss (the re-stamp
                 // block keeps it armed for the next spin). Disarming wheel
                 // mode here was why a losing spin silently stopped betting.
-                const wheelEveryMode = (typeof window !== 'undefined' && window.wheelMode === true);
+                const wheelEveryMode = (typeof window !== 'undefined' && (window.wheelMode === true || window.manualMode === true));
                 const sameOnlyMode   = (typeof window !== 'undefined' && window.sameMode === true && !wheelEveryMode);
                 if (sameOnlyMode) {
                     this.sessionData.sameArmed = false;
@@ -1857,7 +1857,7 @@ class MoneyManagementPanel {
         // pendingBet until checkForNewSpin arms us via a spin in pool.
         // Both toggles share the sameArmed lifecycle. When OFF, the
         // existing normal pendingBet logic runs below.
-        const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true);
+        const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true || window.manualMode === true);
         if (triggerGateOn && !this.sessionData.sameArmed) {
             this.pendingBet = null;
             this.sessionData.lastBetAmount = betAmount;
