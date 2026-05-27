@@ -1016,12 +1016,36 @@ class RouletteWheel {
             }
         } catch (_) {}
 
+        // Categorise the picks into ±2 / ±1 anchor groups + loose using
+        // the SAME engine wheel mode uses (calculateWheelAnchors). This
+        // is what makes the prediction box show "±2 Anchors" / "±1
+        // Anchors" instead of dumping everything under "Loose". A run of
+        // 5 contiguous wheel pockets → a ±2 group, a run of 3 → a ±1
+        // group, leftovers → loose. The bet pool itself is unchanged
+        // (still every picked number).
+        let anchors = [];
+        let loose = nums.slice();
+        let anchorGroups = [];
+        try {
+            if (nums.length > 0 && typeof window.calculateWheelAnchors === 'function') {
+                const r = window.calculateWheelAnchors(nums);
+                anchors = r.anchors || [];
+                loose = r.loose || [];
+                anchorGroups = r.anchorGroups || [];
+            }
+        } catch (e) {
+            console.warn('⚠️ Manual anchor calc failed, falling back to loose:', e.message);
+            loose = nums.slice();
+            anchors = [];
+            anchorGroups = [];
+        }
+
         const prediction = {
             numbers: nums,
             extraNumbers: [],
-            anchors: [],
-            loose: nums,
-            anchor_groups: [],
+            anchors: anchors,
+            loose: loose,
+            anchor_groups: anchorGroups,
             bet_per_number: betPerNumber,
             signal: nums.length > 0 ? 'BET NOW' : 'NO BET',
             confidence: 90
@@ -1045,7 +1069,7 @@ class RouletteWheel {
                 try { window.aiPanel._clearAllPredictionDisplays(); } catch (_) {}
             }
         }
-        this._updateFromRaw([], nums, [], []);
+        this._updateFromRaw(anchors, loose, anchorGroups, []);
         this._updateFilteredCount(nums.length);
     }
 
