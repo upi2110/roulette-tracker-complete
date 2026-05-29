@@ -1049,6 +1049,30 @@ class AutoTestRunner {
             });
         }
 
+        // ── Analytics ('analytics' method) ──
+        // T2 × T3 wheel-consensus. Stateless (no locked pair) — compares
+        // ALL pairs' projections via the engine's deterministic helpers
+        // (_getCalculateReferences / _getLookupRow / _computeProjectionForPair),
+        // so a backtest reproduces the live Analytics decisions exactly for
+        // identical history. See strategies/analytics/analytics-strategy.js.
+        if (this._currentMethod === 'analytics') {
+            const AN = (typeof require === 'function')
+                ? (function () { try { return require('../../strategies/analytics/analytics-strategy.js'); } catch (_) { return null; } }())
+                : (typeof window !== 'undefined' ? window.AnalyticsStrategy : null);
+            if (!AN) {
+                return {
+                    action: 'SKIP',
+                    selectedPair: null,
+                    selectedFilter: null,
+                    numbers: [],
+                    confidence: 0,
+                    reason: 'Analytics module not loaded'
+                };
+            }
+            const params = (typeof window !== 'undefined' && window.analyticsParams) ? window.analyticsParams : null;
+            return AN.decide(this.engine, testSpins, idx, { params: params });
+        }
+
         const skipResult = (reason) => {
             this.engine._currentDecisionSpins = null; // Clean up on skip
             return {

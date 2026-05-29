@@ -940,7 +940,11 @@ class AIPredictionPanel {
                 t1: Object.keys(this.table1Selections || {}),
                 t2: Object.keys(this.table2Selections || {}),
                 t3: [...(this.table3Selections || new Set())]
-            }
+            },
+            // Last Analytics decision (set by ai-auto-mode-ui.updateDecisionDisplay
+            // when running in Analytics mode). Null otherwise. The popup uses
+            // this to show how Analytics picked the numbers.
+            analytics: this._lastAnalyticsDecision || null
         };
     }
 
@@ -1038,6 +1042,29 @@ class AIPredictionPanel {
 <div style="display:flex;align-items:center;">
   <h1>🔬 Selection Process — wheel visualization</h1>
   <span class="timestamp" id="ts">—</span>
+</div>
+
+<!-- Analytics trace card. Populated by renderAnalytics() from
+     snap.analytics whenever the active mode is "📊 Analytics".
+     Hidden when not in analytics mode (display:none initial). -->
+<div class="card" id="analyticsCard" style="display:none;border:2px solid #0ea5e9;background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%);">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    <h2 style="margin:0;color:#0c4a6e;">🧠 Analytics — how the 12 numbers were picked</h2>
+    <span id="anaTs" style="font-size:10px;color:#0369a1;font-weight:600;"></span>
+  </div>
+  <div id="anaHeader" style="font-size:11px;line-height:1.5;color:#1e293b;margin-bottom:6px;"></div>
+  <div id="anaPicks" style="font-size:11px;margin-bottom:6px;"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    <div>
+      <div style="font-size:10px;font-weight:800;color:#065f46;margin-bottom:3px;">CONTRIBUTING T2 PAIRS</div>
+      <div id="anaT2" style="font-size:10px;line-height:1.5;"></div>
+    </div>
+    <div>
+      <div style="font-size:10px;font-weight:800;color:#1e40af;margin-bottom:3px;">CONTRIBUTING T3 PAIRS</div>
+      <div id="anaT3" style="font-size:10px;line-height:1.5;"></div>
+    </div>
+  </div>
+  <div id="anaConfirm" style="font-size:10px;color:#475569;margin-top:6px;"></div>
 </div>
 
 <div class="card">
@@ -1451,7 +1478,60 @@ class AIPredictionPanel {
     });
   }
 
+  // Render the Analytics trace card from snap.analytics. Hides the card
+  // when not in analytics mode (snap.analytics is null).
+  function renderAnalytics() {
+    const card = document.getElementById('analyticsCard');
+    if (!card) return;
+    const a = state.snap && state.snap.analytics;
+    if (!a) { card.style.display = 'none'; return; }
+    card.style.display = '';
+
+    const isBet = a.action === 'BET';
+    const align = Math.round((a.align || 0) * 100);
+    const conf = Math.round(a.confidence || 0);
+    const thr = Math.round((a.alignThreshold || 0.6) * 100);
+    document.getElementById('anaTs').textContent = a.ts ? ('decided ' + a.ts) : '';
+    document.getElementById('anaHeader').innerHTML =
+      '<span style="font-weight:800;color:' + (isBet ? '#16a34a' : '#d97706') + ';">'
+      + (isBet ? '🟢 BET' : '🔴 WAIT') + '</span>'
+      + ' &nbsp; <b>T2×T3 agreement:</b> ' + align + '% (need ' + thr + '%)'
+      + ' &nbsp; <b>Confidence:</b> ' + conf + '%';
+
+    const picks = (a.pickNums || []).slice().sort(function(x,y){return x-y;});
+    document.getElementById('anaPicks').innerHTML =
+      '<b>The ' + picks.length + ' picked numbers:</b> '
+      + picks.map(function(n){
+          return '<span style="display:inline-block;margin:1px 2px;padding:2px 6px;background:#0f172a;color:#fff;border-radius:3px;font-weight:700;">' + n + '</span>';
+        }).join('');
+
+    function renderPairList(detailsByPair, titleColor) {
+      const keys = Object.keys(detailsByPair || {});
+      if (keys.length === 0) return '<i style="color:#94a3b8;">none — no overlap with the picks</i>';
+      return keys.sort().map(function(k){
+        const nums = detailsByPair[k] || [];
+        return '<div style="margin-bottom:3px;">'
+          + '<span style="display:inline-block;padding:1px 5px;background:' + titleColor + ';color:#fff;border-radius:3px;font-weight:700;margin-right:4px;">' + k + '</span>'
+          + 'contributed: ' + nums.map(function(n){
+              return '<span style="display:inline-block;margin:0 1px;padding:0 4px;background:#fff;border:1px solid #94a3b8;border-radius:2px;font-weight:600;">' + n + '</span>';
+            }).join(' ')
+          + '</div>';
+      }).join('');
+    }
+    document.getElementById('anaT2').innerHTML = renderPairList(a.t2DetailsByPair, '#065f46');
+    document.getElementById('anaT3').innerHTML = renderPairList(a.t3DetailsByPair, '#1e40af');
+
+    const cf = a.confirm || {};
+    const total = cf.total || 0;
+    document.getElementById('anaConfirm').innerHTML = total
+      ? ('<b>Confirmation:</b> colour/side ' + (cf.pnLabel || '—') + ' ' + Math.max(cf.pos||0, cf.neg||0) + '/' + total
+          + ' &nbsp;·&nbsp; table split ' + (cf.z19Label || '—') + ' ' + Math.max(cf.zero||0, cf.nine||0) + '/' + total
+          + ' &nbsp;(these add up to ' + Math.round(((cf.pnSkew||0) + (cf.z19Skew||0)) * 50) + '% confirmation bonus on top of alignment)')
+      : '';
+  }
+
   function render() {
+    renderAnalytics();
     const wheelHost = document.getElementById('wheelHost');
     wheelHost.innerHTML = '';
     wheelHost.appendChild(buildWheelView());

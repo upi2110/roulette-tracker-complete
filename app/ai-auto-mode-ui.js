@@ -123,6 +123,16 @@ class AIAutoModeUI {
                     border:2px solid #64748b;border-radius:5px;cursor:pointer;
                     background:transparent;color:#94a3b8;
                 ">SEMI</button>
+                <!-- Analytics: T2 × T3 wheel-consensus (window.AnalyticsStrategy).
+                     Lives under the MANUAL tab — runs without training (uses
+                     only the engine's deterministic projection helpers).
+                     Numbers-only output; decides BET/WAIT on its own from the
+                     overlap of the two tables' projected wheel patterns. -->
+                <button id="analyticsModeBtn" data-tab-group="manual" title="Analytics — T2 × T3 wheel-consensus: bets 12 numbers when the two tables' projections align, with +/- and 0/19 confirmation. No training needed." style="
+                    display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
+                    border:2px solid #0ea5e9;border-radius:5px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">📊 Analytics</button>
                 <!-- Auto tab sub-buttons -->
                 <button id="autoModeBtn" data-tab-group="auto" style="
                     display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
@@ -253,6 +263,13 @@ class AIAutoModeUI {
         if (testLabBtn) {
             testLabBtn.addEventListener('click', () => {
                 if (this.currentMode !== 'test') this.setMode('test');
+            });
+        }
+
+        const analyticsBtn = document.getElementById('analyticsModeBtn');
+        if (analyticsBtn) {
+            analyticsBtn.addEventListener('click', () => {
+                if (this.currentMode !== 'analytics') this.setMode('analytics');
             });
         }
 
@@ -410,6 +427,28 @@ class AIAutoModeUI {
                 }
             }
 
+        } else if (mode === 'analytics') {
+            // Analytics (T2 × T3 consensus). Mirrors the AI-trained
+            // wiring: the heuristic engine is DISABLED (analytics only
+            // uses the engine's deterministic projection helpers, never
+            // engine.decide()), so the money panel's "engine decided
+            // SKIP" guard (which blocks bets when the engine is enabled
+            // and lastDecision is null) is bypassed and analytics' own
+            // BET/SKIP is authoritative. No training gate — the projection
+            // helpers are deterministic from spin history.
+            this.currentMode = 'analytics';
+            this.isAutoMode = true;
+            this.isSemiAutoMode = false;
+            if (engine) engine.disable();
+            if (semiFilter) semiFilter.disable();
+            this._restoreAutoParity(engine);
+            if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
+                window.autoUpdateOrchestrator.setAutoMode(true);
+                if (typeof window.autoUpdateOrchestrator.setDecisionMode === 'function') {
+                    window.autoUpdateOrchestrator.setDecisionMode('analytics');
+                }
+            }
+
         } else if (mode === 'auto' || mode === 't1-strategy' || mode === 'test' || mode === '3t-selection') {
             // Switching to an engine-driven live mode — requires trained
             // engine. Both 'auto' and 't1-strategy' share the engine-
@@ -477,6 +516,7 @@ class AIAutoModeUI {
                     if (mode === 't1-strategy')      decisionMode = 't1-strategy';
                     else if (mode === 'test')        decisionMode = 'test';
                     else if (mode === '3t-selection') decisionMode = '3t-selection';
+                    else if (mode === 'analytics')   decisionMode = 'analytics';
                     else                             decisionMode = 'auto';
                     window.autoUpdateOrchestrator.setDecisionMode(decisionMode);
                 }
@@ -602,7 +642,7 @@ class AIAutoModeUI {
      * so the visible tab stays in sync with currentMode.
      */
     _tabForMode(mode) {
-        if (mode === 'manual' || mode === 'semi') return 'manual';
+        if (mode === 'manual' || mode === 'semi' || mode === 'analytics') return 'manual';
         if (mode === 'auto' || mode === 't1-strategy' || mode === 'ai-trained' || mode === '3t-selection') return 'auto';
         if (mode === 'test') return 'test';
         return 'manual';
@@ -711,6 +751,14 @@ class AIAutoModeUI {
             threeTBtn.style.borderColor = mode === '3t-selection' ? '#0ea5e9' : '#64748b';
         }
 
+        const analyticsBtn = document.getElementById('analyticsModeBtn');
+        if (analyticsBtn) {
+            // Cyan accent for the Analytics consensus mode.
+            analyticsBtn.style.background = mode === 'analytics' ? '#0ea5e9' : 'transparent';
+            analyticsBtn.style.color = mode === 'analytics' ? 'white' : '#94a3b8';
+            analyticsBtn.style.borderColor = mode === 'analytics' ? '#0ea5e9' : '#64748b';
+        }
+
         const testLabBtn = document.getElementById('testLabModeBtn');
         if (testLabBtn) {
             // Teal accent — distinct from all other modes; signals sandbox.
@@ -794,8 +842,73 @@ class AIAutoModeUI {
         const decisionEl = document.getElementById('currentDecision');
         const skipEl = document.getElementById('skipCounter');
 
+        // Analytics table-trace: light up the T2/T3 pair columns the
+        // engine relied on (or clear when this isn't an Analytics
+        // decision). Best-effort — never break the decision flow.
+        try {
+            if (typeof window !== 'undefined' && window.analyticsHighlight) {
+                if (decision && decision.analytics) {
+                    window.analyticsHighlight.apply({
+                        t2Pairs: decision.analytics.t2Pairs,
+                        t2Pair: decision.analytics.t2Pair,
+                        t3Pairs: decision.analytics.t3Pairs,
+                        isBet: decision.action === 'BET'
+                    });
+                } else {
+                    window.analyticsHighlight.clear();
+                }
+            }
+        } catch (_) {}
+
+        // Cache the last Analytics decision on the AI panel so the
+        // "🔬 Selection Process" popup can show how it picked the numbers
+        // (alignment %, contributing T2/T3 pairs with their numbers, the
+        // 12 picks, confirmation skews). Cleared when a non-analytics
+        // decision arrives.
+        try {
+            if (typeof window !== 'undefined' && window.aiPanel) {
+                if (decision && decision.analytics) {
+                    window.aiPanel._lastAnalyticsDecision = Object.assign({
+                        action: decision.action,
+                        ts: new Date().toLocaleTimeString()
+                    }, decision.analytics);
+                } else {
+                    window.aiPanel._lastAnalyticsDecision = null;
+                }
+            }
+        } catch (_) {}
+
         if (decisionEl) {
-            if (decision.action === 'BET') {
+            if (decision && decision.analytics) {
+                // ── Analytics (T2 × T3 consensus): clear WHY explanation ──
+                // Renders the alignment, the T2/T3 pairs the engine relied
+                // on, the +/- and 0/19 confirmation, and the proposed
+                // numbers — so the AI tab explains every pick.
+                const a = decision.analytics;
+                const isBet = decision.action === 'BET';
+                const t3 = (a.t3Pairs && a.t3Pairs.length) ? a.t3Pairs.join(', ') : '—';
+                const t2 = a.t2Pair || '—';
+                const align = Math.round((a.align || 0) * 100);
+                const conf = Math.round(a.confidence || 0);
+                const nums = (a.pickNums || []).slice().sort((x, y) => x - y).join(', ');
+                const cf = a.confirm || {};
+                const pn = cf.pnLabel ? `${cf.pnLabel} ${Math.max(cf.pos, cf.neg)}/${cf.total}` : '—';
+                const z19 = cf.z19Label ? `${cf.z19Label} ${Math.max(cf.zero, cf.nine)}/${cf.total}` : '—';
+                const thr = Math.round((a.alignThreshold || 0.6) * 100);
+                decisionEl.style.color = isBet ? '#22c55e' : '#f59e0b';
+                decisionEl.innerHTML =
+                    `<div style="font-weight:800;font-size:13px;">${isBet ? '🟢 ANALYTICS — BET' : '🔴 ANALYTICS — WAIT'}</div>`
+                    // Plain-English sentence first, so the user understands instantly.
+                    + `<div style="font-size:11px;margin:3px 0;color:#e2e8f0;line-height:1.35;">${a.summary || decision.reason || ''}</div>`
+                    // Then the numeric breakdown.
+                    + `<div style="font-size:10px;color:#94a3b8;">`
+                    + `T2×T3 agreement: <b style="color:${isBet ? '#22c55e' : '#f59e0b'};">${align}%</b> (need ${thr}%) `
+                    + `· confidence <b>${conf}%</b><br>`
+                    + `Relied on → <b>T2 pair:</b> ${t2} &nbsp; <b>T3 pairs:</b> ${t3}<br>`
+                    + `Confirmation → colour/side ${pn} · 0/19 ${z19}`
+                    + (isBet ? `<br><b>${(a.pickNums || []).length} numbers:</b> ${nums}` : '')
+                    + `</div>`;
+            } else if (decision.action === 'BET') {
                 decisionEl.textContent = `🎯 ${decision.selectedPair} | ${decision.selectedFilter} | Conf: ${decision.confidence}%`;
                 decisionEl.style.color = '#22c55e';
             } else {

@@ -193,6 +193,14 @@
      Diverges from strategy-lab.js by namespace only at creation time;
      each can evolve independently. -->
 <script src="../strategies/strategy-3t-selection/strategy-3t-selection.js"></script>
+<!-- Analytics strategy — T2 × T3 wheel-consensus decision module.
+     window.AnalyticsStrategy used by the orchestrator (decisionMode=
+     'analytics') and the Auto-Test runner (method='analytics'). -->
+<script src="../strategies/analytics/analytics-strategy.js"></script>
+<!-- Analytics table-trace highlighter — lights up the T2/T3 pair
+     columns the consensus relied on. Self-contained; only toggles
+     inline styles on existing <th data-pair> cells. -->
+<script src="analytics-highlight.js"></script>
 <!-- auto-test-runner now loaded from canonical services/auto-test-runner/. -->
 <script src="../services/auto-test-runner/auto-test-runner.js"></script>
 <!-- auto-test-report now loaded from canonical reports/auto-test-report/. -->

@@ -48,8 +48,14 @@ class AutoUpdateOrchestrator {
 
                 const aiTrainedActive = this.autoMode && this.decisionMode === 'ai-trained';
                 const engineAutoActive = this.autoMode && window.aiAutoEngine && window.aiAutoEngine.isEnabled;
-                if (aiTrainedActive || engineAutoActive) {
-                    // AUTO / T1-strategy / AI-trained: system makes the decision.
+                // Analytics runs with the heuristic engine DISABLED (it only
+                // uses the engine's deterministic projection helpers), so it
+                // isn't caught by engineAutoActive. Recognise it explicitly so the
+                // orchestrator still makes a per-spin decision. Same shape as
+                // the ai-trained gate (also engine-disabled).
+                const analyticsActive = this.autoMode && this.decisionMode === 'analytics';
+                if (aiTrainedActive || engineAutoActive || analyticsActive) {
+                    // AUTO / T1-strategy / AI-trained / Analytics: system decides.
                     this.handleAutoMode();
                 } else {
                     // MANUAL MODE: Load pairs for user selection
@@ -354,6 +360,23 @@ class AutoUpdateOrchestrator {
                 }
             );
             console.log('🎯 3T-SELECTION DECISION:', decision);
+        } else if (this.decisionMode === 'analytics' && window.AnalyticsStrategy
+                && typeof window.AnalyticsStrategy.decide === 'function') {
+            // Analytics (T2 × T3 wheel-consensus). Uses the SAME engine
+            // projection helpers as the backtest (_getCalculateReferences /
+            // _getLookupRow / _computeProjectionForPair over ALL pairs), so
+            // live and Auto-Test produce identical decisions for identical
+            // history. Numbers-only output → propagated like 'ai-trained'
+            // (direct setPrediction + wheel highlight, no pair cascade).
+            const spinsArr = Array.isArray(window.spins)
+                ? window.spins
+                    .map(s => (s && typeof s.actual === 'number') ? s.actual : null)
+                    .filter(n => n !== null)
+                : [];
+            const idx = spinsArr.length - 1;
+            const params = (typeof window !== 'undefined' && window.analyticsParams) ? window.analyticsParams : null;
+            decision = window.AnalyticsStrategy.decide(window.aiAutoEngine, spinsArr, idx, { params: params });
+            console.log('🧠 ANALYTICS DECISION:', decision);
         } else {
             decision = window.aiAutoEngine.decide();
             console.log('🤖 AUTO DECISION:', decision);
@@ -363,7 +386,7 @@ class AutoUpdateOrchestrator {
         // money-management-panel reads this after bet resolves to call engine.recordResult()
         // Skipped for ai-trained: the heuristic engine is not involved
         // and its lastDecision state must not be mutated by this path.
-        if (this.decisionMode !== 'ai-trained' && window.aiAutoEngine) {
+        if (this.decisionMode !== 'ai-trained' && this.decisionMode !== 'analytics' && window.aiAutoEngine) {
             window.aiAutoEngine.lastDecision = decision.action === 'BET' ? {
                 selectedPair: decision.selectedPair,
                 selectedFilter: decision.selectedFilter,
@@ -397,7 +420,7 @@ class AutoUpdateOrchestrator {
             // existing cascade path (per backlog rule: do not touch
             // T1 in this task). 'semi' and 'manual' never reach
             // this function.
-            if ((this.decisionMode === 'auto' || this.decisionMode === 'ai-trained')
+            if ((this.decisionMode === 'auto' || this.decisionMode === 'ai-trained' || this.decisionMode === 'analytics')
                 && window.moneyPanel
                 && typeof window.moneyPanel.setPrediction === 'function') {
                 try {
@@ -440,7 +463,7 @@ class AutoUpdateOrchestrator {
             // light up. Read-only with respect to the AI-trained
             // controller — no decision logic, money math, or controller
             // state is touched.
-            if (this.decisionMode === 'ai-trained'
+            if ((this.decisionMode === 'ai-trained' || this.decisionMode === 'analytics')
                 && window.rouletteWheel
                 && typeof window.rouletteWheel.updateHighlights === 'function') {
                 try {
@@ -490,6 +513,7 @@ class AutoUpdateOrchestrator {
             // behavior (clear + reselect T3 with the engine's pick).
             if (this.decisionMode !== 'ai-trained'
                 && this.decisionMode !== '3t-selection'
+                && this.decisionMode !== 'analytics'
                 && window.aiPanel) {
                 window.aiPanel.clearSelections();
                 if (this.decisionMode === 'test') {
@@ -513,7 +537,7 @@ class AutoUpdateOrchestrator {
 
             // b. Set wheel filters programmatically.
             //    AI-trained has no selectedFilter, so skip.
-            if (this.decisionMode !== 'ai-trained') {
+            if (this.decisionMode !== 'ai-trained' && this.decisionMode !== 'analytics') {
                 this._setWheelFilters(decision.selectedFilter);
             }
 
@@ -527,7 +551,7 @@ class AutoUpdateOrchestrator {
             // SKIP — clear stale UI from previous BET.
             // AI-trained maintains its own state; never touch engine
             // session counters from this path.
-            if (this.decisionMode !== 'ai-trained' && window.aiAutoEngine
+            if (this.decisionMode !== 'ai-trained' && this.decisionMode !== 'analytics' && window.aiAutoEngine
                     && typeof window.aiAutoEngine.recordSkip === 'function') {
                 window.aiAutoEngine.recordSkip();
             }
@@ -671,6 +695,7 @@ class AutoUpdateOrchestrator {
         else if (mode === 'ai-trained') this.decisionMode = 'ai-trained';
         else if (mode === 'test') this.decisionMode = 'test';
         else if (mode === '3t-selection') this.decisionMode = '3t-selection';
+        else if (mode === 'analytics') this.decisionMode = 'analytics';
         else this.decisionMode = 'auto';
         // Drop any queued AI-trained feedback when leaving ai-trained,
         // so a later re-entry cannot misattribute an old decision to a
