@@ -349,7 +349,36 @@ class MoneyManagementPanel {
                 status.style.color = '#155724';  // Dark green
             }
             console.log('✅ Betting ENABLED - System will place bets automatically');
-    
+
+            // EVERY-SPIN (wheel/manual) resume: if the gate is armed and
+            // we have a pool but no pendingBet (because pausing cleared it
+            // and arming-while-paused never stamped), stamp one NOW so
+            // betting restarts on the next spin without waiting for the
+            // gate to re-arm. Same mode is excluded — it must wait for a
+            // real trigger spin. This is the immediate counterpart to the
+            // recovery stamp in checkForNewSpin.
+            const everySpinMode = (typeof window !== 'undefined' && (window.wheelMode === true || window.manualMode === true));
+            if (everySpinMode
+                && this.sessionData.sameArmed
+                && !this.pendingBet
+                && Array.isArray(this._sameLastPredictedNumbers)
+                && this._sameLastPredictedNumbers.length > 0) {
+                const numbers = this._sameLastPredictedNumbers.slice();
+                const numbersCount = numbers.length;
+                const betAmount = this.calculateBetAmount(numbersCount);
+                if (betAmount > 0) {
+                    const spins = window.spins || window.spinData;
+                    const currentCount = (spins && spins.length) ? spins.length : (this.lastSpinCount || 0);
+                    this.pendingBet = {
+                        betAmount: betAmount,
+                        numbersCount: numbersCount,
+                        predictedNumbers: numbers,
+                        placedAtSpinCount: currentCount
+                    };
+                    console.log(`✅ Every-spin resume: stamped pendingBet at count=${currentCount} (${numbersCount} numbers, $${betAmount}/num)`);
+                }
+            }
+
             // CRITICAL: Get fresh prediction immediately when starting
             if (window.aiPanel && window.aiPanel.getPredictions) {
                 setTimeout(() => {
@@ -1016,10 +1045,19 @@ class MoneyManagementPanel {
                     // pool. When BOTH are OFF, regular every-spin
                     // betting is in effect and no re-stamp is needed
                     // because setPrediction fires per spin.
-                    const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true);
-                    if (triggerGateOn && hit && this.sessionData.sameArmed && this.sessionData.isBettingEnabled
+                    // Re-stamp the next bet:
+                    //   • WHEEL mode = bet EVERY spin → re-stamp after
+                    //     win OR loss (no waiting, never disarms).
+                    //   • SAME mode = re-stamp only after a WIN (a loss
+                    //     disarms and waits for the next trigger).
+                    const wheelEvery = (typeof window !== 'undefined' && (window.wheelMode === true || window.manualMode === true));
+                    const sameWin    = (typeof window !== 'undefined' && window.sameMode === true && hit);
+                    const reStamp = (wheelEvery || sameWin)
+                        && this.sessionData.sameArmed
+                        && this.sessionData.isBettingEnabled
                         && Array.isArray(this._sameLastPredictedNumbers)
-                        && this._sameLastPredictedNumbers.length > 0) {
+                        && this._sameLastPredictedNumbers.length > 0;
+                    if (reStamp) {
                         const numbers = this._sameLastPredictedNumbers.slice();
                         const numbersCount = numbers.length;
                         const betAmount = this.calculateBetAmount(numbersCount);
@@ -1030,7 +1068,7 @@ class MoneyManagementPanel {
                                 predictedNumbers: numbers,
                                 placedAtSpinCount: currentCount
                             };
-                            console.log(`🔁 Same mode: WIN — re-stamped pendingBet at count=${currentCount} for next spin`);
+                            console.log(`🔁 ${wheelEvery ? 'Wheel' : 'Same'} mode: re-stamped pendingBet at count=${currentCount} for next spin (${hit ? 'WIN' : 'LOSS'})`);
                         }
                     }
                 }
@@ -1041,7 +1079,7 @@ class MoneyManagementPanel {
                 // change at the trigger spin itself. When BOTH toggles
                 // are OFF the gate doesn't apply and regular every-
                 // spin betting takes over via setPrediction.
-                const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true);
+                const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true || window.manualMode === true);
                 // Trigger check uses _sameTriggerPool (the pool that was
                 // active WHEN this spin was unknown), NOT _sameLast
                 // PredictedNumbers (which was overwritten with the
@@ -1086,9 +1124,14 @@ class MoneyManagementPanel {
                         wheelFilterPass = pass;
                     } catch (_) { /* fallback to pool-only check */ }
                 }
-                if (triggerGateOn && triggerPool.length > 0) {
+                // WHEEL mode = bet EVERY spin on whatever options the user
+                // selected. It must arm unconditionally (no pool wait) so
+                // the first spin already places a bet. SAME mode keeps the
+                // wait-for-trigger behaviour (arm only when spin in pool).
+                const wheelEveryGate = (typeof window !== 'undefined' && (window.wheelMode === true || window.manualMode === true));
+                if ((triggerGateOn && triggerPool.length > 0) || wheelEveryGate) {
                     const inPoolRaw = triggerPool.includes(actualNumber);
-                    const inPool = inPoolRaw && wheelFilterPass;
+                    const inPool = (inPoolRaw && wheelFilterPass) || wheelEveryGate;
                     if (inPool && !this.sessionData.sameArmed) {
                         this.sessionData.sameArmed = true;
                         // Broadcast armed-state change so the wheel's
@@ -1116,6 +1159,34 @@ class MoneyManagementPanel {
                                 };
                                 console.log(`✅ Same mode: pendingBet stamped at count=${currentCount} (${numbersCount} numbers, $${betAmount}/num) — will resolve on next spin`);
                             }
+                        }
+                    } else if (wheelEveryGate
+                        && this.sessionData.sameArmed
+                        && this.sessionData.isBettingEnabled
+                        && !this.pendingBet
+                        && Array.isArray(this._sameLastPredictedNumbers)
+                        && this._sameLastPredictedNumbers.length > 0) {
+                        // EVERY-SPIN (wheel/manual) recovery stamp: we are
+                        // already armed but have no pendingBet. This happens
+                        // when the gate armed while betting was PAUSED (the
+                        // arm block above skips stamping when betting is
+                        // disabled), then betting was re-enabled — leaving
+                        // sameArmed=true forever with nothing to resolve, so
+                        // every spin logged "waiting, armed=true" and no bet
+                        // was placed (exactly the user's report). Stamp now
+                        // so the next spin bets. Same mode deliberately does
+                        // NOT do this — it must wait for a real trigger.
+                        const numbers = this._sameLastPredictedNumbers.slice();
+                        const numbersCount = numbers.length;
+                        const betAmount = this.calculateBetAmount(numbersCount);
+                        if (betAmount > 0) {
+                            this.pendingBet = {
+                                betAmount: betAmount,
+                                numbersCount: numbersCount,
+                                predictedNumbers: numbers,
+                                placedAtSpinCount: currentCount
+                            };
+                            console.log(`✅ Every-spin: recovery-stamped pendingBet at count=${currentCount} (${numbersCount} numbers, $${betAmount}/num) — armed while paused, betting now enabled`);
                         }
                     } else {
                         // Explain the two gates separately so the reason
@@ -1200,7 +1271,7 @@ class MoneyManagementPanel {
             // sameArmed flag tracks both gates (they share the
             // armed/disarmed lifecycle). When BOTH toggles are OFF,
             // regular every-spin betting fires below.
-            const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true);
+            const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true || window.manualMode === true);
             const gateBlocks = triggerGateOn && !this.sessionData.sameArmed;
             if (this.sessionData.isSessionActive && betAmount > 0 && this.sessionData.isBettingEnabled && !gateBlocks) {
                 this.pendingBet = {
@@ -1263,9 +1334,15 @@ class MoneyManagementPanel {
                 this.sessionData.consecutiveLosses++;
                 this.sessionData.consecutiveWins = 0;  // NEW: Reset consecutive wins
                 this._updateDrawdown();
-                // Trigger gate: a LOSS disarms (Same OR Wheel mode).
-                // Next bet waits for another trigger spin in the pool.
-                if (typeof window !== 'undefined' && (window.sameMode === true || window.wheelMode === true)) {
+                // Trigger gate: a LOSS disarms — but ONLY in Same mode.
+                // SAME mode waits for the next trigger spin in the pool.
+                // WHEEL mode bets EVERY spin on whatever options the user
+                // selected, so it must NEVER disarm on a loss (the re-stamp
+                // block keeps it armed for the next spin). Disarming wheel
+                // mode here was why a losing spin silently stopped betting.
+                const wheelEveryMode = (typeof window !== 'undefined' && (window.wheelMode === true || window.manualMode === true));
+                const sameOnlyMode   = (typeof window !== 'undefined' && window.sameMode === true && !wheelEveryMode);
+                if (sameOnlyMode) {
                     this.sessionData.sameArmed = false;
                     try { window.dispatchEvent(new CustomEvent('triggerArmedChanged', { detail: { armed: false } })); } catch (_) {}
                     console.log('⏸ Trigger gate: LOSS → disarmed (wait for next trigger)');
@@ -1837,7 +1914,7 @@ class MoneyManagementPanel {
         // pendingBet until checkForNewSpin arms us via a spin in pool.
         // Both toggles share the sameArmed lifecycle. When OFF, the
         // existing normal pendingBet logic runs below.
-        const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true);
+        const triggerGateOn = (typeof window !== 'undefined') && (window.sameMode === true || window.wheelMode === true || window.manualMode === true);
         if (triggerGateOn && !this.sessionData.sameArmed) {
             this.pendingBet = null;
             this.sessionData.lastBetAmount = betAmount;
