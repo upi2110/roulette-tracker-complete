@@ -394,6 +394,22 @@ class AIAutoModeUI {
         const engine = this.engine || (typeof window !== 'undefined' ? window.aiAutoEngine : null);
         const semiFilter = typeof window !== 'undefined' ? window.semiAutoFilter : null;
 
+        // Leaving Analytics → drop its column highlight immediately so it
+        // doesn't bleed into the next mode's selection UI. Analytics owns
+        // its own dynamic <style> rule that persists across re-renders;
+        // a mode switch alone wouldn't clear it without this hook.
+        if (this.currentMode === 'analytics' && mode !== 'analytics') {
+            try {
+                if (typeof window !== 'undefined' && window.analyticsHighlight
+                    && typeof window.analyticsHighlight.clear === 'function') {
+                    window.analyticsHighlight.clear();
+                }
+                if (typeof window !== 'undefined' && window.aiPanel) {
+                    window.aiPanel._lastAnalyticsDecision = null;
+                }
+            } catch (_) {}
+        }
+
         if (mode === 'ai-trained') {
             // AI-trained live mode. Does NOT use the heuristic engine
             // or user-defined pairs. Every live spin is routed through

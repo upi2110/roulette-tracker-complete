@@ -849,6 +849,20 @@ class AIPredictionPanel {
             this._predictionDebounce = null;
         }
 
+        // Drop the Analytics column highlight too. It uses its own
+        // dynamic <style> rule (so it persists across re-renders), so
+        // simply clearing user selections wouldn't drop it — without
+        // this call the cyan side-bars would stick on the columns even
+        // after Deselect Pairs / mode switch, blocking other modes'
+        // selection UX.
+        try {
+            if (typeof window !== 'undefined' && window.analyticsHighlight
+                && typeof window.analyticsHighlight.clear === 'function') {
+                window.analyticsHighlight.clear();
+            }
+            if (window.aiPanel) window.aiPanel._lastAnalyticsDecision = null;
+        } catch (_) {}
+
         this.table3Selections.clear();
         this.table1Selections = {};
         this.table2Selections = {};

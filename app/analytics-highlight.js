@@ -24,8 +24,13 @@
         return (typeof key === 'string') ? key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase()) : '';
     }
 
-    const HL_BET = { bg: 'rgba(34,197,94,0.30)', border: '#16a34a' };
-    const HL_WAIT = { bg: 'rgba(245,158,11,0.28)', border: '#d97706' };
+    // SAME cyan family as the existing `.t3-pair-selected` rule in
+    // app/styles-3tables.css — analytics uses the app's standard
+    // selection colour, not green/red/amber. NO background fill (it was
+    // making the headers unreadable) — just thin coloured side-bars on
+    // the contributing column cells.
+    const HL_BET = { accent: '#0ea5e9' };   // solid sky cyan
+    const HL_WAIT = { accent: '#7dd3fc' };  // softer cyan
 
     function _styleEl() {
         let s = document.getElementById('analytics-hl-style');
@@ -72,11 +77,21 @@
 
         if (selectors.length === 0) { s.textContent = ''; return; }
 
-        // Whole-column highlight: background tint + inset border so the
-        // contributing columns stand out against the existing cell colours.
-        s.textContent = selectors.join(',\n')
-            + `{ background-color: ${theme.bg} !important;`
-            + ` box-shadow: inset 0 0 0 1px ${theme.border}; }`;
+        // Match the existing `.t3-pair-selected` style family exactly so
+        // analytics looks identical to manual pair selection: cyan
+        // outline + soft tinted body + bright header chip.
+        const bodySel = selectors.join(',\n');
+        const headerSel = selectors.map(x => x.replace('[data-pair', 'th[data-pair')).join(',\n');
+        s.textContent =
+            `${bodySel} {`
+            + ` outline: 3px solid ${theme.accent} !important;`
+            + ` outline-offset: -2px;`
+            + ` background-color: rgba(14, 165, 233, 0.15) !important;`
+            + ` }\n`
+            + `${headerSel} {`
+            + ` background-color: #bae6fd !important;`
+            + ` color: #0c4a6e !important;`
+            + ` }`;
     }
 
     if (typeof window !== 'undefined') {

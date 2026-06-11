@@ -815,6 +815,24 @@ async function undoLast() {
         // Clear pending bet (prediction is about to change)
         mp.pendingBet = null;
         mp.lastSpinCount = spins.length;
+    }
+
+    // Reset the orchestrator's lastSpinCount to spins.length - 1 (not
+    // spins.length) so the very next observer tick fires the analytics
+    // decision for the POST-UNDO state. Earlier we set it equal to
+    // spins.length which fixed re-entry (4 > 3) but left the post-undo
+    // state itself with no prediction (3 > 3 → false). With length - 1
+    // the orchestrator immediately re-decides for the current history,
+    // matching the user expectation: "undo back to spin N → see the
+    // same prediction that was made for spin N originally."
+    try {
+        if (typeof window !== 'undefined' && window.autoUpdateOrchestrator
+            && typeof window.autoUpdateOrchestrator.lastSpinCount === 'number') {
+            window.autoUpdateOrchestrator.lastSpinCount = Math.max(0, spins.length - 1);
+        }
+    } catch (_) {}
+
+    if (mp) {
 
         // If no bets remain, deactivate session so it restarts cleanly
         if (mp.sessionData.totalBets === 0) {
