@@ -25,7 +25,7 @@ class MoneyManagementPanel {
             isSessionActive: false,
             spinsWithBets: [],
             isBettingEnabled: false,  // NEW: User control for betting
-            bettingStrategy: 4,  // 1=Aggressive, 2=Conservative, 3=Cautious, 4=Defensive (default: Defensive)
+            bettingStrategy: 2,  // 1=Aggressive, 2=Conservative, 3=Cautious, 4=Defensive (default: Conservative, per user request)
             // ─── Strategy-4 Defensive variables (user-tunable) ───
             // Default escalation:
             //   +$1 after 6 consecutive losses, -$1 after 1 consecutive win.
@@ -146,10 +146,10 @@ class MoneyManagementPanel {
                             border: none;
                             border-radius: 4px;
                             cursor: pointer;
-                            background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%);
+                            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
                             color: white;
                             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                        ">🛡️ Strategy 4: Defensive</button>
+                        ">🔵 Strategy 2: Conservative</button>
                     <button id="strategyVarsBtn" type="button" title="Edit active-strategy variables (loss/win thresholds + bet step sizes)" style="
                             padding: 3px 6px;
                             font-size: 11px;
@@ -1350,6 +1350,16 @@ class MoneyManagementPanel {
 
                 console.log(`❌ MISS! Number ${actualNumber} - Lost $${Math.abs(netChange)}`);
             }
+
+        // Custom event so listeners (Manual-Enhance's MISS clear, etc.)
+        // can react to a bet's outcome without coupling to this panel.
+        try {
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                window.dispatchEvent(new CustomEvent('manualEnhance:betResolved', {
+                    detail: { hit: !!hit, actualNumber: actualNumber, netChange: netChange }
+                }));
+            }
+        } catch (_) { /* defensive — never block resolution */ }
 
         // INSTANT DISPLAY: bankroll / profit / win-rate are already
         // updated synchronously above, so paint them NOW — before the

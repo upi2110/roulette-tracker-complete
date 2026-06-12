@@ -133,6 +133,14 @@ class AIAutoModeUI {
                     border:2px solid #0ea5e9;border-radius:5px;cursor:pointer;
                     background:transparent;color:#94a3b8;
                 ">📊 Analytics</button>
+                <!-- Manual-Enhance: Manual mode + auto-cascade. User picks T3 pair;
+                     the strategy auto-selects T1 / T2 pairs per the variable toggles
+                     shown in #manualEnhanceVarRow. -->
+                <button id="manualEnhanceModeBtn" data-tab-group="manual" title="Manual-Enhance — pick a T3 pair; T1/T2 selections are auto-cascaded per the variable toggles. On miss, all table selections clear (toggles preserved)." style="
+                    display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
+                    border:2px solid #f97316;border-radius:5px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">✨ Manual-Enhance</button>
                 <!-- Auto tab sub-buttons -->
                 <button id="autoModeBtn" data-tab-group="auto" style="
                     display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
@@ -174,6 +182,22 @@ class AIAutoModeUI {
                 ">
                     <input type="checkbox" id="strategyLabGreyToggle" checked style="margin-right:4px;vertical-align:middle;">include grey numbers
                 </label>
+            </div>
+
+            <!-- Manual-Enhance variable toggles. Visible only while
+                 currentMode === 'manual-enhance'. Default: T2 ON, T1 OFF. -->
+            <div id="manualEnhanceVarRow" data-tab-group="manual-enhance" style="
+                display:none;align-items:center;gap:8px;margin-bottom:6px;
+                padding:5px 8px;background:rgba(249,115,22,0.08);
+                border:1px solid #f97316;border-radius:6px;">
+                <span style="font-size:11px;font-weight:700;color:#f97316;">Variables:</span>
+                <label title="Auto-select the matching column in Table 1 (only the side that hit a valid T1 code on the latest spin)" style="font-size:11px;color:#cbd5e1;cursor:pointer;user-select:none;">
+                    <input type="checkbox" id="manualEnhanceT1Toggle" style="margin-right:4px;vertical-align:middle;">T1
+                </label>
+                <label title="Auto-select both the pair AND its 13-opposite column in Table 2" style="font-size:11px;color:#cbd5e1;cursor:pointer;user-select:none;">
+                    <input type="checkbox" id="manualEnhanceT2Toggle" checked style="margin-right:4px;vertical-align:middle;">T2
+                </label>
+                <span style="margin-left:auto;font-size:10px;color:#94a3b8;">Pick a pair in T3 — cascade fires automatically</span>
             </div>
             <div id="trainingStatusBar" style="display:none;margin-bottom:4px;">
                 <div id="trainingStatus" style="font-size:10px;color:#94a3b8;margin-bottom:2px;">Not trained</div>
@@ -270,6 +294,93 @@ class AIAutoModeUI {
         if (analyticsBtn) {
             analyticsBtn.addEventListener('click', () => {
                 if (this.currentMode !== 'analytics') this.setMode('analytics');
+            });
+        }
+
+        // Manual-Enhance sub-tab — Manual mode + auto-cascade behavior.
+        const manualEnhanceBtn = document.getElementById('manualEnhanceModeBtn');
+        if (manualEnhanceBtn) {
+            manualEnhanceBtn.addEventListener('click', () => {
+                if (this.currentMode !== 'manual-enhance') this.setMode('manual-enhance');
+            });
+        }
+        // Variable toggles — persist into window.manualEnhance.* so other
+        // modules (panel, renderer reset) can read/write the same source.
+        if (typeof window !== 'undefined' && !window.manualEnhance) {
+            window.manualEnhance = {
+                t1On: false,        // default: T1 OFF
+                t2On: true,         // default: T2 ON
+                lastT3Pair: null    // last T3 pair the user picked
+            };
+        }
+        const t1Toggle = document.getElementById('manualEnhanceT1Toggle');
+        const t2Toggle = document.getElementById('manualEnhanceT2Toggle');
+        if (t1Toggle) {
+            t1Toggle.checked = !!(window.manualEnhance && window.manualEnhance.t1On);
+            t1Toggle.addEventListener('change', () => {
+                if (window.manualEnhance) window.manualEnhance.t1On = !!t1Toggle.checked;
+            });
+        }
+        if (t2Toggle) {
+            t2Toggle.checked = !!(window.manualEnhance && window.manualEnhance.t2On);
+            t2Toggle.addEventListener('change', () => {
+                if (window.manualEnhance) window.manualEnhance.t2On = !!t2Toggle.checked;
+            });
+        }
+        // MISS handler — clear ALL table pair selections, keep toggles.
+        // Listen for the bet-resolution custom event the money panel
+        // dispatches after each spin's hit/miss decision.
+        // ── Snapshot for undo ──
+        // Before clearing on MISS, we snapshot the current selections so
+        // a subsequent UNDO can restore them (matches the user's mental
+        // model: "undo brings back what was there").
+        if (typeof window !== 'undefined') {
+            window.addEventListener('manualEnhance:betResolved', (ev) => {
+                try {
+                    if (this.currentMode !== 'manual-enhance') return;
+                    const hit          = !!(ev && ev.detail && ev.detail.hit);
+                    const actualNumber = ev && ev.detail && ev.detail.actualNumber;
+
+                    // HIT → keep everything as-is.
+                    if (hit) return;
+
+                    // GREY-HIT FALLBACK — even though the bet missed (the
+                    // actual wasn't in the primary bet pool), check if it
+                    // landed in the "grey" / extra pool (extendedIntersection
+                    // minus primary). If so, treat as preserved per the
+                    // user's spec: "if the actual comes from grey ones
+                    // even if include grey is off, keep the selection".
+                    let inExtras = false;
+                    try {
+                        const pred = window.aiPanel && window.aiPanel.currentPrediction;
+                        const extras = (pred && Array.isArray(pred.extraNumbers)) ? pred.extraNumbers : [];
+                        if (typeof actualNumber === 'number' && extras.indexOf(actualNumber) >= 0) {
+                            inExtras = true;
+                        }
+                    } catch (_) { /* defensive */ }
+                    if (inExtras) {
+                        // Same as HIT for selection-preservation purposes —
+                        // no snapshot, no clear. Money panel already
+                        // recorded the dollar loss; that's separate.
+                        return;
+                    }
+
+                    // TRUE MISS (actual was neither in primary nor in extras)
+                    // → snapshot current selections, then clear.
+                    if (window.aiPanel) {
+                        try {
+                            const t3 = Array.from(window.aiPanel.table3Selections || []);
+                            const t1 = Object.keys(window.aiPanel.table1Selections || {});
+                            const t2 = Object.keys(window.aiPanel.table2Selections || {});
+                            window.manualEnhance = window.manualEnhance || {};
+                            window.manualEnhance.preMissSnapshot = { t1, t2, t3 };
+                        } catch (_) { /* snapshot optional */ }
+                        if (typeof window.aiPanel.clearSelections === 'function') {
+                            window.aiPanel.clearSelections();
+                        }
+                    }
+                    if (window.manualEnhance) window.manualEnhance.lastT3Pair = null;
+                } catch (_) { /* never break the resolution flow */ }
             });
         }
 
@@ -538,6 +649,24 @@ class AIAutoModeUI {
                 }
             }
 
+        } else if (mode === 'manual-enhance') {
+            // Manual-Enhance — same engine/orchestrator posture as MANUAL,
+            // but signals the panel that pair selections should auto-
+            // cascade per the variable toggles when the user picks a T3
+            // pair, and that on a MISS we clear all pair selections.
+            this.currentMode = 'manual-enhance';
+            this.isAutoMode = false;
+            this.isSemiAutoMode = false;
+            if (engine) engine.disable();
+            if (semiFilter) semiFilter.disable();
+            this._restoreAutoParity(engine);
+            if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
+                window.autoUpdateOrchestrator.setAutoMode(false);
+                if (typeof window.autoUpdateOrchestrator.setDecisionMode === 'function') {
+                    window.autoUpdateOrchestrator.setDecisionMode('auto');
+                }
+            }
+
         } else if (mode === 'semi') {
             // Switching to SEMI-AUTO — user picks pair, system picks filter
             this.currentMode = 'semi';
@@ -658,7 +787,7 @@ class AIAutoModeUI {
      * so the visible tab stays in sync with currentMode.
      */
     _tabForMode(mode) {
-        if (mode === 'manual' || mode === 'semi' || mode === 'analytics') return 'manual';
+        if (mode === 'manual' || mode === 'semi' || mode === 'analytics' || mode === 'manual-enhance') return 'manual';
         if (mode === 'auto' || mode === 't1-strategy' || mode === 'ai-trained' || mode === '3t-selection') return 'auto';
         if (mode === 'test') return 'test';
         return 'manual';
@@ -781,6 +910,27 @@ class AIAutoModeUI {
             testLabBtn.style.background = mode === 'test' ? '#14b8a6' : 'transparent';
             testLabBtn.style.color = mode === 'test' ? 'white' : '#94a3b8';
             testLabBtn.style.borderColor = mode === 'test' ? '#14b8a6' : '#64748b';
+        }
+
+        const manualEnhanceBtn = document.getElementById('manualEnhanceModeBtn');
+        if (manualEnhanceBtn) {
+            // Orange accent matching the variable-row's border colour.
+            manualEnhanceBtn.style.background  = mode === 'manual-enhance' ? '#f97316' : 'transparent';
+            manualEnhanceBtn.style.color       = mode === 'manual-enhance' ? 'white' : '#94a3b8';
+            manualEnhanceBtn.style.borderColor = mode === 'manual-enhance' ? '#f97316' : '#64748b';
+        }
+
+        // Show the variable-toggle row ONLY when manual-enhance is the
+        // active sub-mode. Sync checkbox state from window.manualEnhance.
+        const varRow = document.getElementById('manualEnhanceVarRow');
+        if (varRow) {
+            varRow.style.display = (mode === 'manual-enhance') ? 'flex' : 'none';
+            if (mode === 'manual-enhance' && typeof window !== 'undefined' && window.manualEnhance) {
+                const t1c = document.getElementById('manualEnhanceT1Toggle');
+                const t2c = document.getElementById('manualEnhanceT2Toggle');
+                if (t1c) t1c.checked = !!window.manualEnhance.t1On;
+                if (t2c) t2c.checked = !!window.manualEnhance.t2On;
+            }
         }
     }
 

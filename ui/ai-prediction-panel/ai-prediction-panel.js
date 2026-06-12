@@ -545,6 +545,84 @@ class AIPredictionPanel {
         this.updateTable3Highlights();
         this._updateCounts();
         this._autoTriggerPredictions();
+
+        // Manual-Enhance auto-cascade: when the user picks a T3 pair in
+        // 'manual-enhance' sub-mode, derive T1/T2 selections via the
+        // strategy helper and programmatically toggle them.
+        // - Fires SYMMETRICALLY: on isChecked === true → cascade ON,
+        //   on isChecked === false → uncascade OFF (only the keys the
+        //   same strategy rules would have added — so a manually-clicked
+        //   T1/T2 pair the user added by hand stays).
+        // - Re-entrance guarded so a cascading T1/T2 toggle doesn't
+        //   loop back into this handler.
+        try {
+            if (this._manualEnhanceCascading) return;
+            const aiMode = (typeof window !== 'undefined' && window.aiAutoModeUI) ? window.aiAutoModeUI.currentMode : null;
+            if (aiMode !== 'manual-enhance') return;
+            const strat = (typeof window !== 'undefined') ? window.ManualEnhanceStrategy : null;
+            if (!strat || typeof strat.getAutoSelections !== 'function') return;
+            const state = (typeof window !== 'undefined' && window.manualEnhance) ? window.manualEnhance : { t1On: false, t2On: true };
+            const spinsArr = (typeof window !== 'undefined' && Array.isArray(window.spins))
+                ? window.spins.map(s => (s && typeof s.actual === 'number') ? s.actual : null).filter(n => n !== null)
+                : [];
+            const cascade = strat.getAutoSelections({
+                t3Pair: pairKey,
+                t1On: !!state.t1On,
+                t2On: !!state.t2On,
+                engine: (typeof window !== 'undefined') ? window.aiAutoEngine : null,
+                spins: spinsArr
+            });
+            // Note: table1Selections / table2Selections are PLAIN OBJECTS
+            // (not Sets), so we check with `in` / hasOwnProperty rather
+            // than .has(). Misusing .has() throws and was getting eaten
+            // by the surrounding try/catch — silently disabling cascade.
+            this._manualEnhanceCascading = true;
+            try {
+                if (isChecked) {
+                    // CASCADE ON — add the strategy's T1/T2 picks (only
+                    // if not already selected, so user-added pairs aren't
+                    // duplicated).
+                    (cascade.t1 || []).forEach(pk => {
+                        const t1 = this.table1Selections || {};
+                        if (!Object.prototype.hasOwnProperty.call(t1, pk)) {
+                            this._handleTable12PairToggle('table1', pk, true);
+                        }
+                    });
+                    (cascade.t2 || []).forEach(pk => {
+                        const t2 = this.table2Selections || {};
+                        if (!Object.prototype.hasOwnProperty.call(t2, pk)) {
+                            this._handleTable12PairToggle('table2', pk, true);
+                        }
+                    });
+                } else {
+                    // CASCADE OFF — remove ONLY the keys the same rules
+                    // would have added. A T1/T2 pair the user added by
+                    // hand (e.g. via a direct T1/T2 click) is NOT in the
+                    // strategy's cascade set, so it stays selected.
+                    (cascade.t1 || []).forEach(pk => {
+                        const t1 = this.table1Selections || {};
+                        if (Object.prototype.hasOwnProperty.call(t1, pk)) {
+                            this._handleTable12PairToggle('table1', pk, false);
+                        }
+                    });
+                    (cascade.t2 || []).forEach(pk => {
+                        const t2 = this.table2Selections || {};
+                        if (Object.prototype.hasOwnProperty.call(t2, pk)) {
+                            this._handleTable12PairToggle('table2', pk, false);
+                        }
+                    });
+                }
+            } finally {
+                this._manualEnhanceCascading = false;
+            }
+            // Re-trigger the prediction so the bet pool reflects the
+            // post-cascade T1/T2 state (the initial trigger fired before
+            // the cascade ran).
+            try { this._autoTriggerPredictions(); } catch (_) { /* defensive */ }
+            if (window.manualEnhance) {
+                window.manualEnhance.lastT3Pair = isChecked ? pairKey : null;
+            }
+        } catch (_) { /* never break T3 selection on cascade error */ }
     }
 
     // Keep backward compat for table click highlighting

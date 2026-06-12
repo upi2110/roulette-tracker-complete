@@ -871,6 +871,53 @@ async function undoLast() {
     // Re-render tables — re-triggers predictions if 3+ spins
     render();
 
+    // ── Manual-Enhance: restore pair selections snapshotted before
+    //    the MISS-clear (if any). Matches the user's expectation that
+    //    UNDO brings back the selections that existed for the prior
+    //    spin's bet — they were cleared by the bet-resolution event
+    //    when that spin missed; undoing the spin should also undo the
+    //    clear.
+    try {
+        if (typeof window !== 'undefined'
+                && window.aiAutoModeUI
+                && window.aiAutoModeUI.currentMode === 'manual-enhance'
+                && window.manualEnhance
+                && window.manualEnhance.preMissSnapshot
+                && window.aiPanel
+                && spins.length >= 3) {
+            const snap = window.manualEnhance.preMissSnapshot;
+            window.manualEnhance.preMissSnapshot = null; // consume once
+            const panel = window.aiPanel;
+            // Guard the cascade so the strategy doesn't fire while we
+            // reinstate T3 — we want to restore EXACTLY what was there,
+            // not re-derive via the toggles.
+            panel._manualEnhanceCascading = true;
+            try {
+                (snap.t3 || []).forEach(pk => {
+                    if (typeof panel._handleTable3Selection === 'function'
+                            && !panel.table3Selections.has(pk)) {
+                        panel._handleTable3Selection(pk, true);
+                    }
+                });
+                (snap.t1 || []).forEach(pk => {
+                    const t1 = panel.table1Selections || {};
+                    if (!Object.prototype.hasOwnProperty.call(t1, pk)) {
+                        panel._handleTable12PairToggle('table1', pk, true);
+                    }
+                });
+                (snap.t2 || []).forEach(pk => {
+                    const t2 = panel.table2Selections || {};
+                    if (!Object.prototype.hasOwnProperty.call(t2, pk)) {
+                        panel._handleTable12PairToggle('table2', pk, true);
+                    }
+                });
+            } finally {
+                panel._manualEnhanceCascading = false;
+            }
+            try { panel._autoTriggerPredictions(); } catch (_) {}
+        }
+    } catch (_) { /* never block undo */ }
+
     // ── CLEAR STALE UI WHEN < 3 SPINS ──
     try {
         if (spins.length < 3) {
@@ -896,6 +943,22 @@ function resetAll() {
     if (confirm('Reset all?')) {
         spins.length = 0;  // ✅ Clears SAME array, keeps reference intact
         document.getElementById('direction').value = 'C';
+
+        // Manual-Enhance: reset the variable toggles back to default
+        // (T2 ON, T1 OFF) and clear the last-T3 cache. The checkbox UI
+        // is re-synced via aiAutoModeUI._updateModeButtons below.
+        try {
+            if (typeof window !== 'undefined') {
+                if (!window.manualEnhance) window.manualEnhance = {};
+                window.manualEnhance.t1On = false;
+                window.manualEnhance.t2On = true;
+                window.manualEnhance.lastT3Pair = null;
+                const t1c = document.getElementById('manualEnhanceT1Toggle');
+                const t2c = document.getElementById('manualEnhanceT2Toggle');
+                if (t1c) t1c.checked = false;
+                if (t2c) t2c.checked = true;
+            }
+        } catch (_) { /* defensive — never block reset */ }
 
         // Clear spin input field
         const spinInput = document.getElementById('spinNumber');
