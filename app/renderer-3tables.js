@@ -691,6 +691,17 @@ function addSpin() {
     spins.push({ direction: dir, actual: num });
     render();
 
+    // Auto-Enhance — after the spin has been added and tables re-rendered
+    // (so the T2 anchor-flash data is fresh for THIS spin), nudge the
+    // mode controller to attempt a pair-pick + cascade. The listener
+    // is a no-op when mode ≠ 'auto-enhance' or when a T3 selection is
+    // already live (HIT / GREY-HIT preserved it).
+    try {
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+            window.dispatchEvent(new CustomEvent('autoEnhance:checkPair'));
+        }
+    } catch (_) { /* defensive — never block add-spin */ }
+
     // Push-notify the money panel immediately instead of relying on
     // its 200ms polling interval. In wheel/same mode this matters
     // visibly — the trigger-gate's "armed" decision and hit/miss
@@ -871,22 +882,25 @@ async function undoLast() {
     // Re-render tables — re-triggers predictions if 3+ spins
     render();
 
-    // ── Manual-Enhance: restore pair selections snapshotted before
-    //    the MISS-clear (if any). Matches the user's expectation that
-    //    UNDO brings back the selections that existed for the prior
-    //    spin's bet — they were cleared by the bet-resolution event
-    //    when that spin missed; undoing the spin should also undo the
-    //    clear.
+    // ── Manual-Enhance / Auto-Enhance: restore pair selections
+    //    snapshotted before the MISS-clear (if any). Matches the user's
+    //    expectation that UNDO brings back the selections that existed
+    //    for the prior spin's bet — they were cleared by the bet-
+    //    resolution event when that spin missed; undoing the spin
+    //    should also undo the clear.
     try {
-        if (typeof window !== 'undefined'
-                && window.aiAutoModeUI
-                && window.aiAutoModeUI.currentMode === 'manual-enhance'
-                && window.manualEnhance
-                && window.manualEnhance.preMissSnapshot
+        const mode = (typeof window !== 'undefined' && window.aiAutoModeUI)
+            ? window.aiAutoModeUI.currentMode : null;
+        const isManual = mode === 'manual-enhance';
+        const isAuto   = mode === 'auto-enhance';
+        const stateKey = isManual ? 'manualEnhance' : (isAuto ? 'autoEnhance' : null);
+        if (stateKey
+                && window[stateKey]
+                && window[stateKey].preMissSnapshot
                 && window.aiPanel
                 && spins.length >= 3) {
-            const snap = window.manualEnhance.preMissSnapshot;
-            window.manualEnhance.preMissSnapshot = null; // consume once
+            const snap = window[stateKey].preMissSnapshot;
+            window[stateKey].preMissSnapshot = null; // consume once
             const panel = window.aiPanel;
             // Guard the cascade so the strategy doesn't fire while we
             // reinstate T3 — we want to restore EXACTLY what was there,
@@ -953,10 +967,27 @@ function resetAll() {
                 window.manualEnhance.t1On = false;
                 window.manualEnhance.t2On = true;
                 window.manualEnhance.lastT3Pair = null;
+                window.manualEnhance.preMissSnapshot = null;
                 const t1c = document.getElementById('manualEnhanceT1Toggle');
                 const t2c = document.getElementById('manualEnhanceT2Toggle');
                 if (t1c) t1c.checked = false;
                 if (t2c) t2c.checked = true;
+            }
+        } catch (_) { /* defensive — never block reset */ }
+
+        // Auto-Enhance: same default reset (T2 ON, T1 OFF) + clear the
+        // locked pair and any pre-miss snapshot.
+        try {
+            if (typeof window !== 'undefined') {
+                if (!window.autoEnhance) window.autoEnhance = {};
+                window.autoEnhance.t1On = false;
+                window.autoEnhance.t2On = true;
+                window.autoEnhance.lockedPair = null;
+                window.autoEnhance.preMissSnapshot = null;
+                const aet1c = document.getElementById('autoEnhanceT1Toggle');
+                const aet2c = document.getElementById('autoEnhanceT2Toggle');
+                if (aet1c) aet1c.checked = false;
+                if (aet2c) aet2c.checked = true;
             }
         } catch (_) { /* defensive — never block reset */ }
 

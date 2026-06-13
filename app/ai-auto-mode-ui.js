@@ -165,6 +165,14 @@ class AIAutoModeUI {
                     border:2px solid #64748b;border-radius:5px;cursor:pointer;
                     background:transparent;color:#94a3b8;
                 ">3T-Selection</button>
+                <!-- Auto-Enhance: Manual-Enhance cascade + auto pair-pick + min-8 topup.
+                     Picks the pair via the T2 anchor-flash structure on each new spin,
+                     then runs the same cascade as Manual-Enhance. -->
+                <button id="autoEnhanceModeBtn" data-tab-group="auto" title="Auto-Enhance — system auto-picks the pair via T2 anchor-flash, cascades T1/T2 selections, and guarantees a ≥ 8-number bet pool via grey/neighbour topup." style="
+                    display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
+                    border:2px solid #f97316;border-radius:5px;cursor:pointer;
+                    background:transparent;color:#94a3b8;
+                ">✨ Auto-Enhance</button>
                 <!-- Test tab placeholder (single mode; tab click sets it) -->
                 <button id="testLabModeBtn" data-tab-group="test" title="Strategy Lab — sandbox mode for evaluating experimental strategies in live play" style="
                     display:none;flex:1;padding:5px 10px;font-size:11px;font-weight:700;
@@ -182,6 +190,22 @@ class AIAutoModeUI {
                 ">
                     <input type="checkbox" id="strategyLabGreyToggle" checked style="margin-right:4px;vertical-align:middle;">include grey numbers
                 </label>
+            </div>
+
+            <!-- Auto-Enhance variable toggles. Visible only while
+                 currentMode === 'auto-enhance'. Default: T2 ON, T1 OFF. -->
+            <div id="autoEnhanceVarRow" data-tab-group="auto-enhance" style="
+                display:none;align-items:center;gap:8px;margin-bottom:6px;
+                padding:5px 8px;background:rgba(249,115,22,0.08);
+                border:1px solid #f97316;border-radius:6px;">
+                <span style="font-size:11px;font-weight:700;color:#f97316;">Variables:</span>
+                <label title="Auto-select the matching column in Table 1 (only the side that hit a valid T1 code on the latest spin)" style="font-size:11px;color:#cbd5e1;cursor:pointer;user-select:none;">
+                    <input type="checkbox" id="autoEnhanceT1Toggle" style="margin-right:4px;vertical-align:middle;">T1
+                </label>
+                <label title="Auto-select both the pair AND its 13-opposite column in Table 2" style="font-size:11px;color:#cbd5e1;cursor:pointer;user-select:none;">
+                    <input type="checkbox" id="autoEnhanceT2Toggle" checked style="margin-right:4px;vertical-align:middle;">T2
+                </label>
+                <span style="margin-left:auto;font-size:10px;color:#94a3b8;">System auto-picks the pair each spin (re-picks on TRUE MISS only).</span>
             </div>
 
             <!-- Manual-Enhance variable toggles. Visible only while
@@ -304,6 +328,38 @@ class AIAutoModeUI {
                 if (this.currentMode !== 'manual-enhance') this.setMode('manual-enhance');
             });
         }
+        // Auto-Enhance sub-tab — same cascade as Manual-Enhance but
+        // with the user's T3 pick replaced by an auto-pair-pick step.
+        const autoEnhanceBtn = document.getElementById('autoEnhanceModeBtn');
+        if (autoEnhanceBtn) {
+            autoEnhanceBtn.addEventListener('click', () => {
+                if (this.currentMode !== 'auto-enhance') this.setMode('auto-enhance');
+            });
+        }
+        // Auto-Enhance state lives parallel to manualEnhance so the two
+        // modes' toggles don't leak into each other.
+        if (typeof window !== 'undefined' && !window.autoEnhance) {
+            window.autoEnhance = {
+                t1On: false,        // default: T1 OFF
+                t2On: true,         // default: T2 ON
+                lockedPair: null,   // currently active pair (kept on HIT/GREY-HIT, cleared on TRUE MISS)
+                preMissSnapshot: null
+            };
+        }
+        const aeT1 = document.getElementById('autoEnhanceT1Toggle');
+        const aeT2 = document.getElementById('autoEnhanceT2Toggle');
+        if (aeT1) {
+            aeT1.checked = !!(window.autoEnhance && window.autoEnhance.t1On);
+            aeT1.addEventListener('change', () => {
+                if (window.autoEnhance) window.autoEnhance.t1On = !!aeT1.checked;
+            });
+        }
+        if (aeT2) {
+            aeT2.checked = !!(window.autoEnhance && window.autoEnhance.t2On);
+            aeT2.addEventListener('change', () => {
+                if (window.autoEnhance) window.autoEnhance.t2On = !!aeT2.checked;
+            });
+        }
         // Variable toggles — persist into window.manualEnhance.* so other
         // modules (panel, renderer reset) can read/write the same source.
         if (typeof window !== 'undefined' && !window.manualEnhance) {
@@ -337,7 +393,10 @@ class AIAutoModeUI {
         if (typeof window !== 'undefined') {
             window.addEventListener('manualEnhance:betResolved', (ev) => {
                 try {
-                    if (this.currentMode !== 'manual-enhance') return;
+                    // Both Manual-Enhance and Auto-Enhance use this listener.
+                    const isManual = this.currentMode === 'manual-enhance';
+                    const isAuto   = this.currentMode === 'auto-enhance';
+                    if (!isManual && !isAuto) return;
                     const hit          = !!(ev && ev.detail && ev.detail.hit);
                     const actualNumber = ev && ev.detail && ev.detail.actualNumber;
 
@@ -357,6 +416,12 @@ class AIAutoModeUI {
                         if (typeof actualNumber === 'number' && extras.indexOf(actualNumber) >= 0) {
                             inExtras = true;
                         }
+                        // For Auto-Enhance, the bet pool may have been
+                        // topped up via min-8 (greys + neighbours). The
+                        // topup numbers were added to prediction.numbers
+                        // and the money panel paid out on those. So a
+                        // hit on a topup number is already counted as a
+                        // primary HIT — no special-case needed here.
                     } catch (_) { /* defensive */ }
                     if (inExtras) {
                         // Same as HIT for selection-preservation purposes —
@@ -372,15 +437,37 @@ class AIAutoModeUI {
                             const t3 = Array.from(window.aiPanel.table3Selections || []);
                             const t1 = Object.keys(window.aiPanel.table1Selections || {});
                             const t2 = Object.keys(window.aiPanel.table2Selections || {});
-                            window.manualEnhance = window.manualEnhance || {};
-                            window.manualEnhance.preMissSnapshot = { t1, t2, t3 };
+                            const snapTarget = isAuto ? 'autoEnhance' : 'manualEnhance';
+                            window[snapTarget] = window[snapTarget] || {};
+                            window[snapTarget].preMissSnapshot = { t1, t2, t3 };
                         } catch (_) { /* snapshot optional */ }
                         if (typeof window.aiPanel.clearSelections === 'function') {
                             window.aiPanel.clearSelections();
                         }
                     }
-                    if (window.manualEnhance) window.manualEnhance.lastT3Pair = null;
+                    if (isManual && window.manualEnhance) window.manualEnhance.lastT3Pair = null;
+                    if (isAuto && window.autoEnhance) {
+                        window.autoEnhance.lockedPair = null;
+                        // Re-pick triggered on the NEXT spin observer tick.
+                    }
                 } catch (_) { /* never break the resolution flow */ }
+            });
+        }
+
+        // Auto-Enhance auto-pick trigger.
+        // The orchestrator's spin observer fires after every new spin.
+        // We hook it via a custom event the orchestrator already
+        // dispatches indirectly (window.spins changes); the simplest
+        // reliable trigger is to listen for the renderer's prediction
+        // refresh which happens after each spin's tables update.
+        // We piggyback on a polling-style check: every time spins
+        // changes, if mode is auto-enhance AND no T3 selection is
+        // active, run pickAutoPair + cascade. This is implemented as
+        // a microtask kicked off from setMode / from the bet-resolved
+        // listener (see _maybeAutoPickPair below) — no polling.
+        if (typeof window !== 'undefined') {
+            window.addEventListener('autoEnhance:checkPair', () => {
+                try { this._maybeAutoPickPair(); } catch (_) {}
             });
         }
 
@@ -667,6 +754,31 @@ class AIAutoModeUI {
                 }
             }
 
+        } else if (mode === 'auto-enhance') {
+            // Auto-Enhance — Manual-Enhance cascade rules + auto pair-pick.
+            // We DON'T enable the engine (no engine-driven decision); the
+            // pair pick comes from AutoEnhanceStrategy and drives the
+            // panel's existing intersection math.
+            this.currentMode = 'auto-enhance';
+            this.isAutoMode = false;
+            this.isSemiAutoMode = false;
+            if (engine) engine.disable();
+            if (semiFilter) semiFilter.disable();
+            this._restoreAutoParity(engine);
+            if (typeof window !== 'undefined' && window.autoUpdateOrchestrator) {
+                window.autoUpdateOrchestrator.setAutoMode(false);
+                if (typeof window.autoUpdateOrchestrator.setDecisionMode === 'function') {
+                    window.autoUpdateOrchestrator.setDecisionMode('auto');
+                }
+            }
+            // Trigger a pair-pick attempt now (covers the case where the
+            // user switches into Auto-Enhance with spins already entered).
+            try {
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('autoEnhance:checkPair'));
+                }
+            } catch (_) {}
+
         } else if (mode === 'semi') {
             // Switching to SEMI-AUTO — user picks pair, system picks filter
             this.currentMode = 'semi';
@@ -787,6 +899,7 @@ class AIAutoModeUI {
      * so the visible tab stays in sync with currentMode.
      */
     _tabForMode(mode) {
+        if (mode === 'auto-enhance') return 'auto';
         if (mode === 'manual' || mode === 'semi' || mode === 'analytics' || mode === 'manual-enhance') return 'manual';
         if (mode === 'auto' || mode === 't1-strategy' || mode === 'ai-trained' || mode === '3t-selection') return 'auto';
         if (mode === 'test') return 'test';
@@ -930,6 +1043,23 @@ class AIAutoModeUI {
                 const t2c = document.getElementById('manualEnhanceT2Toggle');
                 if (t1c) t1c.checked = !!window.manualEnhance.t1On;
                 if (t2c) t2c.checked = !!window.manualEnhance.t2On;
+            }
+        }
+
+        const autoEnhanceBtn = document.getElementById('autoEnhanceModeBtn');
+        if (autoEnhanceBtn) {
+            autoEnhanceBtn.style.background  = mode === 'auto-enhance' ? '#f97316' : 'transparent';
+            autoEnhanceBtn.style.color       = mode === 'auto-enhance' ? 'white' : '#94a3b8';
+            autoEnhanceBtn.style.borderColor = mode === 'auto-enhance' ? '#f97316' : '#64748b';
+        }
+        const aeVarRow = document.getElementById('autoEnhanceVarRow');
+        if (aeVarRow) {
+            aeVarRow.style.display = (mode === 'auto-enhance') ? 'flex' : 'none';
+            if (mode === 'auto-enhance' && typeof window !== 'undefined' && window.autoEnhance) {
+                const aeT1c = document.getElementById('autoEnhanceT1Toggle');
+                const aeT2c = document.getElementById('autoEnhanceT2Toggle');
+                if (aeT1c) aeT1c.checked = !!window.autoEnhance.t1On;
+                if (aeT2c) aeT2c.checked = !!window.autoEnhance.t2On;
             }
         }
     }
@@ -1677,6 +1807,79 @@ class AIAutoModeUI {
         sections.forEach(section => {
             section.style.display = showManual ? 'block' : 'none';
         });
+    }
+
+    /**
+     * Auto-Enhance — pair-pick + cascade for the current spin.
+     *
+     * Conditions for picking:
+     *   • mode is 'auto-enhance'
+     *   • no T3 pair currently selected (HIT / GREY-HIT preserved the
+     *     prior pair; only a TRUE MISS or initial entry lands here)
+     *   • spins.length ≥ 4 (need data for T2 anchor-flash)
+     *
+     * If a pair qualifies via AutoEnhanceStrategy.pickAutoPair → drive
+     * it into T3 via the panel's existing handler. The panel's
+     * Manual-Enhance cascade will NOT fire (mode is auto-enhance) but
+     * Auto-Enhance hooks the same getAutoSelections to mirror the
+     * cascade — so we run the cascade explicitly here.
+     */
+    _maybeAutoPickPair() {
+        if (this.currentMode !== 'auto-enhance') return;
+        if (typeof window === 'undefined') return;
+        if (!window.aiPanel) return;
+        // Already have a T3 selection (carried over from HIT/GREY-HIT)
+        // → nothing to do; the panel will re-compute on the new spin.
+        if (window.aiPanel.table3Selections && window.aiPanel.table3Selections.size > 0) return;
+        const strat = window.AutoEnhanceStrategy;
+        if (!strat || typeof strat.pickAutoPair !== 'function') return;
+        const spinObjects = Array.isArray(window.spins) ? window.spins : [];
+        if (spinObjects.length < 4) return; // need ≥ 4 for flash chains
+
+        const visibleFamilies = (typeof window.getVisiblePairFamilies === 'function')
+            ? window.getVisiblePairFamilies() : null;
+        const pair = strat.pickAutoPair({
+            engine: window.aiAutoEngine,
+            spinObjects: spinObjects,
+            visibleFamilies: visibleFamilies
+        });
+        if (!pair) return;
+
+        // Drive the pick: T3 selection + cascade. We CANNOT reuse the
+        // Manual-Enhance cascade hook in _handleTable3Selection (it
+        // only fires for mode === 'manual-enhance'). Run the cascade
+        // here explicitly, guarded against re-entry.
+        const panel = window.aiPanel;
+        const state = window.autoEnhance || { t1On: false, t2On: true };
+        const spinsArr = spinObjects.map(s => (s && typeof s.actual === 'number') ? s.actual : null).filter(n => n !== null);
+        const cascade = strat.getAutoSelections({
+            t3Pair: pair,
+            t1On: !!state.t1On,
+            t2On: !!state.t2On,
+            engine: window.aiAutoEngine,
+            spins: spinsArr
+        });
+        try {
+            // Add T3 first so the panel's standard handler runs but its
+            // Manual-Enhance cascade guard skips (mode is auto-enhance).
+            if (typeof panel._handleTable3Selection === 'function') {
+                panel._handleTable3Selection(pair, true);
+            }
+            (cascade.t1 || []).forEach(pk => {
+                const t1 = panel.table1Selections || {};
+                if (!Object.prototype.hasOwnProperty.call(t1, pk)) {
+                    panel._handleTable12PairToggle('table1', pk, true);
+                }
+            });
+            (cascade.t2 || []).forEach(pk => {
+                const t2 = panel.table2Selections || {};
+                if (!Object.prototype.hasOwnProperty.call(t2, pk)) {
+                    panel._handleTable12PairToggle('table2', pk, true);
+                }
+            });
+        } catch (_) { /* never break the spin loop */ }
+        if (window.autoEnhance) window.autoEnhance.lockedPair = pair;
+        try { panel._autoTriggerPredictions(); } catch (_) {}
     }
 }
 

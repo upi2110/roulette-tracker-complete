@@ -2980,6 +2980,73 @@ class AIPredictionPanel {
 
             console.log('✅ Frontend prediction:', prediction);
 
+            // ── Auto-Enhance min-8 topup ───────────────────────────
+            // When active mode is auto-enhance and the bet pool has
+            // fewer than 8 numbers, extend it via the AutoEnhanceStrategy:
+            //   1. grey numbers matching the +/− or 0/19 stickiness rule
+            //   2. wheel ±k neighbours of the primary pool, same filter
+            // Pure additive — never shrinks the pool, never touches the
+            // extras list (greys stay visible separately).
+            try {
+                const aiMode = (typeof window !== 'undefined' && window.aiAutoModeUI)
+                    ? window.aiAutoModeUI.currentMode : null;
+                if (aiMode === 'auto-enhance'
+                        && Array.isArray(prediction.numbers)
+                        && prediction.numbers.length < 8
+                        && typeof window !== 'undefined'
+                        && window.AutoEnhanceStrategy
+                        && typeof window.AutoEnhanceStrategy.topUpToEight === 'function') {
+                    const spinObjs = Array.isArray(window.spins) ? window.spins : [];
+                    const last2 = spinObjs.slice(-2).map(s => (s && typeof s.actual === 'number') ? s.actual : null);
+                    const topup = window.AutoEnhanceStrategy.topUpToEight({
+                        primary: prediction.numbers.slice(),
+                        extras: Array.isArray(prediction.extraNumbers) ? prediction.extraNumbers : [],
+                        last2Actuals: last2,
+                        min: 8
+                    });
+                    if (topup && Array.isArray(topup.numbers)) {
+                        prediction.numbers = topup.numbers;
+                        prediction.full_pool = topup.numbers;
+                        prediction.autoEnhanceTopup = {
+                            filterKind: topup.filterKind,
+                            addedFromExtras: topup.addedFromExtras,
+                            addedFromNeighbours: topup.addedFromNeighbours
+                        };
+                        // ── Sync wheel-display arrays with the topped-up
+                        //    pool so the wheel highlights and the bet
+                        //    count match. The wheel reads `loose` for
+                        //    primary highlights and `extraNumbers` for
+                        //    greys; without this sync the wheel would
+                        //    show only the original 4 primary numbers
+                        //    even though the bet is 8.
+                        const addedToPrimary = [].concat(topup.addedFromExtras, topup.addedFromNeighbours);
+                        // 1. Append everything that was promoted to primary
+                        //    to `loose` so it lights up on the wheel.
+                        const currentLoose = Array.isArray(prediction.loose) ? prediction.loose.slice() : [];
+                        const loosePresent = new Set(currentLoose);
+                        addedToPrimary.forEach(n => {
+                            if (!loosePresent.has(n)) {
+                                currentLoose.push(n);
+                                loosePresent.add(n);
+                            }
+                        });
+                        prediction.loose = currentLoose;
+                        // 2. Remove the numbers that came FROM extras from
+                        //    `extraNumbers` so they're not double-counted
+                        //    (grey + primary). Numbers added from neighbour
+                        //    expansion were never in extras, so leave them.
+                        if (Array.isArray(prediction.extraNumbers) && topup.addedFromExtras.length) {
+                            const movedOut = new Set(topup.addedFromExtras);
+                            prediction.extraNumbers = prediction.extraNumbers.filter(n => !movedOut.has(n));
+                        }
+                        console.log(`✨ Auto-Enhance topup → ${topup.numbers.length} numbers `
+                            + `(rule=${topup.filterKind}, +${topup.addedFromExtras.length} grey, `
+                            + `+${topup.addedFromNeighbours.length} neighbour); `
+                            + `loose now ${prediction.loose.length}, extras now ${prediction.extraNumbers.length}`);
+                    }
+                }
+            } catch (_) { /* defensive — never block display */ }
+
             // SEMI-AUTO: auto-select optimal filter before displaying
             if (typeof window !== 'undefined' && window.semiAutoFilter && window.semiAutoFilter.isEnabled) {
                 window.semiAutoFilter.applyOptimalFilter(prediction.numbers);

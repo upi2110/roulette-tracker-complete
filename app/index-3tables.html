@@ -200,6 +200,9 @@
 <!-- Manual-Enhance — auto-cascade pair selections from T3 to T1/T2 when
      the matching toggle(s) are on. Pure helper, no decision logic. -->
 <script src="../strategies/manual-enhance/manual-enhance-strategy.js"></script>
+<!-- Auto-Enhance — Manual-Enhance + auto pair-pick + min-8 topup. Reuses
+     the Manual-Enhance cascade helper; must load AFTER it. -->
+<script src="../strategies/auto-enhance/auto-enhance-strategy.js"></script>
 <!-- Analytics table-trace highlighter — lights up the T2/T3 pair
      columns the consensus relied on. Self-contained; only toggles
      inline styles on existing <th data-pair> cells. -->
