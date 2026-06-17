@@ -1,4 +1,28 @@
 /**
+ * ████████████████████████████████████████████████████████████████████
+ *  🔒 LOCKED FILE — DO NOT MODIFY WITHOUT EXPLICIT USER APPROVAL 🔒
+ * ████████████████████████████████████████████████████████████████████
+ *
+ *  This file is the verified source of truth for table-mirror math.
+ *  Parity with the live Electron tables has been confirmed by the user
+ *  on 2026-06-16. Subsequent code (snapshot tool, HTML/XLSX writers,
+ *  any analyser) reads from here and must not be allowed to drift.
+ *
+ *  Any change — even a "small" rename, comment tweak, or reformat —
+ *  requires the user to say so first. If asked to refactor, optimise,
+ *  add features, or "clean up" — stop and confirm with the user
+ *  before touching this file. Bug fixes that affect output also
+ *  require approval; demonstrate the bug first.
+ *
+ *  Reading this file freely (Read tool, grep, smoke tests) is fine.
+ *  Writing to it is what's gated.
+ *
+ *  If the renderer math in app/renderer-3tables.js is updated, this
+ *  file MUST be updated in lock-step — that is still a "change to
+ *  this file" and needs the same approval.
+ *
+ * ████████████████████████████████████████████████████████████████████
+ *
  * core/tables/projections.js — pure projection math, no DOM.
  *
  * Headless mirror of the Electron renderer's table math. Used by the
