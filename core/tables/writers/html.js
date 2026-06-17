@@ -39,11 +39,13 @@
 
     // Pair-group order — mirrors T1_COLUMN_GROUPS in app/renderer-3tables.js.
     // The dataPair key is what the snapshot's nextProjections / rows use.
+    // NOTE: ref0 and ref19 are fixed anchor points (not derived from spin
+    // history). Electron's column config intentionally does NOT pair them
+    // with their 13-opposites — they stand alone. Only the spin-derived
+    // families (prev*, prevPrev*, …) carry _13opp variants here.
     const PAIR_GROUPS = [
         { dataPair: 'ref0',                  label: '0',         is13Opp: false, cssBg: '#dbeafe' },
-        { dataPair: 'ref0_13opp',            label: '0-13o',     is13Opp: true,  cssBg: '#dbeafe' },
         { dataPair: 'ref19',                 label: '19',        is13Opp: false, cssBg: '#cffafe' },
-        { dataPair: 'ref19_13opp',           label: '19-13o',    is13Opp: true,  cssBg: '#cffafe' },
         { dataPair: 'prevPlus1',             label: 'P+1',       is13Opp: false, cssBg: '#fce7f3' },
         { dataPair: 'prevPlus1_13opp',       label: 'P+1-13o',   is13Opp: true,  cssBg: '#fce7f3' },
         { dataPair: 'prevMinus1',            label: 'P-1',       is13Opp: false, cssBg: '#fae8ff' },
