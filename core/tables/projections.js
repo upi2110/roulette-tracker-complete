@@ -26,10 +26,17 @@
  *     getTable1NextProjections, getTable2NextProjections
  *     (refactored to accept a spins array argument instead of reading
  *      the renderer's `spins` global — same math otherwise)
+ *   app/renderer-3tables.js   lines  96–167
+ *     getNumberAtPosition, flipPositionCode, generateAnchors
+ *   app/renderer-3tables.js   lines 192–205
+ *     expandAnchorsToBetNumbers
+ *   app/renderer-3tables.js   lines 604–650
+ *     calculateReferences (engine refKey resolver for T3)
+ *   app/renderer-3tables.js   lines 3140–3204
+ *     T3 NEXT-row computation (extracted into getTable3NextProjections)
  *
  * Any drift would be a bug; if a future change touches the renderer
- * math, mirror it here too. T3 projections will be added in a
- * follow-up commit (Commit 1B).
+ * math, mirror it here too.
  */
 
 (function (root) {
@@ -257,6 +264,263 @@
         return _buildProjections(spinsArr, 2);
     }
 
+    // ── T3 math ───────────────────────────────────────────────────
+    // T3 doesn't use the LOOKUP_TABLE columns. Instead, for each pair
+    // it derives anchors from the LAST spin's position-code against
+    // the PREVIOUS state's references (one-spin-back refs). The
+    // anchors are then wheel-expanded into bet numbers.
+
+    function getNumberAtPosition(refNum, posCode) {
+        const ref = refNum === 0 ? 26 : refNum;
+        const refIdx = (ref === 26) ? 0 : WHEEL_NO_ZERO.indexOf(ref);
+
+        if (posCode === 'S+0') return refNum;
+        if (posCode === 'XX')  return null;
+
+        const match = posCode.match(/^(S|O)(L|R)([+-])(\d+)$/);
+        if (!match) {
+            if (posCode === 'O+0') return REGULAR_OPPOSITES[refNum];
+            return null;
+        }
+        const [, side, direction, sign, distStr] = match;
+        const distance = parseInt(distStr, 10);
+
+        let startIdx;
+        if (side === 'S') {
+            startIdx = refIdx;
+        } else {
+            const oppNum = REGULAR_OPPOSITES[refNum];
+            const opp = oppNum === 0 ? 26 : oppNum;
+            startIdx = (opp === 26) ? 0 : WHEEL_NO_ZERO.indexOf(opp);
+        }
+
+        let currentIdx = startIdx;
+        let stepsRemaining = distance;
+        const moveDirection = (sign === '+')
+            ? (direction === 'R' ? 1 : -1)
+            : (direction === 'R' ? -1 : 1);
+        let skippedZero = false;
+
+        while (stepsRemaining > 0) {
+            currentIdx = ((currentIdx + moveDirection) % 37 + 37) % 37;
+            const currentNum = WHEEL_NO_ZERO[currentIdx];
+            if (currentNum === 26 && !skippedZero) {
+                skippedZero = true;
+            } else if (currentNum !== 26 || skippedZero) {
+                stepsRemaining--;
+            }
+        }
+        const resultNum = WHEEL_NO_ZERO[currentIdx];
+        if (resultNum === undefined) return null;
+        return resultNum === 26 ? 0 : resultNum;
+    }
+
+    function flipPositionCode(posCode) {
+        if (posCode === 'XX' || posCode === 'S+0' || posCode === 'O+0') return posCode;
+        return posCode.replace(/([+-])/, m => m === '+' ? '-' : '+');
+    }
+
+    function generateAnchors(refNum, ref13Opp, prevPosCode) {
+        const purpleAnchors = [];
+        if (prevPosCode === 'XX') return { purple: [], green: [] };
+
+        const a1 = getNumberAtPosition(refNum,   prevPosCode);
+        const a2 = getNumberAtPosition(refNum,   flipPositionCode(prevPosCode));
+        const a3 = getNumberAtPosition(ref13Opp, prevPosCode);
+        const a4 = getNumberAtPosition(ref13Opp, flipPositionCode(prevPosCode));
+
+        [a1, a2, a3, a4].forEach(a => {
+            if (a !== null && !purpleAnchors.includes(a)) purpleAnchors.push(a);
+        });
+        const greenAnchors = purpleAnchors.map(a => REGULAR_OPPOSITES[a]).filter(a => a !== undefined);
+        return { purple: purpleAnchors, green: greenAnchors };
+    }
+
+    /**
+     * Expand purple + green anchors into the bet-number pool. Each
+     * anchor gets ±1 wheel-neighbour expansion. Same logic as
+     * renderer-3tables.js expandAnchorsToBetNumbers.
+     */
+    function expandAnchorsToBetNumbers(purpleAnchors, greenAnchors) {
+        const betNumbers = new Set();
+        [...purpleAnchors, ...greenAnchors].forEach(anchor => {
+            const idx = getWheel36Index(anchor);
+            if (idx === -1) return;
+            for (let offset = -1; offset <= 1; offset++) {
+                getNumbersAtPocket(idx + offset).forEach(n => betNumbers.add(n));
+            }
+        });
+        return Array.from(betNumbers);
+    }
+
+    /**
+     * Engine refKey resolver — mirrors calculateReferences in the
+     * renderer (lines 604–650). Handles the 0 / 36 wrap-around
+     * edge cases for prev and prevPrev branches identically.
+     */
+    function calculateReferences(prev, prevPrev) {
+        const refs = { prev: prev, prev_prev: prevPrev };
+
+        if (prev === 36) {
+            refs.prev_plus_1  = 35; refs.prev_plus_2  = 34;
+            refs.prev_minus_1 = 35; refs.prev_minus_2 = 34;
+        } else if (prev === 0) {
+            refs.prev_minus_1 = 10; refs.prev_minus_2 = 9;
+            refs.prev_plus_1  = 1;  refs.prev_plus_2  = 2;
+        } else {
+            refs.prev_plus_1  = Math.min(prev + 1, 36);
+            refs.prev_plus_2  = Math.min(prev + 2, 36);
+            refs.prev_minus_1 = Math.max(prev - 1, 0);
+            refs.prev_minus_2 = Math.max(prev - 2, 0);
+        }
+
+        if (prevPrev === 36) {
+            refs.prev_prev_plus_1  = 35; refs.prev_prev_plus_2  = 34;
+            refs.prev_prev_minus_1 = 35; refs.prev_prev_minus_2 = 34;
+        } else if (prevPrev === 0) {
+            refs.prev_prev_minus_1 = 10; refs.prev_prev_minus_2 = 9;
+            refs.prev_prev_plus_1  = 1;  refs.prev_prev_plus_2  = 2;
+        } else if (prevPrev != null) {
+            refs.prev_prev_plus_1  = Math.min(prevPrev + 1, 36);
+            refs.prev_prev_plus_2  = Math.min(prevPrev + 2, 36);
+            refs.prev_prev_minus_1 = Math.max(prevPrev - 1, 0);
+            refs.prev_prev_minus_2 = Math.max(prevPrev - 2, 0);
+        }
+        return refs;
+    }
+
+    // T3 pair-group definitions. engineRefKey is the snake_case key
+    // calculateReferences emits; dataPair is the camelCase key used
+    // everywhere else (AI panel, snapshot, etc.). Mirrors
+    // T3_COLUMN_GROUPS in renderer-3tables.js line 2842.
+    const T3_PAIR_GROUPS = [
+        { engineRefKey: 'prev_plus_1',       dataPair: 'prevPlus1' },
+        { engineRefKey: 'prev_minus_1',      dataPair: 'prevMinus1' },
+        { engineRefKey: 'prev_prev_plus_1',  dataPair: 'prevPrevPlus1' },
+        { engineRefKey: 'prev_prev_minus_1', dataPair: 'prevPrevMinus1' },
+        { engineRefKey: 'prev',              dataPair: 'prev' },
+        { engineRefKey: 'prev_prev',         dataPair: 'prevPrev' },
+        { engineRefKey: 'prev_plus_2',       dataPair: 'prevPlus2' },
+        { engineRefKey: 'prev_minus_2',      dataPair: 'prevMinus2' },
+        { engineRefKey: 'prev_prev_plus_2',  dataPair: 'prevPrevPlus2' },
+        { engineRefKey: 'prev_prev_minus_2', dataPair: 'prevPrevMinus2' }
+    ];
+
+    /**
+     * NEXT-row projections for Table 3.
+     *
+     * Per pair (engineRefKey):
+     *   refNum     = current refs[refKey]      (built from spins[-1], spins[-2])
+     *   prevRefNum = prev refs[refKey]         (built from spins[-2], spins[-3])
+     *   usePosCode = code of prevRefNum vs last actual; if XX, falls
+     *                back to prevRef13Opp's code (matches renderer).
+     *   anchors    = generateAnchors(refNum, ref13Opp, usePosCode)
+     *   bet pool   = anchors ±1 wheel-neighbours (purple + green)
+     *
+     * Output shape mirrors window.table3DisplayProjections so any
+     * caller can swap directly.
+     *
+     * @param {Array<number>} spinsArr - plain number array
+     * @returns {Object} { dataPair: { purple, green, pairPurple,
+     *   pairGreen, oppPurple, oppGreen, numbers }, … }
+     */
+    function getTable3NextProjections(spinsArr) {
+        if (!Array.isArray(spinsArr) || spinsArr.length < 2) return {};
+
+        const lastSpin     = spinsArr[spinsArr.length - 1];
+        const lastLastSpin = spinsArr[spinsArr.length - 2];
+        const refs = calculateReferences(lastSpin, lastLastSpin);
+
+        // prevRefs = state ONE spin earlier — built from spins[-2] and
+        // spins[-3]. When only 2 spins exist, renderer falls back to
+        // (prevPrev, prevPrev) so we match that.
+        const prevPrev2 = spinsArr.length > 2 ? spinsArr[spinsArr.length - 3] : lastLastSpin;
+        const prevRefs  = calculateReferences(lastLastSpin, prevPrev2);
+
+        const projections = {};
+        T3_PAIR_GROUPS.forEach(grp => {
+            const refKey = grp.engineRefKey;
+            const refNum = refs[refKey];
+            if (refNum == null || Number.isNaN(refNum)) return;
+            const ref13Opp = DIGIT_13_OPPOSITES[refNum];
+
+            const prevRefNum   = prevRefs[refKey];
+            const prevRef13Opp = DIGIT_13_OPPOSITES[prevRefNum];
+
+            const prevPair   = (prevRefNum   != null) ? calculatePositionCode(prevRefNum,   lastSpin) : 'XX';
+            const prevPair13 = (prevRef13Opp != null) ? calculatePositionCode(prevRef13Opp, lastSpin) : 'XX';
+            const usePosCode = prevPair !== 'XX' ? prevPair : prevPair13;
+
+            const merged = generateAnchors(refNum, ref13Opp, usePosCode);
+
+            // Half-anchors (pair-side vs 13opp-side) — same logic as
+            // renderer-3tables.js lines 3186–3195. Used by the T3-
+            // halfs display mode AND by the snapshot tool when the
+            // analyser wants to see which half a number came from.
+            let pairAnchors = [], oppAnchors = [];
+            if (usePosCode && usePosCode !== 'XX') {
+                const aPairA = getNumberAtPosition(refNum,   usePosCode);
+                const aPairB = getNumberAtPosition(refNum,   flipPositionCode(usePosCode));
+                const aOppA  = getNumberAtPosition(ref13Opp, usePosCode);
+                const aOppB  = getNumberAtPosition(ref13Opp, flipPositionCode(usePosCode));
+                [aPairA, aPairB].forEach(a => { if (a !== null && !pairAnchors.includes(a)) pairAnchors.push(a); });
+                [aOppA,  aOppB ].forEach(a => { if (a !== null && !oppAnchors .includes(a)) oppAnchors .push(a); });
+            }
+            const pairGreen = pairAnchors.map(a => REGULAR_OPPOSITES[a]).filter(a => a !== undefined);
+            const oppGreen  = oppAnchors .map(a => REGULAR_OPPOSITES[a]).filter(a => a !== undefined);
+
+            // Bet pool (anchors ±1 wheel-neighbours, purple ∪ green).
+            const numbers = expandAnchorsToBetNumbers(merged.purple, merged.green);
+
+            projections[grp.dataPair] = {
+                refNum, ref13Opp,
+                usePosCode,
+                purple:     merged.purple,
+                green:      merged.green,
+                pairPurple: pairAnchors,
+                pairGreen,
+                oppPurple:  oppAnchors,
+                oppGreen,
+                numbers
+            };
+        });
+        return projections;
+    }
+
+    /**
+     * Per-historical-row T3 anchors — for each spin idx ≥ 2,
+     * recompute the same anchors / bet pool the renderer painted on
+     * that row, plus a flag for whether the actual at idx hit the
+     * anchors or the bet pool. Useful for the snapshot tool's table
+     * view.
+     */
+    function computeTable3Rows(spinsArr) {
+        if (!Array.isArray(spinsArr) || spinsArr.length < 3) return [];
+        const rows = [];
+        for (let i = 2; i < spinsArr.length; i++) {
+            const slice = spinsArr.slice(0, i);  // state "as of" idx-1
+            const projAtRow = getTable3NextProjections(slice);
+            const actual = spinsArr[i];
+            const perPair = {};
+            Object.entries(projAtRow).forEach(([pairKey, p]) => {
+                const anchorSet = new Set([...(p.purple || []), ...(p.green || [])]);
+                const betSet    = new Set(p.numbers || []);
+                perPair[pairKey] = {
+                    refNum:     p.refNum,
+                    ref13Opp:   p.ref13Opp,
+                    usePosCode: p.usePosCode,
+                    purple:     p.purple,
+                    green:      p.green,
+                    numbers:    p.numbers,
+                    hitAnchor:  anchorSet.has(actual),
+                    hitBetPool: betSet.has(actual)
+                };
+            });
+            rows.push({ spinIndex: i, actual, perPair });
+        }
+        return rows;
+    }
+
     // ── Per-row table data (for the snapshot tool) ────────────────
     /**
      * For each historical spin, compute the per-pair position codes +
@@ -326,17 +590,22 @@
     const api = {
         // Constants
         WHEEL_NO_ZERO, WHEEL_36, REGULAR_OPPOSITES, DIGIT_13_OPPOSITES,
-        TABLE1_VALID, TABLE2_VALID, LOOKUP_TABLE,
-        // Helpers
+        TABLE1_VALID, TABLE2_VALID, LOOKUP_TABLE, T3_PAIR_GROUPS,
+        // T1/T2 helpers
         getLookupRow,
         getWheel36Index, getNumbersAtPocket,
         calculateWheelDistance, calculatePositionCode,
         expandTargetsToBetNumbers,
-        // NEXT-row projections (T1, T2). T3 in follow-up Commit 1B.
+        // T3 helpers
+        getNumberAtPosition, flipPositionCode, generateAnchors,
+        expandAnchorsToBetNumbers, calculateReferences,
+        // NEXT-row projections (T1, T2, T3)
         getTable1NextProjections,
         getTable2NextProjections,
+        getTable3NextProjections,
         // Per-spin row data
-        computeTableRows
+        computeTableRows,
+        computeTable3Rows
     };
 
     // Browser: attach to window.CoreTables — does NOT replace any
