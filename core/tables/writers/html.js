@@ -1,4 +1,28 @@
 /**
+ * ████████████████████████████████████████████████████████████████████
+ *  🔒 LOCKED FILE — DO NOT MODIFY WITHOUT EXPLICIT USER APPROVAL 🔒
+ * ████████████████████████████████████████████████████████████████████
+ *
+ *  This file is the verified HTML mirror of the live Electron tables.
+ *  Parity confirmed by the user on 2026-06-16 across:
+ *     • T1 / T2 / T3 layout and column structure
+ *     • 22 pair-group columns (2 standalone + 10 fams × 2 variants)
+ *     • Same-side / opp-side split per cell
+ *     • Visible-families filter ("Pairs N/12" dropdown)
+ *     • NEXT-row Ref values driven by calculateReferences
+ *
+ *  Any change — rename, refactor, reformat, "cleanup", colour tweak,
+ *  layout change — requires user approval first. Bug fixes that affect
+ *  output also require approval; demonstrate the bug first.
+ *
+ *  Reading this file freely (Read tool, grep, smoke tests) is fine.
+ *  Writing to it is what's gated.
+ *
+ *  Companion locked files: see [[locked-projections-file]] and
+ *  [[locked-snapshot-pipeline]].
+ *
+ * ████████████████████████████████████████████████████████████████████
+ *
  * core/tables/writers/html.js — Electron-table mirror.
  *
  * The HTML it produces lays out exactly like Electron's T1/T2/T3:

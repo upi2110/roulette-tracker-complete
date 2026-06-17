@@ -1,4 +1,18 @@
 /**
+ * ████████████████████████████████████████████████████████████████████
+ *  🔒 LOCKED FILE — DO NOT MODIFY WITHOUT EXPLICIT USER APPROVAL 🔒
+ * ████████████████████████████████████████████████████████████████████
+ *
+ *  This is the renderer → main-process spin/family detection pipe.
+ *  Verified by the user on 2026-06-16. Changing the polling cadence,
+ *  fingerprint logic, or the data it forwards (spins + visibleFamilies)
+ *  silently breaks live snapshot refresh. Locked.
+ *
+ *  Companion locked files: [[locked-projections-file]],
+ *  [[locked-snapshot-pipeline]], [[locked-snapshot-html-writer]].
+ *
+ * ████████████████████████████████████████████████████████████████████
+ *
  * snapshot-bridge.js — keep snapshots/current.{html,xlsx} in sync
  * with window.spins.
  *

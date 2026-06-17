@@ -1,4 +1,17 @@
 /**
+ * ████████████████████████████████████████████████████████████████████
+ *  🔒 LOCKED FILE — DO NOT MODIFY WITHOUT EXPLICIT USER APPROVAL 🔒
+ * ████████████████████████████████████████████████████████████████████
+ *
+ *  This file defines the snapshot DATA SHAPE the analyser will read.
+ *  Changing the shape (renaming fields, dropping fields, restructuring
+ *  meta/table1/table2/table3) breaks the analyser silently. Locked.
+ *
+ *  Companion locked files: [[locked-projections-file]],
+ *  [[locked-snapshot-html-writer]].
+ *
+ * ████████████████████████████████████████████████████████████████████
+ *
  * core/tables/snapshot.js — produce a JSON snapshot of T1/T2/T3
  * matching exactly what the Electron renderer paints.
  *

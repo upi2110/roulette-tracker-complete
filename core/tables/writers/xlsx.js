@@ -1,4 +1,14 @@
 /**
+ * ████████████████████████████████████████████████████████████████████
+ *  🔒 LOCKED FILE — DO NOT MODIFY WITHOUT EXPLICIT USER APPROVAL 🔒
+ * ████████████████████████████████████████████████████████████████████
+ *
+ *  XLSX mirror of the locked snapshot data. Reads the same shape the
+ *  HTML writer reads. Locked together with the HTML writer for
+ *  consistency. See [[locked-snapshot-html-writer]].
+ *
+ * ████████████████████████████████████████████████████████████████████
+ *
  * core/tables/writers/xlsx.js — render a snapshot as an Excel
  * workbook. Three sheets (T1, T2, T3) matching the HTML layout.
  *
