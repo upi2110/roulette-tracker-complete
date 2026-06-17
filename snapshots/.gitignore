@@ -1,0 +1,4 @@
+# Generated snapshots — do not commit. They regenerate on every CLI
+# run and (Commit 3) on every spin in the Electron app.
+*
+!.gitignore
