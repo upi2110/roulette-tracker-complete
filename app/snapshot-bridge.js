@@ -59,10 +59,22 @@
             .filter(n => n !== null);
     }
 
-    function _fingerprint(arr) {
-        // Cheap O(n) fingerprint: length-prefixed comma-join. Catches
-        // any per-position value change as well as length change.
-        return arr.length + ':' + arr.join(',');
+    function _visibleFamilies() {
+        // The renderer exposes its "Pairs (N/12)" dropdown state via
+        // window.getVisiblePairFamilies(). Return as a sorted array so
+        // the snapshot writer can filter what it renders.
+        try {
+            if (typeof window.getVisiblePairFamilies === 'function') {
+                return Array.from(window.getVisiblePairFamilies()).sort();
+            }
+        } catch (_) {}
+        return null;     // null = "no filter — show all" (default)
+    }
+
+    function _fingerprint(arr, fams) {
+        // Cheap O(n) fingerprint: length-prefixed comma-join plus the
+        // family filter so a change in either triggers a refresh.
+        return arr.length + ':' + arr.join(',') + '|' + (fams ? fams.join(',') : '*');
     }
 
     async function _maybeRefresh() {
@@ -71,14 +83,15 @@
 
         const spins = _snapshotSpins();
         if (!spins) return;
+        const families = _visibleFamilies();
 
-        const fp = _fingerprint(spins);
+        const fp = _fingerprint(spins, families);
         if (fp === _lastFingerprint) return;     // no change since last write
         _lastFingerprint = fp;
 
         _inFlight = true;
         try {
-            const r = await window.aiAPI.refreshSnapshot(spins);
+            const r = await window.aiAPI.refreshSnapshot(spins, { visibleFamilies: families });
             if (r && r.ok) {
                 _failures = 0;
                 console.log(`📸 Snapshot refreshed (${r.spinCount} spins → spin-${r.idx})`);

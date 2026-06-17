@@ -70,6 +70,30 @@
     const T2_VALID = new Set(['S+0', 'SL+1', 'SR+1', 'SL+2', 'SR+2',
                               'O+0', 'OL+1', 'OR+1', 'OL+2', 'OR+2']);
 
+    // Resolve the math helpers from the locked projections module.
+    // Used to compute per-row POS codes inside T3 (we need them in the
+    // writer because computeTable3Rows doesn't carry them — and the
+    // projections module is locked).
+    const P = (typeof require === 'function')
+        ? require('../projections.js')
+        : (typeof window !== 'undefined' ? window.CoreTables : null);
+
+    // Convert a pairKey ('prevPlus1' or 'prevPlus1_13opp') to the
+    // family name Electron's visibleFamilies set uses (strip _13opp).
+    function _familyForDataPair(dataPair) {
+        return dataPair && dataPair.endsWith('_13opp')
+            ? dataPair.slice(0, -6)
+            : dataPair;
+    }
+
+    // If meta.visibleFamilies is an array, filter the group list by it.
+    // If it's null/undefined, return everything (default = show all).
+    function _filterGroups(groups, visibleFamilies) {
+        if (!Array.isArray(visibleFamilies)) return groups;
+        const set = new Set(visibleFamilies);
+        return groups.filter(g => set.has(_familyForDataPair(g.dataPair)));
+    }
+
     function _esc(s) {
         return String(s)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -121,11 +145,11 @@
     }
 
     // ── NEXT row (no actual yet — show projected anchors only) ──
-    function _renderNextRow(table, neighborRange) {
+    function _renderNextRow(table, neighborRange, groups) {
         const proj = table.nextProjections || {};
         const cells = ['<td style="font-weight:700;background:#fef9c3;color:#854d0e;text-align:center;padding:4px 6px;">NEXT</td>'];
         cells.push('<td style="background:#fef9c3;text-align:center;color:#94a3b8;">—</td>');
-        PAIR_GROUPS.forEach(group => {
+        (groups || PAIR_GROUPS).forEach(group => {
             const entry = proj[group.dataPair];
             if (!entry) {
                 cells.push('<td colspan="7" style="background:#fef9c3;text-align:center;color:#cbd5e1;font-size:10px;">—</td>');
@@ -154,12 +178,12 @@
     }
 
     // ── Two-row column header (matches Electron's two header rows) ──
-    function _renderT12Head() {
-        const groupHeaders = PAIR_GROUPS.map(g => {
+    function _renderT12Head(groups) {
+        const groupHeaders = groups.map(g => {
             return `<th colspan="7" style="background:${g.cssBg};text-align:center;` +
                    `padding:3px 6px;font-size:11px;border-left:2px solid #fff;">${g.label}</th>`;
         }).join('');
-        const subHeaders = PAIR_GROUPS.map(g => {
+        const subHeaders = groups.map(g => {
             return SUB_LABELS.map((lbl, i) =>
                 `<th style="background:#f8fafc;color:#475569;font-size:10px;font-weight:500;` +
                 `padding:2px 3px;text-align:center;${i === 0 ? 'border-left:2px solid #fff;' : ''}">${lbl}</th>`
@@ -173,35 +197,38 @@
         </thead>`;
     }
 
-    function _renderT12(name, t, neighborLabel) {
+    function _renderT12(name, t, neighborLabel, visibleFamilies) {
         const proj    = t.nextProjections || {};
         const rows    = t.rows || [];
         const validSet = name === 'Table 1' ? T1_VALID : T2_VALID;
         const neighborRange = name === 'Table 1' ? 1 : 2;
-        const pairFams = Object.keys(proj).filter(k => !k.endsWith('_13opp'));
-        const count = pairFams.length;
+        const groups  = _filterGroups(PAIR_GROUPS, visibleFamilies);
+        const count   = new Set(groups.map(g => _familyForDataPair(g.dataPair))).size;
 
         const bodyRows = rows.map((row, ri) => {
             const stripe = ri % 2 === 0 ? '#ffffff' : '#fafafa';
             const dirCell    = `<td style="background:${stripe};text-align:center;padding:3px;font-size:10px;color:#64748b;">${row.spinIndex + 1}</td>`;
             const actualCell = `<td style="background:${stripe};text-align:center;padding:3px;font-weight:700;color:#0f172a;">${row.actual}</td>`;
-            const cells = PAIR_GROUPS.map(g => _renderGroupCells(row.perPair, g, validSet)).join('');
+            const cells = groups.map(g => _renderGroupCells(row.perPair, g, validSet)).join('');
             return `<tr>${dirCell}${actualCell}${cells}</tr>`;
         }).join('');
 
-        const nextRow = (count > 0) ? _renderNextRow(t, neighborRange) : '';
+        const nextRow = (count > 0) ? _renderNextRow(t, neighborRange, groups) : '';
 
         const badgeColor = count >= 12 ? '#16a34a' : count > 0 ? '#f59e0b' : '#dc2626';
+        const filterNote = Array.isArray(visibleFamilies)
+            ? ` <span style="font-weight:400;color:#64748b;font-size:10px;">(filtered to ${visibleFamilies.length}/12)</span>`
+            : '';
         return `
             <h2 style="margin:18px 0 4px;font-size:14px;color:#0f172a;">
-                ${name} <span style="font-weight:400;color:#64748b;font-size:11px;">— ${neighborLabel}</span>
+                ${name} <span style="font-weight:400;color:#64748b;font-size:11px;">— ${neighborLabel}</span>${filterNote}
                 <span style="float:right;font-size:11px;font-weight:600;background:${badgeColor};color:#fff;padding:2px 8px;border-radius:10px;">
                     ${count} pair famil${count === 1 ? 'y' : 'ies'} · ${rows.length} historical row${rows.length === 1 ? '' : 's'}
                 </span>
             </h2>
             <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:4px;">
                 <table style="border-collapse:collapse;font-size:11px;white-space:nowrap;">
-                    ${_renderT12Head()}
+                    ${_renderT12Head(groups)}
                     <tbody>${bodyRows}${nextRow}</tbody>
                 </table>
             </div>
@@ -226,23 +253,55 @@
         { dataPair: 'prevPrevMinus2',  label: 'PP-2', cssBg: '#fed7aa' }
     ];
 
-    function _renderT3Cell(perPair, group) {
-        const e = perPair && perPair[group.dataPair];
-        if (!e) return '<td style="text-align:center;color:#cbd5e1;font-size:10px;">—</td>';
-        const purpleHtml = (e.purple || []).map(n =>
+    // ── Per-row T3 cells matching Electron's 5-cell-per-pair layout ──
+    //   col 1: PRJ chips (purple anchors + green anchors, side-coloured)
+    //   col 2: POS code of actual against pair refNum
+    //   col 3: refNum (the pair's ref number this row)
+    //   col 4: ref13Opp
+    //   col 5: POS code of actual against ref13Opp
+    //
+    // Note: Electron orders these as label | POS | label-13o | POS | PRJ
+    // but the visual goal is the same — see each pair's PRJ chips and
+    // both POS codes per row. We render PRJ first so the chips align
+    // visually beneath the NEXT row chips.
+
+    function _renderT3PrjChips(p) {
+        if (!p) return '<span style="color:#cbd5e1;font-size:10px;">—</span>';
+        const purpleHtml = (p.purple || []).map(n =>
             `<span style="background:#a855f7;color:#fff;padding:1px 4px;margin:1px;border-radius:3px;font-size:10px;font-weight:700;">${n}</span>`
         ).join('');
-        const greenHtml = (e.green || []).map(n =>
+        const greenHtml = (p.green || []).map(n =>
             `<span style="background:#16a34a;color:#fff;padding:1px 4px;margin:1px;border-radius:3px;font-size:10px;font-weight:700;">${n}</span>`
         ).join('');
-        const hitBadge = e.hitAnchor
+        const hitBadge = p.hitAnchor
             ? `<span style="background:#fef9c3;color:#854d0e;padding:0 3px;font-size:9px;font-weight:700;margin-left:2px;border-radius:2px;">HIT</span>`
             : '';
-        return `<td style="padding:2px 4px;background:#fff;text-align:center;">${purpleHtml}${greenHtml}${hitBadge}</td>`;
+        return purpleHtml + greenHtml + hitBadge;
     }
 
-    function _renderT3NextCell(group, projEntry) {
-        if (!projEntry) return '<td style="text-align:center;color:#cbd5e1;font-size:10px;background:#fef9c3;">—</td>';
+    function _renderT3RowCells(perPair, group, actual) {
+        const e = perPair && perPair[group.dataPair];
+        if (!e) return `<td colspan="5" style="text-align:center;color:#cbd5e1;font-size:10px;">—</td>`;
+        // Compute POS codes for the actual number against this row's refs.
+        // (P is the locked projections module — exposes calculatePositionCode.)
+        const codePair  = (P && e.refNum   != null) ? P.calculatePositionCode(e.refNum,   actual) : 'XX';
+        const code13opp = (P && e.ref13Opp != null) ? P.calculatePositionCode(e.ref13Opp, actual) : 'XX';
+        const isHitPair  = T1_VALID.has(codePair)  || T2_VALID.has(codePair);
+        const isHit13opp = T1_VALID.has(code13opp) || T2_VALID.has(code13opp);
+        const base = 'padding:2px 4px;background:#fff;text-align:center;font-size:11px;';
+        return [
+            `<td style="${base}font-weight:700;color:#7c3aed;background:${group.cssBg};">${e.refNum  ?? ''}</td>`,
+            `<td style="${base}">${_formatCode(codePair,  isHitPair)}</td>`,
+            `<td style="${base}font-weight:700;color:#16a34a;background:${group.cssBg};opacity:0.85;">${e.ref13Opp ?? ''}</td>`,
+            `<td style="${base}">${_formatCode(code13opp, isHit13opp)}</td>`,
+            `<td style="${base}">${_renderT3PrjChips(e)}</td>`
+        ].join('');
+    }
+
+    function _renderT3NextCells(group, projEntry) {
+        if (!projEntry) {
+            return `<td colspan="5" style="text-align:center;color:#cbd5e1;font-size:10px;background:#fef9c3;">—</td>`;
+        }
         const p = projEntry;
         const purpleHtml = (p.purple || []).map(n =>
             `<span style="background:#a855f7;color:#fff;padding:1px 4px;margin:1px;border-radius:3px;font-size:10px;font-weight:700;">${n}</span>`
@@ -250,35 +309,54 @@
         const greenHtml = (p.green || []).map(n =>
             `<span style="background:#16a34a;color:#fff;padding:1px 4px;margin:1px;border-radius:3px;font-size:10px;font-weight:700;">${n}</span>`
         ).join('');
-        const codeBadge = p.usePosCode
-            ? `<div style="font-size:9px;color:#94a3b8;margin-top:2px;">code ${_esc(p.usePosCode)}</div>`
-            : '';
-        return `<td style="padding:3px 4px;background:#fef9c3;text-align:center;">${purpleHtml}${greenHtml}${codeBadge}</td>`;
+        const base = 'padding:3px 4px;background:#fef9c3;text-align:center;font-size:11px;';
+        // NEXT row has no actual yet → no POS code, just the projection.
+        // Carry refNum + ref13Opp through so the user can see which refs
+        // drive the projection.
+        return [
+            `<td style="${base}font-weight:700;color:#7c3aed;background:${group.cssBg};">${p.refNum ?? ''}</td>`,
+            `<td style="${base}color:#94a3b8;font-size:9px;">${p.usePosCode ? _esc(p.usePosCode) : '—'}</td>`,
+            `<td style="${base}font-weight:700;color:#16a34a;background:${group.cssBg};opacity:0.85;">${p.ref13Opp ?? ''}</td>`,
+            `<td style="${base}color:#94a3b8;font-size:9px;">—</td>`,
+            `<td style="${base}">${purpleHtml}${greenHtml}</td>`
+        ].join('');
     }
 
-    function _renderT3(t) {
-        const proj  = t.nextProjections || {};
-        const rows  = t.rows || [];
-        const count = Object.keys(proj).length;
+    function _renderT3(t, visibleFamilies) {
+        const proj   = t.nextProjections || {};
+        const rows   = t.rows || [];
+        const groups = _filterGroups(T3_PAIR_GROUPS, visibleFamilies);
+        const count  = groups.length;
 
-        const headerCells = T3_PAIR_GROUPS.map(g =>
-            `<th style="background:${g.cssBg};text-align:center;padding:4px 6px;font-size:11px;border-left:2px solid #fff;">${g.label}</th>`
+        // Two header rows — group label spans 5 cols; sub-headers underneath.
+        const T3_SUBS = ['Ref', 'POS', '13o', 'POS', 'PRJ'];
+        const groupHeaders = groups.map(g =>
+            `<th colspan="5" style="background:${g.cssBg};text-align:center;padding:3px 6px;font-size:11px;border-left:2px solid #fff;">${g.label}</th>`
         ).join('');
-        const head = `<thead><tr>
-            <th style="background:#f8fafc;padding:4px;font-size:10px;text-align:center;">Spin</th>
-            <th style="background:#f8fafc;padding:4px;font-size:10px;text-align:center;">Actual</th>
-            ${headerCells}
-        </tr></thead>`;
+        const subHeaders = groups.map(g =>
+            T3_SUBS.map((lbl, i) =>
+                `<th style="background:#f8fafc;color:#475569;font-size:10px;font-weight:500;` +
+                `padding:2px 3px;text-align:center;${i === 0 ? 'border-left:2px solid #fff;' : ''}">${lbl}</th>`
+            ).join('')
+        ).join('');
+        const head = `<thead>
+            <tr>
+                <th rowspan="2" style="background:#f8fafc;padding:4px;font-size:10px;text-align:center;">Spin</th>
+                <th rowspan="2" style="background:#f8fafc;padding:4px;font-size:10px;text-align:center;">Actual</th>
+                ${groupHeaders}
+            </tr>
+            <tr>${subHeaders}</tr>
+        </thead>`;
 
         const bodyRows = rows.map((row, ri) => {
             const stripe = ri % 2 === 0 ? '#ffffff' : '#fafafa';
             const dirCell    = `<td style="background:${stripe};text-align:center;padding:3px;font-size:10px;color:#64748b;">${row.spinIndex + 1}</td>`;
             const actualCell = `<td style="background:${stripe};text-align:center;padding:3px;font-weight:700;color:#0f172a;">${row.actual}</td>`;
-            const cells = T3_PAIR_GROUPS.map(g => _renderT3Cell(row.perPair, g)).join('');
+            const cells = groups.map(g => _renderT3RowCells(row.perPair, g, row.actual)).join('');
             return `<tr>${dirCell}${actualCell}${cells}</tr>`;
         }).join('');
 
-        const nextCells = T3_PAIR_GROUPS.map(g => _renderT3NextCell(g, proj[g.dataPair])).join('');
+        const nextCells = groups.map(g => _renderT3NextCells(g, proj[g.dataPair])).join('');
         const nextRow = (count > 0)
             ? `<tr style="border-top:2px solid #f59e0b;">
                 <td style="font-weight:700;background:#fef9c3;color:#854d0e;text-align:center;padding:4px 6px;">NEXT</td>
@@ -287,9 +365,12 @@
               </tr>` : '';
 
         const badgeColor = count >= 10 ? '#16a34a' : count > 0 ? '#f59e0b' : '#dc2626';
+        const filterNote = Array.isArray(visibleFamilies)
+            ? ` <span style="font-weight:400;color:#64748b;font-size:10px;">(filtered to ${visibleFamilies.length}/12)</span>`
+            : '';
         return `
             <h2 style="margin:18px 0 4px;font-size:14px;color:#0f172a;">
-                Table 3 <span style="font-weight:400;color:#64748b;font-size:11px;">— anchors + bet pool (±1)</span>
+                Table 3 <span style="font-weight:400;color:#64748b;font-size:11px;">— anchors + bet pool (±1)</span>${filterNote}
                 <span style="float:right;font-size:11px;font-weight:600;background:${badgeColor};color:#fff;padding:2px 8px;border-radius:10px;">
                     ${count} pair famil${count === 1 ? 'y' : 'ies'} · ${rows.length} historical row${rows.length === 1 ? '' : 's'}
                 </span>
@@ -334,11 +415,15 @@
      */
     function renderHtml(snap) {
         const meta = (snap && snap.meta) || {};
+        // visibleFamilies is null when Electron hasn't passed a filter
+        // (CLI / first-run); otherwise it's an array like
+        // ['prev','prevPlus1','ref0',...] from window.getVisiblePairFamilies().
+        const vf = meta.visibleFamilies;
         const body =
             _renderHeader(meta) +
-            _renderT12('Table 1', snap.table1 || {}, '±1 expansion (S+0, SL+1, SR+1, O+0, OL+1, OR+1)') +
-            _renderT12('Table 2', snap.table2 || {}, '±2 expansion (T1 codes + SL+2, SR+2, OL+2, OR+2)') +
-            _renderT3(snap.table3 || {});
+            _renderT12('Table 1', snap.table1 || {}, '±1 expansion (S+0, SL+1, SR+1, O+0, OL+1, OR+1)', vf) +
+            _renderT12('Table 2', snap.table2 || {}, '±2 expansion (T1 codes + SL+2, SR+2, OL+2, OR+2)', vf) +
+            _renderT3(snap.table3 || {}, vf);
 
         return `<!doctype html>
 <html lang="en">

@@ -98,7 +98,7 @@ function createWindow() {
     // supplied live spin list. Called by snapshot-bridge.js whenever
     // window.spins changes. Pure side-effect — no Electron state is
     // touched. Reads only from the locked core/tables/* modules.
-    ipcMain.handle('refresh-snapshot', async (event, spinsArray) => {
+    ipcMain.handle('refresh-snapshot', async (event, spinsArray, opts) => {
         try {
             const { snapshot }   = require(path.join(__dirname, '..', 'core', 'tables', 'snapshot.js'));
             const { renderHtml } = require(path.join(__dirname, '..', 'core', 'tables', 'writers', 'html.js'));
@@ -111,7 +111,13 @@ function createWindow() {
             const safeSpins = Array.isArray(spinsArray)
                 ? spinsArray.filter(n => typeof n === 'number' && !Number.isNaN(n))
                 : [];
-            const snap = snapshot(safeSpins, { timestamp: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z') });
+            const visibleFamilies = (opts && Array.isArray(opts.visibleFamilies))
+                ? opts.visibleFamilies.slice()
+                : null;
+            const snap = snapshot(safeSpins, {
+                timestamp: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+                visibleFamilies
+            });
             const idx = String(snap.meta.spinCount).padStart(3, '0');
 
             const html = renderHtml(snap);

@@ -86,9 +86,9 @@ contextBridge.exposeInMainWorld('aiAPI', {
      * plus a numbered history copy. Reads only from the locked
      * core/tables/* modules; never mutates Electron state.
      */
-    async refreshSnapshot(spinsArray) {
+    async refreshSnapshot(spinsArray, opts) {
         try {
-            return await ipcRenderer.invoke('refresh-snapshot', spinsArray);
+            return await ipcRenderer.invoke('refresh-snapshot', spinsArray, opts || {});
         } catch (e) {
             console.warn('Snapshot refresh failed:', e && e.message);
             return null;

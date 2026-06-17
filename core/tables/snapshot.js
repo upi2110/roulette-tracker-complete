@@ -46,6 +46,13 @@
         const spinCount = spins.length;
         const lastSpin = spinCount >= 1 ? spins[spinCount - 1] : null;
         const prevSpin = spinCount >= 2 ? spins[spinCount - 2] : null;
+        // visibleFamilies: null = show all (default). Array = restrict
+        // the HTML writer to just these family names (matches Electron's
+        // "Pairs (N/12)" dropdown). Forwarded into meta untouched so the
+        // writer (and any other consumer) can filter consistently.
+        const visibleFamilies = (Array.isArray(o.visibleFamilies))
+            ? o.visibleFamilies.slice()
+            : null;
 
         return {
             meta: {
@@ -53,7 +60,8 @@
                 spins,
                 lastSpin,
                 prevSpin,
-                timestamp: o.timestamp || ''
+                timestamp: o.timestamp || '',
+                visibleFamilies
             },
             table1: {
                 nextProjections: P.getTable1NextProjections(spins),
