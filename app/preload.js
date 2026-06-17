@@ -80,6 +80,22 @@ contextBridge.exposeInMainWorld('aiAPI', {
     },
 
     /**
+     * Regenerate the table-snapshot HTML + XLSX with the supplied
+     * spin list. Called by app/snapshot-bridge.js whenever window.spins
+     * changes. Pure side-effect — writes snapshots/current.{html,xlsx}
+     * plus a numbered history copy. Reads only from the locked
+     * core/tables/* modules; never mutates Electron state.
+     */
+    async refreshSnapshot(spinsArray) {
+        try {
+            return await ipcRenderer.invoke('refresh-snapshot', spinsArray);
+        } catch (e) {
+            console.warn('Snapshot refresh failed:', e && e.message);
+            return null;
+        }
+    },
+
+    /**
      * Test connection to AI server
      */
     async testConnection() {

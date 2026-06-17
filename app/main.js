@@ -94,6 +94,40 @@ function createWindow() {
         return logPath;
     });
 
+    // IPC handler: regenerate snapshots/current.{html,xlsx} from the
+    // supplied live spin list. Called by snapshot-bridge.js whenever
+    // window.spins changes. Pure side-effect — no Electron state is
+    // touched. Reads only from the locked core/tables/* modules.
+    ipcMain.handle('refresh-snapshot', async (event, spinsArray) => {
+        try {
+            const { snapshot }   = require(path.join(__dirname, '..', 'core', 'tables', 'snapshot.js'));
+            const { renderHtml } = require(path.join(__dirname, '..', 'core', 'tables', 'writers', 'html.js'));
+            const { writeXlsx }  = require(path.join(__dirname, '..', 'core', 'tables', 'writers', 'xlsx.js'));
+            const outDir = path.join(__dirname, '..', 'snapshots');
+            const histDir = path.join(outDir, 'history');
+            fs.mkdirSync(outDir,  { recursive: true });
+            fs.mkdirSync(histDir, { recursive: true });
+
+            const safeSpins = Array.isArray(spinsArray)
+                ? spinsArray.filter(n => typeof n === 'number' && !Number.isNaN(n))
+                : [];
+            const snap = snapshot(safeSpins, { timestamp: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z') });
+            const idx = String(snap.meta.spinCount).padStart(3, '0');
+
+            const html = renderHtml(snap);
+            fs.writeFileSync(path.join(outDir, 'current.html'), html);
+            fs.writeFileSync(path.join(histDir, `spin-${idx}.html`), html);
+
+            await writeXlsx(snap, path.join(outDir,  'current.xlsx'));
+            await writeXlsx(snap, path.join(histDir, `spin-${idx}.xlsx`));
+
+            return { ok: true, spinCount: snap.meta.spinCount, idx };
+        } catch (e) {
+            console.error('refresh-snapshot failed:', e && e.stack ? e.stack : e);
+            return { ok: false, error: String(e && e.message || e) };
+        }
+    });
+
     // IPC handler: load historical spin data from app/data/ directory
     ipcMain.handle('load-historical-data', async () => {
         try {

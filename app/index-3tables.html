@@ -164,6 +164,11 @@
      state, P&L). Loads AFTER money panel so it can call its public API. -->
 <script src="user-friendly-trigger.js"></script>
 
+<!-- Table-snapshot bridge: writes a fresh snapshot HTML/XLSX whenever
+     window.spins changes. Read-only on Electron state — purely a
+     mirror. See app/snapshot-bridge.js and core/tables/. -->
+<script src="snapshot-bridge.js"></script>
+
 <!-- ExcelJS Browser Build (needed for Excel export — nodeIntegration is off) -->
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
