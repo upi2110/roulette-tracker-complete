@@ -188,6 +188,21 @@
      This is the SANDBOX copy used by the Test (Lab) tab — modify here to
      prototype a new strategy without disturbing 3T-Selection production. -->
 <script src="../strategies/strategy-lab/strategy-lab.js"></script>
+<!-- Locked snapshot pipeline — projections + snapshot. The renderer
+     side of these was only used by snapshot-bridge.js before (which
+     just forwards to main.js via IPC). The StrategyAnalyser below
+     needs to call snapshot() in-process, so load the modules here.
+     Loaded as classic scripts; they attach to window.CoreTables and
+     window.CoreTablesSnapshot. -->
+<script src="../core/tables/projections.js"></script>
+<script src="../core/tables/snapshot.js"></script>
+<!-- StrategyAnalyser — the NEW unified Test(Lab) brain on patter-play.
+     SHARED module between the orchestrator (decisionMode='test') and
+     the Auto Test runner (method='test'). Loaded AFTER strategy-lab
+     so it can hot-replace as the Test(Lab) dispatcher target. Loaded
+     AFTER core/tables/snapshot.js (above) so the in-process snapshot()
+     call inside decide() resolves immediately. -->
+<script src="../strategies/strategy-analyser/strategy-analyser.js"></script>
 <!-- Manual Replay — pure prediction math for the Auto Test
      'manual-test' mode. No engine / DOM dependencies; exposes
      window.ManualReplay.computeManualPrediction. -->

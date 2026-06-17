@@ -475,6 +475,10 @@ class AutoTestRunner {
         // the same thing until we finish the session".
         if (this._currentMethod === 'test') {
             this._lockedTestPair = null;
+            // StrategyAnalyser session boundary — fresh state every
+            // backtest session so streak counters / T3 cooldowns /
+            // consecutive-WAIT counter don't bleed across sessions.
+            this._analyserSessionState = null;
         }
         // 3T-Selection pair lock-in: same lifecycle, separate var so the
         // two methods can run in parallel without leaking state.
@@ -991,30 +995,34 @@ class AutoTestRunner {
         // input. Pair is locked at session start (see _runSession reset)
         // and reused for every spin in the session.
         if (this._currentMethod === 'test') {
-            const SL = (typeof require === 'function')
-                ? (function () { try { return require('../../strategies/strategy-lab/strategy-lab.js'); } catch (_) { return null; } }())
-                : (typeof window !== 'undefined' ? window.StrategyLab : null);
-            if (!SL) {
+            // Test(Lab) — StrategyAnalyser. SHARED module with the live
+            // orchestrator (decisionMode='test'). Same source file, same
+            // decide() function, same logic. Live and backtest are
+            // guaranteed to produce identical decisions for identical
+            // (spins, idx, params, sessionState seed).
+            //
+            // Each runner session owns its own sessionState. _runSession
+            // clears _analyserSessionState at the session boundary so
+            // streak counters / T3 cooldowns don't leak across sessions.
+            const SA = (typeof require === 'function')
+                ? (function () { try { return require('../../strategies/strategy-analyser/strategy-analyser.js'); } catch (_) { return null; } }())
+                : (typeof window !== 'undefined' ? window.StrategyAnalyser : null);
+            if (!SA) {
                 return {
                     action: 'SKIP',
                     selectedPair: null,
                     selectedFilter: null,
                     numbers: [],
                     confidence: 0,
-                    reason: 'Strategy-Lab module not loaded'
+                    reason: 'StrategyAnalyser module not loaded'
                 };
             }
-            // Strategy-Lab pair lock-in: select once at session start
-            // (cleared by _runSession at session boundary).
-            if (!this._lockedTestPair) {
-                this._lockedTestPair = SL.selectBestPair(this.engine);
+            if (!this._analyserSessionState) {
+                this._analyserSessionState = SA.createSessionState();
             }
-            return SL.decideStrategyLab(this.engine, testSpins, idx, {
-                lockedPairRefKey: this._lockedTestPair,
-                includeGrey: (typeof this._strategyLabIncludeGrey === 'boolean')
-                    ? this._strategyLabIncludeGrey
-                    : true,
-                greyNumbers: [] // V1: AT has no grey-number computation yet.
+            return SA.decide(this.engine, testSpins, idx, {
+                sessionState: this._analyserSessionState,
+                params:       this._analyserParams || {}
             });
         }
 

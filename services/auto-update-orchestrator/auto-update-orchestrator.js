@@ -27,6 +27,13 @@ class AutoUpdateOrchestrator {
         // for SHADOW_PREDICT). Separate from the Auto Test controller cache.
         this._lastAITrainedLive = null;
 
+        // StrategyAnalyser (Test(Lab)) — live session state. Lazily
+        // initialised on first decide-call so it's safe to spin up the
+        // orchestrator before the analyser script has loaded. Cleared
+        // by setDecisionMode('test') on entry AND by the snapshot
+        // bridge's spin-reset detection.
+        this._analyserSessionState = null;
+
         console.log('🔧 Auto-Update Orchestrator initialized');
     }
 
@@ -207,10 +214,16 @@ class AutoUpdateOrchestrator {
             const idx = spinsArr.length - 1;
             decision = window.decideT1Strategy(window.aiAutoEngine, spinsArr, idx);
             console.log('🤖 T1-STRATEGY DECISION:', decision);
-        } else if (this.decisionMode === 'test' && window.StrategyLab) {
-            // Strategy-Lab live path. Same module as Auto Test
-            // (method='test'), so a backtest of the current session would
-            // produce identical decisions for the same spin history.
+        } else if (this.decisionMode === 'test' && window.StrategyAnalyser) {
+            // Test(Lab) — StrategyAnalyser. SHARED module with the Auto
+            // Test runner (method='test'). Both call THIS same function
+            // from the same source file. There is no fork; any future
+            // brain change goes into strategies/strategy-analyser/
+            // strategy-analyser.js, not here.
+            //
+            // StrategyLab (the previous Test(Lab) implementation) stays
+            // on disk (window.StrategyLab) but is no longer wired —
+            // per user spec on the patter-play branch.
             const spinsArr = Array.isArray(window.spins)
                 ? window.spins
                     .map(s => (s && typeof s.actual === 'number') ? s.actual : null)
@@ -218,57 +231,23 @@ class AutoUpdateOrchestrator {
                 : [];
             const idx = spinsArr.length - 1;
 
-            // Phase 2 — Test Lab: the AI Prediction Panel autopilot
-            // (_runTestLabAutopilot) drives T1 pair selection and
-            // rotation on miss. Take the locked pair from the
-            // autopilot's current T1 selection so the strategy-lab
-            // intersection rotates with it. Fall back to selectBestPair
-            // only on cold start (autopilot hasn't picked yet).
-            let _autopilotPair = null;
-            try {
-                const _sel = window.aiPanel && window.aiPanel.table1Selections;
-                if (_sel) {
-                    const _keys = Object.keys(_sel);
-                    if (_keys.length > 0) _autopilotPair = _keys[0];
-                }
-            } catch (_) { /* ignore */ }
-            if (_autopilotPair) {
-                this._strategyLabLockedPair = _autopilotPair;
-            } else if (!this._strategyLabLockedPair) {
-                this._strategyLabLockedPair = window.StrategyLab.selectBestPair(window.aiAutoEngine);
+            if (!this._analyserSessionState) {
+                this._analyserSessionState = window.StrategyAnalyser.createSessionState();
             }
 
-            // Grey numbers: the wheel exposes its own primary vs grey
-            // split. We pull the current grey set from the wheel so the
-            // user's "include grey" toggle has the same source-of-truth
-            // they see on screen. Empty if wheel not available.
-            let greyNumbers = [];
-            const w = window.rouletteWheel;
-            if (w) {
-                if (Array.isArray(w.extraLoose)) {
-                    greyNumbers = greyNumbers.concat(w.extraLoose);
-                }
-                if (Array.isArray(w.extraAnchorGroups)) {
-                    for (const g of w.extraAnchorGroups) {
-                        if (Array.isArray(g)) greyNumbers = greyNumbers.concat(g);
-                        else if (g && Array.isArray(g.numbers)) greyNumbers = greyNumbers.concat(g.numbers);
-                    }
-                }
-            }
-
-            const includeGrey = (typeof window.strategyLabIncludeGrey === 'boolean')
-                ? window.strategyLabIncludeGrey
-                : true;
-
-            decision = window.StrategyLab.decideStrategyLab(
+            // The analyser reads selections/filters/visibleFamilies
+            // straight from the snapshot it builds internally — so we
+            // just need to hand it the spin list. ctx.params is reserved
+            // for the Test(Lab) settings UI (phase 4) to override the
+            // confidence floor / max numbers.
+            decision = window.StrategyAnalyser.decide(
                 window.aiAutoEngine, spinsArr, idx,
                 {
-                    lockedPairRefKey: this._strategyLabLockedPair,
-                    includeGrey: includeGrey,
-                    greyNumbers: greyNumbers
+                    sessionState: this._analyserSessionState,
+                    params:       (window.strategyAnalyserParams) || {}
                 }
             );
-            console.log('🧪 STRATEGY-LAB DECISION:', decision);
+            console.log('🧪 STRATEGY-ANALYSER DECISION:', decision);
         } else if (this.decisionMode === '3t-selection' && window.Strategy3T) {
             // 3T-Selection live path — production copy of the Strategy-Lab
             // algorithm. Independent module + namespace + locked-pair var
@@ -705,8 +684,14 @@ class AutoUpdateOrchestrator {
         }
         // Strategy-Lab: clear the locked pair when leaving 'test' so a
         // future re-entry re-picks based on the latest pairModels.
-        if (prev === 'test' && this.decisionMode !== 'test') {
+        // Also wipe the StrategyAnalyser session state on EITHER edge:
+        //   • entering 'test' → fresh session (no carry-over from a
+        //     previous Test(Lab) session that may have ended hours ago)
+        //   • leaving 'test'  → drop the state so it doesn't sit
+        //     stale in memory; recreated lazily on next entry.
+        if (prev !== this.decisionMode && (prev === 'test' || this.decisionMode === 'test')) {
             this._strategyLabLockedPair = null;
+            this._analyserSessionState = null;
         }
         // 3T-Selection: same lifecycle, separate locked-pair var so
         // switching between 'test' and '3t-selection' doesn't leak state.
