@@ -64,20 +64,26 @@
         pairKeys.forEach(pairKey => {
             const pair = proj[pairKey];
             const opp  = proj[pairKey + '_13opp'];
-            const labelP   = `${pairKey} <span style="color:#94a3b8;font-weight:400;">(pair)</span>`;
-            const labelOpp = `${pairKey} <span style="color:#94a3b8;font-weight:400;">(13-opp)</span>`;
-            const headRow = `<tr><th style="text-align:left;padding:4px 8px;background:#e0f2fe;">${labelP}</th>
+            const labelP   = `<strong>${pairKey}</strong> <span style="color:#64748b;font-weight:400;">(pair)</span>`;
+            const labelOpp = `<strong>${pairKey}</strong> <span style="color:#64748b;font-weight:400;">(13-opp)</span>`;
+            const headRow = `<tr><th style="text-align:left;padding:6px 10px;background:#e0f2fe;font-size:12px;">${labelP}</th>
                 ${_renderT12Cell(pair.first)}${_renderT12Cell(pair.second)}${_renderT12Cell(pair.third)}</tr>`;
             rows.push(headRow);
             if (opp) {
-                rows.push(`<tr><th style="text-align:left;padding:4px 8px;background:#fff7ed;">${labelOpp}</th>
+                rows.push(`<tr><th style="text-align:left;padding:6px 10px;background:#fff7ed;font-size:12px;">${labelOpp}</th>
                     ${_renderT12Cell(opp.first)}${_renderT12Cell(opp.second)}${_renderT12Cell(opp.third)}</tr>`);
             }
         });
 
+        const count = pairKeys.length;
         return `
             <h2 style="margin:18px 0 4px;font-size:14px;color:#0f172a;">
                 ${name} <span style="font-weight:400;color:#64748b;font-size:11px;">— NEXT row projections (${neighborLabel})</span>
+                <span style="float:right;font-size:11px;font-weight:600;
+                             background:${count >= 12 ? '#16a34a' : count > 0 ? '#f59e0b' : '#dc2626'};
+                             color:#fff;padding:2px 8px;border-radius:10px;">
+                    ${count} pair famil${count === 1 ? 'y' : 'ies'} rendered
+                </span>
             </h2>
             ${_legendStripe()}
             <table style="border-collapse:collapse;width:100%;font-size:11px;">
@@ -113,9 +119,15 @@
             </tr>`;
         }).join('');
 
+        const count = Object.keys(proj).length;
         return `
             <h2 style="margin:18px 0 4px;font-size:14px;color:#0f172a;">
                 Table 3 <span style="font-weight:400;color:#64748b;font-size:11px;">— NEXT row anchors + bet pool (±1)</span>
+                <span style="float:right;font-size:11px;font-weight:600;
+                             background:${count >= 10 ? '#16a34a' : count > 0 ? '#f59e0b' : '#dc2626'};
+                             color:#fff;padding:2px 8px;border-radius:10px;">
+                    ${count} pair famil${count === 1 ? 'y' : 'ies'} rendered
+                </span>
             </h2>
             ${_legendStripe()}
             <table style="border-collapse:collapse;width:100%;font-size:11px;">
@@ -164,12 +176,20 @@
             _renderT12('Table 2', snap.table2 || {}, '±2 expansion') +
             _renderT3(snap.table3 || {});
 
+        // Cache-busted hard reload every 1s. Using location.reload(true)
+        // bypasses the disk cache (the plain <meta http-equiv="refresh">
+        // can serve cached HTML when the file is overwritten in-place).
+        // Also stamp <title> with the spin count so the browser tab
+        // label changes when state changes (immediate visual cue even
+        // before reload).
         return `<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta http-equiv="refresh" content="1">
-    <title>Table snapshot — ${meta.spinCount || 0} spins</title>
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>📸 ${meta.spinCount || 0} spins — table snapshot</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                margin: 16px; background: #ffffff; color: #0f172a; }
@@ -177,6 +197,15 @@
         table th, table td { border-bottom: 1px solid #f1f5f9; }
         table tbody tr:hover td { background: #f8fafc; }
     </style>
+    <script>
+        // Hard-reload every 1s with a cache-busting query param so the
+        // browser cannot serve a stale copy. Belt-and-braces (the meta
+        // no-cache headers above are the suspenders; this is the belt).
+        setTimeout(function () {
+            var u = location.pathname + '?ts=' + Date.now() + location.hash;
+            location.replace(u);
+        }, 1000);
+    </script>
 </head>
 <body>
 ${body}
