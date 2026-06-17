@@ -258,16 +258,10 @@
                 const cell = entry[k] || {};
                 const target = (cell.targets || [])[0];
                 cells.push(`<td style="${baseStyle}">${target ?? ''}</td>`);
-                // "C" column under NEXT = no code (nothing's happened yet),
-                // but show a chip-stack of sameSide / oppSide counts so the
-                // user sees how many numbers each anchor expands to.
-                const sN = (cell.sameSide || []).length;
-                const oN = (cell.oppSide  || []).length;
+                // "C" column under NEXT = no code yet (no actual to
+                // compare against). Match Electron: render plain "—".
                 const isLast = (idx === 2);
-                cells.push(`<td style="${baseStyle}color:#94a3b8;font-size:9px;${isLast ? rBorder : ''}">` +
-                           `<span title="same-side ±${neighborRange}" style="color:#15803d;">${sN}</span>·` +
-                           `<span title="opp-side ±${neighborRange}" style="color:#a16207;">${oN}</span>` +
-                           `</td>`);
+                cells.push(`<td style="${baseStyle}color:#94a3b8;${isLast ? rBorder : ''}">—</td>`);
             });
         });
         return `<tr style="border-top:2px solid #f59e0b;">${cells.join('')}</tr>`;
@@ -424,12 +418,15 @@
             `<span style="background:#16a34a;color:#fff;padding:1px 4px;margin:1px;border-radius:3px;font-size:10px;font-weight:700;">${n}</span>`
         ).join('');
         const base = 'padding:3px 4px;background:#fef9c3;text-align:center;font-size:11px;';
-        // NEXT row has no actual yet → no POS code, just the projection.
+        // NEXT row has no actual yet → both POS cells render as plain "—",
+        // matching Electron. The driving usePosCode is implicit in the
+        // PRJ projection chips and surfaced in meta / JSON for the
+        // analyser; no need to clutter the visible grid.
         return [
             `<td style="${base}font-weight:700;color:#7c3aed;background:${group.cssBg};${lBorder}">${p.refNum ?? ''}</td>`,
-            `<td style="${base}color:#94a3b8;font-size:9px;">${p.usePosCode ? _esc(p.usePosCode) : '—'}</td>`,
+            `<td style="${base}color:#94a3b8;">—</td>`,
             `<td style="${base}font-weight:700;color:#16a34a;background:${group.cssBg};opacity:0.85;">${p.ref13Opp ?? ''}</td>`,
-            `<td style="${base}color:#94a3b8;font-size:9px;">—</td>`,
+            `<td style="${base}color:#94a3b8;">—</td>`,
             `<td style="${base}${rBorder}">${purpleHtml}${greenHtml}</td>`
         ].join('');
     }
