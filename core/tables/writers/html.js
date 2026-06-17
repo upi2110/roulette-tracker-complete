@@ -253,10 +253,15 @@
     }
 
     // ── Two-row column header (matches Electron's two header rows) ──
-    function _renderT12Head(groups) {
+    // Selected groups get a 2px golden ring on top + a ⭐ glyph next to
+    // the label so the user can instantly see which columns matter.
+    function _renderT12Head(groups, tableId, meta) {
         const groupHeaders = groups.map(g => {
+            const sel = _isSelected(g.dataPair, tableId, meta);
+            const ring = sel ? 'box-shadow:inset 0 3px 0 #facc15;' : '';
+            const star = sel ? ' <span style="color:#facc15;">⭐</span>' : '';
             return `<th colspan="7" style="background:${g.cssBg};text-align:center;` +
-                   `padding:3px 6px;font-size:11px;border-left:2px solid #fff;">${g.label}</th>`;
+                   `padding:3px 6px;font-size:11px;border-left:2px solid #fff;${ring}">${g.label}${star}</th>`;
         }).join('');
         const subHeaders = groups.map(g => {
             return SUB_LABELS.map((lbl, i) =>
@@ -305,7 +310,7 @@
             </h2>
             <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:4px;">
                 <table style="border-collapse:collapse;font-size:11px;white-space:nowrap;">
-                    ${_renderT12Head(groups)}
+                    ${_renderT12Head(groups, name === 'Table 1' ? 'T1' : 'T2', meta)}
                     <tbody>${bodyRows}${nextRow}</tbody>
                 </table>
             </div>
@@ -399,7 +404,7 @@
         ].join('');
     }
 
-    function _renderT3(t, visibleFamilies) {
+    function _renderT3(t, visibleFamilies, meta) {
         const proj   = t.nextProjections || {};
         const rows   = t.rows || [];
         const groups = _filterGroups(T3_PAIR_GROUPS, visibleFamilies);
@@ -407,9 +412,12 @@
 
         // Two header rows — group label spans 5 cols; sub-headers underneath.
         const T3_SUBS = ['Ref', 'POS', '13o', 'POS', 'PRJ'];
-        const groupHeaders = groups.map(g =>
-            `<th colspan="5" style="background:${g.cssBg};text-align:center;padding:3px 6px;font-size:11px;border-left:2px solid #fff;">${g.label}</th>`
-        ).join('');
+        const groupHeaders = groups.map(g => {
+            const sel = _isSelected(g.dataPair, 'T3', meta);
+            const ring = sel ? 'box-shadow:inset 0 3px 0 #facc15;' : '';
+            const star = sel ? ' <span style="color:#facc15;">⭐</span>' : '';
+            return `<th colspan="5" style="background:${g.cssBg};text-align:center;padding:3px 6px;font-size:11px;border-left:2px solid #fff;${ring}">${g.label}${star}</th>`;
+        }).join('');
         const subHeaders = groups.map(g =>
             T3_SUBS.map((lbl, i) =>
                 `<th style="background:#f8fafc;color:#475569;font-size:10px;font-weight:500;` +
@@ -470,6 +478,37 @@
                    `padding:1px 6px;margin:1px;border-radius:3px;font-size:11px;` +
                    `font-family:'SF Mono',ui-monospace,monospace;font-weight:700;">${n}</span>`;
         }).join('');
+
+        // Selections — show what the user picked in the AI panel per table.
+        const sel = meta.selections || { table1: [], table2: [], table3: [] };
+        const totalSel = (sel.table1.length + sel.table2.length + sel.table3.length);
+        const chip = (txt) => `<span style="display:inline-block;background:#facc15;color:#422006;` +
+                              `padding:1px 6px;margin:1px;border-radius:3px;font-size:10px;font-weight:700;">${_esc(txt)}</span>`;
+        const selBlock = totalSel === 0
+            ? '<span style="color:#64748b;font-size:11px;">(no pair selections yet in Electron)</span>'
+            : `
+              <span style="font-size:11px;color:#94a3b8;margin-right:6px;">T1:</span>${(sel.table1.length ? sel.table1.map(chip).join('') : '<span style=\"color:#64748b;font-size:10px;\">—</span>')}
+              <span style="font-size:11px;color:#94a3b8;margin:0 6px 0 12px;">T2:</span>${(sel.table2.length ? sel.table2.map(chip).join('') : '<span style=\"color:#64748b;font-size:10px;\">—</span>')}
+              <span style="font-size:11px;color:#94a3b8;margin:0 6px 0 12px;">T3:</span>${(sel.table3.length ? sel.table3.map(chip).join('') : '<span style=\"color:#64748b;font-size:10px;\">—</span>')}
+            `;
+
+        // Wheel filter summary — compact one-liner of any non-default flags.
+        const f = meta.filters || null;
+        let filterBlock = '';
+        if (f) {
+            const flagsOn = Object.keys(f)
+                .filter(k => f[k] === true || (typeof f[k] === 'string' && f[k]))
+                .sort();
+            filterBlock = `
+                <div style="margin-top:6px;">
+                    <span style="font-size:11px;color:#94a3b8;margin-right:6px;">Wheel filters ON:</span>
+                    ${flagsOn.length
+                        ? flagsOn.map(k => `<span style="display:inline-block;background:#1e293b;color:#5eead4;padding:1px 5px;margin:1px;border-radius:3px;font-size:10px;border:1px solid #334155;">${_esc(k)}</span>`).join('')
+                        : '<span style="color:#64748b;font-size:11px;">(defaults)</span>'}
+                </div>
+            `;
+        }
+
         return `
             <div style="background:#0f172a;color:#e2e8f0;padding:10px 14px;border-radius:6px;margin-bottom:14px;">
                 <div style="font-size:12px;color:#94a3b8;">📸 Snapshot of live Electron tables — read-only mirror, auto-refresh 1s</div>
@@ -481,8 +520,23 @@
                     <span style="font-size:11px;color:#94a3b8;margin-right:6px;">Spins (oldest → newest):</span>
                     ${spinsHtml || '<span style="color:#64748b;">(none yet — enter spins in Electron)</span>'}
                 </div>
+                <div style="margin-top:8px;padding-top:6px;border-top:1px solid #1e293b;">
+                    <span style="font-size:11px;color:#facc15;font-weight:700;margin-right:8px;">⭐ Selected pairs</span>
+                    ${selBlock}
+                </div>
+                ${filterBlock}
             </div>
         `;
+    }
+
+    // Whether a pair-group is selected on a given table (T1 / T2 / T3).
+    // Used by _renderT12 / _renderT3 to add a highlighted border.
+    function _isSelected(dataPair, tableId, meta) {
+        const sel = meta && meta.selections;
+        if (!sel) return false;
+        const list = tableId === 'T1' ? sel.table1 : tableId === 'T2' ? sel.table2 : sel.table3;
+        if (!Array.isArray(list)) return false;
+        return list.indexOf(dataPair) >= 0;
     }
 
     /**
@@ -500,7 +554,7 @@
             _renderHeader(meta) +
             _renderT12('Table 1', snap.table1 || {}, '±1 expansion (S+0, SL+1, SR+1, O+0, OL+1, OR+1)', vf, meta) +
             _renderT12('Table 2', snap.table2 || {}, '±2 expansion (T1 codes + SL+2, SR+2, OL+2, OR+2)', vf, meta) +
-            _renderT3(snap.table3 || {}, vf);
+            _renderT3(snap.table3 || {}, vf, meta);
 
         return `<!doctype html>
 <html lang="en">

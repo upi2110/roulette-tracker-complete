@@ -85,10 +85,54 @@
         return null;     // null = "no filter — show all" (default)
     }
 
-    function _fingerprint(arr, fams) {
-        // Cheap O(n) fingerprint: length-prefixed comma-join plus the
-        // family filter so a change in either triggers a refresh.
-        return arr.length + ':' + arr.join(',') + '|' + (fams ? fams.join(',') : '*');
+    function _selections() {
+        // Read what the user has selected in the AI prediction panel.
+        // Shape:
+        //   table1Selections / table2Selections — plain objects, keys
+        //     are pairKey, values truthy when selected (Object.keys
+        //     filtered by truthiness gives the selected pair keys).
+        //   table3Selections — a Set of pairKey strings.
+        // Return as plain sorted arrays so the snapshot writer can
+        // render them deterministically.
+        const out = { table1: [], table2: [], table3: [] };
+        try {
+            const p = window.aiPanel;
+            if (!p) return out;
+            const t1 = p.table1Selections || {};
+            const t2 = p.table2Selections || {};
+            const t3 = p.table3Selections;
+            out.table1 = Object.keys(t1).filter(k => !!t1[k]).sort();
+            out.table2 = Object.keys(t2).filter(k => !!t2[k]).sort();
+            out.table3 = (t3 && typeof t3.forEach === 'function')
+                ? Array.from(t3).sort()
+                : (Array.isArray(t3) ? t3.slice().sort() : []);
+        } catch (_) {}
+        return out;
+    }
+
+    function _filters() {
+        // Read the wheel filter panel state. Plain pass-through.
+        try {
+            const w = window.rouletteWheel;
+            if (w && w.filters && typeof w.filters === 'object') {
+                return Object.assign({}, w.filters);
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    function _fingerprint(arr, fams, sels, filt) {
+        // Cheap O(n) fingerprint covering everything the writer cares
+        // about. Any change in spins, families filter, AI-panel
+        // selections, or wheel filters fires a refresh.
+        const selStr = sels
+            ? 't1:' + sels.table1.join(',') + ';t2:' + sels.table2.join(',') + ';t3:' + sels.table3.join(',')
+            : '';
+        const fStr = filt ? JSON.stringify(filt) : '';
+        return arr.length + ':' + arr.join(',')
+            + '|F:' + (fams ? fams.join(',') : '*')
+            + '|S:' + selStr
+            + '|W:' + fStr;
     }
 
     async function _maybeRefresh() {
@@ -97,15 +141,21 @@
 
         const spins = _snapshotSpins();
         if (!spins) return;
-        const families = _visibleFamilies();
+        const families   = _visibleFamilies();
+        const selections = _selections();
+        const filters    = _filters();
 
-        const fp = _fingerprint(spins, families);
+        const fp = _fingerprint(spins, families, selections, filters);
         if (fp === _lastFingerprint) return;     // no change since last write
         _lastFingerprint = fp;
 
         _inFlight = true;
         try {
-            const r = await window.aiAPI.refreshSnapshot(spins, { visibleFamilies: families });
+            const r = await window.aiAPI.refreshSnapshot(spins, {
+                visibleFamilies: families,
+                selections,
+                filters
+            });
             if (r && r.ok) {
                 _failures = 0;
                 console.log(`📸 Snapshot refreshed (${r.spinCount} spins → spin-${r.idx})`);

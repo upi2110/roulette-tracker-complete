@@ -32,12 +32,14 @@ const fs   = require('fs');
 const { snapshot } = require('../core/tables/snapshot.js');
 const { renderHtml } = require('../core/tables/writers/html.js');
 const { writeXlsx }  = require('../core/tables/writers/xlsx.js');
+const { writeJson }  = require('../core/tables/writers/json.js');
 
 function parseArgs(argv) {
     const args = {
         spins: [],
         writeHtml: true,
         writeXlsx: true,
+        writeJson: true,
         writeHistory: true,
         printJson: false,
         outDir: path.resolve(__dirname, '..', 'snapshots')
@@ -65,6 +67,7 @@ function parseArgs(argv) {
             }
             case '--no-html':    args.writeHtml = false; break;
             case '--no-xlsx':    args.writeXlsx = false; break;
+            case '--no-json':    args.writeJson = false; break;
             case '--no-history': args.writeHistory = false; break;
             case '--json':       args.printJson = true; break;
             case '--out':        args.outDir = path.resolve(argv[++i]); break;
@@ -118,6 +121,17 @@ async function main() {
         if (args.writeHistory) {
             const hist = path.join(args.outDir, 'history', `spin-${idx}.html`);
             fs.writeFileSync(hist, html);
+            console.log(`  ✓ wrote ${path.relative(process.cwd(), hist)}`);
+        }
+    }
+
+    if (args.writeJson) {
+        const cur = path.join(args.outDir, 'current.json');
+        writeJson(snap, cur);
+        console.log(`  ✓ wrote ${path.relative(process.cwd(), cur)}`);
+        if (args.writeHistory) {
+            const hist = path.join(args.outDir, 'history', `spin-${idx}.json`);
+            writeJson(snap, hist);
             console.log(`  ✓ wrote ${path.relative(process.cwd(), hist)}`);
         }
     }

@@ -66,6 +66,24 @@
         const visibleFamilies = (Array.isArray(o.visibleFamilies))
             ? o.visibleFamilies.slice()
             : null;
+        // selections: { table1:[pairKey,…], table2:[…], table3:[…] }.
+        // What the user clicked in the AI prediction panel. The
+        // analyser reads this to give context-aware predictions
+        // (e.g. score the user's selected pairs higher).
+        const selections = (o.selections && typeof o.selections === 'object')
+            ? {
+                table1: Array.isArray(o.selections.table1) ? o.selections.table1.slice() : [],
+                table2: Array.isArray(o.selections.table2) ? o.selections.table2.slice() : [],
+                table3: Array.isArray(o.selections.table3) ? o.selections.table3.slice() : []
+            }
+            : { table1: [], table2: [], table3: [] };
+        // filters: pass-through of window.rouletteWheel.filters when
+        // available. Plain object, may include keys like zeroTable /
+        // nineteenTable / twoTable / twelveTable / includeGrey /
+        // inverse / sets. Stored verbatim — no validation.
+        const filters = (o.filters && typeof o.filters === 'object')
+            ? Object.assign({}, o.filters)
+            : null;
 
         return {
             meta: {
@@ -74,7 +92,9 @@
                 lastSpin,
                 prevSpin,
                 timestamp: o.timestamp || '',
-                visibleFamilies
+                visibleFamilies,
+                selections,
+                filters
             },
             table1: {
                 nextProjections: P.getTable1NextProjections(spins),

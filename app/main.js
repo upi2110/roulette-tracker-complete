@@ -114,15 +114,30 @@ function createWindow() {
             const visibleFamilies = (opts && Array.isArray(opts.visibleFamilies))
                 ? opts.visibleFamilies.slice()
                 : null;
+            const selections = (opts && opts.selections && typeof opts.selections === 'object')
+                ? opts.selections
+                : null;
+            const filters    = (opts && opts.filters && typeof opts.filters === 'object')
+                ? opts.filters
+                : null;
             const snap = snapshot(safeSpins, {
                 timestamp: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
-                visibleFamilies
+                visibleFamilies,
+                selections,
+                filters
             });
             const idx = String(snap.meta.spinCount).padStart(3, '0');
 
             const html = renderHtml(snap);
             fs.writeFileSync(path.join(outDir, 'current.html'), html);
             fs.writeFileSync(path.join(histDir, `spin-${idx}.html`), html);
+
+            // JSON snapshot for the analyser. Same shape that
+            // snapshot() returned — written unmodified so any consumer
+            // can read this file directly.
+            const json = JSON.stringify(snap, null, 2);
+            fs.writeFileSync(path.join(outDir, 'current.json'), json);
+            fs.writeFileSync(path.join(histDir, `spin-${idx}.json`), json);
 
             await writeXlsx(snap, path.join(outDir,  'current.xlsx'));
             await writeXlsx(snap, path.join(histDir, `spin-${idx}.xlsx`));
