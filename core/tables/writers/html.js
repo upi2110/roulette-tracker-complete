@@ -96,6 +96,53 @@
         return groups.filter(g => set.has(_familyForDataPair(g.dataPair)));
     }
 
+    // Map camelCase pair-key → snake_case engine refKey for
+    // calculateReferences(). Mirrors REFKEY_MAP in the strategy code.
+    const REFKEY_MAP = {
+        prev:           'prev',
+        prevPrev:       'prev_prev',
+        prevPlus1:      'prev_plus_1',
+        prevPlus2:      'prev_plus_2',
+        prevMinus1:     'prev_minus_1',
+        prevMinus2:     'prev_minus_2',
+        prevPrevPlus1:  'prev_prev_plus_1',
+        prevPrevPlus2:  'prev_prev_plus_2',
+        prevPrevMinus1: 'prev_prev_minus_1',
+        prevPrevMinus2: 'prev_prev_minus_2'
+    };
+
+    /**
+     * Resolve the reference number for a given pairKey (used by the
+     * NEXT row to fill the "Ref" cell — historical rows get refNum
+     * from the snapshot's perPair data directly).
+     *
+     * pairKey examples:
+     *   'ref0'           → 0
+     *   'ref19'          → 19
+     *   'prev'           → lastSpin
+     *   'prevPlus1'      → min(lastSpin + 1, 36)  (via calculateReferences)
+     *   'prev_13opp'     → DIGIT_13_OPPOSITES[lastSpin]
+     *   'prevPlus1_13opp' → DIGIT_13_OPPOSITES[min(lastSpin + 1, 36)]
+     */
+    function _refNumForPair(pairKey, lastSpin, prevSpin) {
+        const is13Opp = pairKey.endsWith('_13opp');
+        const base = is13Opp ? pairKey.slice(0, -6) : pairKey;
+        let refNum = null;
+        if (base === 'ref0')  refNum = 0;
+        else if (base === 'ref19') refNum = 19;
+        else if (P && typeof P.calculateReferences === 'function' && lastSpin != null) {
+            const refs = P.calculateReferences(lastSpin, prevSpin == null ? null : prevSpin);
+            const engineKey = REFKEY_MAP[base];
+            refNum = engineKey ? refs[engineKey] : null;
+            if (refNum != null && Number.isNaN(refNum)) refNum = null;
+        }
+        if (is13Opp && refNum != null && P && P.DIGIT_13_OPPOSITES) {
+            const r = P.DIGIT_13_OPPOSITES[refNum];
+            return (r != null) ? r : null;
+        }
+        return refNum;
+    }
+
     function _esc(s) {
         return String(s)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -147,7 +194,7 @@
     }
 
     // ── NEXT row (no actual yet — show projected anchors only) ──
-    function _renderNextRow(table, neighborRange, groups) {
+    function _renderNextRow(table, neighborRange, groups, lastSpin, prevSpin) {
         const proj = table.nextProjections || {};
         const cells = ['<td style="font-weight:700;background:#fef9c3;color:#854d0e;text-align:center;padding:4px 6px;">NEXT</td>'];
         cells.push('<td style="background:#fef9c3;text-align:center;color:#94a3b8;">—</td>');
@@ -157,10 +204,12 @@
                 cells.push('<td colspan="7" style="background:#fef9c3;text-align:center;color:#cbd5e1;font-size:10px;">—</td>');
                 return;
             }
-            // entry = { first:{targets,sameSide,oppSide,numbers}, second:{…}, third:{…} }
-            const ref = entry.first && entry.first.targets && entry.first.targets[0];
+            // Ref cell = the pair's reference NUMBER (the spin used to
+            // build the lookup row), NOT the lookup row's 1st anchor.
+            // Resolve via the locked module's calculateReferences().
+            const refNum = _refNumForPair(group.dataPair, lastSpin, prevSpin);
             const baseStyle = 'padding:2px 4px;text-align:center;font-size:11px;background:#fef9c3;';
-            cells.push(`<td style="${baseStyle}font-weight:700;color:#854d0e;background:${group.cssBg};">${ref ?? ''}</td>`);
+            cells.push(`<td style="${baseStyle}font-weight:700;color:#854d0e;background:${group.cssBg};">${refNum ?? ''}</td>`);
             ['first', 'second', 'third'].forEach(k => {
                 const cell = entry[k] || {};
                 const target = (cell.targets || [])[0];
@@ -199,13 +248,15 @@
         </thead>`;
     }
 
-    function _renderT12(name, t, neighborLabel, visibleFamilies) {
+    function _renderT12(name, t, neighborLabel, visibleFamilies, meta) {
         const proj    = t.nextProjections || {};
         const rows    = t.rows || [];
         const validSet = name === 'Table 1' ? T1_VALID : T2_VALID;
         const neighborRange = name === 'Table 1' ? 1 : 2;
         const groups  = _filterGroups(PAIR_GROUPS, visibleFamilies);
         const count   = new Set(groups.map(g => _familyForDataPair(g.dataPair))).size;
+        const lastSpin = meta ? meta.lastSpin : null;
+        const prevSpin = meta ? meta.prevSpin : null;
 
         const bodyRows = rows.map((row, ri) => {
             const stripe = ri % 2 === 0 ? '#ffffff' : '#fafafa';
@@ -215,7 +266,7 @@
             return `<tr>${dirCell}${actualCell}${cells}</tr>`;
         }).join('');
 
-        const nextRow = (count > 0) ? _renderNextRow(t, neighborRange, groups) : '';
+        const nextRow = (count > 0) ? _renderNextRow(t, neighborRange, groups, lastSpin, prevSpin) : '';
 
         const badgeColor = count >= 12 ? '#16a34a' : count > 0 ? '#f59e0b' : '#dc2626';
         const filterNote = Array.isArray(visibleFamilies)
@@ -423,8 +474,8 @@
         const vf = meta.visibleFamilies;
         const body =
             _renderHeader(meta) +
-            _renderT12('Table 1', snap.table1 || {}, '±1 expansion (S+0, SL+1, SR+1, O+0, OL+1, OR+1)', vf) +
-            _renderT12('Table 2', snap.table2 || {}, '±2 expansion (T1 codes + SL+2, SR+2, OL+2, OR+2)', vf) +
+            _renderT12('Table 1', snap.table1 || {}, '±1 expansion (S+0, SL+1, SR+1, O+0, OL+1, OR+1)', vf, meta) +
+            _renderT12('Table 2', snap.table2 || {}, '±2 expansion (T1 codes + SL+2, SR+2, OL+2, OR+2)', vf, meta) +
             _renderT3(snap.table3 || {}, vf);
 
         return `<!doctype html>
