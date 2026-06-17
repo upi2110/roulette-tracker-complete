@@ -175,57 +175,77 @@
 
     // ── Position-code formatting ──
     // Matches Electron's pos-s / pos-o / pos-xx classes.
-    function _formatCode(code, isValid) {
-        if (!code || code === 'XX') {
-            return `<span style="color:#94a3b8;font-size:10px;">${code || '—'}</span>`;
+    //
+    // Out-of-range codes are NOT painted as faded chips like before —
+    // Electron renders them as plain XX. T1 only shows T1_VALID; T2
+    // only shows T2_VALID. Anything else collapses to XX so the
+    // visible grid matches the Electron tables exactly.
+    function _formatCode(code, validSet) {
+        // No code OR not in the table's valid set → render as XX.
+        if (!code || code === 'XX' || !validSet.has(code)) {
+            return `<span style="color:#94a3b8;font-size:10px;">XX</span>`;
         }
         const isS = code.charAt(0) === 'S';
-        const bg  = isValid ? (isS ? '#16a34a' : '#f59e0b') : (isS ? '#dcfce7' : '#fef3c7');
-        const fg  = isValid ? '#fff' : (isS ? '#15803d' : '#78350f');
-        const fw  = isValid ? '700' : '500';
-        return `<span style="background:${bg};color:${fg};font-weight:${fw};` +
+        const bg  = isS ? '#16a34a' : '#f59e0b';
+        return `<span style="background:${bg};color:#fff;font-weight:700;` +
                `padding:1px 4px;border-radius:3px;font-size:10px;` +
                `font-family:'SF Mono',ui-monospace,monospace;">${_esc(code)}</span>`;
     }
 
     // ── Per-row, per pair-group: 7 cells ──
-    function _renderGroupCells(perPair, group, validSet) {
+    // Selected groups (`selected=true`) get golden side-borders on the
+    // first and last cells of the group, plus a faint yellow tint on
+    // every cell in the group. Combined with the top ring on the
+    // header this visually wraps the entire pair-group column.
+    function _renderGroupCells(perPair, group, validSet, selected) {
         const e = perPair && perPair[group.dataPair.replace(/_13opp$/, '')];
         // perPair only carries the "pair" entry; we resolve the 13opp
         // half from oppLookup / oppCodes / oppHits on the same entry.
+        const tint   = selected ? 'background:#fffbeb;' : 'background:#fff;';
+        const tintBg = selected ? '#fffbeb' : '#fff';
+        const lBorder = selected ? 'border-left:3px solid #facc15;' : '';
+        const rBorder = selected ? 'border-right:3px solid #facc15;' : '';
         if (!e) {
-            return ['<td></td>', '<td></td>', '<td></td>', '<td></td>',
-                    '<td></td>', '<td></td>', '<td></td>'].join('');
+            const blank = `<td style="${tint}${lBorder}${rBorder}"></td>`;
+            return [
+                `<td style="${tint}${lBorder}"></td>`,
+                '<td style="' + tint + '"></td>', '<td style="' + tint + '"></td>',
+                '<td style="' + tint + '"></td>', '<td style="' + tint + '"></td>',
+                '<td style="' + tint + '"></td>',
+                `<td style="${tint}${rBorder}"></td>`
+            ].join('');
         }
         const lookup = group.is13Opp ? e.oppLookup : e.refLookup;
         const codes  = group.is13Opp ? e.oppCodes  : e.codes;
-        const hits   = group.is13Opp ? e.oppHits   : e.hits;
         const ref    = group.is13Opp ? e.ref13Opp  : e.refNum;
         if (!lookup) {
-            return `<td colspan="7" style="text-align:center;color:#cbd5e1;font-size:10px;">(no lookup)</td>`;
+            return `<td colspan="7" style="text-align:center;color:#cbd5e1;font-size:10px;${tint}${lBorder}${rBorder}">(no lookup)</td>`;
         }
         const ref0 = ref != null ? ref : '';
-        const cellStyle = 'padding:2px 4px;text-align:center;font-size:11px;background:#fff;';
+        const base = `padding:2px 4px;text-align:center;font-size:11px;`;
         return [
-            `<td style="${cellStyle}color:#64748b;font-weight:700;background:${group.cssBg};">${ref0}</td>`,
-            `<td style="${cellStyle}">${lookup.first ?? ''}</td>`,
-            `<td style="${cellStyle}">${_formatCode(codes && codes.first,  hits && hits.first )}</td>`,
-            `<td style="${cellStyle}">${lookup.second ?? ''}</td>`,
-            `<td style="${cellStyle}">${_formatCode(codes && codes.second, hits && hits.second)}</td>`,
-            `<td style="${cellStyle}">${lookup.third ?? ''}</td>`,
-            `<td style="${cellStyle}">${_formatCode(codes && codes.third,  hits && hits.third )}</td>`
+            `<td style="${base}color:#64748b;font-weight:700;background:${group.cssBg};${lBorder}">${ref0}</td>`,
+            `<td style="${base}${tint}">${lookup.first ?? ''}</td>`,
+            `<td style="${base}${tint}">${_formatCode(codes && codes.first,  validSet)}</td>`,
+            `<td style="${base}${tint}">${lookup.second ?? ''}</td>`,
+            `<td style="${base}${tint}">${_formatCode(codes && codes.second, validSet)}</td>`,
+            `<td style="${base}${tint}">${lookup.third ?? ''}</td>`,
+            `<td style="${base}${tint}${rBorder}">${_formatCode(codes && codes.third,  validSet)}</td>`
         ].join('');
     }
 
     // ── NEXT row (no actual yet — show projected anchors only) ──
-    function _renderNextRow(table, neighborRange, groups, lastSpin, prevSpin) {
+    function _renderNextRow(table, neighborRange, groups, lastSpin, prevSpin, tableId, meta) {
         const proj = table.nextProjections || {};
         const cells = ['<td style="font-weight:700;background:#fef9c3;color:#854d0e;text-align:center;padding:4px 6px;">NEXT</td>'];
         cells.push('<td style="background:#fef9c3;text-align:center;color:#94a3b8;">—</td>');
         (groups || PAIR_GROUPS).forEach(group => {
+            const selected = tableId && _isSelected(group.dataPair, tableId, meta);
+            const lBorder = selected ? 'border-left:3px solid #facc15;' : '';
+            const rBorder = selected ? 'border-right:3px solid #facc15;' : '';
             const entry = proj[group.dataPair];
             if (!entry) {
-                cells.push('<td colspan="7" style="background:#fef9c3;text-align:center;color:#cbd5e1;font-size:10px;">—</td>');
+                cells.push(`<td colspan="7" style="background:#fef9c3;text-align:center;color:#cbd5e1;font-size:10px;${lBorder}${rBorder}">—</td>`);
                 return;
             }
             // Ref cell = the pair's reference NUMBER (the spin used to
@@ -233,8 +253,8 @@
             // Resolve via the locked module's calculateReferences().
             const refNum = _refNumForPair(group.dataPair, lastSpin, prevSpin);
             const baseStyle = 'padding:2px 4px;text-align:center;font-size:11px;background:#fef9c3;';
-            cells.push(`<td style="${baseStyle}font-weight:700;color:#854d0e;background:${group.cssBg};">${refNum ?? ''}</td>`);
-            ['first', 'second', 'third'].forEach(k => {
+            cells.push(`<td style="${baseStyle}font-weight:700;color:#854d0e;background:${group.cssBg};${lBorder}">${refNum ?? ''}</td>`);
+            ['first', 'second', 'third'].forEach((k, idx) => {
                 const cell = entry[k] || {};
                 const target = (cell.targets || [])[0];
                 cells.push(`<td style="${baseStyle}">${target ?? ''}</td>`);
@@ -243,7 +263,8 @@
                 // user sees how many numbers each anchor expands to.
                 const sN = (cell.sameSide || []).length;
                 const oN = (cell.oppSide  || []).length;
-                cells.push(`<td style="${baseStyle}color:#94a3b8;font-size:9px;">` +
+                const isLast = (idx === 2);
+                cells.push(`<td style="${baseStyle}color:#94a3b8;font-size:9px;${isLast ? rBorder : ''}">` +
                            `<span title="same-side ±${neighborRange}" style="color:#15803d;">${sN}</span>·` +
                            `<span title="opp-side ±${neighborRange}" style="color:#a16207;">${oN}</span>` +
                            `</td>`);
@@ -287,15 +308,18 @@
         const lastSpin = meta ? meta.lastSpin : null;
         const prevSpin = meta ? meta.prevSpin : null;
 
+        const tableId = name === 'Table 1' ? 'T1' : 'T2';
         const bodyRows = rows.map((row, ri) => {
             const stripe = ri % 2 === 0 ? '#ffffff' : '#fafafa';
             const dirCell    = `<td style="background:${stripe};text-align:center;padding:3px;font-size:10px;color:#64748b;">${row.spinIndex + 1}</td>`;
             const actualCell = `<td style="background:${stripe};text-align:center;padding:3px;font-weight:700;color:#0f172a;">${row.actual}</td>`;
-            const cells = groups.map(g => _renderGroupCells(row.perPair, g, validSet)).join('');
+            const cells = groups.map(g =>
+                _renderGroupCells(row.perPair, g, validSet, _isSelected(g.dataPair, tableId, meta))
+            ).join('');
             return `<tr>${dirCell}${actualCell}${cells}</tr>`;
         }).join('');
 
-        const nextRow = (count > 0) ? _renderNextRow(t, neighborRange, groups, lastSpin, prevSpin) : '';
+        const nextRow = (count > 0) ? _renderNextRow(t, neighborRange, groups, lastSpin, prevSpin, tableId, meta) : '';
 
         const badgeColor = count >= 12 ? '#16a34a' : count > 0 ? '#f59e0b' : '#dc2626';
         const filterNote = Array.isArray(visibleFamilies)
@@ -361,28 +385,36 @@
         return purpleHtml + greenHtml + hitBadge;
     }
 
-    function _renderT3RowCells(perPair, group, actual) {
+    // T3 has its own valid-code set that's the union of T1 + T2 (anchor
+    // hits in T3 can come from either expansion). Used to filter the
+    // POS column display the same way T1/T2 do.
+    const T3_POS_VALID = new Set([...T1_VALID, ...T2_VALID]);
+
+    function _renderT3RowCells(perPair, group, actual, selected) {
+        const tint    = selected ? 'background:#fffbeb;' : 'background:#fff;';
+        const lBorder = selected ? 'border-left:3px solid #facc15;' : '';
+        const rBorder = selected ? 'border-right:3px solid #facc15;' : '';
         const e = perPair && perPair[group.dataPair];
-        if (!e) return `<td colspan="5" style="text-align:center;color:#cbd5e1;font-size:10px;">—</td>`;
+        if (!e) return `<td colspan="5" style="text-align:center;color:#cbd5e1;font-size:10px;${tint}${lBorder}${rBorder}">—</td>`;
         // Compute POS codes for the actual number against this row's refs.
         // (P is the locked projections module — exposes calculatePositionCode.)
         const codePair  = (P && e.refNum   != null) ? P.calculatePositionCode(e.refNum,   actual) : 'XX';
         const code13opp = (P && e.ref13Opp != null) ? P.calculatePositionCode(e.ref13Opp, actual) : 'XX';
-        const isHitPair  = T1_VALID.has(codePair)  || T2_VALID.has(codePair);
-        const isHit13opp = T1_VALID.has(code13opp) || T2_VALID.has(code13opp);
-        const base = 'padding:2px 4px;background:#fff;text-align:center;font-size:11px;';
+        const base = 'padding:2px 4px;text-align:center;font-size:11px;';
         return [
-            `<td style="${base}font-weight:700;color:#7c3aed;background:${group.cssBg};">${e.refNum  ?? ''}</td>`,
-            `<td style="${base}">${_formatCode(codePair,  isHitPair)}</td>`,
+            `<td style="${base}font-weight:700;color:#7c3aed;background:${group.cssBg};${lBorder}">${e.refNum  ?? ''}</td>`,
+            `<td style="${base}${tint}">${_formatCode(codePair,  T3_POS_VALID)}</td>`,
             `<td style="${base}font-weight:700;color:#16a34a;background:${group.cssBg};opacity:0.85;">${e.ref13Opp ?? ''}</td>`,
-            `<td style="${base}">${_formatCode(code13opp, isHit13opp)}</td>`,
-            `<td style="${base}">${_renderT3PrjChips(e)}</td>`
+            `<td style="${base}${tint}">${_formatCode(code13opp, T3_POS_VALID)}</td>`,
+            `<td style="${base}${tint}${rBorder}">${_renderT3PrjChips(e)}</td>`
         ].join('');
     }
 
-    function _renderT3NextCells(group, projEntry) {
+    function _renderT3NextCells(group, projEntry, selected) {
+        const lBorder = selected ? 'border-left:3px solid #facc15;' : '';
+        const rBorder = selected ? 'border-right:3px solid #facc15;' : '';
         if (!projEntry) {
-            return `<td colspan="5" style="text-align:center;color:#cbd5e1;font-size:10px;background:#fef9c3;">—</td>`;
+            return `<td colspan="5" style="text-align:center;color:#cbd5e1;font-size:10px;background:#fef9c3;${lBorder}${rBorder}">—</td>`;
         }
         const p = projEntry;
         const purpleHtml = (p.purple || []).map(n =>
@@ -393,14 +425,12 @@
         ).join('');
         const base = 'padding:3px 4px;background:#fef9c3;text-align:center;font-size:11px;';
         // NEXT row has no actual yet → no POS code, just the projection.
-        // Carry refNum + ref13Opp through so the user can see which refs
-        // drive the projection.
         return [
-            `<td style="${base}font-weight:700;color:#7c3aed;background:${group.cssBg};">${p.refNum ?? ''}</td>`,
+            `<td style="${base}font-weight:700;color:#7c3aed;background:${group.cssBg};${lBorder}">${p.refNum ?? ''}</td>`,
             `<td style="${base}color:#94a3b8;font-size:9px;">${p.usePosCode ? _esc(p.usePosCode) : '—'}</td>`,
             `<td style="${base}font-weight:700;color:#16a34a;background:${group.cssBg};opacity:0.85;">${p.ref13Opp ?? ''}</td>`,
             `<td style="${base}color:#94a3b8;font-size:9px;">—</td>`,
-            `<td style="${base}">${purpleHtml}${greenHtml}</td>`
+            `<td style="${base}${rBorder}">${purpleHtml}${greenHtml}</td>`
         ].join('');
     }
 
@@ -437,11 +467,15 @@
             const stripe = ri % 2 === 0 ? '#ffffff' : '#fafafa';
             const dirCell    = `<td style="background:${stripe};text-align:center;padding:3px;font-size:10px;color:#64748b;">${row.spinIndex + 1}</td>`;
             const actualCell = `<td style="background:${stripe};text-align:center;padding:3px;font-weight:700;color:#0f172a;">${row.actual}</td>`;
-            const cells = groups.map(g => _renderT3RowCells(row.perPair, g, row.actual)).join('');
+            const cells = groups.map(g =>
+                _renderT3RowCells(row.perPair, g, row.actual, _isSelected(g.dataPair, 'T3', meta))
+            ).join('');
             return `<tr>${dirCell}${actualCell}${cells}</tr>`;
         }).join('');
 
-        const nextCells = groups.map(g => _renderT3NextCells(g, proj[g.dataPair])).join('');
+        const nextCells = groups.map(g =>
+            _renderT3NextCells(g, proj[g.dataPair], _isSelected(g.dataPair, 'T3', meta))
+        ).join('');
         const nextRow = (count > 0)
             ? `<tr style="border-top:2px solid #f59e0b;">
                 <td style="font-weight:700;background:#fef9c3;color:#854d0e;text-align:center;padding:4px 6px;">NEXT</td>
