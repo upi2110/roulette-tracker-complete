@@ -162,15 +162,33 @@
     /**
      * Expand target numbers to include ±neighborRange wheel neighbours
      * on BOTH same and opposite sides. T1 uses ±1, T2 uses ±2.
+     * Same flat-array shape as the renderer's helper.
      */
     function expandTargetsToBetNumbers(targets, neighborRange) {
-        const betNumbers = new Set();
+        const split = expandTargetsWithSides(targets, neighborRange);
+        return split.all;
+    }
+
+    /**
+     * Same expansion, but returns the same-side and opposite-side
+     * halves separately so the analyser can tell which side a number
+     * came from. Critical for "same side streak → next bet must also
+     * be same side" analytics.
+     *
+     * sameSide = target + ±neighborRange wheel-neighbours of TARGET.
+     * oppSide  = REGULAR_OPPOSITES[target] + ±neighborRange
+     *            wheel-neighbours of THAT opposite.
+     * all      = sameSide ∪ oppSide (deduped, same as the flat version).
+     */
+    function expandTargetsWithSides(targets, neighborRange) {
+        const sameSet = new Set();
+        const oppSet  = new Set();
 
         targets.forEach(target => {
             const idx = getWheel36Index(target);
             if (idx !== -1) {
                 for (let offset = -neighborRange; offset <= neighborRange; offset++) {
-                    getNumbersAtPocket(idx + offset).forEach(n => betNumbers.add(n));
+                    getNumbersAtPocket(idx + offset).forEach(n => sameSet.add(n));
                 }
             }
             const opposite = REGULAR_OPPOSITES[target];
@@ -178,12 +196,17 @@
                 const oppIdx = getWheel36Index(opposite);
                 if (oppIdx !== -1) {
                     for (let offset = -neighborRange; offset <= neighborRange; offset++) {
-                        getNumbersAtPocket(oppIdx + offset).forEach(n => betNumbers.add(n));
+                        getNumbersAtPocket(oppIdx + offset).forEach(n => oppSet.add(n));
                     }
                 }
             }
         });
-        return Array.from(betNumbers);
+        const all = new Set([...sameSet, ...oppSet]);
+        return {
+            sameSide: Array.from(sameSet).sort((a, b) => a - b),
+            oppSide:  Array.from(oppSet ).sort((a, b) => a - b),
+            all:      Array.from(all    )
+        };
     }
 
     // ── Pair-family resolver ──────────────────────────────────────
@@ -218,31 +241,34 @@
         const projections = {};
         const pairs = _buildPairsMap(lastSpin, prevPrev);
 
+        const cell = (target) => {
+            const split = expandTargetsWithSides([target], neighborRange);
+            return {
+                targets:  [target],
+                sameSide: split.sameSide,    // target's wheel ±N
+                oppSide:  split.oppSide,     // REGULAR_OPPOSITE[target]'s wheel ±N
+                numbers:  split.all          // union (kept for back-compat)
+            };
+        };
+
         Object.entries(pairs).forEach(([pairKey, refNum]) => {
             const ref13Opp = DIGIT_13_OPPOSITES[refNum];
             const refLookup = getLookupRow(refNum);
             const oppLookup = getLookupRow(ref13Opp);
 
             if (refLookup) {
-                projections[pairKey] = {};
-                ['first', 'second', 'third'].forEach(refKey => {
-                    const numbers = expandTargetsToBetNumbers([refLookup[refKey]], neighborRange);
-                    projections[pairKey][refKey] = {
-                        targets: [refLookup[refKey]],
-                        numbers: numbers
-                    };
-                });
+                projections[pairKey] = {
+                    first:  cell(refLookup.first),
+                    second: cell(refLookup.second),
+                    third:  cell(refLookup.third)
+                };
             }
-
             if (oppLookup) {
-                projections[pairKey + '_13opp'] = {};
-                ['first', 'second', 'third'].forEach(refKey => {
-                    const numbers = expandTargetsToBetNumbers([oppLookup[refKey]], neighborRange);
-                    projections[pairKey + '_13opp'][refKey] = {
-                        targets: [oppLookup[refKey]],
-                        numbers: numbers
-                    };
-                });
+                projections[pairKey + '_13opp'] = {
+                    first:  cell(oppLookup.first),
+                    second: cell(oppLookup.second),
+                    third:  cell(oppLookup.third)
+                };
             }
         });
         return projections;
@@ -338,19 +364,40 @@
 
     /**
      * Expand purple + green anchors into the bet-number pool. Each
-     * anchor gets ±1 wheel-neighbour expansion. Same logic as
-     * renderer-3tables.js expandAnchorsToBetNumbers.
+     * anchor gets ±1 wheel-neighbour expansion. Same flat-array shape
+     * as renderer-3tables.js expandAnchorsToBetNumbers.
      */
     function expandAnchorsToBetNumbers(purpleAnchors, greenAnchors) {
-        const betNumbers = new Set();
-        [...purpleAnchors, ...greenAnchors].forEach(anchor => {
-            const idx = getWheel36Index(anchor);
-            if (idx === -1) return;
-            for (let offset = -1; offset <= 1; offset++) {
-                getNumbersAtPocket(idx + offset).forEach(n => betNumbers.add(n));
-            }
-        });
-        return Array.from(betNumbers);
+        const split = expandAnchorsWithSides(purpleAnchors, greenAnchors);
+        return split.all;
+    }
+
+    /**
+     * Same expansion, but keeps same-side (purple-derived) and
+     * opposite-side (green-derived) halves separate. Critical for
+     * "if last 2-3 hits were same-side, the next should also be
+     * same-side" analytics.
+     */
+    function expandAnchorsWithSides(purpleAnchors, greenAnchors) {
+        const sameSet = new Set();
+        const oppSet  = new Set();
+        const expandInto = (anchors, target) => {
+            anchors.forEach(anchor => {
+                const idx = getWheel36Index(anchor);
+                if (idx === -1) return;
+                for (let offset = -1; offset <= 1; offset++) {
+                    getNumbersAtPocket(idx + offset).forEach(n => target.add(n));
+                }
+            });
+        };
+        expandInto(purpleAnchors, sameSet);
+        expandInto(greenAnchors,  oppSet);
+        const all = new Set([...sameSet, ...oppSet]);
+        return {
+            sameSide: Array.from(sameSet).sort((a, b) => a - b),
+            oppSide:  Array.from(oppSet ).sort((a, b) => a - b),
+            all:      Array.from(all    )
+        };
     }
 
     /**
@@ -469,8 +516,12 @@
             const pairGreen = pairAnchors.map(a => REGULAR_OPPOSITES[a]).filter(a => a !== undefined);
             const oppGreen  = oppAnchors .map(a => REGULAR_OPPOSITES[a]).filter(a => a !== undefined);
 
-            // Bet pool (anchors ±1 wheel-neighbours, purple ∪ green).
-            const numbers = expandAnchorsToBetNumbers(merged.purple, merged.green);
+            // Bet pool (anchors ±1 wheel-neighbours). Same-side =
+            // expansion around purple anchors; opp-side = expansion
+            // around green anchors. The analyser can compare actuals
+            // against sameSide / oppSide separately to detect "two
+            // hits in a row on the same side".
+            const split = expandAnchorsWithSides(merged.purple, merged.green);
 
             projections[grp.dataPair] = {
                 refNum, ref13Opp,
@@ -481,7 +532,9 @@
                 pairGreen,
                 oppPurple:  oppAnchors,
                 oppGreen,
-                numbers
+                sameSide:   split.sameSide,
+                oppSide:    split.oppSide,
+                numbers:    split.all
             };
         });
         return projections;
@@ -503,17 +556,23 @@
             const actual = spinsArr[i];
             const perPair = {};
             Object.entries(projAtRow).forEach(([pairKey, p]) => {
-                const anchorSet = new Set([...(p.purple || []), ...(p.green || [])]);
-                const betSet    = new Set(p.numbers || []);
+                const anchorSet  = new Set([...(p.purple || []), ...(p.green || [])]);
+                const betSet     = new Set(p.numbers  || []);
+                const sameSet    = new Set(p.sameSide || []);
+                const oppSet     = new Set(p.oppSide  || []);
                 perPair[pairKey] = {
-                    refNum:     p.refNum,
-                    ref13Opp:   p.ref13Opp,
-                    usePosCode: p.usePosCode,
-                    purple:     p.purple,
-                    green:      p.green,
-                    numbers:    p.numbers,
-                    hitAnchor:  anchorSet.has(actual),
-                    hitBetPool: betSet.has(actual)
+                    refNum:       p.refNum,
+                    ref13Opp:     p.ref13Opp,
+                    usePosCode:   p.usePosCode,
+                    purple:       p.purple,
+                    green:        p.green,
+                    sameSide:     p.sameSide,
+                    oppSide:      p.oppSide,
+                    numbers:      p.numbers,
+                    hitAnchor:    anchorSet.has(actual),
+                    hitBetPool:   betSet.has(actual),
+                    hitSameSide:  sameSet.has(actual),
+                    hitOppSide:   oppSet.has(actual)
                 };
             });
             rows.push({ spinIndex: i, actual, perPair });
@@ -595,10 +654,11 @@
         getLookupRow,
         getWheel36Index, getNumbersAtPocket,
         calculateWheelDistance, calculatePositionCode,
-        expandTargetsToBetNumbers,
+        expandTargetsToBetNumbers, expandTargetsWithSides,
         // T3 helpers
         getNumberAtPosition, flipPositionCode, generateAnchors,
-        expandAnchorsToBetNumbers, calculateReferences,
+        expandAnchorsToBetNumbers, expandAnchorsWithSides,
+        calculateReferences,
         // NEXT-row projections (T1, T2, T3)
         getTable1NextProjections,
         getTable2NextProjections,
