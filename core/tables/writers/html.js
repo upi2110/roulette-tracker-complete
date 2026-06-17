@@ -168,7 +168,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta http-equiv="refresh" content="2">
+    <meta http-equiv="refresh" content="1">
     <title>Table snapshot — ${meta.spinCount || 0} spins</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

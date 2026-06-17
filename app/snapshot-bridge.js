@@ -38,8 +38,17 @@
 (function () {
     'use strict';
 
-    let _lastCount = -1;
+    // Fingerprint of the last spin list we sent to the snapshot writer.
+    // Comparing the fingerprint (not just length) catches:
+    //   • new spins added                     (length grows)
+    //   • RESET                               (length drops to 0)
+    //   • UNDO                                (length drops by ≥1)
+    //   • a single spin EDITED in place       (length same, value changed)
+    //   • bulk historical-data load           (length jumps)
+    //   • training corpus pre-load on launch  (initial non-zero state)
+    let _lastFingerprint = '__unset__';
     let _inFlight  = false;
+    let _failures  = 0;   // for backoff if main process throws repeatedly
 
     function _snapshotSpins() {
         // window.spins is the array of { actual, direction, ... } entries
@@ -50,6 +59,12 @@
             .filter(n => n !== null);
     }
 
+    function _fingerprint(arr) {
+        // Cheap O(n) fingerprint: length-prefixed comma-join. Catches
+        // any per-position value change as well as length change.
+        return arr.length + ':' + arr.join(',');
+    }
+
     async function _maybeRefresh() {
         if (_inFlight) return;
         if (!window.aiAPI || typeof window.aiAPI.refreshSnapshot !== 'function') return;
@@ -57,30 +72,39 @@
         const spins = _snapshotSpins();
         if (!spins) return;
 
-        if (spins.length === _lastCount) return;     // no change
-        _lastCount = spins.length;
+        const fp = _fingerprint(spins);
+        if (fp === _lastFingerprint) return;     // no change since last write
+        _lastFingerprint = fp;
 
         _inFlight = true;
         try {
             const r = await window.aiAPI.refreshSnapshot(spins);
             if (r && r.ok) {
+                _failures = 0;
                 console.log(`📸 Snapshot refreshed (${r.spinCount} spins → spin-${r.idx})`);
             } else if (r && !r.ok) {
+                _failures++;
                 console.warn('📸 Snapshot refresh returned error:', r.error);
+                // On failure clear the fingerprint so we retry next tick
+                // instead of getting stuck waiting for the next change.
+                _lastFingerprint = '__retry__';
             }
         } catch (e) {
+            _failures++;
             console.warn('📸 Snapshot refresh threw:', e && e.message);
+            _lastFingerprint = '__retry__';
         } finally {
             _inFlight = false;
         }
     }
 
     function _start() {
-        // First check shortly after load to capture any pre-loaded
-        // training spins, then poll.
-        setTimeout(_maybeRefresh, 1500);
-        setInterval(_maybeRefresh, 500);
-        console.log('📸 Snapshot bridge: armed (polling window.spins every 500ms)');
+        // First check immediately to capture any pre-loaded training
+        // spins from the engine's startup sequence, then poll every
+        // 250ms so the browser tab feels real-time.
+        setTimeout(_maybeRefresh, 250);
+        setInterval(_maybeRefresh, 250);
+        console.log('📸 Snapshot bridge: armed (polling window.spins every 250ms)');
     }
 
     if (document.readyState === 'loading') {
