@@ -203,6 +203,12 @@
      AFTER core/tables/snapshot.js (above) so the in-process snapshot()
      call inside decide() resolves immediately. -->
 <script src="../strategies/strategy-analyser/strategy-analyser.js"></script>
+<!-- Phase 4: settings UI + Explain popup. Both injected at runtime;
+     they look for #strategyLabGreyToggleWrap as the anchor DOM node
+     to attach the settings inputs next to, then auto-hide unless
+     currentMode === 'test'. Popup div is created on first open. -->
+<script src="../strategies/strategy-analyser/settings-panel.js"></script>
+<script src="../strategies/strategy-analyser/explain-popup.js"></script>
 <!-- Manual Replay — pure prediction math for the Auto Test
      'manual-test' mode. No engine / DOM dependencies; exposes
      window.ManualReplay.computeManualPrediction. -->
