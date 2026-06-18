@@ -65,6 +65,12 @@
         ? require('../../core/tables/projections.js')
         : (typeof window !== 'undefined' ? window.CoreTables : null);
 
+    // Signals (Phase 2) — pure modules; the aggregator below combines
+    // their outputs into the final decision.
+    const Signals = (typeof require === 'function')
+        ? require('./signals/index.js')
+        : null;     // Browser-side: Phase 4 will add script tags + window globals.
+
     if (!Snapshot || !Tables) {
         const msg = 'StrategyAnalyser: locked snapshot pipeline not available. ' +
                     'Ensure core/tables/snapshot.js and projections.js are loaded.';
@@ -74,13 +80,17 @@
 
     // ── Tunables ──────────────────────────────────────────────────
     const DEFAULTS = {
-        confidenceFloor: 60,   // < this → WAIT (display only). Configurable.
-        maxNumbers:      12,   // ceiling on prediction-list size.
-        minNumbers:      6,    // floor when we do emit a real prediction.
-        waitCap:         3,    // 3 consecutive WAIT → 4th MUST BET.
-        minSpinsToFire:  3,    // first 3 spins → WARMUP / SKIP placeholders.
-        // Signal weights (phase 2 will use these; defaults exposed now
-        // so the Explain popup can render them even with the skeleton).
+        confidenceFloor:  60,   // < this → WAIT (display only). Configurable.
+        confidenceScale:  4.0,  // sum of fired signal weights mapped to 100%.
+                                // 2 strong signals (~1.0+1.0) = 50%, 3 = 75%,
+                                // 2.4 = floor (60%). Tunable Phase 4.
+        maxNumbers:       12,   // ceiling on prediction-list size.
+        minNumbers:       6,    // floor when emitting a real prediction.
+        waitCap:          3,    // 3 consecutive WAIT → 4th MUST BET.
+        minSpinsToFire:   3,    // first 3 spins → WARMUP / SKIP placeholders.
+        t3CooldownRounds: 3,    // missed streak on T3 pair → cool 3 rounds
+        // Reference weights (Phase 2 signals hard-code these as base values;
+        // documented here so Phase 4 settings UI can offer overrides).
         weights: {
             signStreak:       0.30,
             tableStreak:      0.30,
@@ -89,14 +99,6 @@
             sideOnlyStreak:   0.60,
             crossCellRotate:  0.70,
             crossTableConv:   1.20
-        },
-        // Streak-betting policy (Phase 3 implements; declared here so
-        // the contract is visible at the top of the file).
-        streakPolicy: {
-            waitBeforeHit:   2,   // streak hits 1-2: WAIT
-            betDuringHits:   [3, 4],
-            waitAfterHit:    5,
-            t3CooldownRounds: 3    // missed streak on T3 pair → cool 3 rounds
         }
     };
 
@@ -190,7 +192,72 @@
         return Array.from(set);
     }
 
-    // ── decide() — Phase 1 placeholder ───────────────────────────
+    // ── T3 cooldown maintenance ──────────────────────────────────
+    /**
+     * Decrement each pair's cooldown counter (cooling down across spins).
+     */
+    function _decrementCooldowns(cooldowns) {
+        Object.keys(cooldowns).forEach(k => {
+            cooldowns[k] = Math.max(0, (cooldowns[k] || 0) - 1);
+            if (cooldowns[k] === 0) delete cooldowns[k];
+        });
+    }
+
+    /**
+     * Inspect snap.table3.rows latest entry. For each pair whose
+     * projection MISSED at that row (hitAnchor === false), set
+     * cooldown = t3CooldownRounds. Pairs that hit reset their cooldown.
+     */
+    function _updateCooldownsFromLatestRow(cooldowns, snap, cooldownRounds) {
+        const rows = snap && snap.table3 && snap.table3.rows;
+        if (!Array.isArray(rows) || !rows.length) return;
+        const lastRow = rows[rows.length - 1];
+        if (!lastRow || !lastRow.perPair) return;
+        Object.keys(lastRow.perPair).forEach(famKey => {
+            const ent = lastRow.perPair[famKey];
+            if (ent && ent.hitAnchor === false) {
+                // Missed projection — start cooldown (or reset to full
+                // if already cooling).
+                cooldowns[famKey] = cooldownRounds;
+            } else if (ent && ent.hitAnchor === true) {
+                // Hit — clear cooldown.
+                delete cooldowns[famKey];
+            }
+        });
+    }
+
+    // ── Pair-key extraction from signal name ─────────────────────
+    /**
+     * Pull the pair-family key out of a signal's name so the T3
+     * cooldown filter can suppress signals for cooled pairs.
+     *
+     *   'sub-anchor-pattern/T1/prevPlus1/continuation' → 'prevPlus1'
+     *   'sub-anchor-pattern/T2/prevPlus1_13opp/missing-anchor' → 'prevPlus1'
+     *   'side-only-streak/T1/prev/continuation'      → 'prev'
+     *   'cross-cell-rotation/T2/prevPrev'            → 'prevPrev'
+     *   'cross-table-conv/prev'                      → 'prev'
+     *   'sign-streak-same'                           → null (not pair-bound)
+     */
+    function _extractFamilyKey(name) {
+        if (!name) return null;
+        const parts = name.split('/');
+        // Pair-bound signals have at least 2 parts after the prefix.
+        // sub-anchor-pattern / table / pairKey / variant
+        // cross-table-conv / famKey
+        // cross-cell-rotation / table / famKey
+        let candidate = null;
+        if (name.startsWith('sub-anchor-pattern') || name.startsWith('side-only-streak')) {
+            candidate = parts[2];   // pairKey (may end in _13opp)
+        } else if (name.startsWith('cross-cell-rotation')) {
+            candidate = parts[2];
+        } else if (name.startsWith('cross-table-conv')) {
+            candidate = parts[1];
+        }
+        if (!candidate) return null;
+        return candidate.endsWith('_13opp') ? candidate.slice(0, -6) : candidate;
+    }
+
+    // ── decide() — Phase 3 aggregator ────────────────────────────
     /**
      * Single entry point. Both live and backtest call THIS.
      *
@@ -202,9 +269,10 @@
      * @param {number} idx       index of "the spin we're deciding for"
      *                           — same convention as StrategyLab.
      * @param {Object} ctx       caller context.
-     *   ctx.sessionState   — required for stateful logic (Phase 3+).
-     *                        If absent, a transient state is used and
-     *                        per-spin determinism still holds.
+     *   ctx.sessionState   — required for stateful logic. If absent,
+     *                        a transient state is used and per-spin
+     *                        determinism still holds (no cross-spin
+     *                        memory).
      *   ctx.params         — partial DEFAULTS overrides. Phase 4 wires
      *                        the Test(Lab) settings UI through this.
      *   ctx.snapshotOpts   — passed straight through to snapshot()
@@ -231,9 +299,10 @@
             return _record(state, idx, out);
         }
         const snap = Snapshot.snapshot(spinsArr || [], c.snapshotOpts || {});
+        const spinCount = snap.meta.spinCount;
+        const lastSpin  = snap.meta.lastSpin;
 
         // ── Warmup ──
-        const spinCount = snap.meta.spinCount;
         if (spinCount < params.minSpinsToFire) {
             const need = params.minSpinsToFire - spinCount;
             const out = _decision('WAIT', [], 0,
@@ -242,38 +311,136 @@
             return _record(state, idx, out);
         }
 
-        // ── Phase 1 placeholder ──
-        // No signal extractors yet. We emit a WAIT carrying:
-        //   • the last spin's wheel ±1 neighbours (always something
-        //     visible so the panel renders), UNIONed with whatever
-        //     numbers the user has manually selected in the AI panel.
-        //   • confidence = 0
-        //   • action = WAIT (money panel skips the bet)
-        const lastSpin = snap.meta.lastSpin;
-        const fallback = _neighbours(lastSpin);
+        // ── T3 cooldown maintenance ──
+        // Decrement carry-over cooldowns first, then update from the
+        // latest row (a miss at THIS spin starts a fresh 3-round cool).
+        _decrementCooldowns(state.t3Cooldowns);
+        _updateCooldownsFromLatestRow(state.t3Cooldowns, snap, params.t3CooldownRounds);
+
+        // ── Signal evaluation ──
+        const allSignals = Signals
+            ? Signals.evaluateAll(snap, state, params)
+            : [];
+
+        // Filter out signals tied to a T3-cooled pair family.
+        const cooledFams = new Set(Object.keys(state.t3Cooldowns));
+        const suppressed = [];
+        const fired = allSignals.filter(s => {
+            const fam = _extractFamilyKey(s.name);
+            if (fam && cooledFams.has(fam)) {
+                suppressed.push({ name: s.name, pair: fam, roundsLeft: state.t3Cooldowns[fam] });
+                return false;
+            }
+            return true;
+        });
+
+        // ── Score per number ──
+        // Normalize each signal's contribution: weight is divided across
+        // its candidates so a wide-coverage signal doesn't drown out a
+        // focused one. A 6-number bet pool with weight 0.9 contributes
+        // 0.15/number; a 19-number sign partition with weight 0.30
+        // contributes ~0.016/number. Focused signals dominate.
+        const scores = new Map();   // num → cumulative weight
+        let totalFiredWeight = 0;
+        for (const sig of fired) {
+            if (!sig.candidates || sig.candidates.size === 0) continue;
+            const per = sig.weight / sig.candidates.size;
+            totalFiredWeight += sig.weight;
+            sig.candidates.forEach(n => {
+                scores.set(n, (scores.get(n) || 0) + per);
+            });
+        }
+
+        // ── Confidence ──
+        const confidence = Math.min(100,
+            Math.round(100 * totalFiredWeight / params.confidenceScale));
+
+        // ── Action gate (incl. wait-cap force-bet) ──
+        const priorWaits = state.consecutiveWaits || 0;
+        const forceBet   = priorWaits >= params.waitCap;
+        const meetsFloor = confidence >= params.confidenceFloor;
+        const action     = meetsFloor ? 'BET'
+                         : forceBet   ? 'BET'
+                         : 'WAIT';
+
+        // ── Rank and pick top-K ──
+        const ranked = Array.from(scores.entries())
+            .map(([num, score]) => ({ num, score }))
+            .sort((a, b) => b.score - a.score || a.num - b.num);
+
+        let picked = ranked.slice(0, params.maxNumbers).map(o => o.num);
+
+        // Floor — pad with wheel ±1 of last spin if below minNumbers.
+        if (picked.length < params.minNumbers) {
+            const pad = _neighbours(lastSpin);
+            for (const n of pad) {
+                if (picked.length >= params.minNumbers) break;
+                if (!picked.includes(n)) picked.push(n);
+            }
+        }
+
+        // UNION with user picks (per user spec: include them always).
         const userNums = _numbersFromUserSelections(snap);
-        const numbers  = Array.from(new Set([...fallback, ...userNums]))
-            .slice(0, params.maxNumbers);
+        let numbers = picked;
+        if (userNums.length) {
+            const merged = [];
+            const seen = new Set();
+            // User picks first → guaranteed in final list.
+            for (const n of userNums) {
+                if (seen.has(n)) continue;
+                seen.add(n);
+                merged.push(n);
+                if (merged.length >= params.maxNumbers) break;
+            }
+            for (const n of picked) {
+                if (merged.length >= params.maxNumbers) break;
+                if (seen.has(n)) continue;
+                seen.add(n);
+                merged.push(n);
+            }
+            numbers = merged;
+        }
 
-        const out = _decision('WAIT', numbers, 0,
-            `StrategyAnalyser PHASE 1 (skeleton): ${numbers.length} placeholder ` +
-            `number${numbers.length === 1 ? '' : 's'} from wheel ±1 around ${lastSpin}` +
-            (userNums.length ? ` UNIONed with ${userNums.length} from user picks.` : '.'));
+        // ── Reason text ──
+        let reason;
+        if (action === 'BET' && meetsFloor) {
+            reason = `BET — confidence ${confidence}% ≥ floor ${params.confidenceFloor}%, `
+                   + `${fired.length} signal${fired.length === 1 ? '' : 's'} fired, `
+                   + `${numbers.length} numbers picked.`;
+        } else if (action === 'BET' && forceBet) {
+            reason = `FORCED BET — ${priorWaits} consecutive WAITs hit cap of ${params.waitCap}, `
+                   + `betting at confidence ${confidence}% (below ${params.confidenceFloor}% floor).`;
+        } else {
+            reason = `WAIT — confidence ${confidence}% < floor ${params.confidenceFloor}%. `
+                   + `${priorWaits + 1}/${params.waitCap + 1} consecutive wait${priorWaits === 0 ? '' : 's'}; `
+                   + `${fired.length} signal${fired.length === 1 ? '' : 's'} fired.`;
+        }
 
+        const out = _decision(action, numbers, confidence, reason);
         out.explanation = {
-            phase: 'PHASE_1_PLACEHOLDER',
+            phase: action === 'BET' && forceBet && !meetsFloor ? 'FORCED_BET' : 'NORMAL',
             spinCount,
             lastSpin,
-            neighbours: fallback,
+            firedSignals: fired.map(s => ({
+                name: s.name,
+                weight: s.weight,
+                candidatesCount: s.candidates ? s.candidates.size : 0,
+                reason: s.reason,
+                details: s.details || null
+            })),
+            suppressedByCooldown: suppressed,
+            topScored: ranked.slice(0, 20),
+            picked,
             userSelectionNumbers: userNums,
-            sessionState: {
-                consecutiveWaits: state.consecutiveWaits,
-                t3Cooldowns: Object.assign({}, state.t3Cooldowns)
-            },
-            params: {
-                confidenceFloor: params.confidenceFloor,
-                maxNumbers: params.maxNumbers
-            }
+            unionedNumbers: numbers,
+            totalFiredWeight,
+            confidence,
+            confidenceFloor: params.confidenceFloor,
+            confidenceScale: params.confidenceScale,
+            priorConsecutiveWaits: priorWaits,
+            waitCap: params.waitCap,
+            forcedBet: action === 'BET' && forceBet && !meetsFloor,
+            t3Cooldowns: Object.assign({}, state.t3Cooldowns)
         };
         return _record(state, idx, out);
     }
