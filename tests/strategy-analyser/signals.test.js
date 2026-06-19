@@ -27,7 +27,7 @@ describe('Rule 1 — sign-streak', () => {
         const out = sign.evaluate(_spinsSnap([1, 9]));
         expect(out.length).toBe(1);
         expect(out[0].name).toBe('sign-streak-same');
-        expect(out[0].weight).toBe(0.80);
+        expect(out[0].weight).toBe(1.00);
         expect(out[0].details.length).toBe(2);
         expect(out[0].details.sign).toBe('POS');
     });
@@ -72,7 +72,7 @@ describe('Rule 2 — table-streak', () => {
         const out = tbl.evaluate(_spinsSnap([3, 26]));
         expect(out.length).toBe(1);
         expect(out[0].name).toBe('table-streak-same');
-        expect(out[0].weight).toBe(0.80);
+        expect(out[0].weight).toBe(1.00);
     });
 
     test('does NOT fire when streak ≥ 5', () => {
@@ -100,8 +100,8 @@ describe('Rule 3 — set-carry', () => {
         expect(anchor).toBeDefined();
         expect(neutral).toBeDefined();
         expect(anchor.details.anchor).toBe('SET_5');
-        expect(anchor.weight).toBeCloseTo(0.50 * 2 / 3);
-        expect(neutral.weight).toBeCloseTo(0.50 * 1 / 3);
+        expect(anchor.weight).toBeCloseTo(2/3);
+        expect(neutral.weight).toBeCloseTo(1/3);
     });
 
     test('latest is SET_6 → vote SET_6 + SET_0', () => {
@@ -180,9 +180,9 @@ describe('Rule 4 — sub-anchor cluster', () => {
         expect(hitFirst).toBeDefined();
         expect(hitSecond).toBeDefined();
         expect(missThird).toBeDefined();
-        expect(hitFirst.weight).toBeCloseTo(0.30 * 0.40);
-        expect(hitSecond.weight).toBeCloseTo(0.30 * 0.40);
-        expect(missThird.weight).toBeCloseTo(0.30 * 0.20);
+        expect(hitFirst.weight).toBeCloseTo(0.40);
+        expect(hitSecond.weight).toBeCloseTo(0.40);
+        expect(missThird.weight).toBeCloseTo(0.20);
     });
 
     test('cluster of 1: fires with 30/30/20/20 split + 13-opp mirror', () => {
@@ -200,8 +200,8 @@ describe('Rule 4 — sub-anchor cluster', () => {
 
         const hit = out.find(s => s.name.endsWith('/T1/prev/B-hit-first'));
         const miss = out.find(s => s.name.endsWith('/T1/prev/B-miss-second'));
-        expect(hit.weight).toBeCloseTo(0.30 * 0.30);
-        expect(miss.weight).toBeCloseTo(0.30 * 0.20);
+        expect(hit.weight).toBeCloseTo(0.30);
+        expect(miss.weight).toBeCloseTo(0.20);
     });
 
     test('cluster of 3 → wait (no entries on this side)', () => {
@@ -277,9 +277,9 @@ describe('Rule 6 — cross-cell-rotation', () => {
         expect(main).toBeDefined();
         expect(restA).toBeDefined();
         expect(restB).toBeDefined();
-        expect(main.weight).toBeCloseTo(0.30 * 0.50);
-        expect(restA.weight).toBeCloseTo(0.30 * 0.25);
-        expect(restB.weight).toBeCloseTo(0.30 * 0.25);
+        expect(main.weight).toBeCloseTo(0.50);
+        expect(restA.weight).toBeCloseTo(0.25);
+        expect(restB.weight).toBeCloseTo(0.25);
     });
 });
 
@@ -311,5 +311,72 @@ describe('Rule 7 — cross-table-conv', () => {
         };
         const out = conv.evaluate(snap);
         expect(out).toEqual([]);
+    });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// AGGREGATOR — share-based redistribution
+// ──────────────────────────────────────────────────────────────────
+describe('Aggregator — share-based redistribution', () => {
+    const SA = require('../../strategies/strategy-analyser/strategy-analyser.js');
+    const { snapshot } = require('../../core/tables/snapshot.js');
+
+    function _decideOn(spins, params) {
+        const snap = snapshot(spins, {});
+        const idx  = spins.length - 1;
+        const state = SA.createSessionState();
+        return SA.decide({}, spins, idx, {
+            sessionState: state,
+            params: params || {}
+        });
+    }
+
+    test('DEFAULTS.shares sum to 1.0', () => {
+        const sum = Object.values(SA.DEFAULTS.shares).reduce((a, b) => a + b, 0);
+        expect(sum).toBeCloseTo(1.0);
+    });
+
+    test('confidence is 0% when no signals fire (too few spins)', () => {
+        const d = _decideOn([3]);   // only 1 spin → warmup
+        expect(d.action).toBe('WAIT');
+        expect(d.confidence).toBe(0);
+    });
+
+    test('3-spin input: only sign/table/setCarry fire (rule46/gold need more spins)', () => {
+        // Spins 1, 9, 11 — all POSITIVE.
+        // Rule 1: 3-in-a-row POS → fires (sign group).
+        // Rule 2: ZERO → NINETEEN → NINETEEN → 2-in-row NINETEEN at the
+        //         tail → fires (table group).
+        // Rule 3: latest 11 in SET_5 → fires (setCarry group).
+        // Rule 4 needs 3 perPair rows; Rule 6 needs 4; Rule 7 needs 2
+        // T3 rows. None of those satisfied with only 3 spins of history.
+        const d = _decideOn([1, 9, 11]);
+        const e = d.explanation;
+        expect(e.activeGroups.sort()).toEqual(['setCarry', 'sign', 'table']);
+        const sumEffective = Object.values(e.effectiveShares).reduce((a, b) => a + b, 0);
+        expect(sumEffective).toBeCloseTo(1.0);
+    });
+
+    test('redistribution: inactive 0.40 / 3 active = bonus ~0.133 each', () => {
+        // 3 active (sign, table, setCarry) = 0.60 configured.
+        // Inactive (rule46 + gold) = 0.40. Bonus = 0.40 / 3.
+        const d = _decideOn([1, 9, 11]);
+        const e = d.explanation;
+        expect(e.inactiveShare).toBeCloseTo(0.40);
+        expect(e.redistributionBonus).toBeCloseTo(0.40 / 3);
+        expect(e.effectiveShares.sign).toBeCloseTo(0.20 + 0.40 / 3);
+        expect(e.effectiveShares.table).toBeCloseTo(0.20 + 0.40 / 3);
+        expect(e.effectiveShares.setCarry).toBeCloseTo(0.20 + 0.40 / 3);
+    });
+
+    test('disabledRules — Rule 1 disabled → its share redistributes', () => {
+        // Disable signStreak. Active becomes 2 groups (table, setCarry).
+        // Inactive: sign + rule46 + gold = 0.60. Bonus = 0.30 each.
+        const d = _decideOn([1, 9, 11], { disabledRules: new Set(["signStreak"]) });
+        const e = d.explanation;
+        expect(e.activeGroups).not.toContain('sign');
+        expect(e.activeGroups.sort()).toEqual(['setCarry', 'table']);
+        expect(e.effectiveShares.table).toBeCloseTo(0.50);
+        expect(e.effectiveShares.setCarry).toBeCloseTo(0.50);
     });
 });

@@ -19,7 +19,7 @@ const _P = (typeof require === 'function')
 const { ZERO_TABLE, NINETEEN_TABLE, tableOf } = _P;
 
 const NAME      = 'table-streak';
-const BASE_WGT  = 0.80;   // user-locked global weight (was 0.30)
+const BASE_WGT  = 1.00;   // intra-rule fraction
 const MIN_FIRE  = 2;
 const MAX_FIRE  = 4;
 

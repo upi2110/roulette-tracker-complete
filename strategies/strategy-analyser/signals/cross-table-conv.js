@@ -44,7 +44,7 @@ const _T = (typeof require === 'function')
     : (typeof window !== 'undefined' ? window.CoreTables : null);
 
 const NAME     = 'cross-table-conv';
-const BASE_WGT = 1.20;
+const BASE_WGT = 1.00;   // intra-rule fraction (single vote)
 
 // ── Gold-flash detection (mirror of Electron's algorithm) ──────────
 function _distOf(code) {

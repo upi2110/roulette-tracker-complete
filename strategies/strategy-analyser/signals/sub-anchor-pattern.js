@@ -38,7 +38,7 @@ const _T = (typeof require === 'function')
     : (typeof window !== 'undefined' ? window.CoreTables : null);
 
 const NAME       = 'sub-anchor-pattern';
-const BASE_WGT   = 0.30;   // user-locked global weight (was 0.90)
+const BASE_WGT   = 1.00;   // intra-rule total; splits below sum to <=1   // user-locked global weight (was 0.90)
 const LOOK_BACK  = 3;
 
 function _wheelPlusMinus1(numbers) {

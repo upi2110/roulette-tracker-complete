@@ -81,31 +81,61 @@
     }
 
     // ── Tunables ──────────────────────────────────────────────────
-    // User-locked rule set (2026-06-19) — Rules 8/9/10/11 removed:
-    //   • no streak-decay curve (Rule 4 is strict last-3 only)
-    //   • no T3 cooldown
-    //   • no wait-cap forced bet
-    //   • no loss-streak floor elevation
+    // User-locked rule set (2026-06-19) — Rules 8/9/10/11 removed.
+    //
+    // Weighting model — share-based redistribution (2026-06-19):
+    //   • Each rule group has a configured SHARE (percentage, summing
+    //     to 1.0 across all groups).
+    //   • Signal files emit intra-rule fractions only (BASE_WGT=1.00).
+    //   • At decide time, the aggregator finds which groups actually
+    //     fired this spin. The configured shares of NON-firing groups
+    //     are split EQUALLY across firing groups (user spec: "if any
+    //     rule doesn't trigger, pass equal weightage to triggered
+    //     ones"). Effective share per group = configured + bonus.
+    //   • Within a firing group: each entry's contribution =
+    //     groupEffectiveShare × (entry.weight / sumOfGroupWeights).
+    //     This keeps each rule's total contribution capped at its
+    //     effective share regardless of how many pair-families
+    //     within the rule fire.
+    //   • Rule 4 (sub-anchor) and Rule 6 (cross-cell) share the SAME
+    //     group ('rule46') because the user defined them as mutually
+    //     exclusive and sharing 15%.
+    const GROUP_OF = {
+        signStreak:       'sign',
+        tableStreak:      'table',
+        setCarry:         'setCarry',
+        subAnchorPattern: 'rule46',
+        crossCellRotate:  'rule46',
+        crossTableConv:   'gold'
+    };
+    const DEFAULT_SHARES = {
+        sign:     0.20,
+        table:    0.20,
+        setCarry: 0.20,
+        rule46:   0.15,
+        gold:     0.25
+    };
     const DEFAULTS = {
-        confidenceFloor:  60,   // < this → WAIT. Test(Lab) UI tunable.
-        confidenceScale:  8.0,  // sum of USED signal weights mapped to 100%.
-        maxNumbers:       12,   // ceiling on prediction-list size.
-        minNumbers:       6,    // floor when emitting a real prediction.
-        minSpinsToFire:   3,    // first 3 spins → WARMUP placeholder.
-        // Signal selection — only top-K strong signals contribute.
-        minUseWeight:     0.10, // very small fractional weights still contribute
-                                // (rule splits like 0.30 × 0.20 = 0.06 might
-                                // need lowering further; tunable in UI).
-        maxUseSignals:    8,    // top-N by weight after threshold filter
-        // Reference global weights (the signal files use these directly
-        // as BASE_WGT; surfaced here for the Test(Lab) weightage UI).
+        confidenceFloor: 60,   // < this → WAIT. Test(Lab) UI tunable.
+        maxNumbers:      12,   // ceiling on prediction-list size.
+        minNumbers:      6,    // floor when emitting a real prediction.
+        minSpinsToFire:  3,    // first 3 spins → WARMUP placeholder.
+        shares:          Object.assign({}, DEFAULT_SHARES),
+        // Convenience aliases for the UI — settings panel reads per-rule
+        // shares from `weights` and writes them back into `shares` via
+        // the rule→group map. Kept here so the popup can render rule
+        // names instead of group ids.
         weights: {
-            signStreak:       0.80,
-            tableStreak:      0.80,
-            setCarry:         0.50,
-            subAnchorPattern: 0.30,
-            crossCellRotate:  0.30,
-            crossTableConv:   1.20
+            signStreak:       DEFAULT_SHARES.sign,
+            tableStreak:      DEFAULT_SHARES.table,
+            setCarry:         DEFAULT_SHARES.setCarry,
+            // Rule 4 ⊕ Rule 6 share rule46 (15%). Each rule's "effective
+            // weight" if it fires alone = 15%. Shown as 7.5% each in the
+            // UI to make the sum readable; the runtime allocates the
+            // whole 15% to whichever fires (or splits if both somehow do).
+            subAnchorPattern: DEFAULT_SHARES.rule46 / 2,
+            crossCellRotate:  DEFAULT_SHARES.rule46 / 2,
+            crossTableConv:   DEFAULT_SHARES.gold
         }
     };
 
@@ -335,37 +365,61 @@
         const fired = userScoped;
         const suppressed = [];
 
-        // ── Signal SELECTION (hotfix #3, "use best only") ──
-        // Old behaviour: every fired signal contributed to scoring.
-        // Noisy signals (sub-anchor-pattern × N pairs × 2 halves) would
-        // drown out focused strong signals (cross-table-conv).
-        // New: require weight >= minUseWeight, then top-K by weight.
-        // Dropped signals still appear in the popup so the user sees
-        // WHY they were filtered out — popup highlights `used` only.
-        const used = fired
-            .filter(s => s.weight >= params.minUseWeight)
-            .sort((a, b) => b.weight - a.weight)
-            .slice(0, params.maxUseSignals);
+        // ── Share-based scoring (2026-06-19 model) ──
+        // Group fired entries by their rule's group (rules 4 + 6 share
+        // group 'rule46' since the user defined them as mutually
+        // exclusive sharing 15%).
+        const shares = (params.shares && Object.keys(params.shares).length)
+            ? params.shares
+            : DEFAULT_SHARES;
+        const entriesByGroup = {};
+        for (const e of fired) {
+            const g = GROUP_OF[e._ruleId];
+            if (!g) continue;
+            (entriesByGroup[g] = entriesByGroup[g] || []).push(e);
+        }
+        const activeGroups   = Object.keys(entriesByGroup);
+        const allGroups      = Object.keys(shares);
+        const inactiveShare  = allGroups
+            .filter(g => !entriesByGroup[g])
+            .reduce((s, g) => s + (shares[g] || 0), 0);
+        // User spec: split unused shares EQUALLY across firing rules.
+        const bonus = activeGroups.length > 0 ? inactiveShare / activeGroups.length : 0;
+        const effectiveShare = {};
+        activeGroups.forEach(g => {
+            effectiveShare[g] = (shares[g] || 0) + bonus;
+        });
+
+        // Score per number with normalization INSIDE each group: per
+        // entry contribution = groupEffectiveShare × (entry.weight /
+        // sumOfGroupWeights). Keeps each group's total contribution
+        // capped at its effective share even with many pair-families.
+        const scores = new Map();
+        let totalUsedWeight = 0;
+        const used = [];  // every fired entry contributes in this model
+        for (const g of activeGroups) {
+            const groupEntries = entriesByGroup[g];
+            const totalIntra   = groupEntries.reduce((s, e) => s + (e.weight || 0), 0);
+            if (totalIntra <= 0) continue;
+            for (const e of groupEntries) {
+                const contrib = effectiveShare[g] * (e.weight / totalIntra);
+                e._effectiveWeight = contrib;     // surfaced in popup
+                used.push(e);
+                if (!e.candidates || e.candidates.size === 0) continue;
+                const per = contrib / e.candidates.size;
+                totalUsedWeight += contrib;
+                for (const n of e.candidates) {
+                    scores.set(n, (scores.get(n) || 0) + per);
+                }
+            }
+        }
         const usedNames = new Set(used.map(s => s.name));
 
-        // ── Score per number (USED signals only) ──
-        // Normalize each signal's contribution: weight divided across
-        // its candidates so a wide-coverage signal doesn't drown out
-        // a focused one.
-        const scores = new Map();   // num → cumulative weight
-        let totalUsedWeight = 0;
-        for (const sig of used) {
-            if (!sig.candidates || sig.candidates.size === 0) continue;
-            const per = sig.weight / sig.candidates.size;
-            totalUsedWeight += sig.weight;
-            sig.candidates.forEach(n => {
-                scores.set(n, (scores.get(n) || 0) + per);
-            });
-        }
-
         // ── Confidence ──
-        const confidence = Math.min(100,
-            Math.round(100 * totalUsedWeight / params.confidenceScale));
+        // With normalized shares summing to 1.0 when all groups fire,
+        // totalUsedWeight ≈ 1.0 means "full evidence available".
+        // Map directly to percent (capped 100).
+        const confidence = Math.min(100, Math.round(100 * totalUsedWeight));
 
         // ── Action gate (simplified — Rules 10 + 11 removed) ──
         // confidence >= floor → BET, else WAIT. No forced bet, no
@@ -424,13 +478,23 @@
             phase: 'NORMAL',
             spinCount,
             lastSpin,
+            // Active group share map — surfaces the redistribution
+            // result so the popup can show "Rule X got 30% (20%+10%
+            // bonus from inactive rules)".
+            activeGroups,
+            inactiveShare,
+            redistributionBonus: bonus,
+            effectiveShares: Object.assign({}, effectiveShare),
+            configuredShares: Object.assign({}, shares),
             firedSignals: fired.map(s => ({
                 name: s.name,
-                weight: s.weight,
+                weight: s.weight,                            // intra-rule fraction
+                effectiveWeight: s._effectiveWeight || 0,    // post-redistribution
                 candidatesCount: s.candidates ? s.candidates.size : 0,
                 reason: s.reason,
                 details: s.details || null,
                 ruleId: s._ruleId || null,
+                group: GROUP_OF[s._ruleId] || null,
                 used: usedNames.has(s.name)
             })),
             usedSignalNames: Array.from(usedNames),

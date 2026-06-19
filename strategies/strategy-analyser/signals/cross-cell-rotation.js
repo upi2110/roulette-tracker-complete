@@ -41,7 +41,7 @@
 'use strict';
 
 const NAME      = 'cross-cell-rotation';
-const BASE_WGT  = 0.30;   // user-locked global weight (was 0.70)
+const BASE_WGT  = 1.00;   // intra-rule total; splits below sum to <=1   // user-locked global weight (was 0.70)
 const LOOK_BACK = 4;
 
 function _labelRow(perPairEntry) {

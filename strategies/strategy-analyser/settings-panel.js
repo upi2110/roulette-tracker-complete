@@ -55,13 +55,30 @@
         { id: 'crossTableConv',   label: '7·T3 golden' }
     ];
 
+    // Rule id → group id (matches analyser GROUP_OF).
+    // Rule 4 and Rule 6 share group 'rule46' — by user spec they are
+    // mutually exclusive and share 15% of the decision.
+    const RULE_GROUP = {
+        signStreak:       'sign',
+        tableStreak:      'table',
+        setCarry:         'setCarry',
+        subAnchorPattern: 'rule46',
+        crossCellRotate:  'rule46',
+        crossTableConv:   'gold'
+    };
+
     function _defaults() {
         const SA = (typeof window !== 'undefined') ? window.StrategyAnalyser : null;
         return (SA && SA.DEFAULTS) || {
             confidenceFloor: 60, confidenceScale: 8.0, maxNumbers: 12,
+            shares:  { sign: 0.20, table: 0.20, setCarry: 0.20, rule46: 0.15, gold: 0.25 },
             weights: {
-                signStreak: 0.80, tableStreak: 0.80, setCarry: 0.50,
-                subAnchorPattern: 0.30, crossCellRotate: 0.30, crossTableConv: 1.20
+                signStreak:       0.20,
+                tableStreak:      0.20,
+                setCarry:         0.20,
+                subAnchorPattern: 0.075,   // half of rule46 (0.15)
+                crossCellRotate:  0.075,
+                crossTableConv:   0.25
             }
         };
     }
@@ -106,13 +123,23 @@
 
     function _applyParams(params) {
         if (typeof window === 'undefined') return;
-        // Clone the basics; carry the Set through (orchestrator passes
-        // it into evaluateAll which honours Set or Array).
+        // Translate per-rule weights into per-group shares.
+        // Rule 4 + Rule 6 weights sum into the rule46 group share so the
+        // user can see them as separate inputs while the aggregator
+        // treats them as one shared 15% pool.
+        const shares = { sign: 0, table: 0, setCarry: 0, rule46: 0, gold: 0 };
+        Object.keys(params.weights).forEach(ruleId => {
+            const g = RULE_GROUP[ruleId];
+            if (!g) return;
+            if (params.disabledRules && params.disabledRules.has(ruleId)) return;
+            shares[g] += params.weights[ruleId];
+        });
         window.strategyAnalyserParams = {
             confidenceFloor: params.confidenceFloor,
             confidenceScale: params.confidenceScale,
             maxNumbers:      params.maxNumbers,
-            weights:         Object.assign({}, params.weights),
+            shares,                                        // group → share
+            weights:         Object.assign({}, params.weights),  // rule → user input (for popup)
             disabledRules:   new Set(params.disabledRules || [])
         };
         try {
@@ -136,11 +163,17 @@
     }
 
     function _renderWeightageRow(params) {
+        const total = Object.keys(params.weights).reduce((s, k) => {
+            return s + (params.disabledRules.has(k) ? 0 : params.weights[k]);
+        }, 0);
+        const totalPct = (total * 100).toFixed(0);
+        const totalColor = (Math.abs(total - 1.0) < 0.005) ? '#10b981' : '#f59e0b';
         const items = RULES.map(r => {
             const w   = params.weights[r.id];
+            const wPct = (w * 100).toFixed(1).replace(/\.0$/, '');
             const dis = params.disabledRules.has(r.id);
             return `
-                <label title="Enable / disable Rule ${r.id}"
+                <label title="Enable / disable Rule ${r.id}. Weight expressed as % of total. Rules 4 and 6 share their pool."
                        style="display:inline-flex;align-items:center;gap:3px;
                               font-size:10px;color:#cbd5e1;flex:0 0 auto;
                               padding:2px 5px;border-radius:3px;
@@ -148,12 +181,14 @@
                     <input id="sa-rule-en-${r.id}" type="checkbox" ${!dis ? 'checked' : ''}
                            style="margin:0;cursor:pointer;">
                     <span style="font-weight:600;color:${dis ? '#64748b' : '#e2e8f0'};">${r.label}</span>
-                    <input id="sa-rule-w-${r.id}" type="number" value="${w}"
-                           min="0" max="5" step="0.05"
-                           style="width:54px;padding:1px 4px;font-size:10px;
+                    <input id="sa-rule-w-${r.id}" type="number" value="${wPct}"
+                           min="0" max="100" step="1"
+                           title="Share of total decision weight (%) — when rule fires."
+                           style="width:42px;padding:1px 4px;font-size:10px;
                                   background:#0f172a;color:#e2e8f0;
-                                  border:1px solid #334155;border-radius:3px;"
+                                  border:1px solid #334155;border-radius:3px;text-align:right;"
                            ${dis ? 'disabled' : ''}>
+                    <span style="opacity:0.7;font-size:9px;">%</span>
                 </label>`;
         }).join('');
         return `
@@ -162,6 +197,19 @@
                         border-top:1px dashed #334155;">
                 <span style="font-size:10px;color:#fbbf24;font-weight:700;flex:0 0 auto;">⚖ Weightage</span>
                 ${items}
+                <span style="font-size:10px;color:${totalColor};font-weight:700;
+                             flex:0 0 auto;padding:2px 6px;border-radius:3px;
+                             background:rgba(${totalColor === '#10b981' ? '16,185,129' : '245,158,11'},0.12);
+                             border:1px solid ${totalColor};"
+                      title="Sum of enabled rule weights. Should be 100% for clean configuration; off-100 is fine but interpretation changes.">
+                    Σ ${totalPct}%
+                </span>
+                <span style="font-size:9px;color:#64748b;flex:1 1 100%;margin-top:2px;">
+                    Each weight = share of decision when the rule fires.
+                    Rules 4 + 6 share a pool (sum to 15% by default).
+                    If a rule doesn't fire this spin, its share is split
+                    equally across rules that did.
+                </span>
             </div>`;
     }
 
@@ -218,12 +266,61 @@
         }
         if (wInput) {
             wInput.addEventListener('change', () => {
-                const v = parseFloat(wInput.value);
-                if (Number.isNaN(v)) return;
-                const clamped = Math.max(0, Math.min(5, v));
-                wInput.value = clamped;
-                _setLS('weight.' + rule.id, clamped);
+                // Input is in PERCENT (0-100). Convert to decimal share (0-1).
+                const pct = parseFloat(wInput.value);
+                if (Number.isNaN(pct)) return;
+                const clampedPct = Math.max(0, Math.min(100, pct));
+                wInput.value = clampedPct;
+                _setLS('weight.' + rule.id, clampedPct / 100);
                 _refreshFromState();
+                // Re-render to update the Σ% indicator + colour.
+                const node = document.getElementById(CONTAINER_ID);
+                if (node && node.parentNode) {
+                    const fresh = document.createElement('div');
+                    fresh.innerHTML = _render(_loadParams());
+                    node.parentNode.replaceChild(fresh.firstElementChild, node);
+                    FIELDS.forEach(_wireScalar);
+                    RULES.forEach(_wireRule);
+                    _wireButtons();
+                    _syncVisibility();
+                }
+            });
+        }
+    }
+
+    function _wireButtons() {
+        const explainBtn = document.getElementById('sa-set-explain');
+        if (explainBtn) {
+            explainBtn.addEventListener('click', () => {
+                const ctl = window.StrategyAnalyserExplainPopup;
+                if (ctl && typeof ctl.open === 'function') ctl.open();
+            });
+        }
+        const resetBtn = document.getElementById('sa-set-reset');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                const d = _defaults();
+                FIELDS.forEach(f => {
+                    _setLS(f.k, d[f.k]);
+                    const input = document.getElementById('sa-set-' + f.k);
+                    if (input) input.value = d[f.k];
+                });
+                RULES.forEach(r => {
+                    _setLS('weight.' + r.id, d.weights[r.id]);
+                    _setLS('disabled.' + r.id, '0');
+                });
+                _refreshFromState();
+                // Hard re-render so the Σ%, colours, and disabled-state styles refresh.
+                const node = document.getElementById(CONTAINER_ID);
+                if (node && node.parentNode) {
+                    const fresh = document.createElement('div');
+                    fresh.innerHTML = _render(_loadParams());
+                    node.parentNode.replaceChild(fresh.firstElementChild, node);
+                    FIELDS.forEach(_wireScalar);
+                    RULES.forEach(_wireRule);
+                    _wireButtons();
+                    _syncVisibility();
+                }
             });
         }
     }
@@ -240,35 +337,7 @@
 
         FIELDS.forEach(_wireScalar);
         RULES.forEach(_wireRule);
-
-        const explainBtn = document.getElementById('sa-set-explain');
-        if (explainBtn) {
-            explainBtn.addEventListener('click', () => {
-                const ctl = window.StrategyAnalyserExplainPopup;
-                if (ctl && typeof ctl.open === 'function') ctl.open();
-            });
-        }
-
-        const resetBtn = document.getElementById('sa-set-reset');
-        if (resetBtn) {
-            resetBtn.addEventListener('click', () => {
-                const d = _defaults();
-                FIELDS.forEach(f => {
-                    _setLS(f.k, d[f.k]);
-                    const input = document.getElementById('sa-set-' + f.k);
-                    if (input) input.value = d[f.k];
-                });
-                RULES.forEach(r => {
-                    _setLS('weight.' + r.id, d.weights[r.id]);
-                    _setLS('disabled.' + r.id, '0');
-                    const enBox  = document.getElementById('sa-rule-en-' + r.id);
-                    const wInput = document.getElementById('sa-rule-w-' + r.id);
-                    if (enBox)  { enBox.checked = true; }
-                    if (wInput) { wInput.value = d.weights[r.id]; wInput.disabled = false; }
-                });
-                _refreshFromState();
-            });
-        }
+        _wireButtons();
     }
 
     function _syncVisibility() {

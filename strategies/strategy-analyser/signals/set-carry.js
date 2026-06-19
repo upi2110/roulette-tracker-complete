@@ -30,7 +30,7 @@ const _P = (typeof require === 'function')
 const { SET_0, SET_5, SET_6, setOf } = _P;
 
 const NAME       = 'set-carry';
-const BASE_WGT   = 0.50;   // user-locked global weight (was 0.25)
+const BASE_WGT   = 1.00;   // intra-rule total; split below
 const ANCHOR_FRAC = 2 / 3; // share of the rule's weight for the anchor set
 const NEUTRAL_FRAC = 1 / 3; // share for SET_0
 const MAX_STREAK = 4;      // ≥ 5 same-set in a row → skip

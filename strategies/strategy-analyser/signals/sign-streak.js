@@ -22,7 +22,7 @@ const _P = (typeof require === 'function')
 const { POSITIVE_NUMS, NEGATIVE_NUMS, signOf } = _P;
 
 const NAME      = 'sign-streak';
-const BASE_WGT  = 0.80;   // user-locked global weight (was 0.30)
+const BASE_WGT  = 1.00;   // intra-rule fraction (single vote = whole rule)
 const MIN_FIRE  = 2;      // streak must reach this length
 const MAX_FIRE  = 4;      // above this → skip entirely
 
