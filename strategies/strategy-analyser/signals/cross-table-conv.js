@@ -132,20 +132,48 @@ function evaluate(snap, sessionState, opts) {
     );
     if (qualifying.length === 0) return [];
 
-    // 2. Bottom-up streak per qualifying pair.
-    const streaks = {};
+    // 2. Position-code priority on the LATEST gold row.
+    // User-locked selection (2026-06-19 revision): rank qualifying
+    // pairs by the latest row's gold-cell distance |d|. Priority order
+    // (best → worst): ±2, ±1, ±3, ±4, 0. Side letter (S/O) and L/R
+    // direction don't matter — only |distance|.
+    function _priorityForDist(d) {
+        if (d == null) return 999;
+        if (d === 2) return 1;     // best
+        if (d === 1) return 2;
+        if (d === 3) return 3;
+        if (d === 4) return 4;
+        if (d === 0) return 5;     // worst
+        return 999;
+    }
+    // For each qualifying pair, get the latest-row gold cell's distance.
+    // Pair only has gold on ONE side of any row by construction (per
+    // user spec — projections compute exactly one), so we pick whichever
+    // side IS gold on the latest row.
+    const distAtLatest = {};
+    const priorityAt   = {};
     qualifying.forEach(fam => {
-        let n = 0;
-        for (let i = lastIdx; i >= 0; i--) {
-            if (_rowHasGoldForFam(flashSet, i, fam)) n++;
-            else break;
-        }
-        streaks[fam] = n;
+        const upper = rows[lastIdx - 1];
+        const lower = rows[lastIdx];
+        const tryCell = (row, cell) => {
+            const e = row.perPair && row.perPair[fam];
+            if (!e) return null;
+            const code = (cell === 'pair')
+                ? (e.refNum   != null ? _T.calculatePositionCode(e.refNum,   row.actual) : 'XX')
+                : (e.ref13Opp != null ? _T.calculatePositionCode(e.ref13Opp, row.actual) : 'XX');
+            return _distOf(code);
+        };
+        // Pick the side that's actually gold on the LATEST row.
+        let d = null;
+        if (flashSet.has(lastIdx + ':' + fam + ':pair'))      d = tryCell(lower, 'pair');
+        else if (flashSet.has(lastIdx + ':' + fam + ':pair13Opp')) d = tryCell(lower, 'pair13Opp');
+        distAtLatest[fam] = d;
+        priorityAt[fam]   = _priorityForDist(d);
     });
 
-    // 3. Shortest-streak winner(s).
-    const minStreak = Math.min(...qualifying.map(f => streaks[f]));
-    const winners   = qualifying.filter(f => streaks[f] === minStreak);
+    // 3. Best (lowest priority value) wins. Ties survive.
+    const bestPriority = Math.min(...qualifying.map(f => priorityAt[f]));
+    const winners      = qualifying.filter(f => priorityAt[f] === bestPriority);
 
     // 4. Build candidate set.
     let candidates;
@@ -154,7 +182,7 @@ function evaluate(snap, sessionState, opts) {
         candidates = new Set((proj[winners[0]] && proj[winners[0]].numbers) || []);
         mode = 'single';
     } else {
-        // Tie → intersection, fall back to union if empty.
+        // Tie within priority bucket → intersection, fallback union.
         const pools = winners.map(f => new Set((proj[f] && proj[f].numbers) || []));
         const inter = new Set();
         if (pools.length > 0) {
@@ -174,10 +202,21 @@ function evaluate(snap, sessionState, opts) {
     }
     if (candidates.size === 0) return [];
 
+    // Friendly priority label for the reason text.
+    const priorityLabel = (p) => {
+        switch (p) {
+            case 1: return '±2 (best)';
+            case 2: return '±1';
+            case 3: return '±3';
+            case 4: return '±4';
+            case 5: return '0';
+            default: return 'unknown';
+        }
+    };
     const reason = (winners.length === 1)
-        ? `T3 golden-pair: ${winners[0]} qualifies (gold on last 2 rows, `
-          + `bottom-up streak=${minStreak}). Vote ${candidates.size} bet-pool numbers.`
-        : `T3 golden-pair tie (${winners.join(', ')}) — bottom-up streak=${minStreak}. `
+        ? `T3 golden-pair: ${winners[0]} wins (latest gold cell distance ${distAtLatest[winners[0]]}, `
+          + `priority ${priorityLabel(bestPriority)}). Vote ${candidates.size} bet-pool numbers.`
+        : `T3 golden-pair tie (${winners.join(', ')}) at priority ${priorityLabel(bestPriority)}. `
           + `Mode=${mode}, vote ${candidates.size} number${candidates.size === 1 ? '' : 's'}.`;
 
     return [{
@@ -186,7 +225,15 @@ function evaluate(snap, sessionState, opts) {
         candidates,
         weight:      BASE_WGT,
         reason,
-        details:     { winners, minStreak, mode, allQualifying: qualifying, streaks }
+        details:     {
+            winners,
+            bestPriority,
+            priorityLabel: priorityLabel(bestPriority),
+            distAtLatest,
+            priorityAt,
+            mode,
+            allQualifying: qualifying
+        }
     }];
 }
 

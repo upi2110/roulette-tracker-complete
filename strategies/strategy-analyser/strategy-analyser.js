@@ -391,34 +391,46 @@
             return `Streak ${n} ${tail} — should have fired.`;
         }
         if (ruleId === 'setCarry') {
+            // Mirror the NEW Rule 3 spec exactly: window of last 5 spins,
+            // SET_0 invisible, mixed → skip, all-SET_0 → skip,
+            // 5-same-anchor-no-zero → skip. (Old "walk back to anchor"
+            // diagnostic produced misleading "should have fired" text.)
             if (!spins.length) return 'No spins yet.';
-            let anchorIdx = -1;
-            for (let i = spins.length - 1; i >= 0; i--) {
-                const s = P && P.setOf(spins[i]);
-                if (s === 'SET_5' || s === 'SET_6') { anchorIdx = i; break; }
+            const WINDOW = 5;
+            const recent = spins.slice(-WINDOW);
+            let c5 = 0, c6 = 0, c0 = 0;
+            for (const s of recent) {
+                const k = P && P.setOf(s);
+                if (k === 'SET_5') c5++;
+                else if (k === 'SET_6') c6++;
+                else if (k === 'SET_0') c0++;
             }
-            if (anchorIdx < 0) return 'No SET_5 or SET_6 anchor anywhere in spin history.';
-            const tail = P && P.setOf(spins[spins.length - 1]);
-            if (tail) {
-                let n = 1;
-                for (let i = spins.length - 2; i >= 0; i--) {
-                    if (P.setOf(spins[i]) === tail) n++; else break;
-                }
-                if (n >= 5) return `${n}-in-a-row ${tail} streak — too long (rule skips at ≥ 5).`;
+            if (c5 > 0 && c6 > 0) {
+                return `Window has both SET_5 (×${c5}) and SET_6 (×${c6}) — mixed, rule skips.`;
             }
-            return `Anchor ${P.setOf(spins[anchorIdx])} found ${spins.length - anchorIdx - 1} spin(s) back — should have fired.`;
+            if (c5 === 0 && c6 === 0) {
+                return `Window of ${recent.length} contains only SET_0 — no anchor to vote.`;
+            }
+            if (recent.length === WINDOW && c0 === 0
+                && (c5 === WINDOW || c6 === WINDOW)) {
+                const which = c5 === WINDOW ? 'SET_5' : 'SET_6';
+                return `${WINDOW}-in-a-row ${which} with no SET_0 — rule skips (too long).`;
+            }
+            return `Window: ${c5}× SET_5, ${c6}× SET_6, ${c0}× SET_0 — should have fired (diagnostic gap, please report).`;
         }
         if (ruleId === 'subAnchorPattern') {
-            if (t1Rows.length < 3 && t2Rows.length < 3) {
-                return `Needs 3 rows on T1 or T2 (have T1=${t1Rows.length}, T2=${t2Rows.length}).`;
+            // Rule 4 — T1 only (T2 dropped 2026-06-19).
+            if (t1Rows.length < 3) {
+                return `Needs 3 rows on T1 (have ${t1Rows.length}).`;
             }
-            return 'No pair-family on T1/T2 had 3 strict-consecutive hits clustered on 1 or 2 sub-anchors of the same side.';
+            return 'No T1 pair-family had 3 strict-consecutive hits clustered on 1 or 2 sub-anchors of the same side (or cluster of 3 = wait).';
         }
         if (ruleId === 'crossCellRotate') {
-            if (t1Rows.length < 4 && t2Rows.length < 4) {
-                return `Needs 4 rows on T1 or T2 (have T1=${t1Rows.length}, T2=${t2Rows.length}).`;
+            // Rule 6 — T1 only (T2 dropped 2026-06-19).
+            if (t1Rows.length < 4) {
+                return `Needs 4 rows on T1 (have ${t1Rows.length}).`;
             }
-            return 'No pair-family on T1/T2 showed strict P↔13O alternation across last 4 rows.';
+            return 'No T1 pair-family showed strict P↔13O alternation across last 4 rows.';
         }
         if (ruleId === 'crossTableConv') {
             if (t3Rows.length < 2) return `Needs 2+ T3 rows (have ${t3Rows.length}).`;
