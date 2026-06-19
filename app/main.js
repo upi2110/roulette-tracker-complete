@@ -55,7 +55,21 @@ function createWindow() {
                 parent: null,            // detach — not a child window
                 modal: false,
                 show: true,
+                frame: true,             // standard OS chrome
+                movable: true,
+                resizable: true,
+                minimizable: true,
+                maximizable: true,
+                fullscreenable: true,
+                skipTaskbar: false,
+                alwaysOnTop: false,
                 autoHideMenuBar: true,
+                // CRITICAL on macOS: tabbingIdentifier=null prevents the
+                // popout being grouped as a tab of the main window. And
+                // type:'normal' makes it a top-level window, not a panel
+                // (panels can be constrained to the parent's space).
+                tabbingIdentifier: null,
+                type: 'normal',
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: false,   // allow window.opener access
@@ -64,6 +78,20 @@ function createWindow() {
                 }
             }
         };
+    });
+
+    // Belt-and-braces: after the popout is created, explicitly drop
+    // any parent association the platform may have set. On macOS,
+    // child windows of an NSWindow are constrained to its screen
+    // space; clearing parentWindow makes the popout truly free.
+    mainWindow.webContents.on('did-create-window', (childWin, details) => {
+        try {
+            childWin.setParentWindow(null);
+            childWin.setAlwaysOnTop(false);
+            // Make sure it can be moved off-screen / to a 2nd monitor.
+            childWin.setMovable(true);
+            childWin.setFullScreenable(true);
+        } catch (_) { /* defensive */ }
     });
 
     // ── Session log infrastructure ──
