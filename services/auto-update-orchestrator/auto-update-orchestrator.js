@@ -274,7 +274,29 @@ class AutoUpdateOrchestrator {
                     snapshotOpts: _snapOpts
                 }
             );
-            console.log('🧪 STRATEGY-ANALYSER DECISION:', decision);
+            // Surface the key fields explicitly so post-mortem log
+            // review doesn't require expanding an "Object" in DevTools.
+            // The full explanation is stringified below so /current.log
+            // captures everything.
+            const _e = (decision && decision.explanation) || {};
+            const _fired = _e.firedSignals || [];
+            const _used  = _fired.filter(s => s.used);
+            console.log('🧪 STRATEGY-ANALYSER DECISION:',
+                'action=' + decision.action,
+                '· confidence=' + (decision.confidence != null ? decision.confidence + '%' : '?'),
+                '· floor=' + (_e.effectiveFloor != null ? _e.effectiveFloor + '%' : '?'),
+                '· spin#' + (_e.spinCount != null ? _e.spinCount : '?'),
+                '· picked=' + (Array.isArray(decision.numbers) ? decision.numbers.length : 0),
+                '· used/fired=' + _used.length + '/' + _fired.length,
+                '· scope=' + (_e.scopeSource || 'autonomous'),
+                _e.forcedBet ? '· FORCED' : '',
+                '· reason=' + (decision.reason || '')
+            );
+            console.log('🧪 ANALYSER USED SIGNALS:',
+                _used.map(s => s.name + '(w=' + s.weight.toFixed(2) + ',c=' + s.candidatesCount + ')'));
+            console.log('🧪 ANALYSER PICKED NUMBERS:', decision.numbers);
+            console.log('🧪 ANALYSER FULL EXPLANATION:', _e);
+            console.log('🧪 ANALYSER SNAPSHOT OPTS:', _snapOpts);
         } else if (this.decisionMode === '3t-selection' && window.Strategy3T) {
             // 3T-Selection live path — production copy of the Strategy-Lab
             // algorithm. Independent module + namespace + locked-pair var

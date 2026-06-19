@@ -105,9 +105,18 @@ function createWindow() {
     const _hms = `${_pad(_now.getHours())}-${_pad(_now.getMinutes())}-${_pad(_now.getSeconds())}`;
     const SESSION_FE_LOG = path.join(LOGS_ROOT, 'frontend', _ymd, `${_hms}-session.log`);
     const SESSION_BE_LOG = path.join(LOGS_ROOT, 'backend',  _ymd, `${_hms}-session.log`);
+    // Always-current pointers for the active session. Live for the
+    // entire Electron lifetime, blown away + recreated on next launch
+    // so the path is predictable: just open logs/{frontend,backend}/current.log.
+    const CURRENT_FE_LOG = path.join(LOGS_ROOT, 'frontend', 'current.log');
+    const CURRENT_BE_LOG = path.join(LOGS_ROOT, 'backend',  'current.log');
     try {
         fs.mkdirSync(path.dirname(SESSION_FE_LOG), { recursive: true });
         fs.mkdirSync(path.dirname(SESSION_BE_LOG), { recursive: true });
+        // Truncate current.log files at session start so each launch
+        // begins with a fresh, complete log captured to one place.
+        try { fs.writeFileSync(CURRENT_FE_LOG, '', 'utf-8'); } catch (_) {}
+        try { fs.writeFileSync(CURRENT_BE_LOG, '', 'utf-8'); } catch (_) {}
     } catch (e) { console.warn('Log dir create failed:', e.message); }
     const _purgeOld = (root) => {
         try {
@@ -130,7 +139,10 @@ function createWindow() {
     _purgeOld(LOGS_ROOT);
 
     const _appendBackend = (line) => {
+        // Write to BOTH the timestamped session log (historical) AND
+        // the always-current pointer (predictable path for review).
         try { fs.appendFileSync(SESSION_BE_LOG, line + '\n', 'utf-8'); } catch (_) {}
+        try { fs.appendFileSync(CURRENT_BE_LOG, line + '\n', 'utf-8'); } catch (_) {}
     };
     // Mirror backend console output into the backend log file so every
     // ipc/file event is captured. Idempotent — only patch once.
@@ -145,11 +157,15 @@ function createWindow() {
     }
     console.log(`[logs] backend session log: ${SESSION_BE_LOG}`);
     console.log(`[logs] frontend session log: ${SESSION_FE_LOG}`);
+    console.log(`[logs] CURRENT (always-up-to-date) backend log:  ${CURRENT_BE_LOG}`);
+    console.log(`[logs] CURRENT (always-up-to-date) frontend log: ${CURRENT_FE_LOG}`);
 
     // IPC handler: frontend forwards every console.* line through
-    // aiAPI.appendLog → this handler appends to the frontend log file.
+    // aiAPI.appendLog → this handler appends to the frontend log file
+    // AND the current.log pointer.
     ipcMain.handle('append-frontend-log', async (event, line) => {
         try { fs.appendFileSync(SESSION_FE_LOG, String(line) + '\n', 'utf-8'); } catch (_) {}
+        try { fs.appendFileSync(CURRENT_FE_LOG, String(line) + '\n', 'utf-8'); } catch (_) {}
         return true;
     });
 

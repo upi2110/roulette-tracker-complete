@@ -1409,18 +1409,51 @@ function _setupPairFilterDropdown() {
 }
 
 function render() {
+    // Capture horizontal scroll BEFORE the re-render — user may have
+    // scrolled right to inspect P / PP / P-13opp columns, and the
+    // tbody/thead innerHTML wipe inside each renderTableN() can
+    // momentarily collapse scrollWidth and clamp scrollLeft to 0.
+    // Restore after layout settles.
+    const _preScroll = {
+        gw1: _getScrollLeft('gridWrapper1'),
+        gw2: _getScrollLeft('gridWrapper2'),
+        gw3: _getScrollLeft('gridWrapper3'),
+        win: window.scrollX || window.pageXOffset || 0
+    };
+
     renderTable1();
     renderTable2();
     renderTable3();
     _scrollGridWrapperToBottom('gridWrapper1');
     _scrollGridWrapperToBottom('gridWrapper2');
     _scrollGridWrapperToBottom('gridWrapper3');
+
+    // Restore horizontal scroll on the next animation frame, after
+    // the browser has applied the new layout.
+    requestAnimationFrame(() => {
+        _setScrollLeft('gridWrapper1', _preScroll.gw1);
+        _setScrollLeft('gridWrapper2', _preScroll.gw2);
+        _setScrollLeft('gridWrapper3', _preScroll.gw3);
+        if (_preScroll.win > 0) {
+            window.scrollTo({ left: _preScroll.win, top: window.scrollY, behavior: 'instant' });
+        }
+    });
+
     document.getElementById('info').textContent = `Spins: ${spins.length}`;
 
     // Re-trigger AI predictions after tables update (only if 3+ spins and pairs selected)
     if (window.aiPanel && window.aiPanel.onSpinAdded && spins.length >= 3) {
         window.aiPanel.onSpinAdded();
     }
+}
+
+function _getScrollLeft(id) {
+    const el = document.getElementById(id);
+    return el ? el.scrollLeft : 0;
+}
+function _setScrollLeft(id, value) {
+    const el = document.getElementById(id);
+    if (el && value > 0) el.scrollLeft = value;
 }
 
 // ═══════════════════════════════════════════════════════════════════
