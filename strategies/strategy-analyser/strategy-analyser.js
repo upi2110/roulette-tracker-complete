@@ -251,6 +251,105 @@
         return candidate.endsWith('_13opp') ? candidate.slice(0, -6) : candidate;
     }
 
+    // ── Multi-pair tiebreak helpers (Rules 4 + 6) ────────────────
+    /**
+     * Pick the "weighting set" used to break ties between qualifying
+     * T1 pair-families. Preference chain per user spec:
+     *   Rule 3 anchor set (SET_5 / SET_6)  →
+     *   Rule 2 table set (ZERO / NINETEEN) →
+     *   Rule 1 sign set (POSITIVE / NEGATIVE) →
+     *   null (no tiebreak available → keep all pairs)
+     */
+    function _pickTiebreakSet(entries) {
+        const P = (typeof require === 'function')
+            ? require('./partitions.js')
+            : (typeof window !== 'undefined' ? window.StrategyAnalyserPartitions : null);
+        if (!P) return null;
+
+        const set3 = entries.find(e => e._ruleId === 'setCarry'
+                                    && e.details && e.details.anchor);
+        if (set3) {
+            const a = set3.details.anchor;
+            if (a === 'SET_5') return { name: 'SET_5 (Rule 3)', set: P.SET_5 };
+            if (a === 'SET_6') return { name: 'SET_6 (Rule 3)', set: P.SET_6 };
+        }
+        const tbl2 = entries.find(e => e._ruleId === 'tableStreak'
+                                    && e.details && e.details.table);
+        if (tbl2) {
+            const t = tbl2.details.table;
+            if (t === 'ZERO')     return { name: 'ZERO table (Rule 2)',     set: P.ZERO_TABLE };
+            if (t === 'NINETEEN') return { name: 'NINETEEN table (Rule 2)', set: P.NINETEEN_TABLE };
+        }
+        const sgn1 = entries.find(e => e._ruleId === 'signStreak'
+                                    && e.details && e.details.sign);
+        if (sgn1) {
+            const s = sgn1.details.sign;
+            if (s === 'POS') return { name: 'POSITIVE (Rule 1)', set: P.POSITIVE_NUMS };
+            if (s === 'NEG') return { name: 'NEGATIVE (Rule 1)', set: P.NEGATIVE_NUMS };
+        }
+        return null;
+    }
+
+    /**
+     * Apply the multi-pair tiebreak to one rule's entries. Groups by
+     * base pair-family (via _extractFamilyKey), counts each pair's
+     * candidate-set membership in tiebreakSet.set, keeps only entries
+     * whose pair-family scored the MAXIMUM count. Ties are preserved
+     * (all max-count families survive — per user "fire both" spec).
+     *
+     * If only one pair-family is present or no tiebreakSet is available,
+     * all entries pass through unchanged.
+     *
+     * Pushes rejected entries (for popup display) into `rejected` array.
+     */
+    function _applyMultiPairTiebreak(entries, ruleId, tiebreakSet, rejected) {
+        if (!Array.isArray(entries) || entries.length === 0) return entries;
+        const ruleEntries  = entries.filter(e => e._ruleId === ruleId);
+        const otherEntries = entries.filter(e => e._ruleId !== ruleId);
+        if (ruleEntries.length === 0) return entries;
+
+        // Group rule's entries by base pair-family.
+        const byPair = {};
+        for (const e of ruleEntries) {
+            const fam = _extractFamilyKey(e.name);
+            const key = fam || '__unknown__';
+            (byPair[key] = byPair[key] || []).push(e);
+        }
+        const families = Object.keys(byPair);
+        if (families.length <= 1) return entries;     // nothing to tiebreak
+        if (!tiebreakSet)         return entries;     // no Rule 1/2/3 → keep all
+
+        // Score each pair-family by candidate-set membership.
+        const scores = {};
+        families.forEach(fam => {
+            const allCands = new Set();
+            byPair[fam].forEach(e => {
+                if (e.candidates) e.candidates.forEach(n => allCands.add(n));
+            });
+            let count = 0;
+            allCands.forEach(n => { if (tiebreakSet.set.has(n)) count++; });
+            scores[fam] = count;
+        });
+        const maxScore = Math.max(...families.map(f => scores[f]));
+        const winners  = new Set(families.filter(f => scores[f] === maxScore));
+
+        const kept = ruleEntries.filter(e => winners.has(_extractFamilyKey(e.name) || '__unknown__'));
+        ruleEntries.forEach(e => {
+            const fam = _extractFamilyKey(e.name) || '__unknown__';
+            if (!winners.has(fam)) {
+                rejected.push({
+                    name:       e.name,
+                    pair:       fam,
+                    ruleId,
+                    tiebreakBy: tiebreakSet.name,
+                    score:      scores[fam],
+                    winnerScore: maxScore
+                });
+            }
+        });
+        return otherEntries.concat(kept);
+    }
+
     // ── Why-not reasons for non-firing rules ─────────────────────
     /**
      * Per-rule reason text shown in the popup for rules that did NOT
@@ -467,8 +566,22 @@
             : allSignals;
 
         // (T3 cooldown filter removed — Rule 9 dropped.)
-        const fired = userScoped;
+        let fired = userScoped;
         const suppressed = [];
+
+        // ── Multi-pair tiebreak for Rules 4 + 6 (2026-06-19) ──
+        // Rules 4 and 6 can each select multiple T1 pair-families.
+        // Per user spec, only the winning pair(s) per rule survive:
+        //   1. Use Rule 3's anchor set (SET_5 or SET_6 — whichever
+        //      Rule 3 fired) and count how many of each candidate
+        //      pair's bet-pool numbers belong to that set.
+        //   2. Fall back to Rule 2's table (ZERO/NINETEEN) count.
+        //   3. Fall back to Rule 1's sign (POS/NEG) count.
+        //   4. If multiple pairs tie on the count, fire ALL tied pairs.
+        const tiebreakSet = _pickTiebreakSet(fired);
+        const tiebreakRejected = [];
+        fired = _applyMultiPairTiebreak(fired, 'subAnchorPattern', tiebreakSet, tiebreakRejected);
+        fired = _applyMultiPairTiebreak(fired, 'crossCellRotate',  tiebreakSet, tiebreakRejected);
 
         // ── Share-based scoring (2026-06-19 model) ──
         // Group fired entries by their rule's group (rules 4 + 6 share
@@ -499,22 +612,41 @@
         // entry contribution = groupEffectiveShare × (entry.weight /
         // sumOfGroupWeights). Keeps each group's total contribution
         // capped at its effective share even with many pair-families.
+        //
+        // Special case: group 'rule46' contains both Rule 4 and Rule 6.
+        // When both fire, they split the group's effective share 50/50
+        // per user spec. When only one fires, it takes the full share.
         const scores = new Map();
         let totalUsedWeight = 0;
         const used = [];  // every fired entry contributes in this model
         for (const g of activeGroups) {
             const groupEntries = entriesByGroup[g];
-            const totalIntra   = groupEntries.reduce((s, e) => s + (e.weight || 0), 0);
-            if (totalIntra <= 0) continue;
-            for (const e of groupEntries) {
-                const contrib = effectiveShare[g] * (e.weight / totalIntra);
-                e._effectiveWeight = contrib;     // surfaced in popup
-                used.push(e);
-                if (!e.candidates || e.candidates.size === 0) continue;
-                const per = contrib / e.candidates.size;
-                totalUsedWeight += contrib;
-                for (const n of e.candidates) {
-                    scores.set(n, (scores.get(n) || 0) + per);
+            // Determine subgroups inside this group.
+            let subgroups;
+            if (g === 'rule46') {
+                const r4 = groupEntries.filter(e => e._ruleId === 'subAnchorPattern');
+                const r6 = groupEntries.filter(e => e._ruleId === 'crossCellRotate');
+                const active = [r4, r6].filter(arr => arr.length > 0);
+                const perSub = active.length > 0
+                    ? effectiveShare[g] / active.length
+                    : 0;
+                subgroups = active.map(entries => ({ entries, share: perSub }));
+            } else {
+                subgroups = [{ entries: groupEntries, share: effectiveShare[g] }];
+            }
+            for (const { entries: subEntries, share: subShare } of subgroups) {
+                const totalIntra = subEntries.reduce((s, e) => s + (e.weight || 0), 0);
+                if (totalIntra <= 0) continue;
+                for (const e of subEntries) {
+                    const contrib = subShare * (e.weight / totalIntra);
+                    e._effectiveWeight = contrib;
+                    used.push(e);
+                    if (!e.candidates || e.candidates.size === 0) continue;
+                    const per = contrib / e.candidates.size;
+                    totalUsedWeight += contrib;
+                    for (const n of e.candidates) {
+                        scores.set(n, (scores.get(n) || 0) + per);
+                    }
                 }
             }
         }
@@ -587,6 +719,8 @@
             // Lets the popup show all 6 rules + WHY each one is in the
             // state it's in.
             ruleStatus: _computeRuleStatus(snap, params, _rawFiredRuleIds),
+            tiebreakBy:        tiebreakSet ? tiebreakSet.name : null,
+            tiebreakRejected:  tiebreakRejected,
             // Active group share map — surfaces the redistribution
             // result so the popup can show "Rule X got 30% (20%+10%
             // bonus from inactive rules)".

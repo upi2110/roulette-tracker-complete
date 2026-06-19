@@ -147,11 +147,9 @@ function _evalTable(tableData, tableLabel) {
 }
 
 function evaluate(snap, sessionState, opts) {
+    // T1 only — T2 dropped 2026-06-19 per user spec.
     if (!snap) return [];
-    return [].concat(
-        _evalTable(snap.table1, 'T1'),
-        _evalTable(snap.table2, 'T2')
-    );
+    return _evalTable(snap.table1, 'T1');
 }
 
 const _api = { evaluate, NAME, BASE_WGT };
