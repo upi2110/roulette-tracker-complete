@@ -68,7 +68,11 @@
             'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
             'overflow:hidden',
             'resize:both',
-            'display:flex', 'flex-direction:column'
+            // NOTE: do NOT set display:flex here — `display:none` above
+            // would be clobbered, making the popup visible on first
+            // load. open() sets display:flex when the user actually
+            // opens it; close() sets display:none.
+            'flex-direction:column'
         ].join(';');
         div.innerHTML = `
             <div id="${HEADER_ID}" style="
