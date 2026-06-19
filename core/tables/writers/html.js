@@ -603,6 +603,29 @@
         table tbody tr:hover td { filter: brightness(0.97); }
     </style>
     <script>
+        // Preserve scroll across the cache-busted self-reload so the
+        // user stays parked on whichever table/row they were reading.
+        (function () {
+            try {
+                var raw = sessionStorage.getItem('snapshotScroll');
+                if (raw) {
+                    var s = JSON.parse(raw);
+                    // Restore after layout settles.
+                    requestAnimationFrame(function () {
+                        window.scrollTo(s.x || 0, s.y || 0);
+                    });
+                }
+            } catch (_) {}
+            window.addEventListener('beforeunload', function () {
+                try {
+                    sessionStorage.setItem('snapshotScroll', JSON.stringify({
+                        x: window.scrollX || window.pageXOffset || 0,
+                        y: window.scrollY || window.pageYOffset || 0
+                    }));
+                } catch (_) {}
+            });
+        })();
+
         // Cache-busted hard reload every 1s. The plain <meta refresh>
         // can serve cached HTML when the file is overwritten in place.
         setTimeout(function () {
