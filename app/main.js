@@ -359,6 +359,21 @@ function createWindow() {
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
+
+    // When the main window is being closed, take every other
+    // BrowserWindow down with it. Popouts (Selection Process,
+    // StrategyAnalyser explain) are created with parent:null so
+    // the user can drag them to another monitor — that detachment
+    // means they would otherwise outlive the app. Force-close them
+    // here so a restart always begins from defaults: no stale
+    // popouts, no residual window state.
+    mainWindow.on('close', () => {
+        for (const w of BrowserWindow.getAllWindows()) {
+            if (w !== mainWindow && !w.isDestroyed()) {
+                try { w.destroy(); } catch (_) { /* defensive */ }
+            }
+        }
+    });
 }
 
 // IPC handlers for file operations
