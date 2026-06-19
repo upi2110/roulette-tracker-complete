@@ -597,10 +597,21 @@
     <title>📸 ${meta.spinCount || 0} spins — Electron table mirror</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-               margin: 16px; background: #ffffff; color: #0f172a; }
+               margin: 16px; background: #ffffff; color: #0f172a;
+               overflow-x: auto; }
         h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
         table th, table td { border: 1px solid #f1f5f9; }
         table tbody tr:hover td { filter: brightness(0.97); }
+        /* Always-visible, clearly-styled scrollbars — user
+           explicitly wants to know they can scroll horizontally to
+           reach the P / PP / PP-13opp columns. */
+        html, body { scrollbar-width: auto; scrollbar-color: #475569 #e2e8f0; }
+        ::-webkit-scrollbar { width: 14px; height: 14px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px;
+                                    border: 2px solid #e2e8f0; }
+        ::-webkit-scrollbar-thumb:hover { background: #1e293b; }
+        ::-webkit-scrollbar-corner { background: #e2e8f0; }
     </style>
     <script>
         // Preserve scroll across the cache-busted self-reload so the
