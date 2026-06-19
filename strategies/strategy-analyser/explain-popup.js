@@ -425,6 +425,9 @@
                                white-space:nowrap;">${effPct}</td>
                     <td style="padding:4px 6px;color:#94a3b8;text-align:right;
                                white-space:nowrap;">${slots}</td>
+                    <td style="padding:4px 6px;color:${rowColor};font-size:10px;">
+                        ${reasonText}
+                    </td>
                     <td style="padding:4px 6px;color:#22d3ee;font-size:10px;
                                font-family:'SF Mono',ui-monospace,monospace;
                                white-space:nowrap;max-width:180px;overflow:hidden;
@@ -434,9 +437,6 @@
                                font-family:'SF Mono',ui-monospace,monospace;
                                max-width:260px;word-break:break-word;"
                         title="${_esc(numbers)}">${_esc(numbers)}</td>
-                    <td style="padding:4px 6px;color:${rowColor};font-size:10px;">
-                        ${reasonText}
-                    </td>
                 </tr>`;
         };
 
@@ -457,9 +457,9 @@
                         <th style="padding:3px 6px;">Rule</th>
                         <th style="padding:3px 6px;text-align:right;">Eff%</th>
                         <th style="padding:3px 6px;text-align:right;">Slots</th>
+                        <th style="padding:3px 6px;">Reason / why-not</th>
                         <th style="padding:3px 6px;">Anchors</th>
                         <th style="padding:3px 6px;">Numbers voted</th>
-                        <th style="padding:3px 6px;">Reason / why-not</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
