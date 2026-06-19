@@ -8,6 +8,8 @@
  * already side-split into purple+green via the locked pipeline).
  */
 
+// IIFE — see partitions.js header.
+(function () {
 'use strict';
 
 const NAME     = 'cross-table-conv';
@@ -65,3 +67,5 @@ if (typeof window !== 'undefined') {
     window.StrategyAnalyserSignals = window.StrategyAnalyserSignals || {};
     window.StrategyAnalyserSignals.crossTableConv = _api;
 }
+
+})();

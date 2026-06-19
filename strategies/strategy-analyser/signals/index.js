@@ -9,6 +9,8 @@
  * evaluateAll() concatenates them into one flat list.
  */
 
+// IIFE — see partitions.js header.
+(function () {
 'use strict';
 
 // Dual-mode: in Node, require each signal file. In browser, the
@@ -76,3 +78,5 @@ if (typeof module !== 'undefined' && module.exports) module.exports = _api;
 if (typeof window !== 'undefined') {
     window.StrategyAnalyserSignalsIndex = _api;
 }
+
+})();

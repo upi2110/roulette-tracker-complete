@@ -13,6 +13,8 @@
  * the NEXT cell to be the opposite of the last hit.
  */
 
+// IIFE — see partitions.js header.
+(function () {
 'use strict';
 
 const NAME      = 'cross-cell-rotation';
@@ -99,3 +101,5 @@ if (typeof window !== 'undefined') {
     window.StrategyAnalyserSignals = window.StrategyAnalyserSignals || {};
     window.StrategyAnalyserSignals.crossCellRotation = _api;
 }
+
+})();

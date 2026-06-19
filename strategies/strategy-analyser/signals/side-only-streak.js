@@ -15,6 +15,8 @@
  * Same pair-streak decay as sub-anchor-pattern (rule #8).
  */
 
+// IIFE — see partitions.js header.
+(function () {
 'use strict';
 
 const NAME      = 'side-only-streak';
@@ -127,3 +129,5 @@ if (typeof window !== 'undefined') {
     window.StrategyAnalyserSignals = window.StrategyAnalyserSignals || {};
     window.StrategyAnalyserSignals.sideOnlyStreak = _api;
 }
+
+})();

@@ -12,6 +12,8 @@
  * the opposite becomes likely.
  */
 
+// IIFE — see partitions.js for why every dual-mode file needs this.
+(function () {
 'use strict';
 
 const _P = (typeof require === 'function')
@@ -79,3 +81,5 @@ if (typeof window !== 'undefined') {
     window.StrategyAnalyserSignals = window.StrategyAnalyserSignals || {};
     window.StrategyAnalyserSignals.signStreak = _api;
 }
+
+})();

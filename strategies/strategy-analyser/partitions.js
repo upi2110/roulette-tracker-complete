@@ -18,6 +18,13 @@
  * Total per partition family must equal 37 (the full European wheel).
  */
 
+// IIFE — keeps the const declarations function-scoped so they cannot
+// collide with the SAME-NAMED constants in app/roulette-wheel.js (which
+// declares POSITIVE_NUMS / NEGATIVE_NUMS at the global script scope).
+// Without this wrapper the browser threw
+// "SyntaxError: Identifier 'POSITIVE_NUMS' has already been declared"
+// and the entire signals pipeline failed silently.
+(function () {
 'use strict';
 
 // ── Sign: positive / negative ─────────────────────────────────────
@@ -100,3 +107,5 @@ if (typeof module !== 'undefined' && module.exports) {
 if (typeof window !== 'undefined') {
     window.StrategyAnalyserPartitions = api;
 }
+
+})();

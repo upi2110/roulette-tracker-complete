@@ -12,6 +12,8 @@
  * across the two non-active sets.
  */
 
+// IIFE — see partitions.js header.
+(function () {
 'use strict';
 
 const _P = (typeof require === 'function')
@@ -84,3 +86,5 @@ if (typeof window !== 'undefined') {
     window.StrategyAnalyserSignals = window.StrategyAnalyserSignals || {};
     window.StrategyAnalyserSignals.setCarry = _api;
 }
+
+})();

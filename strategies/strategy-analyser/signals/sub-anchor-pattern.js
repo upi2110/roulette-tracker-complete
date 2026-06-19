@@ -16,6 +16,8 @@
  * per (table, pair-family, half-side).
  */
 
+// IIFE — see partitions.js header.
+(function () {
 'use strict';
 
 const NAME      = 'sub-anchor-pattern';
@@ -134,3 +136,5 @@ if (typeof window !== 'undefined') {
     window.StrategyAnalyserSignals = window.StrategyAnalyserSignals || {};
     window.StrategyAnalyserSignals.subAnchorPattern = _api;
 }
+
+})();

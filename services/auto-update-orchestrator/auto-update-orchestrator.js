@@ -426,7 +426,7 @@ class AutoUpdateOrchestrator {
             // existing cascade path (per backlog rule: do not touch
             // T1 in this task). 'semi' and 'manual' never reach
             // this function.
-            if ((this.decisionMode === 'auto' || this.decisionMode === 'ai-trained' || this.decisionMode === 'analytics')
+            if ((this.decisionMode === 'auto' || this.decisionMode === 'ai-trained' || this.decisionMode === 'analytics' || this.decisionMode === 'test')
                 && window.moneyPanel
                 && typeof window.moneyPanel.setPrediction === 'function') {
                 try {
@@ -469,7 +469,7 @@ class AutoUpdateOrchestrator {
             // light up. Read-only with respect to the AI-trained
             // controller — no decision logic, money math, or controller
             // state is touched.
-            if ((this.decisionMode === 'ai-trained' || this.decisionMode === 'analytics')
+            if ((this.decisionMode === 'ai-trained' || this.decisionMode === 'analytics' || this.decisionMode === 'test')
                 && window.rouletteWheel
                 && typeof window.rouletteWheel.updateHighlights === 'function') {
                 try {
