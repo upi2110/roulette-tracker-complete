@@ -511,21 +511,59 @@
 <style>
     html, body { margin:0; padding:0; height:100%;
         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-        background:#0f172a; color:#e2e8f0; }
+        background:#0f172a; color:#e2e8f0;
+        -webkit-user-select: text; user-select: text; }
     #${HEADER_ID} {
         padding:10px 14px; background:#14b8a6; color:#fff;
         font-weight:700; font-size:13px;
         display:flex; align-items:center; justify-content:space-between;
+        gap:8px;
         user-select:none;
     }
     #${BODY_ID} { padding:12px 16px; font-size:11px; line-height:1.5;
-        height:calc(100vh - 40px); overflow-y:auto; overflow-x:hidden; }
+        height:calc(100vh - 40px); overflow-y:auto; overflow-x:hidden;
+        -webkit-user-select: text; user-select: text; cursor: text; }
+    #${BODY_ID} * { -webkit-user-select: text; user-select: text; }
+    #copyJsonBtn { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4);
+        color: #fff; font-size: 11px; padding: 3px 9px; border-radius: 3px;
+        cursor: pointer; font-weight: 600; }
+    #copyJsonBtn:hover { background: rgba(255,255,255,0.25); }
+    #copyJsonBtn.ok { background: #16a34a; border-color: #14532d; }
 </style>
 </head><body>
 <div id="${HEADER_ID}">
     <span>📖 StrategyAnalyser — How the prediction was built</span>
-    <span style="font-size:10px;opacity:0.8;">live · refreshes every ${REFRESH_MS}ms</span>
+    <span style="display:flex;align-items:center;gap:8px;">
+        <button id="copyJsonBtn" title="Copy the full explanation JSON to clipboard">📋 Copy JSON</button>
+        <span style="font-size:10px;opacity:0.8;">live · refreshes every ${REFRESH_MS}ms</span>
+    </span>
 </div>
+<script>
+    document.getElementById('copyJsonBtn').addEventListener('click', function () {
+        try {
+            var opener = window.opener;
+            var SA = opener && opener.StrategyAnalyser;
+            var orc = opener && opener.autoUpdateOrchestrator;
+            var st = orc && orc._analyserSessionState;
+            var exp = SA && SA.getLastExplanation && SA.getLastExplanation(st);
+            var snap = orc && orc._lastSnapshotOpts;
+            var payload = { explanation: exp, snapshotOpts: snap };
+            var text = JSON.stringify(payload, function (k, v) {
+                if (v instanceof Set) return Array.from(v);
+                if (v instanceof Map) return Array.from(v.entries());
+                return v;
+            }, 2);
+            navigator.clipboard.writeText(text);
+            var btn = document.getElementById('copyJsonBtn');
+            btn.textContent = '✓ Copied';
+            btn.classList.add('ok');
+            setTimeout(function () {
+                btn.textContent = '📋 Copy JSON';
+                btn.classList.remove('ok');
+            }, 1500);
+        } catch (e) { alert('Copy failed: ' + e.message); }
+    });
+</script>
 <div id="${BODY_ID}"><div style="opacity:0.7;">Initialising…</div></div>
 </body></html>`);
         win.document.close();

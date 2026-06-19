@@ -266,6 +266,9 @@ class AutoUpdateOrchestrator {
                 }
             } catch (_) { /* defensive */ }
 
+            // Stash on `this` so the explain popout's Copy-JSON button
+            // can dump exactly what fed the decision.
+            this._lastSnapshotOpts = _snapOpts;
             decision = window.StrategyAnalyser.decide(
                 window.aiAutoEngine, spinsArr, idx,
                 {
