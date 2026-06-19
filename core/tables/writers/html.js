@@ -382,7 +382,15 @@
         const greenHtml = (p.green || []).map(n =>
             `<span style="background:#16a34a;color:#fff;padding:1px 4px;margin:1px;border-radius:3px;font-size:10px;font-weight:700;">${n}</span>`
         ).join('');
-        const hitBadge = p.hitAnchor
+        // HIT badge fires when the actual landed in the BET POOL —
+        // i.e. an anchor cell OR its ±1 wheel-neighbour (per
+        // projections.js comment: "bet pool = anchors ±1 wheel-
+        // neighbours"). Previously this checked p.hitAnchor only,
+        // which missed cases where actual was a wheel-neighbour of
+        // an anchor — user pointed out P-1 should be HIT on actual=34
+        // since 34 is in the bet pool even though not in the visible
+        // anchor chips.
+        const hitBadge = p.hitBetPool
             ? `<span style="background:#fef9c3;color:#854d0e;padding:0 3px;font-size:9px;font-weight:700;margin-left:2px;border-radius:2px;">HIT</span>`
             : '';
         return purpleHtml + greenHtml + hitBadge;
