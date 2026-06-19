@@ -110,25 +110,85 @@
         return conf >= floor ? 'BET' : 'WAIT';
     }
 
+    function _readWheelNumbers() {
+        // Universal signal across every strategy (manual, auto/V6,
+        // ai-trained, t1-strategy, 3t-selection, analytics, test):
+        // the live highlighted set on the wheel.
+        try {
+            const rw = window.rouletteWheel;
+            const nums = rw && rw._rawPrediction
+                      && rw._rawPrediction.prediction
+                      && rw._rawPrediction.prediction.numbers;
+            if (Array.isArray(nums)) return nums;
+        } catch (_) {}
+        return [];
+    }
+
+    function _modeLabel() {
+        const ui = window.aiAutoModeUI || {};
+        const mode = ui.currentMode || '';
+        const auto = !!ui.autoMode;
+        switch (mode) {
+            case 'test':         return 'Test (Lab)';
+            case 'ai-trained':   return 'AI-Trained';
+            case 't1-strategy':  return 'T1 Strategy';
+            case '3t-selection': return '3T Selection';
+            case 'analytics':    return 'Analytics';
+            case 'auto':         return 'Auto (V6)';
+            default:             return auto ? (mode || 'Auto') : 'Manual';
+        }
+    }
+
     function _refresh() {
         // Inject if needed (wheel panel may load later than this script).
         _injectBadge();
         const badge = document.getElementById(BADGE_ID);
         if (!badge) return;
 
-        const mode = (window.aiAutoModeUI && window.aiAutoModeUI.currentMode) || '';
-        if (mode !== 'test') {
-            badge.style.display = 'none';
-            return;
-        }
+        // Badge is always visible — every strategy (including manual)
+        // gets a BET/WAIT indicator on the wheel.
         badge.style.display = 'block';
 
-        const exp = _readExplanation();
-        const state = _decideState(exp);
+        const ui = window.aiAutoModeUI || {};
+        const mode = ui.currentMode || '';
+        const modeLabel = _modeLabel();
+
+        // --- Decide state -------------------------------------------------
+        // Test(Lab) keeps the rich analyser-driven state (BET / FORCED /
+        // WAIT / WARMUP / IDLE) so the confidence-vs-floor story shows.
+        // Every other mode infers BET vs WAIT from the live wheel
+        // selection — populated set → BET, empty → WAIT.
+        let state, meta, picks = 0, exp = null;
+        if (mode === 'test') {
+            exp = _readExplanation();
+            state = _decideState(exp);
+            if (!exp) {
+                meta = `${modeLabel}  ·  analyser standby — enter spins to begin`;
+            } else {
+                const conf  = exp.confidence != null ? exp.confidence : 0;
+                const floor = exp.effectiveFloor != null
+                    ? exp.effectiveFloor
+                    : (exp.confidenceFloor != null ? exp.confidenceFloor : 60);
+                const spin  = exp.spinCount || 0;
+                const losses = exp.consecutiveLosses || 0;
+                const lossNote = losses >= 2 ? `  ·  ${losses} losses` : '';
+                meta = `${modeLabel}  ·  ${conf}% confidence  ·  floor ${floor}%  ·  spin #${spin}${lossNote}  ·  tap for details`;
+            }
+        } else {
+            const nums = _readWheelNumbers();
+            picks = nums.length;
+            state = picks > 0 ? 'BET' : 'WAIT';
+            if (picks > 0) {
+                meta = `${modeLabel}  ·  ${picks} number${picks === 1 ? '' : 's'} selected  ·  place your bet`;
+            } else {
+                meta = `${modeLabel}  ·  no numbers selected  ·  waiting for a pick`;
+            }
+        }
 
         // Cheap key — re-paint only when something changes.
-        const key = state + '|' + (exp ? exp.spinCount : '?')
-                  + '|' + (exp ? exp.confidence : '?');
+        const key = state + '|' + mode + '|' + picks
+                  + '|' + (exp ? exp.spinCount : '-')
+                  + '|' + (exp ? exp.confidence : '-');
         if (key === _lastDecisionKey) return;
         _lastDecisionKey = key;
         _state = state;
@@ -143,22 +203,10 @@
             actionEl.style.color = sty.fg;
         }
         if (metaEl) {
-            if (!exp) {
-                metaEl.textContent = 'analyser standby — enter spins to begin';
-                metaEl.style.color = '#94a3b8';
-            } else {
-                const conf  = exp.confidence != null ? exp.confidence : 0;
-                const floor = exp.effectiveFloor != null
-                    ? exp.effectiveFloor
-                    : (exp.confidenceFloor != null ? exp.confidenceFloor : 60);
-                const spin  = exp.spinCount || 0;
-                const losses = exp.consecutiveLosses || 0;
-                const lossNote = losses >= 2 ? `  ·  ${losses} losses` : '';
-                metaEl.textContent = `${conf}% confidence  ·  floor ${floor}%  ·  spin #${spin}${lossNote}  ·  tap for details`;
-                metaEl.style.color = (state === 'WARMUP' || state === 'IDLE')
-                    ? '#94a3b8'
-                    : 'rgba(255,255,255,0.85)';
-            }
+            metaEl.textContent = meta;
+            metaEl.style.color = (state === 'WARMUP' || state === 'IDLE')
+                ? '#94a3b8'
+                : 'rgba(255,255,255,0.85)';
         }
     }
 
