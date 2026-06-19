@@ -181,15 +181,24 @@
     // only shows T2_VALID. Anything else collapses to XX so the
     // visible grid matches the Electron tables exactly.
     function _formatCode(code, validSet) {
-        // No code OR not in the table's valid set → render as XX.
+        // Palette mirrors Electron's pos-s / pos-o / pos-xx classes
+        // (app/styles-3tables.css):
+        //   pos-s  → bg #92d050, color #1f4e0f
+        //   pos-o  → bg #add8e6, color #003d5c   ← was orange in mirror
+        //   pos-xx → bg #ffe5cc, color #8b4513
+        // User asked for the colour to be consistent so cells read
+        // identically across Electron and the HTML mirror.
         if (!code || code === 'XX' || !validSet.has(code)) {
-            return `<span style="color:#94a3b8;font-size:10px;">XX</span>`;
+            return `<span style="background:#ffe5cc;color:#8b4513;font-weight:600;`
+                 + `padding:1px 4px;border-radius:3px;font-size:10px;`
+                 + `font-family:'SF Mono',ui-monospace,monospace;">XX</span>`;
         }
         const isS = code.charAt(0) === 'S';
-        const bg  = isS ? '#16a34a' : '#f59e0b';
-        return `<span style="background:${bg};color:#fff;font-weight:700;` +
-               `padding:1px 4px;border-radius:3px;font-size:10px;` +
-               `font-family:'SF Mono',ui-monospace,monospace;">${_esc(code)}</span>`;
+        const bg  = isS ? '#92d050' : '#add8e6';
+        const fg  = isS ? '#1f4e0f' : '#003d5c';
+        return `<span style="background:${bg};color:${fg};font-weight:700;`
+             + `padding:1px 4px;border-radius:3px;font-size:10px;`
+             + `font-family:'SF Mono',ui-monospace,monospace;">${_esc(code)}</span>`;
     }
 
     // ── Per-row, per pair-group: 7 cells ──
