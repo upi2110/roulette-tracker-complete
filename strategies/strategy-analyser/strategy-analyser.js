@@ -235,17 +235,20 @@
     function _extractFamilyKey(name) {
         if (!name) return null;
         const parts = name.split('/');
-        // Pair-bound signals have at least 2 parts after the prefix.
-        // sub-anchor-pattern / table / pairKey / variant
-        // cross-table-conv / famKey
-        // cross-cell-rotation / table / famKey
         let candidate = null;
         if (name.startsWith('sub-anchor-pattern') || name.startsWith('side-only-streak')) {
             candidate = parts[2];   // pairKey (may end in _13opp)
         } else if (name.startsWith('cross-cell-rotation')) {
             candidate = parts[2];
         } else if (name.startsWith('cross-table-conv')) {
+            // BUG fix 2026-06-20: Rule 7 tied winners produce composite
+            // names like 'cross-table-conv/prevPlus1+prevPlus2'. Treat
+            // composite names as "no single family" → scope filter
+            // passes them through (Rule 7 already constrains itself to
+            // the families on T3, which were already filtered by the
+            // user's visible-families list upstream).
             candidate = parts[1];
+            if (candidate && candidate.indexOf('+') >= 0) return null;
         }
         if (!candidate) return null;
         return candidate.endsWith('_13opp') ? candidate.slice(0, -6) : candidate;
@@ -730,7 +733,17 @@
             // Per-rule status (every rule listed, whether fired or not).
             // Lets the popup show all 6 rules + WHY each one is in the
             // state it's in.
-            ruleStatus: _computeRuleStatus(snap, params, _rawFiredRuleIds),
+            // Use the POST-scope-filter and POST-tiebreak `fired` array
+            // (not _rawFiredRuleIds) so a rule that scored entries but
+            // got fully scope-dropped shows as SKIPPED with a proper
+            // why-not reason (Bug B fix 2026-06-20). Previously the
+            // popup said "Did not fire (conditions not met)" generic
+            // fallback whenever ruleStatus disagreed with the visible
+            // fired list.
+            ruleStatus: _computeRuleStatus(
+                snap, params,
+                new Set(fired.map(s => s._ruleId).filter(Boolean))
+            ),
             tiebreakBy:        tiebreakSet ? tiebreakSet.name : null,
             tiebreakRejected:  tiebreakRejected,
             // Active group share map — surfaces the redistribution
