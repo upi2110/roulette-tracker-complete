@@ -27,7 +27,7 @@
  *     → debug payload for the Explain popup. Populated by decide().
  *
  *   StrategyAnalyser.DEFAULTS
- *     → tunable parameters (confidenceFloor, maxNumbers, waitCap, …).
+ *     → tunable parameters (confidenceFloor, maxNumbers, weights, …).
  *
  * Decision shape — exact same as StrategyLab so the orchestrator's
  * post-decision fanout (moneyPanel.setPrediction, wheel highlight,
@@ -81,35 +81,30 @@
     }
 
     // ── Tunables ──────────────────────────────────────────────────
+    // User-locked rule set (2026-06-19) — Rules 8/9/10/11 removed:
+    //   • no streak-decay curve (Rule 4 is strict last-3 only)
+    //   • no T3 cooldown
+    //   • no wait-cap forced bet
+    //   • no loss-streak floor elevation
     const DEFAULTS = {
-        confidenceFloor:  60,   // < this → WAIT (display only). Configurable.
+        confidenceFloor:  60,   // < this → WAIT. Test(Lab) UI tunable.
         confidenceScale:  8.0,  // sum of USED signal weights mapped to 100%.
-                                // With maxUseSignals=5 + minUseWeight=0.5,
-                                // 5 top signals ≈ 4-5 weight = 50-63%.
-                                // Floor (60%) actually bites. Tunable.
         maxNumbers:       12,   // ceiling on prediction-list size.
         minNumbers:       6,    // floor when emitting a real prediction.
-        waitCap:          3,    // 3 consecutive WAIT → 4th MUST BET.
-        minSpinsToFire:   3,    // first 3 spins → WARMUP / SKIP placeholders.
-        t3CooldownRounds: 3,    // missed streak on T3 pair → cool 3 rounds
-        // — Signal selection (NEW, addresses "use best signals only") —
-        minUseWeight:     0.50, // signals below this don't contribute
-        maxUseSignals:    5,    // top-N (by weight) used after filter
-                                // 5 strong-only is concentrated evidence;
-                                // every extra signal beyond top-5 is noise
-        // — Loss-streak gate (NEW, addresses "still bets after losses") —
-        lossStreakLimit:  2,    // # consecutive misses before floor elevates
-        lossFloorStep:    10,   // floor +X per consecutive miss beyond limit
-        lossFloorMax:     40,   // floor +N max (so 4+ losses → floor=100%)
-        // Reference weights (Phase 2 signals hard-code these as base values;
-        // documented here so Phase 4 settings UI can offer overrides).
+        minSpinsToFire:   3,    // first 3 spins → WARMUP placeholder.
+        // Signal selection — only top-K strong signals contribute.
+        minUseWeight:     0.10, // very small fractional weights still contribute
+                                // (rule splits like 0.30 × 0.20 = 0.06 might
+                                // need lowering further; tunable in UI).
+        maxUseSignals:    8,    // top-N by weight after threshold filter
+        // Reference global weights (the signal files use these directly
+        // as BASE_WGT; surfaced here for the Test(Lab) weightage UI).
         weights: {
-            signStreak:       0.30,
-            tableStreak:      0.30,
-            setCarry:         0.25,
-            subAnchorPattern: 0.90,
-            sideOnlyStreak:   0.60,
-            crossCellRotate:  0.70,
+            signStreak:       0.80,
+            tableStreak:      0.80,
+            setCarry:         0.50,
+            subAnchorPattern: 0.30,
+            crossCellRotate:  0.30,
             crossTableConv:   1.20
         }
     };
@@ -124,57 +119,21 @@
      */
     function createSessionState() {
         return {
-            // Counter of consecutive WAIT decisions. Phase 3: when this
-            // reaches DEFAULTS.waitCap (3), the next decide() forces BET.
-            consecutiveWaits: 0,
-            // Per-pair streak tracker. Key = pair dataKey, value =
-            // { side: 'S'|'O'|null, length: int, lastHitIdx: int }.
-            // Phase 3 populates.
-            pairStreaks: {},
-            // T3 cooling-down pairs. Key = dataPair, value = rounds
-            // remaining. Decremented every spin until 0.
-            t3Cooldowns: {},
-            // The most recent decide() explanation. Phase 4 popup reads.
+            // The most recent decide() explanation. The Explain popup reads.
             lastExplanation: null,
             // Last spinIdx we saw — lets reset / cross-session detection
             // happen automatically if spinCount goes backwards.
-            lastSeenIdx: -1,
-            // Loss-streak tracking (hotfix #3). Reset to 0 on every BET hit;
-            // incremented on every BET miss. After lossStreakLimit (2),
-            // decide() elevates the effective confidence floor so we
-            // emit WAIT until evidence strengthens.
-            consecutiveLosses: 0,
-            // Outcome detection: when decide() returns BET, stash the
-            // numbers + the snapshot's spinCount so the NEXT decide()
-            // call can check whether the just-landed spin hit them.
-            lastBetSpinCount: null,
-            lastBetNumbers:   null
+            lastSeenIdx: -1
         };
     }
 
     function resetSessionState(state) {
         if (!state || typeof state !== 'object') return;
-        state.consecutiveWaits = 0;
-        state.pairStreaks      = {};
-        state.t3Cooldowns      = {};
-        state.lastExplanation  = null;
-        state.lastSeenIdx      = -1;
-        state.consecutiveLosses = 0;
-        state.lastBetSpinCount  = null;
-        state.lastBetNumbers    = null;
+        state.lastExplanation = null;
+        state.lastSeenIdx     = -1;
     }
 
-    /**
-     * Record the outcome of the previous BET. Called by the orchestrator
-     * (or by decide() itself when it detects a new spin advanced past
-     * lastBetSpinCount). hit=true resets the loss counter; hit=false
-     * increments it.
-     */
-    function recordOutcome(state, hit) {
-        if (!state) return;
-        if (hit) state.consecutiveLosses = 0;
-        else     state.consecutiveLosses = (state.consecutiveLosses || 0) + 1;
-    }
+    // recordOutcome() removed — Rule 11 (loss-streak floor) no longer in use.
 
     function getLastExplanation(state) {
         return (state && state.lastExplanation) || null;
@@ -229,44 +188,12 @@
         return Array.from(set);
     }
 
-    // ── T3 cooldown maintenance ──────────────────────────────────
-    /**
-     * Decrement each pair's cooldown counter (cooling down across spins).
-     */
-    function _decrementCooldowns(cooldowns) {
-        Object.keys(cooldowns).forEach(k => {
-            cooldowns[k] = Math.max(0, (cooldowns[k] || 0) - 1);
-            if (cooldowns[k] === 0) delete cooldowns[k];
-        });
-    }
-
-    /**
-     * Inspect snap.table3.rows latest entry. For each pair whose
-     * projection MISSED at that row (hitAnchor === false), set
-     * cooldown = t3CooldownRounds. Pairs that hit reset their cooldown.
-     */
-    function _updateCooldownsFromLatestRow(cooldowns, snap, cooldownRounds) {
-        const rows = snap && snap.table3 && snap.table3.rows;
-        if (!Array.isArray(rows) || !rows.length) return;
-        const lastRow = rows[rows.length - 1];
-        if (!lastRow || !lastRow.perPair) return;
-        Object.keys(lastRow.perPair).forEach(famKey => {
-            const ent = lastRow.perPair[famKey];
-            if (ent && ent.hitAnchor === false) {
-                // Missed projection — start cooldown (or reset to full
-                // if already cooling).
-                cooldowns[famKey] = cooldownRounds;
-            } else if (ent && ent.hitAnchor === true) {
-                // Hit — clear cooldown.
-                delete cooldowns[famKey];
-            }
-        });
-    }
-
     // ── Pair-key extraction from signal name ─────────────────────
+    // (T3 cooldown removed — Rule 9 dropped 2026-06-19.)
     /**
-     * Pull the pair-family key out of a signal's name so the T3
-     * cooldown filter can suppress signals for cooled pairs.
+     * Pull the pair-family key out of a signal's name so the scope
+     * filter (Rule 4 / Rule 6 pair-bound suppression) can drop
+     * signals tied to a user-deselected family.
      *
      *   'sub-anchor-pattern/T1/prevPlus1/continuation' → 'prevPlus1'
      *   'sub-anchor-pattern/T2/prevPlus1_13opp/missing-anchor' → 'prevPlus1'
@@ -348,29 +275,13 @@
             return _record(state, idx, out);
         }
 
-        // ── Previous BET outcome detection (hotfix #3) ──
-        // If a new spin landed since our last BET, check whether the
-        // prediction included it and update consecutiveLosses. Drives
-        // the loss-streak floor elevation below.
-        if (state.lastBetSpinCount != null
-            && spinCount > state.lastBetSpinCount
-            && Array.isArray(state.lastBetNumbers)) {
-            const outcomeIdx = state.lastBetSpinCount;   // 0-based index
-            const outcome    = snap.meta.spins[outcomeIdx];
-            const hit        = (typeof outcome === 'number')
-                            && state.lastBetNumbers.indexOf(outcome) >= 0;
-            recordOutcome(state, hit);
-            state.lastBetSpinCount = null;
-            state.lastBetNumbers   = null;
-        }
-
-        // ── T3 cooldown maintenance ──
-        // Decrement carry-over cooldowns first, then update from the
-        // latest row (a miss at THIS spin starts a fresh 3-round cool).
-        _decrementCooldowns(state.t3Cooldowns);
-        _updateCooldownsFromLatestRow(state.t3Cooldowns, snap, params.t3CooldownRounds);
+        // (Removed 2026-06-19: previous-BET outcome detection — Rule 11
+        //  loss-streak floor dropped. T3 cooldown maintenance — Rule 9
+        //  dropped. Wait-cap forced bet — Rule 10 dropped.)
 
         // ── Signal evaluation ──
+        // params.disabledRules — Set<string> of rule ids the Test(Lab)
+        // weightage UI unchecked. Signals registry honours this list.
         const allSignals = Signals
             ? Signals.evaluateAll(snap, state, params)
             : [];
@@ -420,17 +331,9 @@
               })
             : allSignals;
 
-        // Filter out signals tied to a T3-cooled pair family.
-        const cooledFams = new Set(Object.keys(state.t3Cooldowns));
+        // (T3 cooldown filter removed — Rule 9 dropped.)
+        const fired = userScoped;
         const suppressed = [];
-        const fired = userScoped.filter(s => {
-            const fam = _extractFamilyKey(s.name);
-            if (fam && cooledFams.has(fam)) {
-                suppressed.push({ name: s.name, pair: fam, roundsLeft: state.t3Cooldowns[fam] });
-                return false;
-            }
-            return true;
-        });
 
         // ── Signal SELECTION (hotfix #3, "use best only") ──
         // Old behaviour: every fired signal contributed to scoring.
@@ -464,25 +367,10 @@
         const confidence = Math.min(100,
             Math.round(100 * totalUsedWeight / params.confidenceScale));
 
-        // ── Loss-streak floor elevation (hotfix #3) ──
-        // After consecutiveLosses >= lossStreakLimit (2), elevate the
-        // floor by lossFloorStep per extra loss (capped at lossFloorMax).
-        // Result: more WAITs after losses → stops bleeding while the
-        // analyser waits for stronger evidence.
-        const losses = state.consecutiveLosses || 0;
-        const lossPenalty = (losses >= params.lossStreakLimit)
-            ? Math.min(params.lossFloorMax,
-                       (losses - params.lossStreakLimit + 1) * params.lossFloorStep)
-            : 0;
-        const effectiveFloor = params.confidenceFloor + lossPenalty;
-
-        // ── Action gate (floor + wait-cap force-bet) ──
-        const priorWaits = state.consecutiveWaits || 0;
-        const forceBet   = priorWaits >= params.waitCap;
-        const meetsFloor = confidence >= effectiveFloor;
-        const action     = meetsFloor ? 'BET'
-                         : forceBet   ? 'BET'
-                         : 'WAIT';
+        // ── Action gate (simplified — Rules 10 + 11 removed) ──
+        // confidence >= floor → BET, else WAIT. No forced bet, no
+        // loss-streak floor elevation.
+        const action = (confidence >= params.confidenceFloor) ? 'BET' : 'WAIT';
 
         // ── Rank and pick top-K ──
         const ranked = Array.from(scores.entries())
@@ -523,36 +411,17 @@
         }
 
         // ── Reason text ──
-        const floorTxt = (effectiveFloor !== params.confidenceFloor)
-            ? `${effectiveFloor}% (base ${params.confidenceFloor}% + ${lossPenalty} loss-streak)`
-            : `${params.confidenceFloor}%`;
-        let reason;
-        if (action === 'BET' && meetsFloor) {
-            reason = `BET — confidence ${confidence}% ≥ floor ${floorTxt}, `
-                   + `${used.length}/${fired.length} signals used, `
-                   + `${numbers.length} numbers picked.`;
-        } else if (action === 'BET' && forceBet) {
-            reason = `FORCED BET — ${priorWaits} consecutive WAITs hit cap of ${params.waitCap}, `
-                   + `betting at confidence ${confidence}% (below ${floorTxt}).`;
-        } else {
-            reason = `WAIT — confidence ${confidence}% < floor ${floorTxt}. `
-                   + `${priorWaits + 1}/${params.waitCap + 1} consecutive wait${priorWaits === 0 ? '' : 's'}; `
-                   + `${used.length}/${fired.length} signals used`
-                   + (losses > 0 ? ` (loss streak ${losses}).` : `.`);
-        }
-
-        // ── Stash for next-spin outcome detection ──
-        // Only when we actually BET. Both `meetsFloor` and `forceBet`
-        // paths produce action='BET'; both should be evaluated for
-        // hit/miss next call.
-        if (action === 'BET') {
-            state.lastBetSpinCount = spinCount;       // 0-based idx of NEXT spin
-            state.lastBetNumbers   = numbers.slice();
-        }
+        const floorTxt = `${params.confidenceFloor}%`;
+        const reason = (action === 'BET')
+            ? `BET — confidence ${confidence}% ≥ floor ${floorTxt}, `
+              + `${used.length}/${fired.length} signals used, `
+              + `${numbers.length} numbers picked.`
+            : `WAIT — confidence ${confidence}% < floor ${floorTxt}; `
+              + `${used.length}/${fired.length} signals used.`;
 
         const out = _decision(action, numbers, confidence, reason);
         out.explanation = {
-            phase: action === 'BET' && forceBet && !meetsFloor ? 'FORCED_BET' : 'NORMAL',
+            phase: 'NORMAL',
             spinCount,
             lastSpin,
             firedSignals: fired.map(s => ({
@@ -561,11 +430,11 @@
                 candidatesCount: s.candidates ? s.candidates.size : 0,
                 reason: s.reason,
                 details: s.details || null,
-                used: usedNames.has(s.name)        // NEW: popup highlights green
+                ruleId: s._ruleId || null,
+                used: usedNames.has(s.name)
             })),
             usedSignalNames: Array.from(usedNames),
-            suppressedByCooldown: suppressed,
-            // NEW: user-selection scoping
+            suppressedByCooldown: suppressed,         // kept for popup compat; always []
             userSelectedFamilies: Array.from(selectedFams).sort(),
             visibleFamilies:      Array.from(visibleFams).sort(),
             scopeSource,          // 'selection' | 'visibility' | 'autonomous'
@@ -575,19 +444,19 @@
             picked,
             userSelectionNumbers: userNums,
             unionedNumbers: numbers,
-            // Used-weight is the new "Σ weight" the popup shows
             totalUsedWeight,
             totalFiredWeight: fired.reduce((s, x) => s + x.weight, 0),
             confidence,
             confidenceFloor: params.confidenceFloor,
-            effectiveFloor,                          // NEW: post-loss-penalty
-            lossPenalty,                             // NEW: how much floor moved
+            effectiveFloor:  params.confidenceFloor,  // alias kept for popup compat
             confidenceScale: params.confidenceScale,
-            priorConsecutiveWaits: priorWaits,
-            consecutiveLosses: losses,               // NEW: for popup display
-            waitCap: params.waitCap,
-            forcedBet: action === 'BET' && forceBet && !meetsFloor,
-            t3Cooldowns: Object.assign({}, state.t3Cooldowns)
+            forcedBet: false,                          // Rule 10 dropped
+            // Per-rule weight + enabled state passed through so the
+            // Explain popup can show the current configuration.
+            ruleWeights:  Object.assign({}, params.weights || {}),
+            disabledRules: params.disabledRules
+                ? Array.from(params.disabledRules)
+                : []
         };
         return _record(state, idx, out);
     }
@@ -608,11 +477,7 @@
     }
 
     function _record(state, idx, decision) {
-        if (decision.action === 'WAIT') {
-            state.consecutiveWaits = (state.consecutiveWaits || 0) + 1;
-        } else if (decision.action === 'BET') {
-            state.consecutiveWaits = 0;
-        }
+        // (consecutiveWaits tracking removed — Rule 10 dropped.)
         state.lastExplanation = decision.explanation;
         state.lastSeenIdx     = idx;
         return decision;
@@ -643,6 +508,9 @@
     }
 
     // ── Public API ────────────────────────────────────────────────
+    // recordOutcome removed (Rule 11 dropped); kept as a no-op shim so
+    // any existing caller doesn't crash.
+    function recordOutcome(/* state, hit */) { /* no-op */ }
     const api = {
         decide,
         createSessionState,

@@ -1,30 +1,33 @@
 /**
  * signals/index.js — registry + single entry point.
  *
- * The aggregator (Phase 3) imports evaluateAll() from here, NOT each
- * signal individually. Adding a new signal = add it to SIGNALS below;
- * no other code changes.
+ * The aggregator imports evaluateAll() from here, not each signal
+ * individually. Adding/removing a signal = edit SIGNALS below; no
+ * other code changes.
  *
- * Each signal's evaluate() returns ARRAY of entries (possibly empty).
- * evaluateAll() concatenates them into one flat list.
+ * User-locked rule set (2026-06-19):
+ *   1 — sign-streak           (POS / NEG spin-history streak)
+ *   2 — table-streak          (ZERO / NINETEEN spin-history streak)
+ *   3 — set-carry             (SET_0 / SET_5 / SET_6 carry)
+ *   4 — sub-anchor-pattern    (T1 + T2 sub-anchor cluster)
+ *   6 — cross-cell-rotation   (T1 + T2 alternation)
+ *   7 — cross-table-conv      (T3 golden-pair)
+ *
+ * Removed: Rule 5 (side-only-streak), Rule 8 (decay), Rule 9
+ *          (T3 cooldown), Rule 10 (wait-cap), Rule 11 (loss-streak floor).
  */
 
-// IIFE — see partitions.js header.
 (function () {
 'use strict';
 
-// Dual-mode: in Node, require each signal file. In browser, the
-// signals attached themselves to window.StrategyAnalyserSignals when
-// their script tags loaded — read from there.
-let signStreak, tableStreak, setCarry, subAnchorPattern,
-    sideOnlyStreak, crossCellRotate, crossTableConv;
+let signStreak, tableStreak, setCarry,
+    subAnchorPattern, crossCellRotate, crossTableConv;
 
 if (typeof require === 'function') {
     signStreak       = require('./sign-streak.js');
     tableStreak      = require('./table-streak.js');
     setCarry         = require('./set-carry.js');
     subAnchorPattern = require('./sub-anchor-pattern.js');
-    sideOnlyStreak   = require('./side-only-streak.js');
     crossCellRotate  = require('./cross-cell-rotation.js');
     crossTableConv   = require('./cross-table-conv.js');
 } else if (typeof window !== 'undefined' && window.StrategyAnalyserSignals) {
@@ -33,47 +36,60 @@ if (typeof require === 'function') {
     tableStreak      = S.tableStreak;
     setCarry         = S.setCarry;
     subAnchorPattern = S.subAnchorPattern;
-    sideOnlyStreak   = S.sideOnlyStreak;
     crossCellRotate  = S.crossCellRotation;
     crossTableConv   = S.crossTableConv;
 }
 
-const SIGNALS = [
-    signStreak, tableStreak, setCarry,
-    subAnchorPattern, sideOnlyStreak,
-    crossCellRotate, crossTableConv
-].filter(Boolean);
+// Each entry: { id, signal }. The id lets the aggregator look up the
+// per-rule weight + per-rule enable flag from session opts.
+const RULES = [
+    { id: 'signStreak',       signal: signStreak },
+    { id: 'tableStreak',      signal: tableStreak },
+    { id: 'setCarry',         signal: setCarry },
+    { id: 'subAnchorPattern', signal: subAnchorPattern },
+    { id: 'crossCellRotate',  signal: crossCellRotate },
+    { id: 'crossTableConv',   signal: crossTableConv }
+].filter(r => r.signal);
 
 /**
- * Evaluate every registered signal against the snapshot.
+ * Evaluate every enabled signal against the snapshot.
  *
- * @param {Object} snap          output of CoreTablesSnapshot.snapshot(spins)
- * @param {Object} sessionState  per-caller state (pair streaks, T3 cooldowns)
- * @param {Object} opts          override params (Phase 4 wires settings UI)
- * @returns {Array} flat list of fired signal entries
- *                  [{ name, fired, candidates, weight, reason, details }, …]
+ * opts.disabledRules — optional Set/Array of rule ids to skip.
+ *   When the Test(Lab) weightage UI unchecks a rule, the orchestrator
+ *   passes its id in here.
+ *
+ * Each signal entry's weight is the signal's internal share already
+ * multiplied by its locked global weight. The aggregator uses it as-is.
  */
 function evaluateAll(snap, sessionState, opts) {
     const out = [];
-    for (const sig of SIGNALS) {
+    const disabled = (opts && opts.disabledRules)
+        ? (opts.disabledRules instanceof Set
+            ? opts.disabledRules
+            : new Set(opts.disabledRules))
+        : null;
+    for (const rule of RULES) {
+        if (disabled && disabled.has(rule.id)) continue;
         try {
-            const entries = sig.evaluate(snap, sessionState, opts || {});
+            const entries = rule.signal.evaluate(snap, sessionState, opts || {});
             if (Array.isArray(entries)) {
                 for (const e of entries) {
-                    if (e && e.fired) out.push(e);
+                    if (e && e.fired) {
+                        e._ruleId = rule.id;        // back-reference for the popup
+                        out.push(e);
+                    }
                 }
             }
         } catch (e) {
-            // A buggy signal must not crash the whole brain — log and skip.
             if (typeof console !== 'undefined') {
-                console.warn('Signal ' + (sig.NAME || '?') + ' threw:', e && e.message);
+                console.warn('Signal ' + (rule.signal.NAME || rule.id) + ' threw:', e && e.message);
             }
         }
     }
     return out;
 }
 
-const _api = { evaluateAll, SIGNALS };
+const _api = { evaluateAll, RULES };
 if (typeof module !== 'undefined' && module.exports) module.exports = _api;
 if (typeof window !== 'undefined') {
     window.StrategyAnalyserSignalsIndex = _api;

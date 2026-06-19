@@ -1,78 +1,57 @@
 /**
- * signals/sign-streak.js — Rule #1 (positive / negative).
+ * signals/sign-streak.js — Rule 1: Spin-history sign streak (POS / NEG).
  *
- * Reads snap.meta.spins. Looks at the most recent K spins. If the
- * last N (N >= 2) actuals all live in the same sign-partition, emits
- *   • sign-streak-same  — votes for the same partition  weight: base × decay(N)
- *   • sign-streak-anti  — votes for the OPPOSITE partition
- *                         weight: base × (1 - decay(N))
- *
- * As N grows the SAME-side weight decays and the ANTI weight grows —
- * matching the user's rule that long streaks become un-credible and
- * the opposite becomes likely.
+ * User-locked spec (2026-06-19):
+ *   • Categories from partitions.js: POSITIVE (19 nums incl. 0, 26) /
+ *     NEGATIVE (18 nums). Every spin is one or the other.
+ *   • Walk back from the latest spin; count consecutive spins in the
+ *     same camp → streak length N.
+ *   • If N ∈ {2, 3, 4} → vote that same camp's number pool.
+ *   • If N ≥ 5 → DO NOT FIRE (let other rules decide).
+ *   • If N = 1 → DO NOT FIRE.
+ *   • NEVER vote the opposite camp.
+ *   • Vote split is uniform across the camp's numbers (single-pool vote).
  */
 
-// IIFE — see partitions.js for why every dual-mode file needs this.
 (function () {
 'use strict';
 
 const _P = (typeof require === 'function')
     ? require('../partitions.js')
     : (typeof window !== 'undefined' ? window.StrategyAnalyserPartitions : {});
-const { POSITIVE_NUMS, NEGATIVE_NUMS, signOf, streakDecay } = _P;
+const { POSITIVE_NUMS, NEGATIVE_NUMS, signOf } = _P;
 
 const NAME      = 'sign-streak';
-const BASE_WGT  = 0.30;
-const LOOK_BACK = 6;       // examine the last 6 spins max
+const BASE_WGT  = 0.80;   // user-locked global weight (was 0.30)
+const MIN_FIRE  = 2;      // streak must reach this length
+const MAX_FIRE  = 4;      // above this → skip entirely
 
 function evaluate(snap, sessionState, opts) {
-    const out = [];
     const spins = (snap && snap.meta && snap.meta.spins) || [];
-    if (spins.length < 2) return out;
+    if (spins.length < MIN_FIRE) return [];
 
-    // Compute current streak length (in same sign) ending at last spin.
     const tailSign = signOf(spins[spins.length - 1]);
-    if (!tailSign) return out;   // last actual is 0 / 26 (no sign) — no streak
+    if (!tailSign) return [];   // defensive — partitions cover 0..36 so this shouldn't happen
 
     let length = 1;
-    for (let i = spins.length - 2; i >= 0 && length < LOOK_BACK; i--) {
+    for (let i = spins.length - 2; i >= 0; i--) {
         if (signOf(spins[i]) === tailSign) length++;
         else break;
+        if (length > MAX_FIRE) return [];   // ≥ 5 → skip
     }
+    if (length < MIN_FIRE) return [];       // 1 → skip
+    if (length > MAX_FIRE) return [];       // ≥ 5 → skip
 
-    if (length < 2) return out;  // need at least 2 in a row to call it a streak
-
-    const sameSet = (tailSign === 'POS') ? POSITIVE_NUMS : NEGATIVE_NUMS;
-    const oppSet  = (tailSign === 'POS') ? NEGATIVE_NUMS : POSITIVE_NUMS;
-    const decay   = streakDecay(length);
-
-    const sameWgt = BASE_WGT * decay;
-    const antiWgt = BASE_WGT * (1 - decay);
-
-    if (sameWgt > 0) {
-        out.push({
-            name:        NAME + '-same',
-            fired:       true,
-            candidates:  new Set(sameSet),
-            weight:      sameWgt,
-            reason:      `Last ${length} actuals are all ${tailSign} — `
-                       + `vote ${tailSign} (decay ${decay.toFixed(2)}).`,
-            details:     { sign: tailSign, length, decay, base: BASE_WGT }
-        });
-    }
-    if (antiWgt > 0) {
-        out.push({
-            name:        NAME + '-anti',
-            fired:       true,
-            candidates:  new Set(oppSet),
-            weight:      antiWgt,
-            reason:      `Streak length ${length} — credibility decayed; `
-                       + `vote OPPOSITE (${tailSign === 'POS' ? 'NEG' : 'POS'}) `
-                       + `with weight ${antiWgt.toFixed(2)}.`,
-            details:     { sign: tailSign, length, decay, antiWgt }
-        });
-    }
-    return out;
+    const camp = (tailSign === 'POS') ? POSITIVE_NUMS : NEGATIVE_NUMS;
+    return [{
+        name:        NAME + '-same',
+        fired:       true,
+        candidates:  new Set(camp),
+        weight:      BASE_WGT,
+        reason:      `Last ${length} spins all ${tailSign} — vote ${tailSign} camp `
+                   + `(${camp.size} numbers).`,
+        details:     { sign: tailSign, length, baseWeight: BASE_WGT }
+    }];
 }
 
 const _api = { evaluate, NAME, BASE_WGT };

@@ -1,0 +1,315 @@
+/**
+ * Unit tests for each locked signal (Rules 1-7, minus the parked
+ * gold-flash semantics of Rule 7).
+ *
+ * Specs follow the 2026-06-19 user-locked rule set.
+ */
+
+const sign  = require('../../strategies/strategy-analyser/signals/sign-streak.js');
+const tbl   = require('../../strategies/strategy-analyser/signals/table-streak.js');
+const set   = require('../../strategies/strategy-analyser/signals/set-carry.js');
+const sub   = require('../../strategies/strategy-analyser/signals/sub-anchor-pattern.js');
+const rot   = require('../../strategies/strategy-analyser/signals/cross-cell-rotation.js');
+const conv  = require('../../strategies/strategy-analyser/signals/cross-table-conv.js');
+const _P    = require('../../strategies/strategy-analyser/partitions.js');
+
+function _spinsSnap(spins) {
+    return { meta: { spins } };
+}
+
+// ──────────────────────────────────────────────────────────────────
+// RULE 1 — sign-streak
+// ──────────────────────────────────────────────────────────────────
+describe('Rule 1 — sign-streak', () => {
+
+    test('fires when last 2 spins same camp', () => {
+        // Two POSITIVE spins: 1 (POS), 9 (POS).
+        const out = sign.evaluate(_spinsSnap([1, 9]));
+        expect(out.length).toBe(1);
+        expect(out[0].name).toBe('sign-streak-same');
+        expect(out[0].weight).toBe(0.80);
+        expect(out[0].details.length).toBe(2);
+        expect(out[0].details.sign).toBe('POS');
+    });
+
+    test('fires when last 4 same camp', () => {
+        // 4 POSITIVE: 1, 9, 11, 13
+        const out = sign.evaluate(_spinsSnap([1, 9, 11, 13]));
+        expect(out.length).toBe(1);
+        expect(out[0].details.length).toBe(4);
+    });
+
+    test('does NOT fire when streak ≥ 5', () => {
+        const out = sign.evaluate(_spinsSnap([1, 9, 11, 13, 14]));   // 5 POS in a row
+        expect(out.length).toBe(0);
+    });
+
+    test('does NOT fire on streak of 1', () => {
+        // 5 (NEG), 1 (POS) — streak length 1
+        const out = sign.evaluate(_spinsSnap([5, 1]));
+        expect(out.length).toBe(0);
+    });
+
+    test('never votes opposite camp', () => {
+        const out = sign.evaluate(_spinsSnap([1, 9]));
+        expect(out.some(s => s.name.includes('anti'))).toBe(false);
+    });
+
+    test('0 and 26 are POSITIVE (per partitions.js)', () => {
+        const out = sign.evaluate(_spinsSnap([0, 26]));
+        expect(out.length).toBe(1);
+        expect(out[0].details.sign).toBe('POS');
+    });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// RULE 2 — table-streak
+// ──────────────────────────────────────────────────────────────────
+describe('Rule 2 — table-streak', () => {
+
+    test('fires when last 2 spins same table', () => {
+        // 3 + 26 are both ZERO table
+        const out = tbl.evaluate(_spinsSnap([3, 26]));
+        expect(out.length).toBe(1);
+        expect(out[0].name).toBe('table-streak-same');
+        expect(out[0].weight).toBe(0.80);
+    });
+
+    test('does NOT fire when streak ≥ 5', () => {
+        const out = tbl.evaluate(_spinsSnap([3, 26, 0, 2, 25]));   // 5 ZERO
+        expect(out.length).toBe(0);
+    });
+
+    test('does NOT fire on streak of 1', () => {
+        // ZERO then NINETEEN
+        const out = tbl.evaluate(_spinsSnap([3, 19]));
+        expect(out.length).toBe(0);
+    });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// RULE 3 — set-carry
+// ──────────────────────────────────────────────────────────────────
+describe('Rule 3 — set-carry', () => {
+
+    test('latest is SET_5 → vote SET_5 + SET_0', () => {
+        // 5 is in SET_5
+        const out = set.evaluate(_spinsSnap([5]));
+        const anchor  = out.find(s => s.name === 'set-carry-anchor');
+        const neutral = out.find(s => s.name === 'set-carry-neutral');
+        expect(anchor).toBeDefined();
+        expect(neutral).toBeDefined();
+        expect(anchor.details.anchor).toBe('SET_5');
+        expect(anchor.weight).toBeCloseTo(0.50 * 2 / 3);
+        expect(neutral.weight).toBeCloseTo(0.50 * 1 / 3);
+    });
+
+    test('latest is SET_6 → vote SET_6 + SET_0', () => {
+        const out = set.evaluate(_spinsSnap([6]));
+        const anchor = out.find(s => s.name === 'set-carry-anchor');
+        expect(anchor.details.anchor).toBe('SET_6');
+    });
+
+    test('latest is SET_0 → walk back to SET_5/6 anchor', () => {
+        // SET_5 (32) then SET_0 (0)
+        const out = set.evaluate(_spinsSnap([32, 0]));
+        const anchor = out.find(s => s.name === 'set-carry-anchor');
+        expect(anchor).toBeDefined();
+        expect(anchor.details.anchor).toBe('SET_5');
+    });
+
+    test('history with no SET_5/SET_6 → skip', () => {
+        // All SET_0: 0, 2, 9
+        const out = set.evaluate(_spinsSnap([0, 2, 9]));
+        expect(out.length).toBe(0);
+    });
+
+    test('streak ≥ 5 on same set → skip', () => {
+        // 5 SET_5 in a row: 5, 7, 11, 14, 15
+        const out = set.evaluate(_spinsSnap([5, 7, 11, 14, 15]));
+        expect(out.length).toBe(0);
+    });
+
+    test('never votes the rival set', () => {
+        // SET_5 anchor; ensure SET_6 not in any candidates
+        const out = set.evaluate(_spinsSnap([5]));
+        const set6 = _P.SET_6;
+        out.forEach(s => {
+            for (const n of s.candidates) {
+                expect(set6.has(n) && !_P.SET_0.has(n) && !_P.SET_5.has(n)).toBe(false);
+            }
+        });
+    });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// RULE 4 — sub-anchor cluster — helpers
+// ──────────────────────────────────────────────────────────────────
+function _r(hits, oppHits) {
+    return { perPair: { prev: { hits: { ...hits }, oppHits: { ...oppHits } } } };
+}
+function _mkT12Snap(rows, projEntry) {
+    return {
+        table1: {
+            rows,
+            nextProjections: { prev: projEntry, prev_13opp: projEntry }
+        },
+        table2: { rows: [], nextProjections: {} }
+    };
+}
+const _projAB = {
+    first:  { numbers: [11, 12] },
+    second: { numbers: [21, 22] },
+    third:  { numbers: [31, 32] }
+};
+
+describe('Rule 4 — sub-anchor cluster', () => {
+
+    test('cluster of 2: fires with 40/40/20 split', () => {
+        const rows = [
+            _r({ first: true }, {}),
+            _r({ second: true }, {}),
+            _r({ first: true }, {})
+        ];
+        const out = sub.evaluate(_mkT12Snap(rows, _projAB));
+        const pairOut = out.filter(s => s.name.includes('/T1/prev/'));
+        // Expect 3 entries: A-hit-first (40%), A-hit-second (40%), A-miss-third (20%)
+        const hitFirst = pairOut.find(s => s.name.endsWith('/A-hit-first'));
+        const hitSecond = pairOut.find(s => s.name.endsWith('/A-hit-second'));
+        const missThird = pairOut.find(s => s.name.endsWith('/A-miss-third'));
+        expect(hitFirst).toBeDefined();
+        expect(hitSecond).toBeDefined();
+        expect(missThird).toBeDefined();
+        expect(hitFirst.weight).toBeCloseTo(0.30 * 0.40);
+        expect(hitSecond.weight).toBeCloseTo(0.30 * 0.40);
+        expect(missThird.weight).toBeCloseTo(0.30 * 0.20);
+    });
+
+    test('cluster of 1: fires with 30/30/20/20 split + 13-opp mirror', () => {
+        const rows = [
+            _r({ first: true }, {}),
+            _r({ first: true }, {}),
+            _r({ first: true }, {})
+        ];
+        const out = sub.evaluate(_mkT12Snap(rows, _projAB));
+        const names = out.filter(s => s.name.includes('/T1/prev/')).map(s => s.name);
+        expect(names.some(n => n.endsWith('/B-hit-first'))).toBe(true);
+        expect(names.some(n => n.endsWith('/B-mirror-first'))).toBe(true);
+        expect(names.some(n => n.endsWith('/B-miss-second'))).toBe(true);
+        expect(names.some(n => n.endsWith('/B-miss-third'))).toBe(true);
+
+        const hit = out.find(s => s.name.endsWith('/T1/prev/B-hit-first'));
+        const miss = out.find(s => s.name.endsWith('/T1/prev/B-miss-second'));
+        expect(hit.weight).toBeCloseTo(0.30 * 0.30);
+        expect(miss.weight).toBeCloseTo(0.30 * 0.20);
+    });
+
+    test('cluster of 3 → wait (no entries on this side)', () => {
+        const rows = [
+            _r({ first: true }, {}),
+            _r({ second: true }, {}),
+            _r({ third: true }, {})
+        ];
+        const out = sub.evaluate(_mkT12Snap(rows, _projAB));
+        const pairOut = out.filter(s => s.name.includes('/T1/prev/'));
+        // No A-* or B-* entries should fire for cluster-of-3.
+        expect(pairOut.length).toBe(0);
+    });
+
+    test('miss in last 3 → does NOT fire', () => {
+        const rows = [
+            _r({ first: true }, {}),
+            _r({}, {}),                  // miss
+            _r({ first: true }, {})
+        ];
+        const out = sub.evaluate(_mkT12Snap(rows, _projAB));
+        const pairOut = out.filter(s => s.name.includes('/T1/prev/'));
+        expect(pairOut.length).toBe(0);
+    });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// RULE 6 — cross-cell-rotation
+// ──────────────────────────────────────────────────────────────────
+describe('Rule 6 — cross-cell-rotation', () => {
+
+    test('fires on strict P-13O-P-13O alternation', () => {
+        const rows = [
+            _r({ first: true }, {}),                 // P
+            _r({},              { second: true }),   // 13O
+            _r({ second: true }, {}),                // P
+            _r({},              { third: true })     // 13O → predict P
+        ];
+        const out = rot.evaluate(_mkT12Snap(rows, _projAB));
+        expect(out.length).toBeGreaterThan(0);
+        const names = out.map(s => s.name);
+        expect(names.every(n => n.includes('/T1/prev/'))).toBe(true);
+    });
+
+    test('does NOT fire when a row is BOTH', () => {
+        const rows = [
+            _r({ first: true }, {}),                  // P
+            _r({ first: true }, { first: true }),     // BOTH → breaks
+            _r({},              { first: true }),     // 13O
+            _r({ first: true }, {})                   // P
+        ];
+        const out = rot.evaluate(_mkT12Snap(rows, _projAB));
+        expect(out.length).toBe(0);
+    });
+
+    test('1-distinct-slot split: 50/25/25', () => {
+        // Last 4 spins alternate P → 13O → P → 13O. Past predicted-side
+        // (P) hits are spins 0 and 2, both hitting only `first`.
+        // Predict 13O. But wait — we need to look at past PREDICTED-side
+        // hits. Latest is 13O → predict P. Past P hits = spins 0, 2,
+        // both first → 1 distinct → 50/25/25.
+        const rows = [
+            _r({ first: true }, {}),                 // P
+            _r({},              { second: true }),   // 13O
+            _r({ first: true }, {}),                 // P
+            _r({},              { third: true })     // 13O
+        ];
+        const out = rot.evaluate(_mkT12Snap(rows, _projAB));
+        // Predicted side is the OPPOSITE of last labelled hit (13O → P).
+        const main = out.find(s => s.name.endsWith('/1-hit-first'));
+        const restA = out.find(s => s.name.endsWith('/1-rest-second'));
+        const restB = out.find(s => s.name.endsWith('/1-rest-third'));
+        expect(main).toBeDefined();
+        expect(restA).toBeDefined();
+        expect(restB).toBeDefined();
+        expect(main.weight).toBeCloseTo(0.30 * 0.50);
+        expect(restA.weight).toBeCloseTo(0.30 * 0.25);
+        expect(restB.weight).toBeCloseTo(0.30 * 0.25);
+    });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// RULE 7 — cross-table-conv (gold-streak detector — uses parked
+// distance-match semantics from Backlog #1).
+// Tests are intentionally minimal: verify the qualifying condition
+// and tie-handling shape. Detailed gold-flash correctness is part
+// of the parked discussion.
+// ──────────────────────────────────────────────────────────────────
+describe('Rule 7 — cross-table-conv', () => {
+
+    test('returns nothing when T3 has < 2 rows', () => {
+        const snap = { table3: { rows: [], nextProjections: {} } };
+        const out = conv.evaluate(snap);
+        expect(out).toEqual([]);
+    });
+
+    test('returns nothing when no pair-family has gold on last 2 rows', () => {
+        // Build T3 with cells whose distances are all > 1 apart so no
+        // gold ever lights up.
+        const rows = [
+            { actual: 0,  perPair: { prev: { refNum: 14, ref13Opp: 1  } } },
+            { actual: 7,  perPair: { prev: { refNum: 14, ref13Opp: 1  } } },
+            { actual: 14, perPair: { prev: { refNum: 14, ref13Opp: 1  } } }
+        ];
+        const snap = {
+            table3: { rows, nextProjections: { prev: { numbers: [99] } } }
+        };
+        const out = conv.evaluate(snap);
+        expect(out).toEqual([]);
+    });
+});

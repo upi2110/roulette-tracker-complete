@@ -1,158 +1,193 @@
 /**
- * signals/cross-table-conv.js — Rule #7 (T1 ∧ T2 ∧ T3 confluence).
+ * signals/cross-table-conv.js — Rule 7: T3 golden-pair signal.
  *
- * User-spec rewrite 2026-06-19 (second correctness fix):
+ * User-locked spec (2026-06-19):
  *
- *   Confluence is a SUSTAINED multi-spin pattern across all 3
- *   tables — not a single-spin alignment. It fires per pair-family
- *   per side when ALL of:
+ * Scope: T3 ONLY. Each pair-family is treated as ONE combined group
+ * (P-side and 13-opp-side together — NOT split).
  *
- *     T1: last LOOK_BACK consecutive spins, on this side, all hit,
- *         and hits cluster on exactly 2 of {first, second, third}
- *         sub-anchors  (i.e. same shape as sub-anchor-pattern).
+ * "Gold-highlighted cell" definition (PARKED — see Backlog #1):
+ *   For now this uses the same algorithm Electron and the HTML mirror
+ *   use today: position-code distance match between consecutive rows.
+ *   A cell goes gold when its position-code distance is within ±1 of
+ *   some cell's distance on the adjacent row (cross-side matching
+ *   allowed). The chain walks back from the newest pair-of-rows and
+ *   stops at the first non-match.
  *
- *     T2: same condition as T1.
+ *   The user has flagged this semantic as wrong (should be hitBetPool-
+ *   based). When that discussion resolves, swap the detector below and
+ *   this signal logic stays unchanged.
  *
- *     T3: "golden hits" — at least MIN_GOLDEN of the last LOOK_BACK
- *         T3 rows had hitAnchor=true on this family. (Anchor cells
- *         are the purple/green specials — the highest-conviction
- *         T3 picks.)
+ * Qualifying condition:
+ *   A pair-family qualifies if BOTH of the latest 2 T3 rows have at
+ *   least one gold cell on that pair (any of pair-side or 13-opp-side
+ *   counts — combined view).
  *
- *   Side is checked independently:
- *     /same → uses T1.hits, T2.hits, T3 same-side anchor history
- *     /opp  → uses T1.oppHits, T2.oppHits, T3 opp-side history
+ * Selection:
+ *   For each qualifying pair, count the bottom-up streak — how many
+ *   consecutive rows starting from the newest have at least one gold
+ *   cell on this pair. The shortest streak wins.
  *
- *   Candidates: when /same fires → T3 sameSide bet pool;
- *               when /opp fires  → T3 oppSide bet pool;
- *               fallback → T3 numbers (full bet pool).
+ *   • Single winner → vote that pair's full T3 bet pool (pair.numbers,
+ *     which is already sameSide ∪ oppSide with ±1 wheel neighbours).
+ *   • Tie → vote the INTERSECTION of the tied pairs' bet pools.
+ *   • Empty intersection → fall back to UNION of the tied pairs.
  *
- *   Weight unchanged (1.20).
- *
- *   PRIOR BUG: this signal used to fire on ANY single-spin hit on
- *   any side per table, claiming "T1 ∧ T2 ∧ T3 confluence" when in
- *   reality each table hit on a different side. Logged as the most
- *   damaging analyser correctness defect.
+ * Skip when no pair-family qualifies or T3 has fewer than 2 rows.
  */
 
-// IIFE — see partitions.js header.
 (function () {
 'use strict';
 
-const NAME       = 'cross-table-conv';
-const BASE_WGT   = 1.20;
-const LOOK_BACK  = 3;     // last N rows considered "recent"
-const MIN_GOLDEN = 2;     // ≥ this many T3 anchor hits in LOOK_BACK
+const _T = (typeof require === 'function')
+    ? require('../../../core/tables/projections.js')
+    : (typeof window !== 'undefined' ? window.CoreTables : null);
 
-/**
- * Check the 2-of-3 sub-anchor cluster condition on T1 or T2 for one
- * side over the last LOOK_BACK consecutive rows.
- *
- * Returns { fired: bool, distinctHit: Array<'first'|'second'|'third'>,
- *           counts: {first, second, third}, streakRows }
- *
- *   • Streak breaks on any row that had no hit on this side at all.
- *   • "Cluster" = distinct hit positions over the streak ∈ {1, 2}.
- *     (3 means all three sub-anchors hit — not a cluster.)
- *   • LOOK_BACK consecutive hits are required (no misses inside).
- */
-function _clusterCheck(tableData, famKey, side /* 'same' | 'opp' */) {
-    const result = { fired: false, distinctHit: [], counts: { first:0, second:0, third:0 }, streakRows: 0 };
-    const rows = tableData && tableData.rows;
-    if (!Array.isArray(rows) || rows.length < LOOK_BACK) return result;
+const NAME     = 'cross-table-conv';
+const BASE_WGT = 1.20;
 
-    for (let i = rows.length - 1; i >= Math.max(0, rows.length - LOOK_BACK); i--) {
-        const ent = rows[i].perPair && rows[i].perPair[famKey];
-        if (!ent) break;
-        const hits = (side === 'same') ? ent.hits : ent.oppHits;
-        if (!hits) break;
-        const anyHit = !!(hits.first || hits.second || hits.third);
-        if (!anyHit) break;
-        if (hits.first)  result.counts.first++;
-        if (hits.second) result.counts.second++;
-        if (hits.third)  result.counts.third++;
-        result.streakRows++;
-    }
+// ── Gold-flash detection (mirror of Electron's algorithm) ──────────
+function _distOf(code) {
+    if (!code || code === 'XX') return null;
+    if (code === 'S+0' || code === 'O+0') return 0;
+    const m = String(code).match(/[+-](\d+)$/);
+    return m ? parseInt(m[1], 10) : null;
+}
 
-    if (result.streakRows < LOOK_BACK) return result;
-    const distinct = ['first','second','third'].filter(k => result.counts[k] > 0);
-    if (distinct.length < 1 || distinct.length > 2) return result;
-    result.distinctHit = distinct;
-    result.fired = true;
-    return result;
+function _t3RowInfo(rows, families) {
+    if (!_T) return [];
+    return rows.map(row => {
+        const info = {};
+        families.forEach(fam => {
+            const e = row.perPair && row.perPair[fam];
+            if (!e) { info[fam] = null; return; }
+            const pairCode    = (e.refNum   != null) ? _T.calculatePositionCode(e.refNum,   row.actual) : 'XX';
+            const pair13Code  = (e.ref13Opp != null) ? _T.calculatePositionCode(e.ref13Opp, row.actual) : 'XX';
+            info[fam] = {
+                pairDist:   _distOf(pairCode),
+                pair13Dist: _distOf(pair13Code)
+            };
+        });
+        return info;
+    });
 }
 
 /**
- * Count T3 "golden" anchor hits for one family on one side over the
- * last LOOK_BACK rows. Golden = hitAnchor=true (actual fell on a
- * purple/green anchor cell). Side filter: same → hitSameSide must
- * also be true; opp → hitOppSide must also be true.
- *
- * Returns the count (0..LOOK_BACK).
+ * Returns a Set of "rowIdx:famKey:cellType" strings (cellType ∈
+ * {pair, pair13Opp}). Same chain-walk semantics as the HTML writer
+ * and Electron renderer.
  */
-function _goldenCount(table3, famKey, side) {
-    const rows = table3 && table3.rows;
-    if (!Array.isArray(rows) || !rows.length) return 0;
-    let count = 0;
-    for (let i = rows.length - 1; i >= Math.max(0, rows.length - LOOK_BACK); i--) {
-        const ent = rows[i].perPair && rows[i].perPair[famKey];
-        if (!ent) continue;
-        if (!ent.hitAnchor) continue;
-        if (side === 'same' && !ent.hitSameSide) continue;
-        if (side === 'opp'  && !ent.hitOppSide)  continue;
-        count++;
-    }
-    return count;
+function _computeGoldFlash(rows, families) {
+    const out = new Set();
+    if (rows.length < 2 || !_T) return out;
+    const info = _t3RowInfo(rows, families);
+    families.forEach(fam => {
+        for (let i = rows.length - 2; i >= 0; i--) {
+            const upper = info[i] && info[i][fam];
+            const lower = info[i + 1] && info[i + 1][fam];
+            if (!upper || !lower) break;
+            const uList = [];
+            const lList = [];
+            if (upper.pairDist   != null) uList.push({ dist: upper.pairDist,   cell: 'pair' });
+            if (upper.pair13Dist != null) uList.push({ dist: upper.pair13Dist, cell: 'pair13Opp' });
+            if (lower.pairDist   != null) lList.push({ dist: lower.pairDist,   cell: 'pair' });
+            if (lower.pair13Dist != null) lList.push({ dist: lower.pair13Dist, cell: 'pair13Opp' });
+            if (!uList.length || !lList.length) break;
+            let matched = null;
+            for (const u of uList) {
+                for (const l of lList) {
+                    if (Math.abs(u.dist - l.dist) <= 1) { matched = { u, l }; break; }
+                }
+                if (matched) break;
+            }
+            if (!matched) break;
+            out.add(i       + ':' + fam + ':' + matched.u.cell);
+            out.add((i + 1) + ':' + fam + ':' + matched.l.cell);
+        }
+    });
+    return out;
+}
+
+function _rowHasGoldForFam(flashSet, rowIdx, fam) {
+    return flashSet.has(rowIdx + ':' + fam + ':pair')
+        || flashSet.has(rowIdx + ':' + fam + ':pair13Opp');
 }
 
 function evaluate(snap, sessionState, opts) {
-    if (!snap) return [];
-    const out = [];
-    const t3Proj = (snap.table3 && snap.table3.nextProjections) || {};
-    const families = Object.keys(t3Proj);
+    if (!snap || !snap.table3) return [];
+    const t3   = snap.table3;
+    const rows = t3.rows || [];
+    if (rows.length < 2) return [];
+    const proj     = t3.nextProjections || {};
+    const families = Object.keys(proj);
+    if (families.length === 0) return [];
 
-    families.forEach(famKey => {
-        const projEntry = t3Proj[famKey];
+    const flashSet = _computeGoldFlash(rows, families);
+    const lastIdx  = rows.length - 1;
 
-        ['same', 'opp'].forEach(side => {
-            const t1 = _clusterCheck(snap.table1, famKey, side);
-            if (!t1.fired) return;
-            const t2 = _clusterCheck(snap.table2, famKey, side);
-            if (!t2.fired) return;
-            const golden = _goldenCount(snap.table3, famKey, side);
-            if (golden < MIN_GOLDEN) return;
+    // 1. Find qualifying pairs: gold on BOTH latest 2 rows.
+    const qualifying = families.filter(fam =>
+        _rowHasGoldForFam(flashSet, lastIdx,     fam) &&
+        _rowHasGoldForFam(flashSet, lastIdx - 1, fam)
+    );
+    if (qualifying.length === 0) return [];
 
-            // Candidate pool: prefer the side-specific T3 numbers;
-            // fall back to the full bet pool if a side-split isn't
-            // available on this nextProjections entry.
-            const sidePool = (side === 'same') ? projEntry.sameSide : projEntry.oppSide;
-            const cands = new Set((Array.isArray(sidePool) && sidePool.length)
-                ? sidePool
-                : (projEntry.numbers || []));
-            if (cands.size === 0) return;
-
-            const sideLabel = (side === 'same') ? 'SAME (P)' : 'OPP (P-13opp)';
-            const t1Hits = t1.distinctHit.join('+');
-            const t2Hits = t2.distinctHit.join('+');
-            out.push({
-                name:       NAME + '/' + famKey + '/' + side,
-                fired:      true,
-                candidates: cands,
-                weight:     BASE_WGT,
-                reason:     `${famKey} ${sideLabel} confluence: `
-                          + `T1 ${LOOK_BACK}-row cluster on ${t1Hits}, `
-                          + `T2 ${LOOK_BACK}-row cluster on ${t2Hits}, `
-                          + `T3 ${golden}/${LOOK_BACK} golden anchor hits.`,
-                details:    {
-                    famKey, side,
-                    refNum: projEntry.refNum, ref13Opp: projEntry.ref13Opp,
-                    t1: { distinctHit: t1.distinctHit, counts: t1.counts, streakRows: t1.streakRows },
-                    t2: { distinctHit: t2.distinctHit, counts: t2.counts, streakRows: t2.streakRows },
-                    t3: { goldenHits: golden, lookBack: LOOK_BACK, minGolden: MIN_GOLDEN }
-                }
-            });
-        });
+    // 2. Bottom-up streak per qualifying pair.
+    const streaks = {};
+    qualifying.forEach(fam => {
+        let n = 0;
+        for (let i = lastIdx; i >= 0; i--) {
+            if (_rowHasGoldForFam(flashSet, i, fam)) n++;
+            else break;
+        }
+        streaks[fam] = n;
     });
-    return out;
+
+    // 3. Shortest-streak winner(s).
+    const minStreak = Math.min(...qualifying.map(f => streaks[f]));
+    const winners   = qualifying.filter(f => streaks[f] === minStreak);
+
+    // 4. Build candidate set.
+    let candidates;
+    let mode;
+    if (winners.length === 1) {
+        candidates = new Set((proj[winners[0]] && proj[winners[0]].numbers) || []);
+        mode = 'single';
+    } else {
+        // Tie → intersection, fall back to union if empty.
+        const pools = winners.map(f => new Set((proj[f] && proj[f].numbers) || []));
+        const inter = new Set();
+        if (pools.length > 0) {
+            for (const n of pools[0]) {
+                if (pools.every(p => p.has(n))) inter.add(n);
+            }
+        }
+        if (inter.size > 0) {
+            candidates = inter;
+            mode = 'tie-intersection';
+        } else {
+            const uni = new Set();
+            pools.forEach(p => p.forEach(n => uni.add(n)));
+            candidates = uni;
+            mode = 'tie-union-fallback';
+        }
+    }
+    if (candidates.size === 0) return [];
+
+    const reason = (winners.length === 1)
+        ? `T3 golden-pair: ${winners[0]} qualifies (gold on last 2 rows, `
+          + `bottom-up streak=${minStreak}). Vote ${candidates.size} bet-pool numbers.`
+        : `T3 golden-pair tie (${winners.join(', ')}) — bottom-up streak=${minStreak}. `
+          + `Mode=${mode}, vote ${candidates.size} number${candidates.size === 1 ? '' : 's'}.`;
+
+    return [{
+        name:        NAME + '/' + winners.join('+'),
+        fired:       true,
+        candidates,
+        weight:      BASE_WGT,
+        reason,
+        details:     { winners, minStreak, mode, allQualifying: qualifying, streaks }
+    }];
 }
 
 const _api = { evaluate, NAME, BASE_WGT };

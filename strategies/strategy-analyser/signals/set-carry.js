@@ -1,83 +1,85 @@
 /**
- * signals/set-carry.js — Rule #3 (SET_0 / SET_5 / SET_6 carry-forward).
+ * signals/set-carry.js — Rule 3: Spin-history set carry-forward.
  *
- * If the last actual lives in SET_5 → vote for SET_5 numbers.
- * If the last actual lives in SET_6 → vote for SET_6 numbers.
- * If the last actual lives in SET_0 → "neutral" — vote SET_0 with
- *                                     a damped base weight (×0.5).
+ * User-locked spec (2026-06-19):
+ *   • Three sets from partitions.js: SET_0 (13 nums), SET_5 (12),
+ *     SET_6 (12). Every wheel number is in exactly one.
+ *   • Walk back from the latest spin to find the most recent ANCHOR
+ *     spin — defined as a spin in SET_5 or SET_6. Any SET_0 spins
+ *     encountered along the way are SKIPPED, not used as anchor.
+ *   • When an anchor is found:
+ *       anchor=SET_5 → vote SET_5 numbers (~2/3 weight) + SET_0 (~1/3).
+ *       anchor=SET_6 → vote SET_6 numbers (~2/3 weight) + SET_0 (~1/3).
+ *   • NEVER vote the rival set (SET_5 fires → never vote SET_6, and
+ *     vice versa).
+ *   • If the active set has streaked 5+ in a row → skip (let other
+ *     rules decide).
+ *   • If no SET_5/SET_6 anywhere in history → skip.
  *
- * Same anti-streak decay as the other carry signals: if the last N
- * actuals all land in the same active set, the SAME vote decays and
- * the OPPOSITE-set vote grows. We split the opposite vote evenly
- * across the two non-active sets.
+ * Vote weight per signal entry is the *fraction of the rule's global
+ * weight* — the aggregator multiplies by global weight. 2/3 and 1/3
+ * are the locked ratios.
  */
 
-// IIFE — see partitions.js header.
 (function () {
 'use strict';
 
 const _P = (typeof require === 'function')
     ? require('../partitions.js')
     : (typeof window !== 'undefined' ? window.StrategyAnalyserPartitions : {});
-const { SET_0, SET_5, SET_6, setOf, streakDecay } = _P;
+const { SET_0, SET_5, SET_6, setOf } = _P;
 
-const NAME      = 'set-carry';
-const BASE_WGT  = 0.25;
-const NEUTRAL_DAMPING = 0.5;  // SET_0 is "neutral" — half weight
-const LOOK_BACK = 6;
+const NAME       = 'set-carry';
+const BASE_WGT   = 0.50;   // user-locked global weight (was 0.25)
+const ANCHOR_FRAC = 2 / 3; // share of the rule's weight for the anchor set
+const NEUTRAL_FRAC = 1 / 3; // share for SET_0
+const MAX_STREAK = 4;      // ≥ 5 same-set in a row → skip
 
 const SETS = { SET_0, SET_5, SET_6 };
 
 function evaluate(snap, sessionState, opts) {
-    const out = [];
     const spins = (snap && snap.meta && snap.meta.spins) || [];
-    if (spins.length < 1) return out;
+    if (spins.length < 1) return [];
 
-    const tailSet = setOf(spins[spins.length - 1]);
-    if (!tailSet) return out;
+    // Find most-recent SET_5 / SET_6 anchor, skipping SET_0 spins.
+    let anchorIdx = -1;
+    for (let i = spins.length - 1; i >= 0; i--) {
+        const s = setOf(spins[i]);
+        if (s === 'SET_5' || s === 'SET_6') { anchorIdx = i; break; }
+    }
+    if (anchorIdx < 0) return [];
 
-    // Streak length
-    let length = 1;
-    for (let i = spins.length - 2; i >= 0 && length < LOOK_BACK; i--) {
-        if (setOf(spins[i]) === tailSet) length++;
-        else break;
+    const anchorSet = setOf(spins[anchorIdx]);
+
+    // Streak check: how many consecutive spins back from the latest are
+    // in the same set as the latest? If that streak ≥ 5, skip.
+    const tail = setOf(spins[spins.length - 1]);
+    if (tail) {
+        let length = 1;
+        for (let i = spins.length - 2; i >= 0; i--) {
+            if (setOf(spins[i]) === tail) length++;
+            else break;
+            if (length > MAX_STREAK) return [];
+        }
     }
 
-    const decay   = streakDecay(length);
-    const damping = (tailSet === 'SET_0') ? NEUTRAL_DAMPING : 1.0;
-    const sameWgt = BASE_WGT * decay * damping;
-    const antiWgt = BASE_WGT * (1 - decay) * damping;
-
-    if (sameWgt > 0) {
-        out.push({
-            name:        NAME + '-same',
-            fired:       true,
-            candidates:  new Set(SETS[tailSet]),
-            weight:      sameWgt,
-            reason:      `Last actual in ${tailSet}`
-                       + (length >= 2 ? ` (streak ${length})` : '')
-                       + ` — vote same set (weight ${sameWgt.toFixed(2)}).`,
-            details:     { set: tailSet, length, decay, damping }
-        });
-    }
-
-    if (antiWgt > 0 && length >= 2) {
-        // Split anti weight across the OTHER two sets.
-        const others = ['SET_0', 'SET_5', 'SET_6'].filter(k => k !== tailSet);
-        const halfWgt = antiWgt / others.length;
-        others.forEach(k => {
-            out.push({
-                name:        NAME + '-anti-' + k,
-                fired:       true,
-                candidates:  new Set(SETS[k]),
-                weight:      halfWgt,
-                reason:      `Streak ${length} on ${tailSet} — `
-                           + `cycle to ${k} (weight ${halfWgt.toFixed(2)}).`,
-                details:     { set: k, srcStreak: length, fromSet: tailSet }
-            });
-        });
-    }
-    return out;
+    return [{
+        name:        NAME + '-anchor',
+        fired:       true,
+        candidates:  new Set(SETS[anchorSet]),
+        weight:      BASE_WGT * ANCHOR_FRAC,
+        reason:      `Most recent SET_5/SET_6 anchor was ${anchorSet} `
+                   + `(${spins.length - anchorIdx - 1} spins ago) — `
+                   + `vote ${anchorSet} (${ANCHOR_FRAC.toFixed(2)} of rule weight).`,
+        details:     { anchor: anchorSet, anchorIdx, baseWeight: BASE_WGT, share: ANCHOR_FRAC }
+    }, {
+        name:        NAME + '-neutral',
+        fired:       true,
+        candidates:  new Set(SETS.SET_0),
+        weight:      BASE_WGT * NEUTRAL_FRAC,
+        reason:      `Carry SET_0 alongside anchor (${NEUTRAL_FRAC.toFixed(2)} of rule weight).`,
+        details:     { anchor: anchorSet, baseWeight: BASE_WGT, share: NEUTRAL_FRAC }
+    }];
 }
 
 const _api = { evaluate, NAME, BASE_WGT };
