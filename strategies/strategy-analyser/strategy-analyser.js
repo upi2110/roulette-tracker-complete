@@ -66,10 +66,12 @@
         : (typeof window !== 'undefined' ? window.CoreTables : null);
 
     // Signals (Phase 2) — pure modules; the aggregator below combines
-    // their outputs into the final decision.
+    // their outputs into the final decision. In the browser, the
+    // signal scripts attach themselves to window.StrategyAnalyserSignals
+    // and the registry exposes window.StrategyAnalyserSignalsIndex.
     const Signals = (typeof require === 'function')
         ? require('./signals/index.js')
-        : null;     // Browser-side: Phase 4 will add script tags + window globals.
+        : (typeof window !== 'undefined' ? window.StrategyAnalyserSignalsIndex : null);
 
     if (!Snapshot || !Tables) {
         const msg = 'StrategyAnalyser: locked snapshot pipeline not available. ' +

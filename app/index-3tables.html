@@ -202,6 +202,19 @@
      so it can hot-replace as the Test(Lab) dispatcher target. Loaded
      AFTER core/tables/snapshot.js (above) so the in-process snapshot()
      call inside decide() resolves immediately. -->
+<!-- Strategy-analyser signals (phase 2). MUST load BEFORE strategy-analyser.js
+     so the registry picks them up from window.StrategyAnalyserSignals.
+     Without these the analyser falls back to Signals=null and emits
+     WAIT-with-zero-signals every spin. -->
+<script src="../strategies/strategy-analyser/partitions.js"></script>
+<script src="../strategies/strategy-analyser/signals/sign-streak.js"></script>
+<script src="../strategies/strategy-analyser/signals/table-streak.js"></script>
+<script src="../strategies/strategy-analyser/signals/set-carry.js"></script>
+<script src="../strategies/strategy-analyser/signals/sub-anchor-pattern.js"></script>
+<script src="../strategies/strategy-analyser/signals/side-only-streak.js"></script>
+<script src="../strategies/strategy-analyser/signals/cross-cell-rotation.js"></script>
+<script src="../strategies/strategy-analyser/signals/cross-table-conv.js"></script>
+<script src="../strategies/strategy-analyser/signals/index.js"></script>
 <script src="../strategies/strategy-analyser/strategy-analyser.js"></script>
 <!-- Phase 4: settings UI + Explain popup. Both injected at runtime;
      they look for #strategyLabGreyToggleWrap as the anchor DOM node

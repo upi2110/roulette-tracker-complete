@@ -14,7 +14,10 @@
 
 'use strict';
 
-const { SET_0, SET_5, SET_6, setOf, streakDecay } = require('../partitions.js');
+const _P = (typeof require === 'function')
+    ? require('../partitions.js')
+    : (typeof window !== 'undefined' ? window.StrategyAnalyserPartitions : {});
+const { SET_0, SET_5, SET_6, setOf, streakDecay } = _P;
 
 const NAME      = 'set-carry';
 const BASE_WGT  = 0.25;
@@ -75,4 +78,9 @@ function evaluate(snap, sessionState, opts) {
     return out;
 }
 
-module.exports = { evaluate, NAME, BASE_WGT };
+const _api = { evaluate, NAME, BASE_WGT };
+if (typeof module !== 'undefined' && module.exports) module.exports = _api;
+if (typeof window !== 'undefined') {
+    window.StrategyAnalyserSignals = window.StrategyAnalyserSignals || {};
+    window.StrategyAnalyserSignals.setCarry = _api;
+}

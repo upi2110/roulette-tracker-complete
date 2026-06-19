@@ -83,7 +83,7 @@ function streakDecay(length) {
     return Math.max(0, 1 - (length - 2) / 4);
 }
 
-module.exports = {
+const api = {
     POSITIVE_NUMS, NEGATIVE_NUMS,
     ZERO_TABLE, NINETEEN_TABLE,
     SET_0, SET_5, SET_6,
@@ -91,6 +91,12 @@ module.exports = {
     streakDecay
 };
 
+// Dual-mode export — Node CommonJS + browser window global.
+// (Order matters: in browser, `module` is undefined; guard prevents
+// ReferenceError so the window assignment below still runs.)
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+}
 if (typeof window !== 'undefined') {
-    window.StrategyAnalyserPartitions = module.exports;
+    window.StrategyAnalyserPartitions = api;
 }

@@ -235,16 +235,43 @@ class AutoUpdateOrchestrator {
                 this._analyserSessionState = window.StrategyAnalyser.createSessionState();
             }
 
-            // The analyser reads selections/filters/visibleFamilies
-            // straight from the snapshot it builds internally — so we
-            // just need to hand it the spin list. ctx.params is reserved
-            // for the Test(Lab) settings UI (phase 4) to override the
-            // confidence floor / max numbers.
+            // Gather user selections + filters + visible-families so
+            // the analyser's snapshot has the same context the HTML
+            // mirror sees. Mirrors snapshot-bridge.js. Without this
+            // the analyser's UNION-with-user-picks step finds nothing
+            // to union → user clicks have no effect on predictions.
+            const _snapOpts = { selections: { table1: [], table2: [], table3: [] } };
+            try {
+                const p = window.aiPanel;
+                if (p) {
+                    const t1 = p.table1Selections || {};
+                    const t2 = p.table2Selections || {};
+                    const t3 = p.table3Selections;
+                    _snapOpts.selections.table1 = Object.keys(t1).filter(k => !!t1[k]).sort();
+                    _snapOpts.selections.table2 = Object.keys(t2).filter(k => !!t2[k]).sort();
+                    _snapOpts.selections.table3 = (t3 && typeof t3.forEach === 'function')
+                        ? Array.from(t3).sort()
+                        : (Array.isArray(t3) ? t3.slice().sort() : []);
+                }
+            } catch (_) { /* defensive */ }
+            try {
+                if (typeof window.getVisiblePairFamilies === 'function') {
+                    _snapOpts.visibleFamilies = Array.from(window.getVisiblePairFamilies()).sort();
+                }
+            } catch (_) { /* defensive */ }
+            try {
+                const w = window.rouletteWheel;
+                if (w && w.filters && typeof w.filters === 'object') {
+                    _snapOpts.filters = Object.assign({}, w.filters);
+                }
+            } catch (_) { /* defensive */ }
+
             decision = window.StrategyAnalyser.decide(
                 window.aiAutoEngine, spinsArr, idx,
                 {
                     sessionState: this._analyserSessionState,
-                    params:       (window.strategyAnalyserParams) || {}
+                    params:       (window.strategyAnalyserParams) || {},
+                    snapshotOpts: _snapOpts
                 }
             );
             console.log('🧪 STRATEGY-ANALYSER DECISION:', decision);

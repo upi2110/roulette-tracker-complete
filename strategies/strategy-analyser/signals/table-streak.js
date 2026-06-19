@@ -7,7 +7,10 @@
 
 'use strict';
 
-const { ZERO_TABLE, NINETEEN_TABLE, tableOf, streakDecay } = require('../partitions.js');
+const _P = (typeof require === 'function')
+    ? require('../partitions.js')
+    : (typeof window !== 'undefined' ? window.StrategyAnalyserPartitions : {});
+const { ZERO_TABLE, NINETEEN_TABLE, tableOf, streakDecay } = _P;
 
 const NAME      = 'table-streak';
 const BASE_WGT  = 0.30;
@@ -59,4 +62,9 @@ function evaluate(snap, sessionState, opts) {
     return out;
 }
 
-module.exports = { evaluate, NAME, BASE_WGT };
+const _api = { evaluate, NAME, BASE_WGT };
+if (typeof module !== 'undefined' && module.exports) module.exports = _api;
+if (typeof window !== 'undefined') {
+    window.StrategyAnalyserSignals = window.StrategyAnalyserSignals || {};
+    window.StrategyAnalyserSignals.tableStreak = _api;
+}

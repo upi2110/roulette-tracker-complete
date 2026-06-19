@@ -14,7 +14,10 @@
 
 'use strict';
 
-const { POSITIVE_NUMS, NEGATIVE_NUMS, signOf, streakDecay } = require('../partitions.js');
+const _P = (typeof require === 'function')
+    ? require('../partitions.js')
+    : (typeof window !== 'undefined' ? window.StrategyAnalyserPartitions : {});
+const { POSITIVE_NUMS, NEGATIVE_NUMS, signOf, streakDecay } = _P;
 
 const NAME      = 'sign-streak';
 const BASE_WGT  = 0.30;
@@ -70,4 +73,9 @@ function evaluate(snap, sessionState, opts) {
     return out;
 }
 
-module.exports = { evaluate, NAME, BASE_WGT };
+const _api = { evaluate, NAME, BASE_WGT };
+if (typeof module !== 'undefined' && module.exports) module.exports = _api;
+if (typeof window !== 'undefined') {
+    window.StrategyAnalyserSignals = window.StrategyAnalyserSignals || {};
+    window.StrategyAnalyserSignals.signStreak = _api;
+}

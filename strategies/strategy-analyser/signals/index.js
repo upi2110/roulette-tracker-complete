@@ -11,23 +11,36 @@
 
 'use strict';
 
-const signStreak       = require('./sign-streak.js');
-const tableStreak      = require('./table-streak.js');
-const setCarry         = require('./set-carry.js');
-const subAnchorPattern = require('./sub-anchor-pattern.js');
-const sideOnlyStreak   = require('./side-only-streak.js');
-const crossCellRotate  = require('./cross-cell-rotation.js');
-const crossTableConv   = require('./cross-table-conv.js');
+// Dual-mode: in Node, require each signal file. In browser, the
+// signals attached themselves to window.StrategyAnalyserSignals when
+// their script tags loaded — read from there.
+let signStreak, tableStreak, setCarry, subAnchorPattern,
+    sideOnlyStreak, crossCellRotate, crossTableConv;
+
+if (typeof require === 'function') {
+    signStreak       = require('./sign-streak.js');
+    tableStreak      = require('./table-streak.js');
+    setCarry         = require('./set-carry.js');
+    subAnchorPattern = require('./sub-anchor-pattern.js');
+    sideOnlyStreak   = require('./side-only-streak.js');
+    crossCellRotate  = require('./cross-cell-rotation.js');
+    crossTableConv   = require('./cross-table-conv.js');
+} else if (typeof window !== 'undefined' && window.StrategyAnalyserSignals) {
+    const S = window.StrategyAnalyserSignals;
+    signStreak       = S.signStreak;
+    tableStreak      = S.tableStreak;
+    setCarry         = S.setCarry;
+    subAnchorPattern = S.subAnchorPattern;
+    sideOnlyStreak   = S.sideOnlyStreak;
+    crossCellRotate  = S.crossCellRotation;
+    crossTableConv   = S.crossTableConv;
+}
 
 const SIGNALS = [
-    signStreak,
-    tableStreak,
-    setCarry,
-    subAnchorPattern,
-    sideOnlyStreak,
-    crossCellRotate,
-    crossTableConv
-];
+    signStreak, tableStreak, setCarry,
+    subAnchorPattern, sideOnlyStreak,
+    crossCellRotate, crossTableConv
+].filter(Boolean);
 
 /**
  * Evaluate every registered signal against the snapshot.
@@ -58,4 +71,8 @@ function evaluateAll(snap, sessionState, opts) {
     return out;
 }
 
-module.exports = { evaluateAll, SIGNALS };
+const _api = { evaluateAll, SIGNALS };
+if (typeof module !== 'undefined' && module.exports) module.exports = _api;
+if (typeof window !== 'undefined') {
+    window.StrategyAnalyserSignalsIndex = _api;
+}

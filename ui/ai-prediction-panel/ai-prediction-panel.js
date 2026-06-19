@@ -2308,6 +2308,18 @@ class AIPredictionPanel {
         if (!this._isTestLabMode()) {
             return;
         }
+        // patter-play: Test(Lab) is now driven by StrategyAnalyser.
+        // The old strategy-lab autopilot would auto-pick pairs +
+        // trigger the V6 cascade, which then OVERRIDES the analyser's
+        // decision (the cascade pushes its own numbers to moneyPanel
+        // and the wheel). Disable it whenever the analyser is loaded.
+        // The UI hook still fires (_applyTestLabUI) below so layout
+        // is unchanged; only the auto-pair-pick and rotation are
+        // suppressed.
+        if (typeof window !== 'undefined' && window.StrategyAnalyser) {
+            this._applyTestLabUI();
+            return;
+        }
         this._applyTestLabUI();
 
         const candidates = (this.table1Pairs || []).map(p => p.key);

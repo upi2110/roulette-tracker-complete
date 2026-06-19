@@ -128,4 +128,9 @@ function evaluate(snap, sessionState, opts) {
     );
 }
 
-module.exports = { evaluate, NAME, BASE_WGT };
+const _api = { evaluate, NAME, BASE_WGT };
+if (typeof module !== 'undefined' && module.exports) module.exports = _api;
+if (typeof window !== 'undefined') {
+    window.StrategyAnalyserSignals = window.StrategyAnalyserSignals || {};
+    window.StrategyAnalyserSignals.subAnchorPattern = _api;
+}
