@@ -23,16 +23,18 @@
 (function () {
     'use strict';
 
-    const POPUP_ID  = 'analyserExplainPopup';
-    const HEADER_ID = 'analyserExplainHeader';
-    const BODY_ID   = 'analyserExplainBody';
-    const CLOSE_ID  = 'analyserExplainClose';
+    const POPUP_ID   = 'analyserExplainPopup';
+    const HEADER_ID  = 'analyserExplainHeader';
+    const BODY_ID    = 'analyserExplainBody';
+    const CLOSE_ID   = 'analyserExplainClose';
+    const POPOUT_ID  = 'analyserExplainPopout';
     const REFRESH_MS = 750;
 
     let _refreshTimer = null;
     let _isDragging   = false;
     let _dragOffset   = { x: 0, y: 0 };
     let _isOpen       = false;
+    let _popoutWin    = null;
 
     function _esc(s) {
         if (s == null) return '';
@@ -76,9 +78,15 @@
                 display:flex;align-items:center;justify-content:space-between;
                 user-select:none;">
                 <span>📖 StrategyAnalyser — How the prediction was built</span>
-                <button id="${CLOSE_ID}" title="Close" style="
-                    background:transparent;border:none;color:#fff;
-                    font-size:16px;cursor:pointer;padding:0 4px;">✕</button>
+                <span style="display:flex;align-items:center;gap:4px;">
+                    <button id="${POPOUT_ID}" title="Open in a separate window" style="
+                        background:transparent;border:1px solid rgba(255,255,255,0.5);
+                        color:#fff;font-size:11px;cursor:pointer;padding:2px 8px;
+                        border-radius:3px;font-weight:600;">🗗 Pop out</button>
+                    <button id="${CLOSE_ID}" title="Close" style="
+                        background:transparent;border:none;color:#fff;
+                        font-size:16px;cursor:pointer;padding:0 4px;">✕</button>
+                </span>
             </div>
             <div id="${BODY_ID}" style="
                 padding:10px 14px;font-size:11px;line-height:1.5;
@@ -102,8 +110,9 @@
         return SA.getLastExplanation(state);
     }
 
-    function _renderBody() {
-        const body = document.getElementById(BODY_ID);
+    function _renderBody(doc) {
+        doc = doc || document;
+        const body = doc.getElementById(BODY_ID);
         if (!body) return;
         const exp = _readExplanation();
         if (!exp) {
@@ -122,16 +131,25 @@
                        + _renderTopScored(exp)
                        + _renderCooldown(exp)
                        + _renderSessionState(exp);
-        _wireSignalsToggle();
+        _wireSignalsToggle(doc);
+    }
+
+    function _renderAll() {
+        _renderBody(document);
+        if (_popoutWin && !_popoutWin.closed) {
+            try { _renderBody(_popoutWin.document); }
+            catch (_) { /* popup closed mid-tick */ }
+        }
     }
 
     // Persisted across re-renders so the user's "show dropped" choice
     // survives the 750ms refresh loop.
     let _showAllSignals = false;
-    function _wireSignalsToggle() {
+    function _wireSignalsToggle(doc) {
+        doc = doc || document;
         const SHOW_ALL_ID = 'analyserSignalsShowAll';
-        const cb = document.getElementById(SHOW_ALL_ID);
-        const rows = document.getElementById(SHOW_ALL_ID + '-rows');
+        const cb = doc.getElementById(SHOW_ALL_ID);
+        const rows = doc.getElementById(SHOW_ALL_ID + '-rows');
         if (!cb || !rows) return;
         cb.checked = _showAllSignals;
         rows.style.display = _showAllSignals ? '' : 'none';
@@ -440,9 +458,9 @@
         // the body's flex:1 1 auto won't trigger the scroll layout.
         popup.style.display = 'flex';
         _isOpen = true;
-        _renderBody();
+        _renderAll();
         if (!_refreshTimer) {
-            _refreshTimer = setInterval(_renderBody, REFRESH_MS);
+            _refreshTimer = setInterval(_renderAll, REFRESH_MS);
         }
     }
 
@@ -450,19 +468,84 @@
         const popup = document.getElementById(POPUP_ID);
         if (popup) popup.style.display = 'none';
         _isOpen = false;
-        if (_refreshTimer) {
+        // Keep the popout alive when the in-window panel is dismissed —
+        // user explicitly popped it out for separate viewing. Only stop
+        // the refresh timer if the popout is also gone.
+        if (_refreshTimer && (!_popoutWin || _popoutWin.closed)) {
             clearInterval(_refreshTimer);
             _refreshTimer = null;
         }
     }
 
-    function isOpen() { return _isOpen; }
+    function popOut() {
+        if (_popoutWin && !_popoutWin.closed) {
+            _popoutWin.focus();
+            return;
+        }
+        const w = (typeof screen !== 'undefined' && screen.availWidth)  ? screen.availWidth  : 1200;
+        const h = (typeof screen !== 'undefined' && screen.availHeight) ? screen.availHeight : 800;
+        const win = window.open('', 'analyserExplainPopout',
+            `width=${Math.min(w, 1100)},height=${Math.min(h, 820)},left=80,top=60,resizable=yes,scrollbars=yes`);
+        if (!win) {
+            alert('Popup blocked — please allow popups for this app.');
+            return;
+        }
+        _popoutWin = win;
+        try { win.moveTo(80, 60); win.resizeTo(Math.min(w, 1100), Math.min(h, 820)); } catch (_) {}
+        win.document.open();
+        win.document.write(`<!doctype html>
+<html><head><meta charset="utf-8">
+<title>StrategyAnalyser — How the prediction was built</title>
+<style>
+    html, body { margin:0; padding:0; height:100%;
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+        background:#0f172a; color:#e2e8f0; }
+    #${HEADER_ID} {
+        padding:10px 14px; background:#14b8a6; color:#fff;
+        font-weight:700; font-size:13px;
+        display:flex; align-items:center; justify-content:space-between;
+        user-select:none;
+    }
+    #${BODY_ID} { padding:12px 16px; font-size:11px; line-height:1.5;
+        height:calc(100vh - 40px); overflow-y:auto; overflow-x:hidden; }
+</style>
+</head><body>
+<div id="${HEADER_ID}">
+    <span>📖 StrategyAnalyser — How the prediction was built</span>
+    <span style="font-size:10px;opacity:0.8;">live · refreshes every ${REFRESH_MS}ms</span>
+</div>
+<div id="${BODY_ID}"><div style="opacity:0.7;">Initialising…</div></div>
+</body></html>`);
+        win.document.close();
+        // Hide the in-window popup while popped out, to avoid two copies
+        // racing for the user's attention. close() leaves the timer
+        // alive because _popoutWin is still open.
+        close();
+        // Force a paint right away — don't wait for the next 750ms tick.
+        _renderAll();
+        // Restart the refresh timer if close() stopped it.
+        if (!_refreshTimer) {
+            _refreshTimer = setInterval(_renderAll, REFRESH_MS);
+        }
+        // When the popout is closed by the user, stop polling it.
+        try {
+            win.addEventListener('beforeunload', () => {
+                _popoutWin = null;
+                if (_refreshTimer && !_isOpen) {
+                    clearInterval(_refreshTimer);
+                    _refreshTimer = null;
+                }
+            });
+        } catch (_) { /* defensive */ }
+    }
+
+    function isOpen() { return _isOpen || !!(_popoutWin && !_popoutWin.closed); }
 
     // ── Drag handlers ────────────────────────────────────────────
 
     function _onDragStart(ev) {
         if (ev.button !== 0) return;
-        if (ev.target && ev.target.id === CLOSE_ID) return;
+        if (ev.target && (ev.target.id === CLOSE_ID || ev.target.id === POPOUT_ID)) return;
         const popup = document.getElementById(POPUP_ID);
         if (!popup) return;
         _isDragging = true;
@@ -491,6 +574,8 @@
         _injectPopup();
         const closeBtn = document.getElementById(CLOSE_ID);
         if (closeBtn) closeBtn.addEventListener('click', close);
+        const popoutBtn = document.getElementById(POPOUT_ID);
+        if (popoutBtn) popoutBtn.addEventListener('click', popOut);
         const header = document.getElementById(HEADER_ID);
         if (header) header.addEventListener('mousedown', _onDragStart);
         window.addEventListener('mousemove', _onDragMove);
@@ -505,6 +590,6 @@
     }
 
     if (typeof window !== 'undefined') {
-        window.StrategyAnalyserExplainPopup = { open, close, isOpen };
+        window.StrategyAnalyserExplainPopup = { open, close, popOut, isOpen };
     }
 })();
