@@ -324,6 +324,61 @@
             (byRule[rid] = byRule[rid] || []).push(e);
         });
 
+        // Anchor label per rule — short, human-readable identifier of
+        // WHAT the rule locked onto this spin (e.g. "POS", "NINETEEN",
+        // "SET_5", "prev (pair)", "prevPlus1+prevPrev"). Returns '—'
+        // when the rule didn't fire.
+        const _anchors = (r, entries) => {
+            if (!entries.length) return '—';
+            const det = (e) => e.details || {};
+            switch (r.id) {
+                case 'signStreak':
+                    return det(entries[0]).sign || '—';
+                case 'tableStreak':
+                    return det(entries[0]).table || '—';
+                case 'setCarry':
+                    return det(entries[0]).anchor || '—';
+                case 'subAnchorPattern':
+                case 'crossCellRotate': {
+                    // Group entries by base pair (entry.details.pairKey
+                    // or famKey). Show comma-separated unique names.
+                    const fams = new Set();
+                    entries.forEach(e => {
+                        const d = det(e);
+                        const k = d.pairKey || d.famKey || '';
+                        if (k) fams.add(k);
+                    });
+                    return Array.from(fams).join(', ') || '—';
+                }
+                case 'crossTableConv':
+                    return (det(entries[0]).winners || []).join(' + ') || '—';
+                default:
+                    return '—';
+            }
+        };
+
+        // Voted-numbers list — union of all entries' candidates for the
+        // rule. Sorted ascending. Comma-separated with copy-friendly
+        // formatting.
+        const _numbers = (entries) => {
+            if (!entries.length) return '—';
+            const all = new Set();
+            entries.forEach(e => {
+                if (e._candidates && Array.isArray(e._candidates)) {
+                    e._candidates.forEach(n => all.add(n));
+                } else if (e.candidatesPreview && Array.isArray(e.candidatesPreview)) {
+                    e.candidatesPreview.forEach(n => all.add(n));
+                }
+            });
+            if (all.size === 0) {
+                // Fall back to count only if the popup doesn't have the
+                // raw lists (Set serialization can lose them mid-trip).
+                const total = entries.reduce((s, e) => s + (e.candidatesCount || 0), 0);
+                return total + ' nums';
+            }
+            return Array.from(all).sort((a, b) => a - b).join(', ');
+        };
+
         const _rule = (r) => {
             const entries = byRule[r.id] || [];
             const fired   = entries.length > 0;
@@ -353,8 +408,10 @@
                         : '');
             }
 
-            const effPct  = fired ? (sumEff * 100).toFixed(1) + '%' : '—';
-            const slots   = fired ? entries.length : '—';
+            const effPct   = fired ? (sumEff * 100).toFixed(1) + '%' : '—';
+            const slots    = fired ? entries.length : '—';
+            const anchors  = fired ? _anchors(r, entries) : '—';
+            const numbers  = fired ? _numbers(entries)    : '—';
 
             return `
                 <tr style="border-bottom:1px solid #1e293b;vertical-align:top;background:${rowBg};">
@@ -368,6 +425,15 @@
                                white-space:nowrap;">${effPct}</td>
                     <td style="padding:4px 6px;color:#94a3b8;text-align:right;
                                white-space:nowrap;">${slots}</td>
+                    <td style="padding:4px 6px;color:#22d3ee;font-size:10px;
+                               font-family:'SF Mono',ui-monospace,monospace;
+                               white-space:nowrap;max-width:180px;overflow:hidden;
+                               text-overflow:ellipsis;"
+                        title="${_esc(anchors)}">${_esc(anchors)}</td>
+                    <td style="padding:4px 6px;color:#cbd5e1;font-size:10px;
+                               font-family:'SF Mono',ui-monospace,monospace;
+                               max-width:260px;word-break:break-word;"
+                        title="${_esc(numbers)}">${_esc(numbers)}</td>
                     <td style="padding:4px 6px;color:${rowColor};font-size:10px;">
                         ${reasonText}
                     </td>
@@ -391,6 +457,8 @@
                         <th style="padding:3px 6px;">Rule</th>
                         <th style="padding:3px 6px;text-align:right;">Eff%</th>
                         <th style="padding:3px 6px;text-align:right;">Slots</th>
+                        <th style="padding:3px 6px;">Anchors</th>
+                        <th style="padding:3px 6px;">Numbers voted</th>
                         <th style="padding:3px 6px;">Reason / why-not</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>

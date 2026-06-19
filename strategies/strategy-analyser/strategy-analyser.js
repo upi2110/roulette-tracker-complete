@@ -746,6 +746,12 @@
                 weight: s.weight,                            // intra-rule fraction
                 effectiveWeight: s._effectiveWeight || 0,    // post-redistribution
                 candidatesCount: s.candidates ? s.candidates.size : 0,
+                // Full sorted candidate list so the popup can render the
+                // "Numbers voted" column (Set serialisation loses values,
+                // so pre-materialise to an Array here).
+                candidatesPreview: s.candidates
+                    ? Array.from(s.candidates).sort((a, b) => a - b)
+                    : [],
                 reason: s.reason,
                 details: s.details || null,
                 ruleId: s._ruleId || null,
