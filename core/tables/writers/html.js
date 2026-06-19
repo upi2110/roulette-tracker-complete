@@ -384,24 +384,96 @@
     // POS column display the same way T1/T2 do.
     const T3_POS_VALID = new Set([...T1_VALID, ...T2_VALID]);
 
-    function _renderT3RowCells(perPair, group, actual, selected) {
+    function _renderT3RowCells(perPair, group, actual, selected, flashSet, rowIdx) {
         const tint    = selected ? 'background:#fffbeb;' : 'background:#fff;';
         const lBorder = selected ? 'border-left:3px solid #facc15;' : '';
         const rBorder = selected ? 'border-right:3px solid #facc15;' : '';
         const e = perPair && perPair[group.dataPair];
         if (!e) return `<td colspan="5" style="text-align:center;color:#cbd5e1;font-size:10px;${tint}${lBorder}${rBorder}">—</td>`;
         // Compute POS codes for the actual number against this row's refs.
-        // (P is the locked projections module — exposes calculatePositionCode.)
         const codePair  = (P && e.refNum   != null) ? P.calculatePositionCode(e.refNum,   actual) : 'XX';
         const code13opp = (P && e.ref13Opp != null) ? P.calculatePositionCode(e.ref13Opp, actual) : 'XX';
         const base = 'padding:2px 4px;text-align:center;font-size:11px;';
+        // Gold-flash style for cells in the ±1 consecutive distance chain
+        // (mirrors Electron's t3-pm1-flash). flashSet keys are
+        // "rowIdx:famKey:pair" or "rowIdx:famKey:pair13Opp".
+        const _goldStyle =
+            'outline:3px solid #f59e0b;outline-offset:-1px;background:#fef3c7;'
+          + 'box-shadow:0 0 6px rgba(245,158,11,0.55);position:relative;z-index:5;';
+        const pairKey   = rowIdx + ':' + group.dataPair + ':pair';
+        const opp13Key  = rowIdx + ':' + group.dataPair + ':pair13Opp';
+        const pairExtra = (flashSet && flashSet.has(pairKey))  ? _goldStyle : '';
+        const oppExtra  = (flashSet && flashSet.has(opp13Key)) ? _goldStyle : '';
         return [
             `<td style="${base}font-weight:700;color:#7c3aed;background:${group.cssBg};${lBorder}">${e.refNum  ?? ''}</td>`,
-            `<td style="${base}${tint}">${_formatCode(codePair,  T3_POS_VALID)}</td>`,
+            `<td style="${base}${tint}${pairExtra}">${_formatCode(codePair,  T3_POS_VALID)}</td>`,
             `<td style="${base}font-weight:700;color:#16a34a;background:${group.cssBg};opacity:0.85;">${e.ref13Opp ?? ''}</td>`,
-            `<td style="${base}${tint}">${_formatCode(code13opp, T3_POS_VALID)}</td>`,
+            `<td style="${base}${tint}${oppExtra}">${_formatCode(code13opp, T3_POS_VALID)}</td>`,
             `<td style="${base}${tint}${rBorder}">${_renderT3PrjChips(e)}</td>`
         ].join('');
+    }
+
+    /**
+     * Mirror Electron's t3-pm1-flash detection (app/renderer-3tables.js
+     * _computeT3PosFlashTargets). Walks back consecutive row-pairs per
+     * pair-family; while the |distance(upper) - distance(lower)| ≤ 1
+     * chain continues, both rows' matching cells go gold. First
+     * non-match stops the walk — older matches above the break are NOT
+     * highlighted. This is what the snapshot HTML needs to render so
+     * the mirror visually matches Electron's gold cells in T3.
+     *
+     * Returns a Set of "rowIdx:famKey:cellType" strings, where
+     * cellType ∈ {'pair', 'pair13Opp'}.
+     */
+    function _computeT3GoldFlashSet(rows, groups) {
+        const out = new Set();
+        if (!Array.isArray(rows) || rows.length < 2 || !P) return out;
+        const distOf = (code) => {
+            if (!code || code === 'XX') return null;
+            if (code === 'S+0' || code === 'O+0') return 0;
+            const m = code.match(/[+-](\d+)$/);
+            return m ? parseInt(m[1], 10) : null;
+        };
+        const rowInfo = rows.map((row) => {
+            const info = {};
+            groups.forEach(g => {
+                const e = row.perPair && row.perPair[g.dataPair];
+                if (!e) { info[g.dataPair] = null; return; }
+                const pairCode    = (e.refNum   != null) ? P.calculatePositionCode(e.refNum,   row.actual) : 'XX';
+                const pair13Code  = (e.ref13Opp != null) ? P.calculatePositionCode(e.ref13Opp, row.actual) : 'XX';
+                info[g.dataPair] = {
+                    pairDist:   distOf(pairCode),
+                    pair13Dist: distOf(pair13Code)
+                };
+            });
+            return info;
+        });
+        groups.forEach(g => {
+            const fam = g.dataPair;
+            for (let i = rows.length - 2; i >= 0; i--) {
+                const upperPair = rowInfo[i] && rowInfo[i][fam];
+                const lowerPair = rowInfo[i + 1] && rowInfo[i + 1][fam];
+                if (!upperPair || !lowerPair) break;
+                const uList = [];
+                const lList = [];
+                if (upperPair.pairDist   != null) uList.push({ dist: upperPair.pairDist,   cell: 'pair' });
+                if (upperPair.pair13Dist != null) uList.push({ dist: upperPair.pair13Dist, cell: 'pair13Opp' });
+                if (lowerPair.pairDist   != null) lList.push({ dist: lowerPair.pairDist,   cell: 'pair' });
+                if (lowerPair.pair13Dist != null) lList.push({ dist: lowerPair.pair13Dist, cell: 'pair13Opp' });
+                if (!uList.length || !lList.length) break;
+                let matched = null;
+                for (const u of uList) {
+                    for (const l of lList) {
+                        if (Math.abs(u.dist - l.dist) <= 1) { matched = { u, l }; break; }
+                    }
+                    if (matched) break;
+                }
+                if (!matched) break;
+                out.add(i       + ':' + fam + ':' + matched.u.cell);
+                out.add((i + 1) + ':' + fam + ':' + matched.l.cell);
+            }
+        });
+        return out;
     }
 
     function _renderT3NextCells(group, projEntry, selected) {
@@ -460,12 +532,16 @@
             <tr>${subHeaders}</tr>
         </thead>`;
 
+        // Compute the gold-flash set once per render — same algorithm as
+        // Electron's renderer-3tables.js _computeT3PosFlashTargets.
+        const flashSet = _computeT3GoldFlashSet(rows, groups);
+
         const bodyRows = rows.map((row, ri) => {
             const stripe = ri % 2 === 0 ? '#ffffff' : '#fafafa';
             const dirCell    = `<td style="background:${stripe};text-align:center;padding:3px;font-size:10px;color:#64748b;">${row.spinIndex + 1}</td>`;
             const actualCell = `<td style="background:${stripe};text-align:center;padding:3px;font-weight:700;color:#0f172a;">${row.actual}</td>`;
             const cells = groups.map(g =>
-                _renderT3RowCells(row.perPair, g, row.actual, _isSelected(g.dataPair, 'T3', meta))
+                _renderT3RowCells(row.perPair, g, row.actual, _isSelected(g.dataPair, 'T3', meta), flashSet, ri)
             ).join('');
             return `<tr>${dirCell}${actualCell}${cells}</tr>`;
         }).join('');
