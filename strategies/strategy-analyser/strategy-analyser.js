@@ -83,14 +83,24 @@
     // ── Tunables ──────────────────────────────────────────────────
     const DEFAULTS = {
         confidenceFloor:  60,   // < this → WAIT (display only). Configurable.
-        confidenceScale:  4.0,  // sum of fired signal weights mapped to 100%.
-                                // 2 strong signals (~1.0+1.0) = 50%, 3 = 75%,
-                                // 2.4 = floor (60%). Tunable Phase 4.
+        confidenceScale:  8.0,  // sum of USED signal weights mapped to 100%.
+                                // With maxUseSignals=5 + minUseWeight=0.5,
+                                // 5 top signals ≈ 4-5 weight = 50-63%.
+                                // Floor (60%) actually bites. Tunable.
         maxNumbers:       12,   // ceiling on prediction-list size.
         minNumbers:       6,    // floor when emitting a real prediction.
         waitCap:          3,    // 3 consecutive WAIT → 4th MUST BET.
         minSpinsToFire:   3,    // first 3 spins → WARMUP / SKIP placeholders.
         t3CooldownRounds: 3,    // missed streak on T3 pair → cool 3 rounds
+        // — Signal selection (NEW, addresses "use best signals only") —
+        minUseWeight:     0.50, // signals below this don't contribute
+        maxUseSignals:    5,    // top-N (by weight) used after filter
+                                // 5 strong-only is concentrated evidence;
+                                // every extra signal beyond top-5 is noise
+        // — Loss-streak gate (NEW, addresses "still bets after losses") —
+        lossStreakLimit:  2,    // # consecutive misses before floor elevates
+        lossFloorStep:    10,   // floor +X per consecutive miss beyond limit
+        lossFloorMax:     40,   // floor +N max (so 4+ losses → floor=100%)
         // Reference weights (Phase 2 signals hard-code these as base values;
         // documented here so Phase 4 settings UI can offer overrides).
         weights: {
@@ -128,7 +138,17 @@
             lastExplanation: null,
             // Last spinIdx we saw — lets reset / cross-session detection
             // happen automatically if spinCount goes backwards.
-            lastSeenIdx: -1
+            lastSeenIdx: -1,
+            // Loss-streak tracking (hotfix #3). Reset to 0 on every BET hit;
+            // incremented on every BET miss. After lossStreakLimit (2),
+            // decide() elevates the effective confidence floor so we
+            // emit WAIT until evidence strengthens.
+            consecutiveLosses: 0,
+            // Outcome detection: when decide() returns BET, stash the
+            // numbers + the snapshot's spinCount so the NEXT decide()
+            // call can check whether the just-landed spin hit them.
+            lastBetSpinCount: null,
+            lastBetNumbers:   null
         };
     }
 
@@ -139,6 +159,21 @@
         state.t3Cooldowns      = {};
         state.lastExplanation  = null;
         state.lastSeenIdx      = -1;
+        state.consecutiveLosses = 0;
+        state.lastBetSpinCount  = null;
+        state.lastBetNumbers    = null;
+    }
+
+    /**
+     * Record the outcome of the previous BET. Called by the orchestrator
+     * (or by decide() itself when it detects a new spin advanced past
+     * lastBetSpinCount). hit=true resets the loss counter; hit=false
+     * increments it.
+     */
+    function recordOutcome(state, hit) {
+        if (!state) return;
+        if (hit) state.consecutiveLosses = 0;
+        else     state.consecutiveLosses = (state.consecutiveLosses || 0) + 1;
     }
 
     function getLastExplanation(state) {
@@ -313,6 +348,22 @@
             return _record(state, idx, out);
         }
 
+        // ── Previous BET outcome detection (hotfix #3) ──
+        // If a new spin landed since our last BET, check whether the
+        // prediction included it and update consecutiveLosses. Drives
+        // the loss-streak floor elevation below.
+        if (state.lastBetSpinCount != null
+            && spinCount > state.lastBetSpinCount
+            && Array.isArray(state.lastBetNumbers)) {
+            const outcomeIdx = state.lastBetSpinCount;   // 0-based index
+            const outcome    = snap.meta.spins[outcomeIdx];
+            const hit        = (typeof outcome === 'number')
+                            && state.lastBetNumbers.indexOf(outcome) >= 0;
+            recordOutcome(state, hit);
+            state.lastBetSpinCount = null;
+            state.lastBetNumbers   = null;
+        }
+
         // ── T3 cooldown maintenance ──
         // Decrement carry-over cooldowns first, then update from the
         // latest row (a miss at THIS spin starts a fresh 3-round cool).
@@ -336,18 +387,29 @@
             return true;
         });
 
-        // ── Score per number ──
-        // Normalize each signal's contribution: weight is divided across
-        // its candidates so a wide-coverage signal doesn't drown out a
-        // focused one. A 6-number bet pool with weight 0.9 contributes
-        // 0.15/number; a 19-number sign partition with weight 0.30
-        // contributes ~0.016/number. Focused signals dominate.
+        // ── Signal SELECTION (hotfix #3, "use best only") ──
+        // Old behaviour: every fired signal contributed to scoring.
+        // Noisy signals (sub-anchor-pattern × N pairs × 2 halves) would
+        // drown out focused strong signals (cross-table-conv).
+        // New: require weight >= minUseWeight, then top-K by weight.
+        // Dropped signals still appear in the popup so the user sees
+        // WHY they were filtered out — popup highlights `used` only.
+        const used = fired
+            .filter(s => s.weight >= params.minUseWeight)
+            .sort((a, b) => b.weight - a.weight)
+            .slice(0, params.maxUseSignals);
+        const usedNames = new Set(used.map(s => s.name));
+
+        // ── Score per number (USED signals only) ──
+        // Normalize each signal's contribution: weight divided across
+        // its candidates so a wide-coverage signal doesn't drown out
+        // a focused one.
         const scores = new Map();   // num → cumulative weight
-        let totalFiredWeight = 0;
-        for (const sig of fired) {
+        let totalUsedWeight = 0;
+        for (const sig of used) {
             if (!sig.candidates || sig.candidates.size === 0) continue;
             const per = sig.weight / sig.candidates.size;
-            totalFiredWeight += sig.weight;
+            totalUsedWeight += sig.weight;
             sig.candidates.forEach(n => {
                 scores.set(n, (scores.get(n) || 0) + per);
             });
@@ -355,12 +417,24 @@
 
         // ── Confidence ──
         const confidence = Math.min(100,
-            Math.round(100 * totalFiredWeight / params.confidenceScale));
+            Math.round(100 * totalUsedWeight / params.confidenceScale));
 
-        // ── Action gate (incl. wait-cap force-bet) ──
+        // ── Loss-streak floor elevation (hotfix #3) ──
+        // After consecutiveLosses >= lossStreakLimit (2), elevate the
+        // floor by lossFloorStep per extra loss (capped at lossFloorMax).
+        // Result: more WAITs after losses → stops bleeding while the
+        // analyser waits for stronger evidence.
+        const losses = state.consecutiveLosses || 0;
+        const lossPenalty = (losses >= params.lossStreakLimit)
+            ? Math.min(params.lossFloorMax,
+                       (losses - params.lossStreakLimit + 1) * params.lossFloorStep)
+            : 0;
+        const effectiveFloor = params.confidenceFloor + lossPenalty;
+
+        // ── Action gate (floor + wait-cap force-bet) ──
         const priorWaits = state.consecutiveWaits || 0;
         const forceBet   = priorWaits >= params.waitCap;
-        const meetsFloor = confidence >= params.confidenceFloor;
+        const meetsFloor = confidence >= effectiveFloor;
         const action     = meetsFloor ? 'BET'
                          : forceBet   ? 'BET'
                          : 'WAIT';
@@ -404,18 +478,31 @@
         }
 
         // ── Reason text ──
+        const floorTxt = (effectiveFloor !== params.confidenceFloor)
+            ? `${effectiveFloor}% (base ${params.confidenceFloor}% + ${lossPenalty} loss-streak)`
+            : `${params.confidenceFloor}%`;
         let reason;
         if (action === 'BET' && meetsFloor) {
-            reason = `BET — confidence ${confidence}% ≥ floor ${params.confidenceFloor}%, `
-                   + `${fired.length} signal${fired.length === 1 ? '' : 's'} fired, `
+            reason = `BET — confidence ${confidence}% ≥ floor ${floorTxt}, `
+                   + `${used.length}/${fired.length} signals used, `
                    + `${numbers.length} numbers picked.`;
         } else if (action === 'BET' && forceBet) {
             reason = `FORCED BET — ${priorWaits} consecutive WAITs hit cap of ${params.waitCap}, `
-                   + `betting at confidence ${confidence}% (below ${params.confidenceFloor}% floor).`;
+                   + `betting at confidence ${confidence}% (below ${floorTxt}).`;
         } else {
-            reason = `WAIT — confidence ${confidence}% < floor ${params.confidenceFloor}%. `
+            reason = `WAIT — confidence ${confidence}% < floor ${floorTxt}. `
                    + `${priorWaits + 1}/${params.waitCap + 1} consecutive wait${priorWaits === 0 ? '' : 's'}; `
-                   + `${fired.length} signal${fired.length === 1 ? '' : 's'} fired.`;
+                   + `${used.length}/${fired.length} signals used`
+                   + (losses > 0 ? ` (loss streak ${losses}).` : `.`);
+        }
+
+        // ── Stash for next-spin outcome detection ──
+        // Only when we actually BET. Both `meetsFloor` and `forceBet`
+        // paths produce action='BET'; both should be evaluated for
+        // hit/miss next call.
+        if (action === 'BET') {
+            state.lastBetSpinCount = spinCount;       // 0-based idx of NEXT spin
+            state.lastBetNumbers   = numbers.slice();
         }
 
         const out = _decision(action, numbers, confidence, reason);
@@ -428,18 +515,25 @@
                 weight: s.weight,
                 candidatesCount: s.candidates ? s.candidates.size : 0,
                 reason: s.reason,
-                details: s.details || null
+                details: s.details || null,
+                used: usedNames.has(s.name)        // NEW: popup highlights green
             })),
+            usedSignalNames: Array.from(usedNames),
             suppressedByCooldown: suppressed,
             topScored: ranked.slice(0, 20),
             picked,
             userSelectionNumbers: userNums,
             unionedNumbers: numbers,
-            totalFiredWeight,
+            // Used-weight is the new "Σ weight" the popup shows
+            totalUsedWeight,
+            totalFiredWeight: fired.reduce((s, x) => s + x.weight, 0),
             confidence,
             confidenceFloor: params.confidenceFloor,
+            effectiveFloor,                          // NEW: post-loss-penalty
+            lossPenalty,                             // NEW: how much floor moved
             confidenceScale: params.confidenceScale,
             priorConsecutiveWaits: priorWaits,
+            consecutiveLosses: losses,               // NEW: for popup display
             waitCap: params.waitCap,
             forcedBet: action === 'BET' && forceBet && !meetsFloor,
             t3Cooldowns: Object.assign({}, state.t3Cooldowns)
@@ -502,6 +596,7 @@
         decide,
         createSessionState,
         resetSessionState,
+        recordOutcome,
         getLastExplanation,
         assertParity,
         DEFAULTS

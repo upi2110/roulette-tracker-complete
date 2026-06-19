@@ -139,17 +139,25 @@
 
     function _renderHeaderBar(exp) {
         const conf = exp.confidence != null ? exp.confidence : 0;
-        const floor = exp.confidenceFloor != null ? exp.confidenceFloor : 60;
+        const baseFloor = exp.confidenceFloor != null ? exp.confidenceFloor : 60;
+        const effFloor  = exp.effectiveFloor  != null ? exp.effectiveFloor  : baseFloor;
+        const lossPen   = exp.lossPenalty || 0;
         const scale = exp.confidenceScale != null ? exp.confidenceScale : 4.0;
-        const totalW = exp.totalFiredWeight != null ? exp.totalFiredWeight.toFixed(2) : '—';
+        const usedW = exp.totalUsedWeight  != null ? exp.totalUsedWeight.toFixed(2)
+                    : (exp.totalFiredWeight != null ? exp.totalFiredWeight.toFixed(2) : '—');
         const fired = (exp.firedSignals || []).length;
+        const usedCount = (exp.firedSignals || []).filter(s => s.used).length;
+        // Floor block — annotated when loss-streak elevated it.
+        const floorBlock = (effFloor !== baseFloor)
+            ? `<span style="color:#ef4444;">floor ${effFloor}%</span> <span style="opacity:0.5;font-size:9px;">(base ${baseFloor} + ${lossPen} loss)</span>`
+            : `<span>floor ${baseFloor}%</span>`;
         return `
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">
                 ${_actionChip(exp)}
                 <div style="background:#1e293b;padding:3px 8px;border-radius:4px;">
                     <span style="opacity:0.7;">Confidence</span>
                     <strong style="color:#f59e0b;margin-left:4px;">${conf}%</strong>
-                    <span style="opacity:0.5;font-size:10px;margin-left:4px;">floor ${floor}% · scale ${scale}</span>
+                    <span style="opacity:0.7;font-size:10px;margin-left:4px;">${floorBlock} · scale ${scale}</span>
                 </div>
                 <div style="background:#1e293b;padding:3px 8px;border-radius:4px;">
                     <span style="opacity:0.7;">Spin</span>
@@ -158,8 +166,8 @@
                 </div>
                 <div style="background:#1e293b;padding:3px 8px;border-radius:4px;">
                     <span style="opacity:0.7;">Signals</span>
-                    <strong style="margin-left:4px;color:#5eead4;">${fired} fired</strong>
-                    <span style="opacity:0.5;font-size:10px;margin-left:4px;">Σ weight ${totalW}</span>
+                    <strong style="margin-left:4px;color:#bbf7d0;">${usedCount}</strong><span style="opacity:0.5;">/${fired}</span>
+                    <span style="opacity:0.5;font-size:10px;margin-left:4px;">Σ used ${usedW}</span>
                 </div>
             </div>`;
     }
@@ -213,15 +221,27 @@
         }
         // Sort by weight descending so the strongest signals are on top.
         const sorted = fired.slice().sort((a, b) => b.weight - a.weight);
+        const usedCount = fired.filter(s => s.used).length;
         const rows = sorted.map(s => {
-            const wPct = (s.weight * 100).toFixed(0);
+            // Weight rendered as a unitless decimal (not %). User
+            // pointed out that 1.20 displayed as 120% was confusing —
+            // signal weights are not percentages, they're sums-of-evidence.
+            const w = s.weight.toFixed(2);
+            // Green band when this signal was actually USED in scoring;
+            // grey when it fired but was filtered out (below
+            // minUseWeight or beyond top-K cap).
+            const rowBg = s.used ? '#064e3b' : 'transparent';
+            const rowColor = s.used ? '#bbf7d0' : '#e2e8f0';
+            const badge = s.used
+                ? '<span style="background:#16a34a;color:#fff;padding:0 4px;border-radius:2px;font-size:9px;font-weight:700;margin-right:4px;">USED</span>'
+                : '<span style="background:#475569;color:#cbd5e1;padding:0 4px;border-radius:2px;font-size:9px;margin-right:4px;">—</span>';
             return `
-                <tr style="border-bottom:1px solid #1e293b;vertical-align:top;">
-                    <td style="padding:3px 6px;color:#e2e8f0;font-size:10px;
+                <tr style="border-bottom:1px solid #1e293b;vertical-align:top;background:${rowBg};">
+                    <td style="padding:3px 6px;color:${rowColor};font-size:10px;
                                font-family:'SF Mono',ui-monospace,monospace;
-                               max-width:240px;word-break:break-all;">${_esc(s.name)}</td>
+                               max-width:280px;word-break:break-all;">${badge}${_esc(s.name)}</td>
                     <td style="padding:3px 6px;color:#f59e0b;text-align:right;
-                               font-weight:700;white-space:nowrap;">${wPct}%</td>
+                               font-weight:700;white-space:nowrap;">${w}</td>
                     <td style="padding:3px 6px;color:#94a3b8;text-align:right;">${s.candidatesCount}</td>
                     <td style="padding:3px 6px;color:#cbd5e1;font-size:10px;">${_esc(s.reason)}</td>
                 </tr>`;
@@ -232,6 +252,10 @@
                     Fired signals (${fired.length})
                     <span style="font-weight:400;color:#94a3b8;font-size:10px;margin-left:6px;">
                         sorted by weight ↓
+                    </span>
+                    <span style="float:right;font-size:10px;color:#bbf7d0;">
+                        <span style="background:#16a34a;color:#fff;padding:0 4px;border-radius:2px;margin-right:4px;">USED</span>
+                        ${usedCount} of ${fired.length} signals contributed to scoring
                     </span>
                 </div>
                 <table style="width:100%;font-size:10px;border-collapse:collapse;">
@@ -304,12 +328,18 @@
     function _renderSessionState(exp) {
         const waitCap = exp.waitCap != null ? exp.waitCap : 3;
         const wc = exp.priorConsecutiveWaits != null ? exp.priorConsecutiveWaits : 0;
+        const losses = exp.consecutiveLosses || 0;
         return `
             <div style="margin-top:6px;padding-top:6px;border-top:1px solid #334155;
                         font-size:10px;color:#94a3b8;">
-                Session state — consecutive WAITs:
+                Session state —
+                consecutive WAITs:
                 <strong style="color:${wc >= waitCap ? '#dc2626' : '#94a3b8'};">${wc}</strong>
                 / cap ${waitCap}
+                &nbsp;·&nbsp;
+                consecutive losses:
+                <strong style="color:${losses >= 2 ? '#ef4444' : '#94a3b8'};">${losses}</strong>
+                ${losses >= 2 ? `<span style="color:#f59e0b;margin-left:6px;">⚠ floor elevated</span>` : ''}
                 ${exp.forcedBet ? '<span style="color:#dc2626;margin-left:8px;">⚠ FORCED BET fired</span>' : ''}
             </div>`;
     }
