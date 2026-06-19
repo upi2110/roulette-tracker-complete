@@ -28,6 +28,44 @@ function createWindow() {
         mainWindow.webContents.reloadIgnoringCache();
     });
 
+    // ── window.open() handler ──
+    // Without an explicit handler, Electron treats child windows as
+    // attached sub-frames that can't be moved outside the main
+    // window's bounds. Allow same-origin popups (Selection Process,
+    // StrategyAnalyser pop-out) to open as fully independent OS-level
+    // BrowserWindows so the user can drag them to another monitor.
+    mainWindow.webContents.setWindowOpenHandler(({ frameName }) => {
+        // Recognise our known popouts by their window.open name.
+        const known = new Set([
+            'analyserExplainPopout',
+            'aiSelectionProcess'
+        ]);
+        if (!known.has(frameName)) {
+            // Unknown popup — default-deny is safer than silently
+            // opening; the renderer can be updated to register here.
+            return { action: 'deny' };
+        }
+        return {
+            action: 'allow',
+            overrideBrowserWindowOptions: {
+                width: 1100,
+                height: 820,
+                minWidth: 480,
+                minHeight: 320,
+                parent: null,            // detach — not a child window
+                modal: false,
+                show: true,
+                autoHideMenuBar: true,
+                webPreferences: {
+                    nodeIntegration: false,
+                    contextIsolation: false,   // allow window.opener access
+                    sandbox: false,
+                    devTools: true
+                }
+            }
+        };
+    });
+
     // ── Session log infrastructure ──
     // Per-session frontend + backend logs under
     //   logs/{frontend|backend}/YYYY-MM-DD/HH-MM-SS-session.log
