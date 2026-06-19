@@ -251,6 +251,106 @@
         return candidate.endsWith('_13opp') ? candidate.slice(0, -6) : candidate;
     }
 
+    // ── Why-not reasons for non-firing rules ─────────────────────
+    /**
+     * Per-rule reason text shown in the popup for rules that did NOT
+     * fire this spin. Lets the user see all 6 rules even when only a
+     * subset triggered. Cheap pre-condition checks per rule — does not
+     * re-run signal logic.
+     */
+    function _whyNotFired(ruleId, snap) {
+        const spins = (snap && snap.meta && snap.meta.spins) || [];
+        const t1Rows = (snap && snap.table1 && snap.table1.rows) || [];
+        const t2Rows = (snap && snap.table2 && snap.table2.rows) || [];
+        const t3Rows = (snap && snap.table3 && snap.table3.rows) || [];
+        const P = (typeof require === 'function')
+            ? require('./partitions.js')
+            : (typeof window !== 'undefined' ? window.StrategyAnalyserPartitions : null);
+
+        if (ruleId === 'signStreak') {
+            if (spins.length < 2) return `Need ≥ 2 spins (have ${spins.length}).`;
+            const tail = P && P.signOf(spins[spins.length - 1]);
+            if (!tail) return 'Latest spin has no sign classification.';
+            let n = 1;
+            for (let i = spins.length - 2; i >= 0; i--) {
+                if (P.signOf(spins[i]) === tail) n++; else break;
+            }
+            if (n === 1) return `Latest ${tail} spin, no streak yet (needs 2–4 in a row).`;
+            if (n >= 5)  return `${n}-in-a-row ${tail} streak — too long (rule skips at ≥ 5).`;
+            return `Streak ${n} ${tail} — should have fired.`;
+        }
+        if (ruleId === 'tableStreak') {
+            if (spins.length < 2) return `Need ≥ 2 spins (have ${spins.length}).`;
+            const tail = P && P.tableOf(spins[spins.length - 1]);
+            if (!tail) return 'Latest spin has no table classification.';
+            let n = 1;
+            for (let i = spins.length - 2; i >= 0; i--) {
+                if (P.tableOf(spins[i]) === tail) n++; else break;
+            }
+            if (n === 1) return `Latest ${tail} spin, no streak yet (needs 2–4 in a row).`;
+            if (n >= 5)  return `${n}-in-a-row ${tail} streak — too long (rule skips at ≥ 5).`;
+            return `Streak ${n} ${tail} — should have fired.`;
+        }
+        if (ruleId === 'setCarry') {
+            if (!spins.length) return 'No spins yet.';
+            let anchorIdx = -1;
+            for (let i = spins.length - 1; i >= 0; i--) {
+                const s = P && P.setOf(spins[i]);
+                if (s === 'SET_5' || s === 'SET_6') { anchorIdx = i; break; }
+            }
+            if (anchorIdx < 0) return 'No SET_5 or SET_6 anchor anywhere in spin history.';
+            const tail = P && P.setOf(spins[spins.length - 1]);
+            if (tail) {
+                let n = 1;
+                for (let i = spins.length - 2; i >= 0; i--) {
+                    if (P.setOf(spins[i]) === tail) n++; else break;
+                }
+                if (n >= 5) return `${n}-in-a-row ${tail} streak — too long (rule skips at ≥ 5).`;
+            }
+            return `Anchor ${P.setOf(spins[anchorIdx])} found ${spins.length - anchorIdx - 1} spin(s) back — should have fired.`;
+        }
+        if (ruleId === 'subAnchorPattern') {
+            if (t1Rows.length < 3 && t2Rows.length < 3) {
+                return `Needs 3 rows on T1 or T2 (have T1=${t1Rows.length}, T2=${t2Rows.length}).`;
+            }
+            return 'No pair-family on T1/T2 had 3 strict-consecutive hits clustered on 1 or 2 sub-anchors of the same side.';
+        }
+        if (ruleId === 'crossCellRotate') {
+            if (t1Rows.length < 4 && t2Rows.length < 4) {
+                return `Needs 4 rows on T1 or T2 (have T1=${t1Rows.length}, T2=${t2Rows.length}).`;
+            }
+            return 'No pair-family on T1/T2 showed strict P↔13O alternation across last 4 rows.';
+        }
+        if (ruleId === 'crossTableConv') {
+            if (t3Rows.length < 2) return `Needs 2+ T3 rows (have ${t3Rows.length}).`;
+            return 'No pair-family had a gold cell on BOTH of the last 2 T3 rows.';
+        }
+        return 'Did not fire.';
+    }
+
+    /**
+     * Build { ruleId: { fired, reason } } for every rule. The popup
+     * renders this table-of-rules so the user always sees every rule
+     * and why it's in the state it's in.
+     */
+    function _computeRuleStatus(snap, params, firedRuleIds) {
+        const disabled = (params && params.disabledRules instanceof Set)
+            ? params.disabledRules
+            : new Set(params && params.disabledRules);
+        const out = {};
+        ['signStreak', 'tableStreak', 'setCarry', 'subAnchorPattern',
+         'crossCellRotate', 'crossTableConv'].forEach(rid => {
+            if (disabled.has(rid)) {
+                out[rid] = { fired: false, disabled: true, reason: 'User disabled in Weightage panel.' };
+            } else if (firedRuleIds && firedRuleIds.has(rid)) {
+                out[rid] = { fired: true, reason: '' };   // popup uses signal entry's own reason
+            } else {
+                out[rid] = { fired: false, disabled: false, reason: _whyNotFired(rid, snap) };
+            }
+        });
+        return out;
+    }
+
     // ── decide() — Phase 3 aggregator ────────────────────────────
     /**
      * Single entry point. Both live and backtest call THIS.
@@ -315,6 +415,11 @@
         const allSignals = Signals
             ? Signals.evaluateAll(snap, state, params)
             : [];
+
+        // Capture which rule IDs fired BEFORE the scope/cooldown filters
+        // strip them — used to surface "rule didn't fire because…"
+        // entries in the popup so the user sees every rule's state.
+        const _rawFiredRuleIds = new Set(allSignals.map(s => s._ruleId).filter(Boolean));
 
         // ── USER-SELECTION FILTER (hotfix #4 + #5) ──
         // Two ways the user can restrict the analyser's pair scope:
@@ -478,6 +583,10 @@
             phase: 'NORMAL',
             spinCount,
             lastSpin,
+            // Per-rule status (every rule listed, whether fired or not).
+            // Lets the popup show all 6 rules + WHY each one is in the
+            // state it's in.
+            ruleStatus: _computeRuleStatus(snap, params, _rawFiredRuleIds),
             // Active group share map — surfaces the redistribution
             // result so the popup can show "Rule X got 30% (20%+10%
             // bonus from inactive rules)".

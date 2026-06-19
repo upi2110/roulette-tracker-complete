@@ -300,79 +300,100 @@
             </div>`;
     }
 
-    function _renderFired(exp) {
-        const fired = exp.firedSignals || [];
-        if (!fired.length) {
-            return `<div style="margin-bottom:10px;opacity:0.6;">No signals fired this spin.</div>`;
-        }
-        // USED rows come first, then dropped — caller toggles whether
-        // the dropped block is visible via #${SHOW_ALL_ID}.
-        const sorted = fired.slice().sort((a, b) => {
-            if (a.used !== b.used) return a.used ? -1 : 1;
-            return b.weight - a.weight;
-        });
-        const usedCount = fired.filter(s => s.used).length;
-        const droppedCount = fired.length - usedCount;
+    // The complete locked rule set — drives the rule-by-rule table
+    // regardless of which rules fired. Ordering = display order.
+    const _RULES = [
+        { id: 'signStreak',       label: '1·Sign streak' },
+        { id: 'tableStreak',      label: '2·Table streak' },
+        { id: 'setCarry',         label: '3·Set carry' },
+        { id: 'subAnchorPattern', label: '4·Sub-anchor' },
+        { id: 'crossCellRotate',  label: '6·Cross-cell' },
+        { id: 'crossTableConv',   label: '7·T3 golden' }
+    ];
 
-        const _row = (s) => {
-            const w = s.weight.toFixed(2);
-            const rowBg = s.used ? '#064e3b' : 'transparent';
-            const rowColor = s.used ? '#bbf7d0' : '#cbd5e1';
-            const badge = s.used
-                ? '<span style="background:#16a34a;color:#fff;padding:0 4px;border-radius:2px;font-size:9px;font-weight:700;margin-right:4px;">USED</span>'
-                : '';
-            // Compact: short name (last 2 path segments) shown, full name in title.
-            const parts = String(s.name).split('/');
-            const shortName = parts.length > 2 ? parts.slice(-2).join('/') : s.name;
-            const fullName  = _esc(s.name);
+    function _renderFired(exp) {
+        const fired       = exp.firedSignals || [];
+        const disabledArr = exp.disabledRules || [];
+        const disabled    = new Set(disabledArr);
+        const ruleStatus  = exp.ruleStatus || {};
+
+        // Group entries by ruleId.
+        const byRule = {};
+        fired.forEach(e => {
+            const rid = e.ruleId || 'unknown';
+            (byRule[rid] = byRule[rid] || []).push(e);
+        });
+
+        const _rule = (r) => {
+            const entries = byRule[r.id] || [];
+            const fired   = entries.length > 0;
+            const isDisabled = disabled.has(r.id);
+            const sumEff = entries.reduce((s, e) => s + (e.effectiveWeight || 0), 0);
+            const sumIntra = entries.reduce((s, e) => s + (e.weight || 0), 0);
+
+            let status, statusColor, rowBg, rowColor, reasonText;
+            if (isDisabled) {
+                status = 'DISABLED'; statusColor = '#64748b';
+                rowBg = 'rgba(100,116,139,0.08)'; rowColor = '#64748b';
+                reasonText = 'User disabled in Weightage panel.';
+            } else if (!fired) {
+                status = 'SKIPPED'; statusColor = '#94a3b8';
+                rowBg = 'rgba(148,163,184,0.05)'; rowColor = '#94a3b8';
+                reasonText = (ruleStatus[r.id] && ruleStatus[r.id].reason)
+                    || 'Did not fire this spin (conditions not met).';
+            } else {
+                status = 'FIRED'; statusColor = '#10b981';
+                rowBg = '#064e3b'; rowColor = '#bbf7d0';
+                // Show the strongest entry's reason as the headline,
+                // plus count of how many vote slots it produced.
+                const top = entries.slice().sort((a, b) => (b.effectiveWeight || 0) - (a.effectiveWeight || 0))[0];
+                reasonText = (top && top.reason)
+                    + (entries.length > 1
+                        ? ` <span style="opacity:0.6;">(+ ${entries.length - 1} more slot${entries.length === 2 ? '' : 's'})</span>`
+                        : '');
+            }
+
+            const effPct  = fired ? (sumEff * 100).toFixed(1) + '%' : '—';
+            const slots   = fired ? entries.length : '—';
+
             return `
                 <tr style="border-bottom:1px solid #1e293b;vertical-align:top;background:${rowBg};">
-                    <td style="padding:2px 6px;color:${rowColor};font-size:10px;
-                               font-family:'SF Mono',ui-monospace,monospace;
-                               max-width:240px;word-break:break-all;"
-                        title="${fullName}">${badge}${_esc(shortName)}</td>
-                    <td style="padding:2px 6px;color:#f59e0b;text-align:right;
-                               font-weight:700;white-space:nowrap;">${w}</td>
-                    <td style="padding:2px 6px;color:#94a3b8;text-align:right;">${s.candidatesCount}</td>
-                    <td style="padding:2px 6px;color:#cbd5e1;font-size:10px;
-                               max-width:340px;">${_esc(s.reason)}</td>
+                    <td style="padding:4px 6px;color:${statusColor};font-weight:700;font-size:10px;
+                               white-space:nowrap;">
+                        <span style="background:${statusColor};color:#0f172a;padding:0 5px;
+                                     border-radius:2px;font-size:9px;margin-right:5px;">${status}</span>
+                        <span style="color:${rowColor};">${r.label}</span>
+                    </td>
+                    <td style="padding:4px 6px;color:#f59e0b;text-align:right;font-weight:700;
+                               white-space:nowrap;">${effPct}</td>
+                    <td style="padding:4px 6px;color:#94a3b8;text-align:right;
+                               white-space:nowrap;">${slots}</td>
+                    <td style="padding:4px 6px;color:${rowColor};font-size:10px;">
+                        ${reasonText}
+                    </td>
                 </tr>`;
         };
 
-        const usedRowsHtml    = sorted.filter(s => s.used).map(_row).join('');
-        const droppedRowsHtml = sorted.filter(s => !s.used).map(_row).join('');
-        const SHOW_ALL_ID = 'analyserSignalsShowAll';
+        const rows = _RULES.map(_rule).join('');
+        const firedCount = _RULES.filter(r => (byRule[r.id] || []).length > 0).length;
 
         return `
             <div style="margin-bottom:10px;">
                 <div style="font-weight:700;color:#5eead4;margin-bottom:4px;font-size:11px;
                             display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <span>Fired signals (${fired.length})</span>
-                    <span style="font-weight:400;color:#94a3b8;font-size:10px;">sorted: USED first ↓</span>
-                    <span style="margin-left:auto;font-size:10px;color:#bbf7d0;">
-                        <span style="background:#16a34a;color:#fff;padding:0 4px;border-radius:2px;margin-right:4px;">USED</span>
-                        ${usedCount} of ${fired.length} contributed to scoring
+                    <span>Rules — fired / skipped / disabled (${firedCount} of ${_RULES.length} fired)</span>
+                    <span style="font-weight:400;color:#94a3b8;font-size:10px;">
+                        Eff% = share of decision after redistribution.
                     </span>
-                    ${droppedCount > 0 ? `
-                        <label style="font-size:10px;color:#94a3b8;cursor:pointer;
-                                      display:inline-flex;align-items:center;gap:4px;">
-                            <input type="checkbox" id="${SHOW_ALL_ID}"
-                                   style="margin:0;cursor:pointer;">
-                            show ${droppedCount} dropped
-                        </label>` : ''}
                 </div>
                 <table style="width:100%;font-size:10px;border-collapse:collapse;">
                     <thead><tr style="text-align:left;color:#94a3b8;border-bottom:1px solid #334155;">
-                        <th style="padding:3px 6px;">Signal</th>
-                        <th style="padding:3px 6px;text-align:right;">Weight</th>
-                        <th style="padding:3px 6px;text-align:right;">Cands</th>
-                        <th style="padding:3px 6px;">Reason</th>
+                        <th style="padding:3px 6px;">Rule</th>
+                        <th style="padding:3px 6px;text-align:right;">Eff%</th>
+                        <th style="padding:3px 6px;text-align:right;">Slots</th>
+                        <th style="padding:3px 6px;">Reason / why-not</th>
                     </tr></thead>
-                    <tbody>${usedRowsHtml}</tbody>
-                    ${droppedCount > 0 ? `
-                        <tbody id="${SHOW_ALL_ID}-rows" style="display:none;">
-                            ${droppedRowsHtml}
-                        </tbody>` : ''}
+                    <tbody>${rows}</tbody>
                 </table>
             </div>`;
     }
