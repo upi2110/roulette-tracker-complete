@@ -375,10 +375,37 @@
             ? Signals.evaluateAll(snap, state, params)
             : [];
 
+        // ── USER-SELECTION FILTER (hotfix #4) ──
+        // If the user has clicked specific pairs in the Electron AI
+        // panel, restrict pair-bound signals to ONLY those families.
+        // The analyser will not "discover" pairs the user didn't pick.
+        // Non-pair signals (sign-streak / table-streak / set-carry)
+        // always pass through — they're partition-wide, not tied to
+        // any single pair family.
+        const sel = (snap.meta && snap.meta.selections) || {};
+        const selectedFams = new Set();
+        ['table1', 'table2', 'table3'].forEach(t => {
+            (sel[t] || []).forEach(k => {
+                const base = k.endsWith('_13opp') ? k.slice(0, -6) : k;
+                selectedFams.add(base);
+            });
+        });
+        const filteredByUser = [];
+        const userScoped = (selectedFams.size > 0)
+            ? allSignals.filter(s => {
+                const fam = _extractFamilyKey(s.name);
+                if (fam && !selectedFams.has(fam)) {
+                    filteredByUser.push({ name: s.name, pair: fam });
+                    return false;
+                }
+                return true;
+              })
+            : allSignals;
+
         // Filter out signals tied to a T3-cooled pair family.
         const cooledFams = new Set(Object.keys(state.t3Cooldowns));
         const suppressed = [];
-        const fired = allSignals.filter(s => {
+        const fired = userScoped.filter(s => {
             const fam = _extractFamilyKey(s.name);
             if (fam && cooledFams.has(fam)) {
                 suppressed.push({ name: s.name, pair: fam, roundsLeft: state.t3Cooldowns[fam] });
@@ -520,6 +547,9 @@
             })),
             usedSignalNames: Array.from(usedNames),
             suppressedByCooldown: suppressed,
+            // NEW: user-selection scoping
+            userSelectedFamilies: Array.from(selectedFams).sort(),
+            filteredByUserSelection: filteredByUser,
             topScored: ranked.slice(0, 20),
             picked,
             userSelectionNumbers: userNums,

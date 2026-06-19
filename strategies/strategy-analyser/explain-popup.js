@@ -116,6 +116,7 @@
         }
         body.innerHTML = _renderHeaderBar(exp)
                        + _renderPlainEnglish(exp)
+                       + _renderUserScope(exp)
                        + _renderPicked(exp)
                        + _renderFired(exp)
                        + _renderTopScored(exp)
@@ -184,6 +185,40 @@
                         font-size:11px;line-height:1.5;">
                 <strong style="color:#5eead4;">In plain English —</strong>
                 <span style="color:#cbd5e1;margin-left:4px;">${_esc(reason)}</span>
+            </div>`;
+    }
+
+    function _renderUserScope(exp) {
+        const fams = exp.userSelectedFamilies || [];
+        const filtered = exp.filteredByUserSelection || [];
+        if (!fams.length) {
+            return `
+                <div style="margin-bottom:10px;padding:6px 10px;
+                            background:#1e293b;border-left:3px solid #475569;
+                            border-radius:0 4px 4px 0;font-size:11px;color:#94a3b8;">
+                    <strong style="color:#cbd5e1;">Scope:</strong>
+                    No pair selections in Electron — analyser is running in
+                    AUTONOMOUS mode (firing on whichever pair families show
+                    the strongest signals).
+                </div>`;
+        }
+        const famChips = fams.map(f =>
+            `<span style="background:#facc15;color:#422006;padding:1px 6px;
+            margin:1px;border-radius:3px;font-weight:700;font-size:10px;
+            display:inline-block;">${_esc(f)}</span>`).join('');
+        return `
+            <div style="margin-bottom:10px;padding:6px 10px;
+                        background:#1e293b;border-left:3px solid #facc15;
+                        border-radius:0 4px 4px 0;font-size:11px;color:#cbd5e1;">
+                <strong style="color:#facc15;">Scope:</strong>
+                Analyser restricted to ${fams.length} user-selected pair famil${fams.length === 1 ? 'y' : 'ies'}:
+                <span style="margin-left:4px;">${famChips}</span>
+                ${filtered.length > 0 ? `<div style="margin-top:4px;font-size:10px;color:#94a3b8;">
+                    ${filtered.length} pair-bound signal${filtered.length === 1 ? '' : 's'} dropped — pairs not in your selection.
+                </div>` : ''}
+                <div style="margin-top:3px;font-size:10px;color:#94a3b8;">
+                    Non-pair signals (sign-streak / table-streak / set-carry) always fire regardless of scope.
+                </div>
             </div>`;
     }
 
