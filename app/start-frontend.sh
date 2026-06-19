@@ -22,19 +22,17 @@ fi
 echo "✅ Frontend files found"
 echo ""
 
-# Check if backend is running
+# Check if backend is running (non-blocking — just a notice).
+# The frontend will run fine without it; AI calls just won't resolve
+# until the backend is started. Previously this prompted for
+# confirmation, which silently killed the launch when invoked from
+# Finder / non-interactive contexts.
 echo "🔍 Checking if backend is running..."
 if curl -s http://localhost:8002/ > /dev/null 2>&1; then
     echo "✅ Backend is running on http://localhost:8002"
 else
-    echo "⚠️  WARNING: Backend not detected!"
-    echo "   Please start backend first: ./start-backend-v6.sh"
-    echo ""
-    read -p "Continue anyway? (y/n) " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
+    echo "⚠️  Backend not detected on :8002 — starting frontend anyway."
+    echo "   (Start the backend separately with ./start-backend-v6.sh)"
 fi
 
 echo ""
