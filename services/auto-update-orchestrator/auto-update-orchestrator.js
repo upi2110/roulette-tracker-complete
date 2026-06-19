@@ -517,9 +517,23 @@ class AutoUpdateOrchestrator {
             // the reselect propagates the autopilot's pair to the V6
             // bet path). AUTO / T1-strategy / etc. keep original
             // behavior (clear + reselect T3 with the engine's pick).
+            // patter-play: 'test' is now driven by StrategyAnalyser
+            // which picks numbers DIRECTLY (not pairs). The original
+            // strategy-lab path needed to clear+reselect a locked
+            // pair so V6's pair-intersection produced the bet — the
+            // analyser doesn't use that pipeline. Clearing selections
+            // here tears down the wheel highlights we just pushed via
+            // setPrediction/updateHighlights and triggers the AI
+            // panel's "0 pairs → clear all displays" cascade. Visible
+            // in the log as:
+            //   🎡 Wheel highlights updated
+            //   🎡 Wheel highlights cleared           ← from this call
+            //   🧹 All prediction displays cleared    ← cascade
+            // So 'test' is excluded too.
             if (this.decisionMode !== 'ai-trained'
                 && this.decisionMode !== '3t-selection'
                 && this.decisionMode !== 'analytics'
+                && this.decisionMode !== 'test'
                 && window.aiPanel) {
                 window.aiPanel.clearSelections();
                 if (this.decisionMode === 'test') {
