@@ -604,26 +604,49 @@
     </style>
     <script>
         // Preserve scroll across the cache-busted self-reload so the
-        // user stays parked on whichever table/row they were reading.
+        // user stays parked on whichever pair column they were
+        // inspecting (e.g. scrolled right to see P / PP / P-13opp).
+        //
+        // Earlier attempt relied on beforeunload + rAF — too fragile:
+        // location.replace() doesn't always fire beforeunload in time,
+        // and rAF runs before the new document's layout settles so
+        // window.scrollTo gets clamped to 0.
+        //
+        // Robust version:
+        //   • Poll-save every 250ms — last user scroll is always
+        //     captured well before any reload.
+        //   • Restore on 'load' AND once more 50ms later, to beat
+        //     any late layout shift that would clamp scrollLeft.
         (function () {
-            try {
-                var raw = sessionStorage.getItem('snapshotScroll');
-                if (raw) {
-                    var s = JSON.parse(raw);
-                    // Restore after layout settles.
-                    requestAnimationFrame(function () {
-                        window.scrollTo(s.x || 0, s.y || 0);
-                    });
-                }
-            } catch (_) {}
-            window.addEventListener('beforeunload', function () {
+            var KEY = 'snapshotScroll';
+            function _save() {
                 try {
-                    sessionStorage.setItem('snapshotScroll', JSON.stringify({
+                    sessionStorage.setItem(KEY, JSON.stringify({
                         x: window.scrollX || window.pageXOffset || 0,
                         y: window.scrollY || window.pageYOffset || 0
                     }));
                 } catch (_) {}
+            }
+            function _restore() {
+                try {
+                    var raw = sessionStorage.getItem(KEY);
+                    if (!raw) return;
+                    var s = JSON.parse(raw);
+                    window.scrollTo(s.x || 0, s.y || 0);
+                } catch (_) {}
+            }
+            // Restore as early as possible, then again post-load and
+            // 50ms after, to survive late layout shifts.
+            _restore();
+            window.addEventListener('DOMContentLoaded', _restore);
+            window.addEventListener('load', function () {
+                _restore();
+                setTimeout(_restore, 50);
             });
+            // Continuous save — survives 1s reload regardless of
+            // beforeunload firing.
+            setInterval(_save, 250);
+            window.addEventListener('beforeunload', _save);
         })();
 
         // Cache-busted hard reload every 1s. The plain <meta refresh>
