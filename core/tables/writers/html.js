@@ -379,10 +379,18 @@
         return purpleHtml + greenHtml + hitBadge;
     }
 
-    // T3 has its own valid-code set that's the union of T1 + T2 (anchor
-    // hits in T3 can come from either expansion). Used to filter the
-    // POS column display the same way T1/T2 do.
-    const T3_POS_VALID = new Set([...T1_VALID, ...T2_VALID]);
+    // T3 has its own valid-code set covering distances up to ±4 — the
+    // user reported that Electron T3 renders codes like SL+3, OL+4,
+    // OR+4 etc. (the anchor projection range extends further than
+    // T1/T2's ±1 / ±2 windows). Previously this was union(T1, T2) →
+    // ±2 max → anything stronger collapsed to XX in the mirror.
+    const T3_POS_VALID = new Set([
+        'S+0',  'O+0',
+        'SL+1', 'SR+1', 'OL+1', 'OR+1',
+        'SL+2', 'SR+2', 'OL+2', 'OR+2',
+        'SL+3', 'SR+3', 'OL+3', 'OR+3',
+        'SL+4', 'SR+4', 'OL+4', 'OR+4'
+    ]);
 
     function _renderT3RowCells(perPair, group, actual, selected, flashSet, rowIdx) {
         const tint    = selected ? 'background:#fffbeb;' : 'background:#fff;';
