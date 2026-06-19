@@ -28,16 +28,17 @@
     const STORAGE_PREFIX = 'strategyAnalyser.';
 
     // Each field: name, label, type (number), min, max, step, helper.
+    // Labels kept short so multiple fit per row when the container wraps.
     const FIELDS = [
-        { k: 'confidenceFloor',  lbl: 'Conf floor',   min: 0,   max: 100, step: 1,   suf: '%',
-            help: 'Below this → WAIT (display only). Lower = bet more.' },
-        { k: 'confidenceScale',  lbl: 'Conf scale',   min: 0.5, max: 20,  step: 0.5, suf: '',
-            help: 'Higher = stricter (more total fired weight to reach 100%).' },
-        { k: 'maxNumbers',       lbl: 'Max nums',     min: 6,   max: 18,  step: 1,   suf: '',
-            help: 'Ceiling on prediction list size.' },
-        { k: 'waitCap',          lbl: 'Wait cap',     min: 1,   max: 10,  step: 1,   suf: '',
-            help: 'N consecutive WAITs → next call FORCES a BET.' },
-        { k: 't3CooldownRounds', lbl: 'T3 cooldown',  min: 0,   max: 10,  step: 1,   suf: ' rounds',
+        { k: 'confidenceFloor',  lbl: 'Floor',    min: 0,   max: 100, step: 1,   suf: '%',
+            help: 'Confidence floor. Below this → WAIT (display only). Lower = bet more.' },
+        { k: 'confidenceScale',  lbl: 'Scale',    min: 0.5, max: 20,  step: 0.5, suf: '',
+            help: 'Confidence scale. Higher = stricter (more fired weight to reach 100%).' },
+        { k: 'maxNumbers',       lbl: 'Max',      min: 6,   max: 18,  step: 1,   suf: '',
+            help: 'Max numbers in prediction list.' },
+        { k: 'waitCap',          lbl: 'Wait',     min: 1,   max: 10,  step: 1,   suf: '',
+            help: 'Wait cap — N consecutive WAITs → next call FORCES a BET.' },
+        { k: 't3CooldownRounds', lbl: 'T3 cool',  min: 0,   max: 10,  step: 1,   suf: '',
             help: 'After T3 pair misses its projection, suppress signals for N rounds.' }
     ];
 
@@ -92,32 +93,37 @@
         const fieldHtml = FIELDS.map(f => {
             const val = params[f.k];
             return `
-                <label title="${f.help}" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#cbd5e1;margin-right:8px;">
+                <label title="${f.help}" style="display:inline-flex;align-items:center;gap:3px;
+                            font-size:10px;color:#cbd5e1;flex:0 0 auto;">
                     <span style="opacity:0.8;">${f.lbl}</span>
                     <input id="sa-set-${f.k}" type="number" value="${val}"
                            min="${f.min}" max="${f.max}" step="${f.step}"
-                           style="width:48px;padding:1px 4px;font-size:10px;
+                           style="width:46px;padding:1px 4px;font-size:10px;
                                   background:#0f172a;color:#e2e8f0;
                                   border:1px solid #334155;border-radius:3px;">${f.suf ? '<span style="opacity:0.7;">' + f.suf + '</span>' : ''}
                 </label>`;
         }).join('');
+        // display:flex + flex-wrap so when the row is narrow the inputs
+        // and buttons drop onto a second line instead of getting clipped.
+        // gap handles spacing between the wrapped items.
         return `
             <div id="${CONTAINER_ID}" data-tab-group="test" style="
-                display:none;flex:0 0 auto;padding:4px 8px;
+                display:none;flex:1 1 100%;align-items:center;gap:6px 10px;
+                flex-wrap:wrap;padding:5px 8px;margin-top:4px;
                 background:rgba(15,23,42,0.85);
-                border:1px solid #334155;border-radius:5px;
-                white-space:nowrap;">
-                <span style="font-size:10px;color:#5eead4;font-weight:700;margin-right:6px;">⚙ Analyser</span>
+                border:1px solid #334155;border-radius:5px;">
+                <span style="font-size:10px;color:#5eead4;font-weight:700;flex:0 0 auto;">⚙ Analyser</span>
                 ${fieldHtml}
+                <span style="flex:1 0 0;"></span>
                 <button id="sa-set-explain" title="Open the StrategyAnalyser explanation popup"
-                        style="margin-left:6px;padding:2px 8px;font-size:10px;font-weight:700;
+                        style="padding:3px 10px;font-size:11px;font-weight:700;flex:0 0 auto;
                                background:#0d9488;color:#fff;border:none;border-radius:3px;cursor:pointer;">
                     📖 Explain
                 </button>
                 <button id="sa-set-reset" title="Restore defaults"
-                        style="margin-left:4px;padding:2px 6px;font-size:10px;
+                        style="padding:3px 7px;font-size:11px;flex:0 0 auto;
                                background:transparent;color:#94a3b8;
-                               border:1px solid #475569;border-radius:3px;cursor:pointer;">↺</button>
+                               border:1px solid #475569;border-radius:3px;cursor:pointer;">↺ Reset</button>
             </div>
         `;
     }
@@ -177,7 +183,7 @@
             return;
         }
         const mode = (window.aiAutoModeUI && window.aiAutoModeUI.currentMode) || '';
-        el.style.display = (mode === 'test') ? 'inline-block' : 'none';
+        el.style.display = (mode === 'test') ? 'flex' : 'none';
     }
 
     function _start() {
