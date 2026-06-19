@@ -122,6 +122,23 @@
                        + _renderTopScored(exp)
                        + _renderCooldown(exp)
                        + _renderSessionState(exp);
+        _wireSignalsToggle();
+    }
+
+    // Persisted across re-renders so the user's "show dropped" choice
+    // survives the 750ms refresh loop.
+    let _showAllSignals = false;
+    function _wireSignalsToggle() {
+        const SHOW_ALL_ID = 'analyserSignalsShowAll';
+        const cb = document.getElementById(SHOW_ALL_ID);
+        const rows = document.getElementById(SHOW_ALL_ID + '-rows');
+        if (!cb || !rows) return;
+        cb.checked = _showAllSignals;
+        rows.style.display = _showAllSignals ? '' : 'none';
+        cb.addEventListener('change', () => {
+            _showAllSignals = cb.checked;
+            rows.style.display = _showAllSignals ? '' : 'none';
+        });
     }
 
     // ── Sections ─────────────────────────────────────────────────
@@ -189,32 +206,44 @@
     }
 
     function _renderUserScope(exp) {
-        const fams = exp.userSelectedFamilies || [];
+        const source   = exp.scopeSource || 'autonomous';
+        const fams     = exp.scopeFamilies || [];
         const filtered = exp.filteredByUserSelection || [];
-        if (!fams.length) {
+
+        if (source === 'autonomous' || !fams.length) {
             return `
                 <div style="margin-bottom:10px;padding:6px 10px;
                             background:#1e293b;border-left:3px solid #475569;
                             border-radius:0 4px 4px 0;font-size:11px;color:#94a3b8;">
                     <strong style="color:#cbd5e1;">Scope:</strong>
-                    No pair selections in Electron — analyser is running in
-                    AUTONOMOUS mode (firing on whichever pair families show
-                    the strongest signals).
+                    No pair selections or visibility filter in Electron —
+                    analyser is running in AUTONOMOUS mode (firing on
+                    whichever pair families show the strongest signals).
                 </div>`;
         }
+
+        const isSelection = source === 'selection';
+        const accent  = isSelection ? '#facc15' : '#22d3ee';
+        const chipBg  = isSelection ? '#facc15' : '#22d3ee';
+        const chipFg  = isSelection ? '#422006' : '#083344';
+        const lead    = isSelection
+            ? `Analyser restricted to ${fams.length} user-selected pair famil${fams.length === 1 ? 'y' : 'ies'}`
+            : `Analyser restricted to ${fams.length} visible pair famil${fams.length === 1 ? 'y' : 'ies'} (pair-filter)`;
+
         const famChips = fams.map(f =>
-            `<span style="background:#facc15;color:#422006;padding:1px 6px;
+            `<span style="background:${chipBg};color:${chipFg};padding:1px 6px;
             margin:1px;border-radius:3px;font-weight:700;font-size:10px;
             display:inline-block;">${_esc(f)}</span>`).join('');
+
         return `
             <div style="margin-bottom:10px;padding:6px 10px;
-                        background:#1e293b;border-left:3px solid #facc15;
+                        background:#1e293b;border-left:3px solid ${accent};
                         border-radius:0 4px 4px 0;font-size:11px;color:#cbd5e1;">
-                <strong style="color:#facc15;">Scope:</strong>
-                Analyser restricted to ${fams.length} user-selected pair famil${fams.length === 1 ? 'y' : 'ies'}:
+                <strong style="color:${accent};">Scope:</strong>
+                ${lead}:
                 <span style="margin-left:4px;">${famChips}</span>
                 ${filtered.length > 0 ? `<div style="margin-top:4px;font-size:10px;color:#94a3b8;">
-                    ${filtered.length} pair-bound signal${filtered.length === 1 ? '' : 's'} dropped — pairs not in your selection.
+                    ${filtered.length} pair-bound signal${filtered.length === 1 ? '' : 's'} dropped — pairs not in scope.
                 </div>` : ''}
                 <div style="margin-top:3px;font-size:10px;color:#94a3b8;">
                     Non-pair signals (sign-streak / table-streak / set-carry) always fire regardless of scope.
@@ -254,44 +283,61 @@
         if (!fired.length) {
             return `<div style="margin-bottom:10px;opacity:0.6;">No signals fired this spin.</div>`;
         }
-        // Sort by weight descending so the strongest signals are on top.
-        const sorted = fired.slice().sort((a, b) => b.weight - a.weight);
+        // USED rows come first, then dropped — caller toggles whether
+        // the dropped block is visible via #${SHOW_ALL_ID}.
+        const sorted = fired.slice().sort((a, b) => {
+            if (a.used !== b.used) return a.used ? -1 : 1;
+            return b.weight - a.weight;
+        });
         const usedCount = fired.filter(s => s.used).length;
-        const rows = sorted.map(s => {
-            // Weight rendered as a unitless decimal (not %). User
-            // pointed out that 1.20 displayed as 120% was confusing —
-            // signal weights are not percentages, they're sums-of-evidence.
+        const droppedCount = fired.length - usedCount;
+
+        const _row = (s) => {
             const w = s.weight.toFixed(2);
-            // Green band when this signal was actually USED in scoring;
-            // grey when it fired but was filtered out (below
-            // minUseWeight or beyond top-K cap).
             const rowBg = s.used ? '#064e3b' : 'transparent';
-            const rowColor = s.used ? '#bbf7d0' : '#e2e8f0';
+            const rowColor = s.used ? '#bbf7d0' : '#cbd5e1';
             const badge = s.used
                 ? '<span style="background:#16a34a;color:#fff;padding:0 4px;border-radius:2px;font-size:9px;font-weight:700;margin-right:4px;">USED</span>'
-                : '<span style="background:#475569;color:#cbd5e1;padding:0 4px;border-radius:2px;font-size:9px;margin-right:4px;">—</span>';
+                : '';
+            // Compact: short name (last 2 path segments) shown, full name in title.
+            const parts = String(s.name).split('/');
+            const shortName = parts.length > 2 ? parts.slice(-2).join('/') : s.name;
+            const fullName  = _esc(s.name);
             return `
                 <tr style="border-bottom:1px solid #1e293b;vertical-align:top;background:${rowBg};">
-                    <td style="padding:3px 6px;color:${rowColor};font-size:10px;
+                    <td style="padding:2px 6px;color:${rowColor};font-size:10px;
                                font-family:'SF Mono',ui-monospace,monospace;
-                               max-width:280px;word-break:break-all;">${badge}${_esc(s.name)}</td>
-                    <td style="padding:3px 6px;color:#f59e0b;text-align:right;
+                               max-width:240px;word-break:break-all;"
+                        title="${fullName}">${badge}${_esc(shortName)}</td>
+                    <td style="padding:2px 6px;color:#f59e0b;text-align:right;
                                font-weight:700;white-space:nowrap;">${w}</td>
-                    <td style="padding:3px 6px;color:#94a3b8;text-align:right;">${s.candidatesCount}</td>
-                    <td style="padding:3px 6px;color:#cbd5e1;font-size:10px;">${_esc(s.reason)}</td>
+                    <td style="padding:2px 6px;color:#94a3b8;text-align:right;">${s.candidatesCount}</td>
+                    <td style="padding:2px 6px;color:#cbd5e1;font-size:10px;
+                               max-width:340px;">${_esc(s.reason)}</td>
                 </tr>`;
-        }).join('');
+        };
+
+        const usedRowsHtml    = sorted.filter(s => s.used).map(_row).join('');
+        const droppedRowsHtml = sorted.filter(s => !s.used).map(_row).join('');
+        const SHOW_ALL_ID = 'analyserSignalsShowAll';
+
         return `
             <div style="margin-bottom:10px;">
-                <div style="font-weight:700;color:#5eead4;margin-bottom:4px;font-size:11px;">
-                    Fired signals (${fired.length})
-                    <span style="font-weight:400;color:#94a3b8;font-size:10px;margin-left:6px;">
-                        sorted by weight ↓
-                    </span>
-                    <span style="float:right;font-size:10px;color:#bbf7d0;">
+                <div style="font-weight:700;color:#5eead4;margin-bottom:4px;font-size:11px;
+                            display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <span>Fired signals (${fired.length})</span>
+                    <span style="font-weight:400;color:#94a3b8;font-size:10px;">sorted: USED first ↓</span>
+                    <span style="margin-left:auto;font-size:10px;color:#bbf7d0;">
                         <span style="background:#16a34a;color:#fff;padding:0 4px;border-radius:2px;margin-right:4px;">USED</span>
-                        ${usedCount} of ${fired.length} signals contributed to scoring
+                        ${usedCount} of ${fired.length} contributed to scoring
                     </span>
+                    ${droppedCount > 0 ? `
+                        <label style="font-size:10px;color:#94a3b8;cursor:pointer;
+                                      display:inline-flex;align-items:center;gap:4px;">
+                            <input type="checkbox" id="${SHOW_ALL_ID}"
+                                   style="margin:0;cursor:pointer;">
+                            show ${droppedCount} dropped
+                        </label>` : ''}
                 </div>
                 <table style="width:100%;font-size:10px;border-collapse:collapse;">
                     <thead><tr style="text-align:left;color:#94a3b8;border-bottom:1px solid #334155;">
@@ -300,7 +346,11 @@
                         <th style="padding:3px 6px;text-align:right;">Cands</th>
                         <th style="padding:3px 6px;">Reason</th>
                     </tr></thead>
-                    <tbody>${rows}</tbody>
+                    <tbody>${usedRowsHtml}</tbody>
+                    ${droppedCount > 0 ? `
+                        <tbody id="${SHOW_ALL_ID}-rows" style="display:none;">
+                            ${droppedRowsHtml}
+                        </tbody>` : ''}
                 </table>
             </div>`;
     }

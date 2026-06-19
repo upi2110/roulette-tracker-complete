@@ -375,13 +375,17 @@
             ? Signals.evaluateAll(snap, state, params)
             : [];
 
-        // ── USER-SELECTION FILTER (hotfix #4) ──
-        // If the user has clicked specific pairs in the Electron AI
-        // panel, restrict pair-bound signals to ONLY those families.
-        // The analyser will not "discover" pairs the user didn't pick.
+        // ── USER-SELECTION FILTER (hotfix #4 + #5) ──
+        // Two ways the user can restrict the analyser's pair scope:
+        //   1) Click specific pair headers in the Electron AI panel
+        //      (snap.meta.selections) — STRICT scope: only those
+        //      families are eligible.
+        //   2) Toggle pair-family visibility in the table-display filter
+        //      (snap.meta.visibleFamilies) — SOFT scope: when no
+        //      explicit click-selections exist, the analyser limits
+        //      itself to the families the user has chosen to see.
         // Non-pair signals (sign-streak / table-streak / set-carry)
-        // always pass through — they're partition-wide, not tied to
-        // any single pair family.
+        // always pass through — they're partition-wide.
         const sel = (snap.meta && snap.meta.selections) || {};
         const selectedFams = new Set();
         ['table1', 'table2', 'table3'].forEach(t => {
@@ -390,11 +394,25 @@
                 selectedFams.add(base);
             });
         });
+        const visibleFamsArr = (snap.meta && Array.isArray(snap.meta.visibleFamilies))
+            ? snap.meta.visibleFamilies : [];
+        const visibleFams = new Set(visibleFamsArr);
+
+        let scopeFams = null;        // null = autonomous, no restriction
+        let scopeSource = 'autonomous';
+        if (selectedFams.size > 0) {
+            scopeFams   = selectedFams;
+            scopeSource = 'selection';
+        } else if (visibleFams.size > 0) {
+            scopeFams   = visibleFams;
+            scopeSource = 'visibility';
+        }
+
         const filteredByUser = [];
-        const userScoped = (selectedFams.size > 0)
+        const userScoped = (scopeFams)
             ? allSignals.filter(s => {
                 const fam = _extractFamilyKey(s.name);
-                if (fam && !selectedFams.has(fam)) {
+                if (fam && !scopeFams.has(fam)) {
                     filteredByUser.push({ name: s.name, pair: fam });
                     return false;
                 }
@@ -549,6 +567,9 @@
             suppressedByCooldown: suppressed,
             // NEW: user-selection scoping
             userSelectedFamilies: Array.from(selectedFams).sort(),
+            visibleFamilies:      Array.from(visibleFams).sort(),
+            scopeSource,          // 'selection' | 'visibility' | 'autonomous'
+            scopeFamilies:        scopeFams ? Array.from(scopeFams).sort() : [],
             filteredByUserSelection: filteredByUser,
             topScored: ranked.slice(0, 20),
             picked,
