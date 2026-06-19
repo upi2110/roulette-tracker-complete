@@ -582,7 +582,37 @@ class AutoUpdateOrchestrator {
                 window.aiPanel.clearSelections();
             }
             if (window.rouletteWheel && typeof window.rouletteWheel.clearHighlights === 'function') {
-                window.rouletteWheel.clearHighlights();
+                // StrategyAnalyser (decisionMode==='test') visualisation
+                // override: when the analyser returns WAIT WITH numbers,
+                // show them on the wheel as "candidates" so the user can
+                // see what the brain is thinking. No money panel push —
+                // moneyPanel.setPrediction is still gated by BET only.
+                const _hasAnalyserPreview = this.decisionMode === 'test'
+                    && Array.isArray(decision && decision.numbers)
+                    && decision.numbers.length > 0
+                    && typeof window.rouletteWheel.updateHighlights === 'function';
+                if (_hasAnalyserPreview) {
+                    try {
+                        const nums = decision.numbers;
+                        let anchors = [], loose = nums.slice(), anchorGroups = [];
+                        if (typeof window.calculateWheelAnchors === 'function') {
+                            try {
+                                const r = window.calculateWheelAnchors(nums);
+                                anchors      = r.anchors      || [];
+                                loose        = r.loose        || [];
+                                anchorGroups = r.anchorGroups || [];
+                            } catch (_) { loose = nums.slice(); }
+                        }
+                        window.rouletteWheel.updateHighlights(
+                            anchors, loose, anchorGroups, [],
+                            { numbers: nums,
+                              signal: 'WAIT — analyser preview',
+                              confidence: decision.confidence || 0 }
+                        );
+                    } catch (_) { window.rouletteWheel.clearHighlights(); }
+                } else {
+                    window.rouletteWheel.clearHighlights();
+                }
             }
             // ── PARITY GUARD ──
             // Do NOT null out window.moneyPanel.pendingBet here

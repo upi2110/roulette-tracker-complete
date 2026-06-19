@@ -45,22 +45,34 @@
         if (document.getElementById(POPUP_ID)) return;
         const div = document.createElement('div');
         div.id = POPUP_ID;
+        // Larger default + drag-to-resize corner. CSS `resize:both`
+        // gives the user a draggable handle in the bottom-right corner
+        // of the popup. min-width / min-height prevent collapsing it
+        // below the legible threshold.
         div.style.cssText = [
             'display:none',
             'position:fixed',
-            'top:80px', 'right:24px',
-            'width:680px', 'max-height:80vh',
+            'top:60px', 'right:24px',
+            'width:min(960px, 95vw)',
+            'height:min(80vh, 720px)',
+            'min-width:560px',
+            'min-height:320px',
+            'max-width:98vw',
+            'max-height:96vh',
             'background:#0f172a', 'color:#e2e8f0',
             'border:2px solid #14b8a6', 'border-radius:8px',
             'box-shadow:0 10px 40px rgba(0,0,0,0.6)',
             'z-index:99999',
             'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-            'overflow:hidden'
+            'overflow:hidden',
+            'resize:both',
+            'display:flex', 'flex-direction:column'
         ].join(';');
         div.innerHTML = `
             <div id="${HEADER_ID}" style="
                 padding:8px 12px;background:#14b8a6;color:#fff;
                 font-weight:700;font-size:13px;cursor:move;
+                flex:0 0 auto;
                 display:flex;align-items:center;justify-content:space-between;
                 user-select:none;">
                 <span>📖 StrategyAnalyser — How the prediction was built</span>
@@ -70,7 +82,8 @@
             </div>
             <div id="${BODY_ID}" style="
                 padding:10px 14px;font-size:11px;line-height:1.5;
-                max-height:calc(80vh - 32px);overflow-y:auto;">
+                flex:1 1 auto;
+                overflow-y:auto;overflow-x:hidden;">
                 <div style="opacity:0.7;">Initialising…</div>
             </div>
         `;
@@ -307,7 +320,10 @@
         _injectPopup();
         const popup = document.getElementById(POPUP_ID);
         if (!popup) return;
-        popup.style.display = 'block';
+        // Popup container is flex-column (header above, scrollable
+        // body below). Display value must be 'flex', not 'block', or
+        // the body's flex:1 1 auto won't trigger the scroll layout.
+        popup.style.display = 'flex';
         _isOpen = true;
         _renderBody();
         if (!_refreshTimer) {
