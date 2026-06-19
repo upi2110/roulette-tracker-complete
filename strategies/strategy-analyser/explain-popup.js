@@ -454,12 +454,20 @@
     // ── Open / close ─────────────────────────────────────────────
 
     function open() {
+        // Mirror Selection Process: open() goes STRAIGHT to a separate
+        // OS-level window — no in-window overlay step. The user asked
+        // for the explain panel to live outside Electron, the same way
+        // Selection Process does.
+        return popOut();
+    }
+
+    // Legacy in-window overlay (kept inert, no longer triggered).
+    // Retained only because the DOM node is referenced by drag
+    // handlers / close button wiring; safe to remove in a later pass.
+    function _openInWindowOverlay() {
         _injectPopup();
         const popup = document.getElementById(POPUP_ID);
         if (!popup) return;
-        // Popup container is flex-column (header above, scrollable
-        // body below). Display value must be 'flex', not 'block', or
-        // the body's flex:1 1 auto won't trigger the scroll layout.
         popup.style.display = 'flex';
         _isOpen = true;
         _renderAll();
@@ -469,13 +477,13 @@
     }
 
     function close() {
-        const popup = document.getElementById(POPUP_ID);
-        if (popup) popup.style.display = 'none';
+        // Standalone-window mode: close means close the popout window.
+        if (_popoutWin && !_popoutWin.closed) {
+            try { _popoutWin.close(); } catch (_) {}
+        }
+        _popoutWin = null;
         _isOpen = false;
-        // Keep the popout alive when the in-window panel is dismissed —
-        // user explicitly popped it out for separate viewing. Only stop
-        // the refresh timer if the popout is also gone.
-        if (_refreshTimer && (!_popoutWin || _popoutWin.closed)) {
+        if (_refreshTimer) {
             clearInterval(_refreshTimer);
             _refreshTimer = null;
         }
@@ -521,13 +529,8 @@
 <div id="${BODY_ID}"><div style="opacity:0.7;">Initialising…</div></div>
 </body></html>`);
         win.document.close();
-        // Hide the in-window popup while popped out, to avoid two copies
-        // racing for the user's attention. close() leaves the timer
-        // alive because _popoutWin is still open.
-        close();
         // Force a paint right away — don't wait for the next 750ms tick.
         _renderAll();
-        // Restart the refresh timer if close() stopped it.
         if (!_refreshTimer) {
             _refreshTimer = setInterval(_renderAll, REFRESH_MS);
         }
@@ -575,16 +578,9 @@
     // ── Bootstrap ────────────────────────────────────────────────
 
     function _start() {
-        _injectPopup();
-        const closeBtn = document.getElementById(CLOSE_ID);
-        if (closeBtn) closeBtn.addEventListener('click', close);
-        const popoutBtn = document.getElementById(POPOUT_ID);
-        if (popoutBtn) popoutBtn.addEventListener('click', popOut);
-        const header = document.getElementById(HEADER_ID);
-        if (header) header.addEventListener('mousedown', _onDragStart);
-        window.addEventListener('mousemove', _onDragMove);
-        window.addEventListener('mouseup', _onDragEnd);
-        console.log('📖 StrategyAnalyser explain popup: armed');
+        // No DOM injection — explain() routes straight to a separate
+        // OS window (popOut). This mirrors Selection Process exactly.
+        console.log('📖 StrategyAnalyser explain popup: armed (standalone window mode)');
     }
 
     if (document.readyState === 'loading') {
