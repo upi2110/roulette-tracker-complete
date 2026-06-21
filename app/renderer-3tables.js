@@ -1133,10 +1133,60 @@ function resetAll() {
                     window.wheelMode = false;
                     try { window.dispatchEvent(new CustomEvent('wheelModeChanged', { detail: { value: false } })); } catch (_) {}
                 }
-                const sameCb  = document.getElementById('wheelSameModeToggle');
-                const wheelCb = document.getElementById('wheelWheelModeToggle');
-                if (sameCb)  sameCb.checked  = false;
-                if (wheelCb) wheelCb.checked = false;
+                // Manual mode → OFF (default). Clearing manualSelected
+                // here so the next time the user toggles Manual on,
+                // they start fresh — not with leftover picks from
+                // before the reset.
+                if (window.manualMode === true) {
+                    window.manualMode = false;
+                }
+                try {
+                    if (window.rouletteWheel && window.rouletteWheel.manualSelected
+                        && typeof window.rouletteWheel.manualSelected.clear === 'function') {
+                        window.rouletteWheel.manualSelected.clear();
+                    }
+                } catch (_) {}
+                // Include-grey → OFF (default per user pref 2026-06-21).
+                // Mirrored window global, localStorage, and
+                // 'strategyLabIncludeGreyChanged' event so every listener
+                // (AI panel, Auto Test runner, etc.) syncs.
+                if (window.strategyLabIncludeGrey !== false) {
+                    window.strategyLabIncludeGrey = false;
+                    try { localStorage.setItem('strategyLab.includeGrey', '0'); } catch (_) {}
+                    try { window.dispatchEvent(new CustomEvent('strategyLabIncludeGreyChanged', { detail: { value: false } })); } catch (_) {}
+                }
+                // T3 halfs → OFF (default).
+                if (window.t3Halfs === true) {
+                    window.t3Halfs = false;
+                    try { localStorage.setItem('strategyLab.t3Halfs', '0'); } catch (_) {}
+                    try { window.dispatchEvent(new CustomEvent('t3HalfsChanged', { detail: { value: false } })); } catch (_) {}
+                }
+                // T1/T2 breaks → OFF (default).
+                if (window.t1t2Breaks === true) {
+                    window.t1t2Breaks = false;
+                    try { localStorage.setItem('strategyLab.t1t2Breaks', '0'); } catch (_) {}
+                    try { window.dispatchEvent(new CustomEvent('t1t2BreaksChanged', { detail: { value: false } })); } catch (_) {}
+                }
+                const sameCb     = document.getElementById('wheelSameModeToggle');
+                const wheelCb    = document.getElementById('wheelWheelModeToggle');
+                const manualCb   = document.getElementById('wheelManualModeToggle');
+                const greyCb     = document.getElementById('wheelGreyToggle');
+                const t3HalfsCb  = document.getElementById('wheelT3HalfsToggle');
+                const t1t2BrksCb = document.getElementById('wheelT1T2BreaksToggle');
+                if (sameCb)     sameCb.checked     = false;
+                if (wheelCb)    wheelCb.checked    = false;
+                if (manualCb)   manualCb.checked   = false;
+                if (greyCb)     greyCb.checked     = false;  // default OFF
+                if (t3HalfsCb)  t3HalfsCb.checked  = false;
+                if (t1t2BrksCb) t1t2BrksCb.checked = false;
+                // Manual mode controls strip → hide (was visible while
+                // manual was on).
+                const manualCtrls = document.getElementById('manualControls');
+                if (manualCtrls) manualCtrls.style.display = 'none';
+                // Canvas cursor → default (manual mode set it to pointer).
+                if (window.rouletteWheel && window.rouletteWheel.canvas) {
+                    window.rouletteWheel.canvas.style.cursor = 'default';
+                }
 
                 // Restore 0/19 and 2/12 Table filters to "Both" default
                 // and re-run filter pipeline so the wheel display
@@ -1192,6 +1242,32 @@ function resetAll() {
         }
         
         render();
+
+        // ── Defensive final sweep ──
+        // Earlier reset steps trigger event listeners (mode change,
+        // selection wipe, money panel reset) that synchronously fan
+        // out a "fresh" prediction with 37 fallback numbers. That
+        // re-highlights the wheel AFTER our explicit clearHighlights
+        // call. Schedule one more clear after the microtask queue
+        // drains AND another on the next animation frame, so anything
+        // that arrived during reset is wiped before the user sees it.
+        const _finalSweep = () => {
+            try {
+                if (window.rouletteWheel && typeof window.rouletteWheel.clearHighlights === 'function') {
+                    window.rouletteWheel.clearHighlights();
+                }
+                // Also clear any AI / money panel prediction-driven
+                // highlights that may have been pushed mid-reset.
+                if (window.aiPanel && typeof window.aiPanel._clearAllPredictionDisplays === 'function') {
+                    try { window.aiPanel._clearAllPredictionDisplays(); } catch (_) {}
+                }
+            } catch (_) { /* defensive */ }
+        };
+        setTimeout(_finalSweep, 0);
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(_finalSweep);
+        }
+
         console.log('🔄 Full reset complete');
     }
 }

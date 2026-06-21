@@ -2801,7 +2801,7 @@ class AIPredictionPanel {
             // next prediction without a reload.
             const includeGreyAsBet = (typeof window !== 'undefined' && typeof window.strategyLabIncludeGrey === 'boolean')
                 ? window.strategyLabIncludeGrey
-                : true;
+                : false;   // default OFF (user pref 2026-06-21)
             if (includeGreyAsBet && extraNumbers.length > 0) {
                 const merged = new Set(finalNumbers);
                 for (const n of extraNumbers) merged.add(n);

@@ -225,9 +225,11 @@ class AutoTestRunner {
                     const saved = (typeof localStorage !== 'undefined')
                         ? localStorage.getItem('strategyLab.includeGrey')
                         : null;
-                    this._strategyLabIncludeGrey = (saved === '0') ? false : true;
+                    // Default OFF (user pref 2026-06-21): only treat
+                    // saved === '1' as ON; anything else (null, '0') → OFF.
+                    this._strategyLabIncludeGrey = (saved === '1');
                 } catch (_) {
-                    this._strategyLabIncludeGrey = true;
+                    this._strategyLabIncludeGrey = false;
                 }
             }
         }

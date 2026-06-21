@@ -1459,7 +1459,7 @@ class AutoTestUI {
 
         if (this.testMethod === 'test') {
             const cur = (typeof window !== 'undefined' && typeof window.strategyLabIncludeGrey === 'boolean')
-                ? window.strategyLabIncludeGrey : true;
+                ? window.strategyLabIncludeGrey : false;   // default OFF (2026-06-21)
             host.style.display = '';
             host.innerHTML = `
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:#cbd5e1;">

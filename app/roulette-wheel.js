@@ -148,7 +148,7 @@ class RouletteWheel {
                         color:#475569;cursor:pointer;user-select:none;
                         padding:3px 8px;border:1px solid #94a3b8;border-radius:4px;background:#f8fafc;
                     ">
-                        <input type="checkbox" id="wheelGreyToggle" checked style="vertical-align:middle;"> include grey
+                        <input type="checkbox" id="wheelGreyToggle" style="vertical-align:middle;"> include grey
                     </label>
                     <!-- T3 halfs toggle: when ON, each Table-3 pair group
                          splits into a "pair" half (P+1) and a "13opp" half
@@ -372,8 +372,9 @@ class RouletteWheel {
         const wheelGreyCb = document.getElementById('wheelGreyToggle');
         if (wheelGreyCb) {
             // Initial value: prefer the live global, then localStorage,
-            // default to true (include grey).
-            let initialVal = true;
+            // default to FALSE (exclude grey by default — user pref
+            // 2026-06-21: grey OFF default across all strategies).
+            let initialVal = false;
             if (typeof window !== 'undefined' && typeof window.strategyLabIncludeGrey === 'boolean') {
                 initialVal = window.strategyLabIncludeGrey;
             } else {
@@ -1853,8 +1854,17 @@ class RouletteWheel {
         // pool should fall back to the wheel-synthesised universe (Set/
         // Table/Sign/Inverse filters applied to 0-36). _applyFilters
         // handles that synthesis path when _rawPrediction is null.
+        //
+        // GUARD: skip when manual mode is also active — _applyFilters
+        // re-routes into _renderManualSelection, which (when nums=0)
+        // calls aiPanel._clearAllPredictionDisplays(), which calls
+        // clearHighlights() again → infinite recursion → V8 fatal.
+        // Manual mode owns its own pool, so falling back to the wheel
+        // universe is wrong anyway. (Crash fix 2026-06-21.)
         try {
-            if (typeof window !== 'undefined' && window.wheelMode === true) {
+            if (typeof window !== 'undefined'
+                && window.wheelMode === true
+                && window.manualMode !== true) {
                 this._applyFilters();
             }
         } catch (_) {}

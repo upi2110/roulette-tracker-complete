@@ -36,11 +36,14 @@
     const STORAGE_PREFIX = 'strategyAnalyser.';
 
     // Top-row scalar fields (kept after Rules 9/10/11 removal).
+    // NOTE: confidenceScale removed 2026-06-20 — the share-based model
+    // makes scale obsolete (totalUsedWeight is already in [0,1] from
+    // the share normalization). Keeping it in the UI produced
+    // "undefined" warnings on every render since DEFAULTS no longer
+    // carries it.
     const FIELDS = [
         { k: 'confidenceFloor', lbl: 'Floor', min: 0,   max: 100, step: 1,   suf: '%',
             help: 'Confidence floor. confidence < floor → WAIT.' },
-        { k: 'confidenceScale', lbl: 'Scale', min: 0.5, max: 20,  step: 0.5, suf: '',
-            help: 'Used weight ÷ scale × 100 = confidence%.' },
         { k: 'maxNumbers',      lbl: 'Max',   min: 6,   max: 18,  step: 1,   suf: '',
             help: 'Max numbers in prediction list.' }
     ];
