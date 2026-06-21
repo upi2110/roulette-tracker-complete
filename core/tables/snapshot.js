@@ -66,6 +66,18 @@
         const visibleFamilies = (Array.isArray(o.visibleFamilies))
             ? o.visibleFamilies.slice()
             : null;
+        // 2026-06-21: per-table visible families. Used by the analyser's
+        // scope filter to honour each table's per-table pair-filter
+        // checkbox set (Rules 4 + 6 scope to T1, Rule 7 scopes to T3).
+        // Shape: { T1:[fam,…], T2:[…], T3:[…] }. Optional — falls back
+        // to the universal visibleFamilies when absent.
+        const visibleFamiliesPerTable = (o.visibleFamiliesPerTable && typeof o.visibleFamiliesPerTable === 'object')
+            ? {
+                T1: Array.isArray(o.visibleFamiliesPerTable.T1) ? o.visibleFamiliesPerTable.T1.slice() : null,
+                T2: Array.isArray(o.visibleFamiliesPerTable.T2) ? o.visibleFamiliesPerTable.T2.slice() : null,
+                T3: Array.isArray(o.visibleFamiliesPerTable.T3) ? o.visibleFamiliesPerTable.T3.slice() : null
+            }
+            : null;
         // selections: { table1:[pairKey,…], table2:[…], table3:[…] }.
         // What the user clicked in the AI prediction panel. The
         // analyser reads this to give context-aware predictions
@@ -93,6 +105,7 @@
                 prevSpin,
                 timestamp: o.timestamp || '',
                 visibleFamilies,
+                visibleFamiliesPerTable,
                 selections,
                 filters
             },

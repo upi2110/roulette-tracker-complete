@@ -558,27 +558,101 @@
             ? snap.meta.visibleFamilies : [];
         const visibleFams = new Set(visibleFamsArr);
 
-        let scopeFams = null;        // null = autonomous, no restriction
-        let scopeSource = 'autonomous';
+        // 2026-06-21: per-table visible families (T1/T2/T3 → Set<fam>).
+        // When present, the scope filter uses the table-specific set
+        // for that signal's table (Rules 4 + 6 → T1; Rule 7 → T3).
+        // Falls back to the universal `visibleFams` when missing.
+        const perTableRaw = (snap.meta && snap.meta.visibleFamiliesPerTable)
+            || null;
+        const visibleByTable = perTableRaw
+            ? {
+                T1: Array.isArray(perTableRaw.T1) ? new Set(perTableRaw.T1) : null,
+                T2: Array.isArray(perTableRaw.T2) ? new Set(perTableRaw.T2) : null,
+                T3: Array.isArray(perTableRaw.T3) ? new Set(perTableRaw.T3) : null
+            }
+            : null;
+
+        // Determine the scope SOURCE (for popup display + tests).
+        let scopeSource;
         if (selectedFams.size > 0) {
-            scopeFams   = selectedFams;
             scopeSource = 'selection';
+        } else if (visibleByTable) {
+            scopeSource = 'visibility-per-table';
         } else if (visibleFams.size > 0) {
-            scopeFams   = visibleFams;
             scopeSource = 'visibility';
+        } else {
+            scopeSource = 'autonomous';
+        }
+        // scopeFams kept for popup back-compat (universal union).
+        const scopeFams = (selectedFams.size > 0)
+            ? selectedFams
+            : (visibleFams.size > 0 ? visibleFams : null);
+
+        function _signalTable(name) {
+            if (!name) return null;
+            // Rule 7 is T3-only (cross-table-conv/{family}[/...] or
+            // cross-table-conv/{a+b}/[same|opp]).
+            if (name.startsWith('cross-table-conv')) return 'T3';
+            const parts = name.split('/');
+            if (parts.length >= 2 && (parts[1] === 'T1' || parts[1] === 'T2' || parts[1] === 'T3')) {
+                return parts[1];
+            }
+            return null;
+        }
+        /** Extract the FULL pair key (may include _13opp suffix). For
+         *  T1/T2 the per-table scope check uses this to allow main vs
+         *  _13opp halves to be hidden independently. T3 / Rule 7 use
+         *  bare family (no _13opp). 2026-06-21. */
+        function _signalPairKey(name) {
+            if (!name) return null;
+            if (name.startsWith('sub-anchor-pattern') || name.startsWith('side-only-streak')
+             || name.startsWith('cross-cell-rotation')) {
+                const parts = name.split('/');
+                // parts[2] = pair key like "prev" or "prev_13opp"
+                return parts[2] || null;
+            }
+            // Other signals: same as family extraction.
+            return _extractFamilyKey(name);
         }
 
         const filteredByUser = [];
-        const userScoped = (scopeFams)
-            ? allSignals.filter(s => {
-                const fam = _extractFamilyKey(s.name);
-                if (fam && !scopeFams.has(fam)) {
-                    filteredByUser.push({ name: s.name, pair: fam });
+        const userScoped = allSignals.filter(s => {
+            const fam = _extractFamilyKey(s.name);
+            // Non-pair signals (sign / table / set-carry) always pass.
+            if (!fam) return true;
+            // Hard selection scope — clicks always win.
+            if (selectedFams.size > 0) {
+                if (!selectedFams.has(fam)) {
+                    filteredByUser.push({ name: s.name, pair: fam, by: 'selection' });
                     return false;
                 }
                 return true;
-              })
-            : allSignals;
+            }
+            // Per-table visibility scope (preferred when present).
+            if (visibleByTable) {
+                const table = _signalTable(s.name);
+                if (table && visibleByTable[table]) {
+                    const tableSet = visibleByTable[table];
+                    // T1/T2: per-table sets contain FULL pair keys (incl.
+                    // _13opp). Use _signalPairKey for the exact match.
+                    // T3: sets contain bare families.
+                    const checkKey = (table === 'T1' || table === 'T2')
+                        ? (_signalPairKey(s.name) || fam)
+                        : fam;
+                    if (!tableSet.has(checkKey)) {
+                        filteredByUser.push({ name: s.name, pair: checkKey, by: 'visibility-' + table });
+                        return false;
+                    }
+                    return true;
+                }
+            }
+            // Universal visibility fallback.
+            if (visibleFams.size > 0 && !visibleFams.has(fam)) {
+                filteredByUser.push({ name: s.name, pair: fam, by: 'visibility' });
+                return false;
+            }
+            return true;
+        });
 
         // (T3 cooldown filter removed — Rule 9 dropped.)
         let fired = userScoped;

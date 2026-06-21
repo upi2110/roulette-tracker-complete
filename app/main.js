@@ -196,6 +196,9 @@ function createWindow() {
             const visibleFamilies = (opts && Array.isArray(opts.visibleFamilies))
                 ? opts.visibleFamilies.slice()
                 : null;
+            const visibleFamiliesPerTable = (opts && opts.visibleFamiliesPerTable && typeof opts.visibleFamiliesPerTable === 'object')
+                ? opts.visibleFamiliesPerTable
+                : null;
             const selections = (opts && opts.selections && typeof opts.selections === 'object')
                 ? opts.selections
                 : null;
@@ -205,6 +208,7 @@ function createWindow() {
             const snap = snapshot(safeSpins, {
                 timestamp: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
                 visibleFamilies,
+                visibleFamiliesPerTable,
                 selections,
                 filters
             });

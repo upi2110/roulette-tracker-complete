@@ -258,6 +258,15 @@ class AutoUpdateOrchestrator {
                 if (typeof window.getVisiblePairFamilies === 'function') {
                     _snapOpts.visibleFamilies = Array.from(window.getVisiblePairFamilies()).sort();
                 }
+                // 2026-06-21: per-table visible-families. Analyser scope
+                // filter uses these (Rules 4/6 → T1, Rule 7 → T3).
+                if (typeof window.getVisiblePairFamiliesForTable === 'function') {
+                    _snapOpts.visibleFamiliesPerTable = {
+                        T1: Array.from(window.getVisiblePairFamiliesForTable('T1')).sort(),
+                        T2: Array.from(window.getVisiblePairFamiliesForTable('T2')).sort(),
+                        T3: Array.from(window.getVisiblePairFamiliesForTable('T3')).sort()
+                    };
+                }
             } catch (_) { /* defensive */ }
             try {
                 const w = window.rouletteWheel;

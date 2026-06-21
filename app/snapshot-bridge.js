@@ -73,6 +73,21 @@
             .filter(n => n !== null);
     }
 
+    function _visibleFamiliesPerTable() {
+        // 2026-06-21: per-table pair filters (T1/T2/T3 buttons next to
+        // the universal one). Return { T1, T2, T3 } sorted arrays so
+        // the snapshot writer + analyser can scope per-table.
+        try {
+            if (typeof window.getVisiblePairFamiliesForTable === 'function') {
+                return {
+                    T1: Array.from(window.getVisiblePairFamiliesForTable('T1')).sort(),
+                    T2: Array.from(window.getVisiblePairFamiliesForTable('T2')).sort(),
+                    T3: Array.from(window.getVisiblePairFamiliesForTable('T3')).sort()
+                };
+            }
+        } catch (_) {}
+        return null;
+    }
     function _visibleFamilies() {
         // The renderer exposes its "Pairs (N/12)" dropdown state via
         // window.getVisiblePairFamilies(). Return as a sorted array so
@@ -141,11 +156,17 @@
 
         const spins = _snapshotSpins();
         if (!spins) return;
-        const families   = _visibleFamilies();
-        const selections = _selections();
-        const filters    = _filters();
+        const families        = _visibleFamilies();
+        const familiesByTable = _visibleFamiliesPerTable();
+        const selections      = _selections();
+        const filters         = _filters();
 
-        const fp = _fingerprint(spins, families, selections, filters);
+        // Per-table sets folded into the fingerprint so toggling any of
+        // the new T1/T2/T3 dropdowns re-fires the snapshot write.
+        const fpExtras = familiesByTable
+            ? '|PT:' + ['T1','T2','T3'].map(t => t + ':' + (familiesByTable[t] || []).join(',')).join(';')
+            : '';
+        const fp = _fingerprint(spins, families, selections, filters) + fpExtras;
         if (fp === _lastFingerprint) return;     // no change since last write
         _lastFingerprint = fp;
 
@@ -153,6 +174,7 @@
         try {
             const r = await window.aiAPI.refreshSnapshot(spins, {
                 visibleFamilies: families,
+                visibleFamiliesPerTable: familiesByTable,
                 selections,
                 filters
             });

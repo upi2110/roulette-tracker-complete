@@ -306,7 +306,7 @@ function getTable1NextProjections() {
     });
 
     // Slice 2f: drop entries whose family is hidden by the dropdown.
-    return _filterProjectionsByVisibleFamilies(projections);
+    return _filterProjectionsByVisibleFamilies(projections, "T1");
 }
 
 /**
@@ -370,7 +370,7 @@ function getTable2NextProjections() {
     });
 
     // Slice 2f: drop entries whose family is hidden by the dropdown.
-    return _filterProjectionsByVisibleFamilies(projections);
+    return _filterProjectionsByVisibleFamilies(projections, "T2");
 }
 
 /**
@@ -1341,65 +1341,171 @@ function _familyForDataPair(dataPair) {
 }
 
 const PAIR_FILTER_STORAGE_KEY = 'globalVisiblePairs';
+// Per-table filter keys (added 2026-06-21 — separate dropdowns per
+// T1/T2/T3 sit next to the universal one). Each defaults to "all 12
+// visible". Persist independently and NEVER cleared by Reset All.
+const PAIR_FILTER_KEY_T1 = 'visiblePairsT1';
+const PAIR_FILTER_KEY_T2 = 'visiblePairsT2';
+const PAIR_FILTER_KEY_T3 = 'visiblePairsT3';
 
 /**
- * Load the persisted set of visible families from localStorage.
- * Falls back to "all 12 visible" when the key is absent or invalid.
+ * Helper: all valid pair-keys for a table.
+ *   T1 / T2 → 24 entries (12 main + 12 _13opp halves)
+ *   T3      → 12 entries (T3 columns combine both halves so we filter
+ *              at family-name level only)
+ *   universal → 12 family names
  */
-function _loadVisiblePairFamilies() {
-    try {
-        const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem(PAIR_FILTER_STORAGE_KEY) : null;
-        if (!raw) return new Set(PAIR_FAMILY_LABELS.map(p => p.family));
-        const arr = JSON.parse(raw);
-        if (!Array.isArray(arr)) return new Set(PAIR_FAMILY_LABELS.map(p => p.family));
-        // Filter to known families so a stale key with removed entries
-        // doesn't poison the renderer.
-        const known = new Set(PAIR_FAMILY_LABELS.map(p => p.family));
-        return new Set(arr.filter(k => known.has(k)));
-    } catch (_) {
-        return new Set(PAIR_FAMILY_LABELS.map(p => p.family));
+function _allKeysForTable(tableId) {
+    if (tableId === 'T3') return PAIR_FAMILY_LABELS.map(p => p.family);
+    if (tableId === 'T1' || tableId === 'T2') {
+        const out = [];
+        PAIR_FAMILY_LABELS.forEach(p => {
+            out.push(p.family);
+            out.push(p.family + '_13opp');
+        });
+        return out;
     }
+    return PAIR_FAMILY_LABELS.map(p => p.family);
 }
 
-function _persistVisiblePairFamilies(set) {
+/**
+ * Load a persisted Set<key> from localStorage; falls back to ALL.
+ * If `tableId` is provided, the default + validation set comes from
+ * _allKeysForTable. Migration: when a T1/T2 save predates the
+ * 2026-06-21 main/13-opp split, the saved family-only entries are
+ * expanded to BOTH halves (so users don't lose visibility on upgrade).
+ */
+function _loadVisibleSet(key, tableId) {
+    const all = new Set(_allKeysForTable(tableId || null));
+    try {
+        const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem(key) : null;
+        if (!raw) return new Set(all);
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return new Set(all);
+        // T1/T2 migration: if a stored item is a bare family name and
+        // the corresponding _13opp half exists in the schema, treat
+        // the save as "both halves visible".
+        if (tableId === 'T1' || tableId === 'T2') {
+            const out = new Set();
+            for (const item of arr) {
+                if (all.has(item)) {
+                    out.add(item);
+                    // If the saved item is a bare family AND we've never
+                    // seen this user mark the _13opp half OFF (i.e. the
+                    // _13opp variant isn't in the saved arr at all), opt
+                    // them in to both — preserves the pre-split UX.
+                    if (!item.endsWith('_13opp')) {
+                        const opp = item + '_13opp';
+                        if (all.has(opp) && !arr.includes(opp) && !arr.some(k => k === item + '_13opp')) {
+                            out.add(opp);
+                        }
+                    }
+                }
+            }
+            return out.size > 0 ? out : new Set(all);
+        }
+        return new Set(arr.filter(k => all.has(k)));
+    } catch (_) {
+        return new Set(all);
+    }
+}
+function _persistVisibleSet(key, set) {
     try {
         if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(PAIR_FILTER_STORAGE_KEY, JSON.stringify(Array.from(set)));
+            localStorage.setItem(key, JSON.stringify(Array.from(set)));
         }
     } catch (_) { /* best-effort */ }
 }
 
-// Live filter state — read by every renderTableN() and by slice 2g's
-// engine restriction. Mutations go through _setVisiblePairFamilies()
-// to keep localStorage + UI count badge + tables in sync.
-let _visiblePairFamilies = _loadVisiblePairFamilies();
+// Backwards-compat shims for the original universal filter (kept).
+function _loadVisiblePairFamilies()       { return _loadVisibleSet(PAIR_FILTER_STORAGE_KEY); }
+function _persistVisiblePairFamilies(set) { _persistVisibleSet(PAIR_FILTER_STORAGE_KEY, set); }
 
-// Slice 2g: expose the visible-families Set on window so the engine
-// (services/ai-auto-engine/ai-auto-engine.js) can restrict its pair
-// scoring to only the families the user has chosen to display. The
-// engine reads `window.getVisiblePairFamilies()` and filters
-// flashingPairs before computing the best pair / projection.
-// Always returns a fresh Set copy so callers can't mutate state.
+// Live filter state.
+//   _visiblePairFamilies     — the original universal filter (intersection
+//                              with each per-table filter is the effective
+//                              filter for that table).
+//   _visiblePairFamiliesT{1,2,3} — per-table filters added 2026-06-21.
+let _visiblePairFamilies   = _loadVisibleSet(PAIR_FILTER_STORAGE_KEY);          // universal: Set<family>
+let _visiblePairFamiliesT1 = _loadVisibleSet(PAIR_FILTER_KEY_T1, 'T1');         // Set<pairKey> (incl. _13opp)
+let _visiblePairFamiliesT2 = _loadVisibleSet(PAIR_FILTER_KEY_T2, 'T2');         // Set<pairKey> (incl. _13opp)
+let _visiblePairFamiliesT3 = _loadVisibleSet(PAIR_FILTER_KEY_T3, 'T3');         // Set<family> (T3 has no _13opp split)
+
+function _perTableSet(tableId) {
+    if (tableId === 'T1') return _visiblePairFamiliesT1;
+    if (tableId === 'T2') return _visiblePairFamiliesT2;
+    if (tableId === 'T3') return _visiblePairFamiliesT3;
+    return null;
+}
+
+/**
+ * Effective visible-keys for a table.
+ *   T1 / T2 → Set<pairKey>  (24 max — main + _13opp); each pairKey
+ *             must be allowed by BOTH (a) per-table set, AND (b)
+ *             universal family (after stripping _13opp).
+ *   T3      → Set<family>   (12 max); same intersection logic at
+ *             family level.
+ *   no tableId / legacy → Set<family>, universal only.
+ */
+function _effectiveVisible(tableId) {
+    const perTable = _perTableSet(tableId);
+    if (!perTable) return new Set(_visiblePairFamilies);
+    if (tableId === 'T1' || tableId === 'T2') {
+        const out = new Set();
+        for (const pk of perTable) {
+            const fam = _familyForDataPair(pk);
+            if (_visiblePairFamilies.has(fam)) out.add(pk);
+        }
+        return out;
+    }
+    // T3 (and any other future family-only table).
+    const out = new Set();
+    for (const f of perTable) {
+        if (_visiblePairFamilies.has(f)) out.add(f);
+    }
+    return out;
+}
+
+// Expose to the engine + snapshot bridge.
+//   getVisiblePairFamilies()           — legacy (universal only); kept
+//                                         so existing callers don't break.
+//   getVisiblePairFamiliesForTable(id) — NEW; effective per-table set
+//                                         (universal ∩ per-table).
 if (typeof window !== 'undefined') {
     window.getVisiblePairFamilies = function() {
         return new Set(_visiblePairFamilies);
+    };
+    window.getVisiblePairFamiliesForTable = function(tableId) {
+        return _effectiveVisible(tableId);
     };
 }
 
 function _setVisiblePairFamilies(set) {
     _visiblePairFamilies = new Set(set);
-    _persistVisiblePairFamilies(_visiblePairFamilies);
+    _persistVisibleSet(PAIR_FILTER_STORAGE_KEY, _visiblePairFamilies);
     _refreshPairFilterUI();
-    // Re-render all 3 tables so they pick up the filtered config.
+    if (typeof render === 'function') render();
+}
+function _setVisiblePairFamiliesForTable(tableId, set) {
+    if (tableId === 'T1') { _visiblePairFamiliesT1 = new Set(set); _persistVisibleSet(PAIR_FILTER_KEY_T1, _visiblePairFamiliesT1); }
+    else if (tableId === 'T2') { _visiblePairFamiliesT2 = new Set(set); _persistVisibleSet(PAIR_FILTER_KEY_T2, _visiblePairFamiliesT2); }
+    else if (tableId === 'T3') { _visiblePairFamiliesT3 = new Set(set); _persistVisibleSet(PAIR_FILTER_KEY_T3, _visiblePairFamiliesT3); }
+    _refreshPerTablePairFilterUI(tableId);
     if (typeof render === 'function') render();
 }
 
 /**
- * Filter a column-group config array (T1/T2/T3) down to the entries
- * whose family is currently visible. Used inside each table renderer.
+ * Filter a column-group config array down to families/pairKeys
+ * visible on the given table. T1/T2 check exact dataPair (so main
+ * vs _13opp halves can hide independently); T3 (and legacy) check
+ * by family.
  */
-function _filterVisibleColumnGroups(groups) {
-    return groups.filter(g => _visiblePairFamilies.has(_familyForDataPair(g.dataPair)));
+function _filterVisibleColumnGroups(groups, tableId) {
+    const eff = _effectiveVisible(tableId);
+    if (tableId === 'T1' || tableId === 'T2') {
+        return groups.filter(g => eff.has(g.dataPair));
+    }
+    return groups.filter(g => eff.has(_familyForDataPair(g.dataPair)));
 }
 
 /**
@@ -1409,11 +1515,15 @@ function _filterVisibleColumnGroups(groups) {
  * getTable2NextProjections so the AI prediction panel's
  * "available pairs" list matches what's visible in the tables.
  */
-function _filterProjectionsByVisibleFamilies(projections) {
+function _filterProjectionsByVisibleFamilies(projections, tableId) {
     if (!projections || typeof projections !== 'object') return projections;
+    const eff = _effectiveVisible(tableId);
     const out = {};
     for (const k of Object.keys(projections)) {
-        if (_visiblePairFamilies.has(_familyForDataPair(k))) {
+        // T1/T2 projections key is the full pairKey (e.g. "prev_13opp");
+        // T3 keys are bare family. _effectiveVisible already returns
+        // the right granularity per tableId.
+        if ((tableId === 'T1' || tableId === 'T2') ? eff.has(k) : eff.has(_familyForDataPair(k))) {
             out[k] = projections[k];
         }
     }
@@ -1480,6 +1590,111 @@ function _setupPairFilterDropdown() {
     if (allBtn) {
         allBtn.addEventListener('click', () => {
             _setVisiblePairFamilies(new Set(PAIR_FAMILY_LABELS.map(p => p.family)));
+        });
+    }
+}
+
+// ── Per-table pair filters (added 2026-06-21) ────────────────
+/** Refresh checkboxes + count badge for one per-table popover.
+ *  T1/T2 → 2-column layout (Main | 13-opp). T3 → single column. */
+function _refreshPerTablePairFilterUI(tableId) {
+    if (typeof document === 'undefined') return;
+    const suffix = tableId;     // 'T1' | 'T2' | 'T3'
+    const grid       = document.getElementById('pairFilterCheckboxes' + suffix);
+    const countBadge = document.getElementById('pairFilterCount' + suffix);
+    if (!grid || !countBadge) return;
+    const set = _perTableSet(tableId);
+    if (!set) return;
+
+    const _box = (key, label, fam) => {
+        const checked = set.has(key) ? 'checked' : '';
+        return `
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 4px;border-radius:3px;">
+                <input type="checkbox" data-key="${key}" data-family="${fam}" data-table="${tableId}" ${checked} style="cursor:pointer;">
+                <span>${label}</span>
+            </label>
+        `;
+    };
+
+    if (tableId === 'T1' || tableId === 'T2') {
+        // 2-column grid with column headers.
+        const mainCol = PAIR_FAMILY_LABELS.map(({family, label}) => _box(family, label, family)).join('');
+        const oppCol  = PAIR_FAMILY_LABELS.map(({family, label}) =>
+            _box(family + '_13opp', label + '-13o', family)).join('');
+        grid.style.gridTemplateColumns = '1fr 1fr';
+        grid.innerHTML =
+            `<div style="grid-column:1 / 2;font-size:10px;color:#475569;font-weight:700;border-bottom:1px solid #e2e8f0;padding-bottom:3px;margin-bottom:2px;">Main</div>` +
+            `<div style="grid-column:2 / 3;font-size:10px;color:#475569;font-weight:700;border-bottom:1px solid #e2e8f0;padding-bottom:3px;margin-bottom:2px;">13-opp</div>` +
+            `<div style="grid-column:1 / 2;display:flex;flex-direction:column;gap:2px;">${mainCol}</div>` +
+            `<div style="grid-column:2 / 3;display:flex;flex-direction:column;gap:2px;">${oppCol}</div>`;
+        const total = PAIR_FAMILY_LABELS.length * 2;
+        countBadge.textContent = `(${set.size}/${total})`;
+    } else {
+        // T3: single-column family list (no _13opp split on T3).
+        grid.style.gridTemplateColumns = '1fr 1fr';
+        grid.innerHTML = PAIR_FAMILY_LABELS.map(({family, label}) =>
+            _box(family, label, family)).join('');
+        countBadge.textContent = `(${set.size}/${PAIR_FAMILY_LABELS.length})`;
+    }
+}
+
+/** Wire one per-table dropdown. Mirrors _setupPairFilterDropdown but
+ *  scoped to a single table's state. */
+function _setupPerTablePairFilterDropdown(tableId) {
+    if (typeof document === 'undefined') return;
+    const suffix = tableId;
+    const toggleBtn = document.getElementById('pairFilterToggleBtn' + suffix);
+    const panel     = document.getElementById('pairFilterPanel'     + suffix);
+    const grid      = document.getElementById('pairFilterCheckboxes' + suffix);
+    const allBtn    = document.getElementById('pairFilterAllBtn'    + suffix);
+    const resetBtn  = document.getElementById('pairFilterResetBtn'  + suffix);
+    if (!toggleBtn || !panel || !grid) return;
+
+    _refreshPerTablePairFilterUI(tableId);
+
+    toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'block' : 'none';
+    });
+    document.addEventListener('click', (e) => {
+        if (panel.style.display === 'block' && !panel.contains(e.target) && e.target !== toggleBtn) {
+            panel.style.display = 'none';
+        }
+    });
+    grid.addEventListener('change', (e) => {
+        // T1/T2 checkboxes carry `data-key` = full pairKey (incl.
+        // _13opp). T3 carries `data-key` = bare family. Either way we
+        // toggle the literal key in the per-table set.
+        const cb = e.target.closest('input[type="checkbox"][data-key]');
+        if (!cb) return;
+        const key = cb.dataset.key;
+        const next = new Set(_perTableSet(tableId));
+        if (cb.checked) next.add(key); else next.delete(key);
+        _setVisiblePairFamiliesForTable(tableId, next);
+    });
+    if (allBtn) {
+        allBtn.addEventListener('click', () => {
+            // "All" enables every valid key for this table (24 for T1/T2,
+            // 12 for T3) — independent of the universal filter.
+            _setVisiblePairFamiliesForTable(tableId, new Set(_allKeysForTable(tableId)));
+        });
+    }
+    // Reset button → copy whatever the UNIVERSAL filter currently has
+    // into this table's per-table set. For T1/T2, each universal
+    // family expands to BOTH its main + _13opp halves so the table
+    // visibly resets to a parity state.
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            if (tableId === 'T1' || tableId === 'T2') {
+                const expanded = new Set();
+                _visiblePairFamilies.forEach(f => {
+                    expanded.add(f);
+                    expanded.add(f + '_13opp');
+                });
+                _setVisiblePairFamiliesForTable(tableId, expanded);
+            } else {
+                _setVisiblePairFamiliesForTable(tableId, new Set(_visiblePairFamilies));
+            }
         });
     }
 }
@@ -1655,7 +1870,7 @@ function _renderTable1Head() {
 
     // Slice 2f: filter by the global pair-family dropdown so hidden
     // families don't render their thead columns either.
-    const VISIBLE = _filterVisibleColumnGroups(T1_COLUMN_GROUPS);
+    const VISIBLE = _filterVisibleColumnGroups(T1_COLUMN_GROUPS, "T1");
 
     // ── Row 1: pair-group labels (each colspan=7) ──
     // Pair-indicator-col fix: prepend a 1-wide blank header before
@@ -1712,7 +1927,7 @@ function renderTable1() {
     // hidden families drop out of placeholder / data / NEXT rows
     // automatically. Anchor positions, _blockHits indices and end-
     // of-row marker all derive from VISIBLE.length.
-    const VISIBLE = _filterVisibleColumnGroups(T1_COLUMN_GROUPS);
+    const VISIBLE = _filterVisibleColumnGroups(T1_COLUMN_GROUPS, "T1");
 
     const tbody = document.getElementById('table1Body');
     tbody.innerHTML = '';
@@ -2158,7 +2373,7 @@ function _renderTable2Head() {
     const SUB_LABELS = ['Ref', '1st', 'C', '2nd', 'C', '3rd', 'C'];
 
     // Slice 2f: filter by global pair-family dropdown.
-    const VISIBLE = _filterVisibleColumnGroups(T2_COLUMN_GROUPS);
+    const VISIBLE = _filterVisibleColumnGroups(T2_COLUMN_GROUPS, "T2");
 
     const row1Cells = VISIBLE.map(grp => {
         const sepCls = grp.prefix === 'pair-separator'   ? ' pair-separator'
@@ -2193,7 +2408,7 @@ function renderTable2() {
     _renderTable2Head();
 
     // Slice 2f: filter by global pair-family dropdown.
-    const VISIBLE = _filterVisibleColumnGroups(T2_COLUMN_GROUPS);
+    const VISIBLE = _filterVisibleColumnGroups(T2_COLUMN_GROUPS, "T2");
 
     const tbody = document.getElementById('table2Body');
     tbody.innerHTML = '';
@@ -2464,7 +2679,7 @@ function _computeFlashTargets(allSpins, startIdx, visibleCount) {
     // FILTERED T3 config so hidden pair-families are excluded from
     // golden-flash detection too (otherwise we'd flash cells the
     // user can't even see).
-    const refKeys = _filterVisibleColumnGroups(T3_COLUMN_GROUPS).map(g => g.engineRefKey);
+    const refKeys = _filterVisibleColumnGroups(T3_COLUMN_GROUPS, "T3").map(g => g.engineRefKey);
 
     function getRowInfo(idx) {
         const spin = allSpins[idx];
@@ -2620,14 +2835,14 @@ const _T2_VALID_CODES = new Set(['S+0', 'SL+1', 'SR+1', 'SL+2', 'SR+2', 'O+0', '
 function _t1PairDefs() {
     // Slice 2f: filter by visible families so hidden pairs don't
     // contribute to T1 flash detection (matching what the user sees).
-    return _filterVisibleColumnGroups(T1_COLUMN_GROUPS).map(g => ({
+    return _filterVisibleColumnGroups(T1_COLUMN_GROUPS, "T1").map(g => ({
         dataPair: g.dataPair,
         getRefNum: g.computeRef
     }));
 }
 function _t2PairDefs() {
     // Slice 2f: same filter for T2 flash detection.
-    return _filterVisibleColumnGroups(T2_COLUMN_GROUPS).map(g => ({
+    return _filterVisibleColumnGroups(T2_COLUMN_GROUPS, "T2").map(g => ({
         dataPair: g.dataPair,
         getRefNum: g.computeRef
     }));
@@ -2771,7 +2986,7 @@ function _applyPm1Flash(tbody, allSpins, startIdx, visibleCount) {
     // Slice 2e-2 + 2f: derive from FILTERED T3 config (legacy
     // fallback flash path). Same rationale as _computeFlashTargets
     // above — hidden families don't participate.
-    const refKeys = _filterVisibleColumnGroups(T3_COLUMN_GROUPS).map(g => g.engineRefKey);
+    const refKeys = _filterVisibleColumnGroups(T3_COLUMN_GROUPS, "T3").map(g => g.engineRefKey);
 
     // Compute position codes + distances for a given spin index
     function getRowInfo(idx) {
@@ -2980,7 +3195,7 @@ function _renderTable3Head() {
         '<th>Actual</th>'
     ];
     // Slice 2f: filter by global pair-family dropdown.
-    const VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS);
+    const VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS, "T3");
     // T3-halfs aware header data-pair: pair-half (label + first POS)
     // gets "_pair", 13opp-half (label13 + second POS) gets "_13opp",
     // PRJ keeps the base key. When halfs is OFF every header uses
@@ -3015,7 +3230,7 @@ function renderTable3() {
     // Slice 2f: filter the column-group config by the global
     // pair-family dropdown. Used by placeholder / data / NEXT rows
     // below.
-    const VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS);
+    const VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS, "T3");
 
     // Clear any existing flash pulse interval before rebuilding DOM
     if (window._pm1PulseInterval) {
@@ -3367,6 +3582,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Slice 2f: wire up the global pair-family dropdown.
     _setupPairFilterDropdown();
+    // 2026-06-21: per-table pair filters (T1/T2/T3) sit alongside.
+    _setupPerTablePairFilterDropdown('T1');
+    _setupPerTablePairFilterDropdown('T2');
+    _setupPerTablePairFilterDropdown('T3');
 
     // Table collapse/expand toggles
     ['1', '2', '3'].forEach(n => {
@@ -3658,7 +3877,7 @@ function getNextRowProjections() {
     // appear in the AI prediction panel's available-pair list either
     // (consistent with their absence from T3's display).
     const keyMap = {};
-    _filterVisibleColumnGroups(T3_COLUMN_GROUPS).forEach(g => { keyMap[g.engineRefKey] = g.dataPair; });
+    _filterVisibleColumnGroups(T3_COLUMN_GROUPS, "T3").forEach(g => { keyMap[g.engineRefKey] = g.dataPair; });
     
     // T3-halfs mode: when window.t3Halfs is true, split each pair
     // group into a "_pair" half (purple anchors only — the ref pair)

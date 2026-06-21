@@ -15,20 +15,86 @@
         <!-- Slice 2f: Global pair-visibility dropdown. Drives all
              3 tables (T1/T2/T3) and the engine's pair pool (slice
              2g). Filter state persists in localStorage. -->
-        <div id="pairFilterDropdown" class="pair-filter-dropdown" style="position:relative;">
-            <button type="button" id="pairFilterToggleBtn" class="pair-filter-btn"
-                    style="padding:6px 12px;font-size:12px;font-weight:600;border:1px solid #6366f1;border-radius:6px;background:#eef2ff;color:#3730a3;cursor:pointer;">
-                🔧 Pairs <span id="pairFilterCount" style="opacity:.75;font-weight:400;">(12/12)</span>
-            </button>
-            <div id="pairFilterPanel" class="pair-filter-panel"
-                 style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #cbd5e1;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:10px 12px;min-width:230px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#475569;font-weight:600;">
-                    <span>Visible pair-families</span>
-                    <button type="button" id="pairFilterAllBtn" style="font-size:10px;padding:2px 8px;border:1px solid #cbd5e1;border-radius:4px;background:#f1f5f9;color:#334155;cursor:pointer;">All</button>
+        <div style="display:flex;align-items:center;gap:6px;">
+            <div id="pairFilterDropdown" class="pair-filter-dropdown" style="position:relative;">
+                <button type="button" id="pairFilterToggleBtn" class="pair-filter-btn"
+                        style="padding:6px 12px;font-size:12px;font-weight:600;border:1px solid #6366f1;border-radius:6px;background:#eef2ff;color:#3730a3;cursor:pointer;">
+                    🔧 Pairs <span id="pairFilterCount" style="opacity:.75;font-weight:400;">(12/12)</span>
+                </button>
+                <div id="pairFilterPanel" class="pair-filter-panel"
+                     style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #cbd5e1;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:10px 12px;min-width:230px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#475569;font-weight:600;">
+                        <span>Visible pair-families (universal)</span>
+                        <button type="button" id="pairFilterAllBtn" style="font-size:10px;padding:2px 8px;border:1px solid #cbd5e1;border-radius:4px;background:#f1f5f9;color:#334155;cursor:pointer;">All</button>
+                    </div>
+                    <div id="pairFilterCheckboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;"></div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:10px;color:#64748b;">
+                        Universal scope — applies to all 3 tables. Each table also has its own per-table filter (T1/T2/T3 buttons →).
+                    </div>
                 </div>
-                <div id="pairFilterCheckboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;"></div>
-                <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:10px;color:#64748b;">
-                    Hides BOTH the main and 13-opp halves for each pair-family across all 3 tables.
+            </div>
+            <!-- Per-table pair filters (added 2026-06-21). Each opens its own
+                 popover with the 12 family checkboxes — independently persisted
+                 in localStorage and NOT cleared by Reset All. The effective
+                 filter for a table is universal ∩ per-table. -->
+            <div id="pairFilterDropdownT1" class="pair-filter-dropdown" style="position:relative;">
+                <button type="button" id="pairFilterToggleBtnT1"
+                        style="padding:6px 10px;font-size:11px;font-weight:600;border:1px solid #f59e0b;border-radius:6px;background:#fef3c7;color:#92400e;cursor:pointer;">
+                    T1 <span id="pairFilterCountT1" style="opacity:.75;font-weight:400;">(12/12)</span>
+                </button>
+                <div id="pairFilterPanelT1"
+                     style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #f59e0b;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:10px 12px;min-width:230px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#92400e;font-weight:600;">
+                        <span>Visible on Table 1</span>
+                        <span style="display:inline-flex;gap:4px;">
+                            <button type="button" id="pairFilterResetBtnT1" title="Reset T1 to match the universal filter above" style="font-size:10px;padding:2px 8px;border:1px solid #f59e0b;border-radius:4px;background:#fff;color:#92400e;cursor:pointer;">↺ Reset</button>
+                            <button type="button" id="pairFilterAllBtnT1" style="font-size:10px;padding:2px 8px;border:1px solid #f59e0b;border-radius:4px;background:#fef9c3;color:#92400e;cursor:pointer;">All</button>
+                        </span>
+                    </div>
+                    <div id="pairFilterCheckboxesT1" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;"></div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #fef3c7;font-size:10px;color:#92400e;">
+                        Survives Reset. Effective = universal ∩ this set.
+                    </div>
+                </div>
+            </div>
+            <div id="pairFilterDropdownT2" class="pair-filter-dropdown" style="position:relative;">
+                <button type="button" id="pairFilterToggleBtnT2"
+                        style="padding:6px 10px;font-size:11px;font-weight:600;border:1px solid #10b981;border-radius:6px;background:#dcfce7;color:#065f46;cursor:pointer;">
+                    T2 <span id="pairFilterCountT2" style="opacity:.75;font-weight:400;">(12/12)</span>
+                </button>
+                <div id="pairFilterPanelT2"
+                     style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #10b981;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:10px 12px;min-width:230px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#065f46;font-weight:600;">
+                        <span>Visible on Table 2</span>
+                        <span style="display:inline-flex;gap:4px;">
+                            <button type="button" id="pairFilterResetBtnT2" title="Reset T2 to match the universal filter above" style="font-size:10px;padding:2px 8px;border:1px solid #10b981;border-radius:4px;background:#fff;color:#065f46;cursor:pointer;">↺ Reset</button>
+                            <button type="button" id="pairFilterAllBtnT2" style="font-size:10px;padding:2px 8px;border:1px solid #10b981;border-radius:4px;background:#dcfce7;color:#065f46;cursor:pointer;">All</button>
+                        </span>
+                    </div>
+                    <div id="pairFilterCheckboxesT2" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;"></div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #dcfce7;font-size:10px;color:#065f46;">
+                        Survives Reset. Effective = universal ∩ this set.
+                    </div>
+                </div>
+            </div>
+            <div id="pairFilterDropdownT3" class="pair-filter-dropdown" style="position:relative;">
+                <button type="button" id="pairFilterToggleBtnT3"
+                        style="padding:6px 10px;font-size:11px;font-weight:600;border:1px solid #0ea5e9;border-radius:6px;background:#e0f2fe;color:#075985;cursor:pointer;">
+                    T3 <span id="pairFilterCountT3" style="opacity:.75;font-weight:400;">(12/12)</span>
+                </button>
+                <div id="pairFilterPanelT3"
+                     style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #0ea5e9;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:10px 12px;min-width:230px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#075985;font-weight:600;">
+                        <span>Visible on Table 3</span>
+                        <span style="display:inline-flex;gap:4px;">
+                            <button type="button" id="pairFilterResetBtnT3" title="Reset T3 to match the universal filter above" style="font-size:10px;padding:2px 8px;border:1px solid #0ea5e9;border-radius:4px;background:#fff;color:#075985;cursor:pointer;">↺ Reset</button>
+                            <button type="button" id="pairFilterAllBtnT3" style="font-size:10px;padding:2px 8px;border:1px solid #0ea5e9;border-radius:4px;background:#e0f2fe;color:#075985;cursor:pointer;">All</button>
+                        </span>
+                    </div>
+                    <div id="pairFilterCheckboxesT3" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;"></div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e0f2fe;font-size:10px;color:#075985;">
+                        Survives Reset. Effective = universal ∩ this set.
+                    </div>
                 </div>
             </div>
         </div>
