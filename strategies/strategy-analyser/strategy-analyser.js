@@ -633,17 +633,29 @@
                 const table = _signalTable(s.name);
                 if (table && visibleByTable[table]) {
                     const tableSet = visibleByTable[table];
-                    // T1/T2: per-table sets contain FULL pair keys (incl.
-                    // _13opp). Use _signalPairKey for the exact match.
-                    // T3: sets contain bare families.
-                    const checkKey = (table === 'T1' || table === 'T2')
-                        ? (_signalPairKey(s.name) || fam)
-                        : fam;
-                    if (!tableSet.has(checkKey)) {
-                        filteredByUser.push({ name: s.name, pair: checkKey, by: 'visibility-' + table });
-                        return false;
+                    if (table === 'T1' || table === 'T2') {
+                        // Per-table sets contain FULL pair keys
+                        // (incl. _13opp). Strict membership: hiding
+                        // "prev_13opp" drops only those signals.
+                        const checkKey = _signalPairKey(s.name) || fam;
+                        if (!tableSet.has(checkKey)) {
+                            filteredByUser.push({ name: s.name, pair: checkKey, by: 'visibility-' + table });
+                            return false;
+                        }
+                        return true;
                     }
-                    return true;
+                    // T3 (Rule 7): pair survives scope if EITHER half
+                    // is visible. The cross-table-conv signal's bet
+                    // pool builder picks the right sameSide/oppSide
+                    // pool based on which halves are on.
+                    if (table === 'T3') {
+                        const halfOn = tableSet.has(fam) || tableSet.has(fam + '_13opp');
+                        if (!halfOn) {
+                            filteredByUser.push({ name: s.name, pair: fam, by: 'visibility-T3' });
+                            return false;
+                        }
+                        return true;
+                    }
                 }
             }
             // Universal visibility fallback.

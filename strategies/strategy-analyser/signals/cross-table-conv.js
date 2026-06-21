@@ -175,15 +175,39 @@ function evaluate(snap, sessionState, opts) {
     const bestPriority = Math.min(...qualifying.map(f => priorityAt[f]));
     const winners      = qualifying.filter(f => priorityAt[f] === bestPriority);
 
+    // 2026-06-21: honour the T3 per-half filter when choosing the bet
+    // pool. If the user has hidden a pair's main half on T3, the
+    // analyser shouldn't vote pair-side numbers for that pair — and
+    // vice versa for 13-opp. Reads snap.meta.visibleFamiliesPerTable
+    // (a Set of pair-keys including _13opp). When the meta is absent
+    // (offline test, etc.) defaults to "both halves on".
+    const t3Visible = (snap.meta && snap.meta.visibleFamiliesPerTable
+        && Array.isArray(snap.meta.visibleFamiliesPerTable.T3))
+        ? new Set(snap.meta.visibleFamiliesPerTable.T3) : null;
+    function _poolForFam(fam) {
+        const p = proj[fam] || {};
+        const showPair = !t3Visible || t3Visible.has(fam);
+        const showOpp  = !t3Visible || t3Visible.has(fam + '_13opp');
+        const out = new Set();
+        if (showPair && showOpp) {
+            (p.numbers || []).forEach(n => out.add(n));
+        } else if (showPair) {
+            (p.sameSide || []).forEach(n => out.add(n));
+        } else if (showOpp) {
+            (p.oppSide || []).forEach(n => out.add(n));
+        }
+        return out;
+    }
+
     // 4. Build candidate set.
     let candidates;
     let mode;
     if (winners.length === 1) {
-        candidates = new Set((proj[winners[0]] && proj[winners[0]].numbers) || []);
+        candidates = _poolForFam(winners[0]);
         mode = 'single';
     } else {
         // Tie within priority bucket → intersection, fallback union.
-        const pools = winners.map(f => new Set((proj[f] && proj[f].numbers) || []));
+        const pools = winners.map(f => _poolForFam(f));
         const inter = new Set();
         if (pools.length > 0) {
             for (const n of pools[0]) {

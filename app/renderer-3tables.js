@@ -1350,14 +1350,15 @@ const PAIR_FILTER_KEY_T3 = 'visiblePairsT3';
 
 /**
  * Helper: all valid pair-keys for a table.
- *   T1 / T2 → 24 entries (12 main + 12 _13opp halves)
- *   T3      → 12 entries (T3 columns combine both halves so we filter
- *              at family-name level only)
- *   universal → 12 family names
+ *   T1 / T2 / T3 → 24 entries (12 main + 12 _13opp halves)
+ *   universal    → 12 family names
+ *
+ * Note (2026-06-21 update): T3 now also tracks per-half keys so its
+ * popover can hide the pair or 13-opp half independently — the PRJ
+ * bet pool / Rule 7 vote follow the user's choice.
  */
 function _allKeysForTable(tableId) {
-    if (tableId === 'T3') return PAIR_FAMILY_LABELS.map(p => p.family);
-    if (tableId === 'T1' || tableId === 'T2') {
+    if (tableId === 'T1' || tableId === 'T2' || tableId === 'T3') {
         const out = [];
         PAIR_FAMILY_LABELS.forEach(p => {
             out.push(p.family);
@@ -1382,21 +1383,18 @@ function _loadVisibleSet(key, tableId) {
         if (!raw) return new Set(all);
         const arr = JSON.parse(raw);
         if (!Array.isArray(arr)) return new Set(all);
-        // T1/T2 migration: if a stored item is a bare family name and
-        // the corresponding _13opp half exists in the schema, treat
-        // the save as "both halves visible".
-        if (tableId === 'T1' || tableId === 'T2') {
+        // T1/T2/T3 migration: if a stored item is a bare family name
+        // and the corresponding _13opp half exists in the schema, treat
+        // the save as "both halves visible" — preserves the pre-split
+        // UX. (T3 added 2026-06-21.)
+        if (tableId === 'T1' || tableId === 'T2' || tableId === 'T3') {
             const out = new Set();
             for (const item of arr) {
                 if (all.has(item)) {
                     out.add(item);
-                    // If the saved item is a bare family AND we've never
-                    // seen this user mark the _13opp half OFF (i.e. the
-                    // _13opp variant isn't in the saved arr at all), opt
-                    // them in to both — preserves the pre-split UX.
                     if (!item.endsWith('_13opp')) {
                         const opp = item + '_13opp';
-                        if (all.has(opp) && !arr.includes(opp) && !arr.some(k => k === item + '_13opp')) {
+                        if (all.has(opp) && !arr.includes(opp)) {
                             out.add(opp);
                         }
                     }
@@ -1429,7 +1427,7 @@ function _persistVisiblePairFamilies(set) { _persistVisibleSet(PAIR_FILTER_STORA
 let _visiblePairFamilies   = _loadVisibleSet(PAIR_FILTER_STORAGE_KEY);          // universal: Set<family>
 let _visiblePairFamiliesT1 = _loadVisibleSet(PAIR_FILTER_KEY_T1, 'T1');         // Set<pairKey> (incl. _13opp)
 let _visiblePairFamiliesT2 = _loadVisibleSet(PAIR_FILTER_KEY_T2, 'T2');         // Set<pairKey> (incl. _13opp)
-let _visiblePairFamiliesT3 = _loadVisibleSet(PAIR_FILTER_KEY_T3, 'T3');         // Set<family> (T3 has no _13opp split)
+let _visiblePairFamiliesT3 = _loadVisibleSet(PAIR_FILTER_KEY_T3, 'T3');         // Set<pairKey> (incl. _13opp — 2026-06-21)
 
 function _perTableSet(tableId) {
     if (tableId === 'T1') return _visiblePairFamiliesT1;
@@ -1450,7 +1448,9 @@ function _perTableSet(tableId) {
 function _effectiveVisible(tableId) {
     const perTable = _perTableSet(tableId);
     if (!perTable) return new Set(_visiblePairFamilies);
-    if (tableId === 'T1' || tableId === 'T2') {
+    // T1/T2/T3 all track pair-keys (main + _13opp) — intersect each
+    // pairKey against the universal family set.
+    if (tableId === 'T1' || tableId === 'T2' || tableId === 'T3') {
         const out = new Set();
         for (const pk of perTable) {
             const fam = _familyForDataPair(pk);
@@ -1458,12 +1458,21 @@ function _effectiveVisible(tableId) {
         }
         return out;
     }
-    // T3 (and any other future family-only table).
+    // Fallback / legacy: family-only.
     const out = new Set();
     for (const f of perTable) {
         if (_visiblePairFamilies.has(f)) out.add(f);
     }
     return out;
+}
+
+/** True if the named pair-family's pair-side OR 13-opp-side is
+ *  currently visible on the table. Used by T3 rendering to drop
+ *  groups entirely when both halves are off. */
+function _t3HalfVisible(family, side /* 'pair' | '13opp' */) {
+    const eff = _effectiveVisible('T3');
+    const key = (side === '13opp') ? (family + '_13opp') : family;
+    return eff.has(key);
 }
 
 // Expose to the engine + snapshot bridge.
@@ -1505,6 +1514,15 @@ function _filterVisibleColumnGroups(groups, tableId) {
     if (tableId === 'T1' || tableId === 'T2') {
         return groups.filter(g => eff.has(g.dataPair));
     }
+    if (tableId === 'T3') {
+        // T3 group is visible if EITHER half is in the effective set.
+        // PRJ chip rendering inside the group respects each half
+        // individually (see _renderT3PrjChips).
+        return groups.filter(g => {
+            const fam = _familyForDataPair(g.dataPair);
+            return eff.has(fam) || eff.has(fam + '_13opp');
+        });
+    }
     return groups.filter(g => eff.has(_familyForDataPair(g.dataPair)));
 }
 
@@ -1520,11 +1538,19 @@ function _filterProjectionsByVisibleFamilies(projections, tableId) {
     const eff = _effectiveVisible(tableId);
     const out = {};
     for (const k of Object.keys(projections)) {
-        // T1/T2 projections key is the full pairKey (e.g. "prev_13opp");
-        // T3 keys are bare family. _effectiveVisible already returns
-        // the right granularity per tableId.
-        if ((tableId === 'T1' || tableId === 'T2') ? eff.has(k) : eff.has(_familyForDataPair(k))) {
-            out[k] = projections[k];
+        if (tableId === 'T1' || tableId === 'T2') {
+            // T1/T2 projection keys are pairKeys (e.g. "prev_13opp").
+            if (eff.has(k)) out[k] = projections[k];
+        } else if (tableId === 'T3') {
+            // T3 projection keys are bare family names. Keep the entry
+            // if EITHER half is visible — chip rendering filters the
+            // anchors on the visible side(s).
+            const fam = _familyForDataPair(k);
+            if (eff.has(fam) || eff.has(fam + '_13opp')) {
+                out[k] = projections[k];
+            }
+        } else {
+            if (eff.has(_familyForDataPair(k))) out[k] = projections[k];
         }
     }
     return out;
@@ -1616,8 +1642,10 @@ function _refreshPerTablePairFilterUI(tableId) {
         `;
     };
 
-    if (tableId === 'T1' || tableId === 'T2') {
-        // 2-column grid with column headers.
+    if (tableId === 'T1' || tableId === 'T2' || tableId === 'T3') {
+        // 2-column grid with column headers — main on the left,
+        // 13-opp on the right. T3 added 2026-06-21: hiding a T3 half
+        // also drops that side's PRJ chips and Rule 7 vote pool.
         const mainCol = PAIR_FAMILY_LABELS.map(({family, label}) => _box(family, label, family)).join('');
         const oppCol  = PAIR_FAMILY_LABELS.map(({family, label}) =>
             _box(family + '_13opp', label + '-13o', family)).join('');
@@ -1630,7 +1658,6 @@ function _refreshPerTablePairFilterUI(tableId) {
         const total = PAIR_FAMILY_LABELS.length * 2;
         countBadge.textContent = `(${set.size}/${total})`;
     } else {
-        // T3: single-column family list (no _13opp split on T3).
         grid.style.gridTemplateColumns = '1fr 1fr';
         grid.innerHTML = PAIR_FAMILY_LABELS.map(({family, label}) =>
             _box(family, label, family)).join('');
@@ -1685,7 +1712,10 @@ function _setupPerTablePairFilterDropdown(tableId) {
     // visibly resets to a parity state.
     if (resetBtn) {
         resetBtn.addEventListener('click', () => {
-            if (tableId === 'T1' || tableId === 'T2') {
+            // T1/T2/T3 all expand each universal family to its main +
+            // _13opp halves so the table visibly parity-resets to the
+            // global state.
+            if (tableId === 'T1' || tableId === 'T2' || tableId === 'T3') {
                 const expanded = new Set();
                 _visiblePairFamilies.forEach(f => {
                     expanded.add(f);
@@ -3209,11 +3239,30 @@ function _renderTable3Head() {
         const sepCls = (gi > 0) ? ' pair-separator' : '';
         const dpPair = _hdrDpFor(grp.dataPair, 'pair');
         const dp13   = _hdrDpFor(grp.dataPair, '13opp');
+        // 2026-06-21 per-half filter: emit only the sub-columns for
+        // halves that are visible. PRJ is always shown when at least
+        // one half is visible (filter at body level drops it to a
+        // blank cell when both off, but _filterVisibleColumnGroups
+        // already dropped the entire group in that case).
+        const showPair = _t3HalfVisible(grp.dataPair, 'pair');
+        const showOpp  = _t3HalfVisible(grp.dataPair, '13opp');
+        if (showPair) {
+            cells.push(
+                `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${dpPair}">${grp.label}</th>`,
+                `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dpPair}">POS</th>`
+            );
+        }
+        if (showOpp) {
+            // If the pair half is hidden, the 13-opp label gets the
+            // pair-separator so the group is still visually delimited
+            // against the previous group.
+            const oppSepCls = (gi > 0 && !showPair) ? ' pair-separator' : '';
+            cells.push(
+                `<th class="set-header ${grp.cssClass} t3-pair-header${oppSepCls}" data-pair="${dp13}">${grp.label13}</th>`,
+                `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dp13}">POS</th>`
+            );
+        }
         cells.push(
-            `<th class="set-header ${grp.cssClass} t3-pair-header${sepCls}" data-pair="${dpPair}">${grp.label}</th>`,
-            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dpPair}">POS</th>`,
-            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dp13}">${grp.label13}</th>`,
-            `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${dp13}">POS</th>`,
             `<th class="set-header ${grp.cssClass} t3-pair-header" data-pair="${grp.dataPair}">PRJ</th>`
         );
     });
@@ -3264,31 +3313,28 @@ function renderTable3() {
         const row = document.createElement('tr');
         
         if (prev === null) {
-            // First-row placeholder — N pair groups × 5 cells. Anchor
-            // (cell 0) of each group carries the prefix class from the
-            // config. For the 6-group T3 in slice 2e-1, anchor positions
-            // 0,5,10,15,20,25 with pair-separator on every group —
-            // byte-equivalent to the previous `if (c % 5 === 0 && c > 0)`
-            // placeholder loop (which separator-skipped only c=0; here
-            // we keep every group's first cell as pair-separator to
-            // match the BODY rows where every group also has a
-            // separator on its Ref cell).
+            // First-row placeholder. 2026-06-21: cell count per group
+            // varies with the per-half filter (5 cells when both halves
+            // visible, 3 when only one is, 0 when neither — but the
+            // group is already dropped upstream in that case). Match
+            // the thead column count exactly.
             const emptyCells = [];
-            const totalCells = VISIBLE.length * 5;
-            for (let c = 0; c < totalCells; c++) {
-                const groupIdx = Math.floor(c / 5);
-                const cellIdx  = c % 5;
-                if (cellIdx === 0) {
-                    const grp = VISIBLE[groupIdx];
-                    if (grp.prefix === 'pair-separator' && groupIdx > 0) {
-                        emptyCells.push('<td class="pair-separator"></td>');
+            VISIBLE.forEach((grp, groupIdx) => {
+                const showPair = _t3HalfVisible(grp.dataPair, 'pair');
+                const showOpp  = _t3HalfVisible(grp.dataPair, '13opp');
+                let firstOfGroup = true;
+                const _addEmpty = (extra = '') => {
+                    if (firstOfGroup && grp.prefix === 'pair-separator' && groupIdx > 0) {
+                        emptyCells.push(`<td class="pair-separator${extra}"></td>`);
                     } else {
-                        emptyCells.push('<td></td>');
+                        emptyCells.push(`<td${extra ? ' class="' + extra.trim() + '"' : ''}></td>`);
                     }
-                } else {
-                    emptyCells.push('<td></td>');
-                }
-            }
+                    firstOfGroup = false;
+                };
+                if (showPair) { _addEmpty(); _addEmpty(); }
+                if (showOpp)  { _addEmpty(); _addEmpty(); }
+                _addEmpty();   // PRJ
+            });
             const _actColor1 = _T3_POS.has(spin.actual) ? '#22c55e' : _T3_NEG.has(spin.actual) ? '#ef4444' : '#94a3b8';
             row.innerHTML = `
                 <td class="dir-${spin.direction.toLowerCase()}">${spin.direction}</td>
@@ -3388,9 +3434,24 @@ function renderTable3() {
             const projHtml = (key) => {
                 if (!projections[key]) return '';
                 const p = projections[key];
-                const purpleHtml = p.purple.map(a => `<span class="anchor-purple">${a}</span>`).join(' ');
-                const greenHtml = p.green.map(a => `<span class="anchor-green">${a}</span>`).join(' ');
-                return `<div>${purpleHtml}</div>${p.green.length > 0 ? '<div>' + greenHtml + '</div>' : ''}`;
+                // 2026-06-21: respect the T3 per-half filter — purple
+                // chips are the pair-side anchors (hidden if pair half
+                // is filtered off), green chips are the 13-opp-side
+                // anchors (hidden if the 13-opp half is filtered off).
+                //
+                // BUG FIX: `key` here is the engineRefKey (e.g.
+                // 'prev_plus_1') but _t3HalfVisible expects the
+                // dataPair (e.g. 'prevPlus1'). Map first — otherwise
+                // only 'prev' (the one family where both forms match)
+                // works correctly.
+                const dataPair = _PAIR_REFKEY_TO_DATA_PAIR[key] || key;
+                const showPair = _t3HalfVisible(dataPair, 'pair');
+                const showOpp  = _t3HalfVisible(dataPair, '13opp');
+                const purpleArr = showPair ? p.purple : [];
+                const greenArr  = showOpp  ? p.green  : [];
+                const purpleHtml = purpleArr.map(a => `<span class="anchor-purple">${a}</span>`).join(' ');
+                const greenHtml  = greenArr.map(a => `<span class="anchor-green">${a}</span>`).join(' ');
+                return `<div>${purpleHtml}</div>${greenArr.length > 0 ? '<div>' + greenHtml + '</div>' : ''}`;
             };
 
             // Position code cell generator — bakes ±1 flash styles into HTML.
@@ -3431,19 +3492,32 @@ function renderTable3() {
                 const dp = grp.dataPair;
                 const dpPair = _dpFor(dp, 'pair');
                 const dp13   = _dpFor(dp, '13opp');
-                // Null ref → render empty cell content for the Ref +
-                // 13Ref columns. POS cells already handle 'XX' (no
-                // highlight); PRJ skipped via projections[refKey]
-                // being undefined.
+                // 2026-06-21 per-half filter: emit cells ONLY for the
+                // visible half(s). When pair-half is hidden the
+                // Ref+POS pair cells are not in the DOM at all (column
+                // is fully removed). Same for 13-opp. Matches the
+                // matching thead column count from _renderTable3Head.
+                const showPair = _t3HalfVisible(dp, 'pair');
+                const showOpp  = _t3HalfVisible(dp, '13opp');
                 const refTxt   = (data[refKey].ref      != null) ? data[refKey].ref      : '';
                 const ref13Txt = (data[refKey].ref13Opp != null) ? data[refKey].ref13Opp : '';
-                return `
-                    <td class="${cellClass(refKey, 'pair', true)}" data-pair="${dpPair}">${refTxt}</td>
-                    ${posCell(refKey, 'pair')}
-                    <td class="${cellClass(refKey, 'pair13Opp')}" data-pair="${dp13}">${ref13Txt}</td>
-                    ${posCell(refKey, 'pair13Opp')}
-                    <td class="${projClass(refKey)}" data-pair="${dp}">${projHtml(refKey)}</td>
-                `;
+                const parts = [];
+                if (showPair) {
+                    parts.push(
+                        `<td class="${cellClass(refKey, 'pair', true)}" data-pair="${dpPair}">${refTxt}</td>`,
+                        posCell(refKey, 'pair')
+                    );
+                }
+                if (showOpp) {
+                    parts.push(
+                        `<td class="${cellClass(refKey, 'pair13Opp')}" data-pair="${dp13}">${ref13Txt}</td>`,
+                        posCell(refKey, 'pair13Opp')
+                    );
+                }
+                parts.push(
+                    `<td class="${projClass(refKey)}" data-pair="${dp}">${projHtml(refKey)}</td>`
+                );
+                return parts.join('');
             }).join('');
 
             const _actColor2 = _T3_POS.has(spin.actual) ? '#22c55e' : _T3_NEG.has(spin.actual) ? '#ef4444' : '#94a3b8';
@@ -3533,9 +3607,16 @@ function renderTable3() {
         const nextProjHtml = (key) => {
             if (!nextProjections[key]) return '';
             const p = nextProjections[key];
-            const purpleHtml = p.purple.map(a => `<span class="anchor-purple">${a}</span>`).join(' ');
-            const greenHtml = p.green.map(a => `<span class="anchor-green">${a}</span>`).join(' ');
-            return `<div>${purpleHtml}</div>${p.green.length > 0 ? '<div>' + greenHtml + '</div>' : ''}`;
+            // Same bug as projHtml above: `key` is the engineRefKey
+            // (e.g. 'prev_plus_1') not the dataPair. Map first.
+            const dataPair = _PAIR_REFKEY_TO_DATA_PAIR[key] || key;
+            const showPair = _t3HalfVisible(dataPair, 'pair');
+            const showOpp  = _t3HalfVisible(dataPair, '13opp');
+            const purpleArr = showPair ? p.purple : [];
+            const greenArr  = showOpp  ? p.green  : [];
+            const purpleHtml = purpleArr.map(a => `<span class="anchor-purple">${a}</span>`).join(' ');
+            const greenHtml  = greenArr.map(a => `<span class="anchor-green">${a}</span>`).join(' ');
+            return `<div>${purpleHtml}</div>${greenArr.length > 0 ? '<div>' + greenHtml + '</div>' : ''}`;
         };
         
         // Slice 2e-1: NEXT row driven from T3_COLUMN_GROUPS. Same
@@ -3550,13 +3631,23 @@ function renderTable3() {
             const dp = grp.dataPair;
             const dpPair = _nextDpFor(dp, 'pair');
             const dp13   = _nextDpFor(dp, '13opp');
-            return `
-                <td class="pair-separator" data-pair="${dpPair}">${data[refKey].ref}</td>
-                <td data-pair="${dpPair}">-</td>
-                <td data-pair="${dp13}">${data[refKey].ref13Opp}</td>
-                <td data-pair="${dp13}">-</td>
-                <td class="col-prj" data-pair="${dp}">${nextProjHtml(refKey)}</td>
-            `;
+            const showPair = _t3HalfVisible(dp, 'pair');
+            const showOpp  = _t3HalfVisible(dp, '13opp');
+            const parts = [];
+            if (showPair) {
+                parts.push(
+                    `<td class="pair-separator" data-pair="${dpPair}">${data[refKey].ref}</td>`,
+                    `<td data-pair="${dpPair}">-</td>`
+                );
+            }
+            if (showOpp) {
+                parts.push(
+                    `<td data-pair="${dp13}">${data[refKey].ref13Opp}</td>`,
+                    `<td data-pair="${dp13}">-</td>`
+                );
+            }
+            parts.push(`<td class="col-prj" data-pair="${dp}">${nextProjHtml(refKey)}</td>`);
+            return parts.join('');
         }).join('');
 
         const nextRow = document.createElement('tr');
