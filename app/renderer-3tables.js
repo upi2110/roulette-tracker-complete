@@ -2715,7 +2715,7 @@ function _computeFlashTargets(allSpins, startIdx, visibleCount) {
         const spin = allSpins[idx];
         const prev = allSpins[idx - 1].actual;
         const rawPrevPrev = idx > 1 ? allSpins[idx - 2].actual : null;
-        const refs = calculateReferences(prev, rawPrevPrev || prev);
+        const refs = calculateReferences(prev, rawPrevPrev != null ? rawPrevPrev : prev);
         const info = {};
         refKeys.forEach(refKey => {
             const refNum = refs[refKey];
@@ -3023,7 +3023,7 @@ function _applyPm1Flash(tbody, allSpins, startIdx, visibleCount) {
         const spin = allSpins[idx];
         const prev = allSpins[idx - 1].actual;
         const rawPrevPrev = idx > 1 ? allSpins[idx - 2].actual : null;
-        const refs = calculateReferences(prev, rawPrevPrev || prev);
+        const refs = calculateReferences(prev, rawPrevPrev != null ? rawPrevPrev : prev);
 
         const info = {};
         refKeys.forEach(refKey => {
