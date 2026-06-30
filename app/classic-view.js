@@ -130,45 +130,28 @@
         return !cb || cb.checked;
     }
 
-    // Drop "Ref" cells (the first cell of each pair-family — marked
-    // with .pair-separator). Transfer .pair-separator to the next
-    // cell so the pair's left-edge box outline is preserved.
-    function _dropRefCells(cells) {
-        const out = [];
-        let pendingSeparator = false;
-        for (const c of cells) {
-            if (c.classList.contains('pair-separator')) {
-                pendingSeparator = true;
-                continue;
-            }
-            if (pendingSeparator) {
-                c.classList.add('pair-separator');
-                pendingSeparator = false;
-            }
-            out.push(c);
-        }
-        return out;
-    }
-
-    // T3-specific Ref handling. Modern's T3 body marks .pair-separator
-    // on EVERY family's label (including family 1) but T3 head only on
-    // families 2+. So we can't rely on the class for drop OR border
-    // placement — both would mismatch between head and body. T3 has a
-    // fixed 3-cells-per-family structure (label, POS, PRJ); we drop by
-    // position when ref hidden, then re-stamp .pair-separator using
-    // pure positional logic so head and body line up exactly.
-    function _refOfT3(cells, keepRef) {
+    // Unified Ref-drop + pair-separator normalizer for all 3 tables.
+    // `perFamilyKept` = cells per family when refs are kept (7 for
+    // T1/T2 — Ref/1st/C/2nd/C/3rd/C; 3 for T3 — label/POS/PRJ).
+    // When `keepRef=false`, drops every Nth cell from index 0 (the
+    // Ref cell of each family). Class-based detection (.pair-separator)
+    // can't be used because Modern marks it inconsistently across
+    // tables — e.g. T1's ref0 has no separator class, T3 body has it
+    // on every family but T3 head only on families 2+. Positional
+    // logic guarantees head and body drop the SAME cells, so columns
+    // stay aligned. Re-stamps .pair-separator at every family
+    // boundary so the pair-box outline stays consistent too.
+    function _refOf(cells, keepRef, perFamilyKept) {
         let out;
         if (keepRef) {
             out = cells.slice();
         } else {
-            // Drop every 3rd cell starting at index 0 (label cells).
-            out = cells.filter(function (_, i) { return i % 3 !== 0; });
+            out = cells.filter(function (_, i) { return i % perFamilyKept !== 0; });
         }
-        const perFamily = keepRef ? 3 : 2;
+        const stride = keepRef ? perFamilyKept : (perFamilyKept - 1);
         out.forEach(function (c, i) {
             c.classList.remove('pair-separator');
-            if (i > 0 && i % perFamily === 0) {
+            if (i > 0 && i % stride === 0) {
                 c.classList.add('pair-separator');
             }
         });
@@ -187,20 +170,14 @@
         return cells;
     }
 
-    // Build a <colgroup> with N equal-width <col> elements. Forces
-    // table-layout: fixed to use these exact column widths so every
-    // header row (super-group, family-label, sub-header) and every
-    // body row land on the SAME column grid — pair-separator and
-    // T1/T2/T3 divider borders therefore line up vertically without
-    // pixel-rounding drift.
+    // Build a <colgroup> with N <col> elements (no widths set) — just
+    // establishes the column count. With table-layout:auto the browser
+    // sizes each column based on its widest content cell, so T3's PRJ
+    // chips get more room than T1/T2's short reference numbers.
     function _buildColgroup(totalCols) {
         const cg = document.createElement('colgroup');
-        if (totalCols <= 0) return cg;
-        const pct = (100 / totalCols).toFixed(6) + '%';
         for (let i = 0; i < totalCols; i++) {
-            const c = document.createElement('col');
-            c.style.width = pct;
-            cg.appendChild(c);
+            cg.appendChild(document.createElement('col'));
         }
         return cg;
     }
@@ -227,9 +204,8 @@
         const t3Head = document.getElementById('table3Head');
         if (!t1Body || !t2Body || !t3Body) return;
 
-        // Helper: apply Ref-drop to body / sub-header rows for a table.
-        const _refOf = (cells, keepRef) => keepRef ? cells : _dropRefCells(cells);
-        // Helper: shrink family-label colspans by 1 when Ref hidden.
+        // Helper: shrink family-label colspans by 1 when Ref hidden
+        // (T1/T2 only — T3's head is flat with no colspan grouping).
         const _famOf = (cells, keepRef) => keepRef ? cells : _shrinkFamilyColspans(cells, 1);
 
         // Three head rows:
@@ -251,12 +227,12 @@
         // T3 the wrong column widths.
         const t1Fam = _tag(_famOf(_cloneHeadRowCells(t1Head, 0, PREFIX_T1), showT1Ref), 'ct-t1');
         const t2Fam = _tag(_addDividerToFirst(_famOf(_cloneHeadRowCells(t2Head, 0, PREFIX_T2), showT2Ref)), 'ct-t2');
-        const t3Fam = _tag(_addDividerToFirst(_refOfT3(_cloneHeadRowCells(t3Head, 0, PREFIX_T3), showT3Ref)), 'ct-t3');
+        const t3Fam = _tag(_addDividerToFirst(_refOf(_cloneHeadRowCells(t3Head, 0, PREFIX_T3), showT3Ref, 3)), 'ct-t3');
 
         // Row 3 (sub-headers): only T1/T2 have a second row. Drop the
         // Ref cell entirely when its checkbox is unchecked.
-        const t1Sub = _tag(_refOf(_cloneHeadRowCells(t1Head, 1, PREFIX_T1), showT1Ref), 'ct-t1');
-        const t2Sub = _tag(_addDividerToFirst(_refOf(_cloneHeadRowCells(t2Head, 1, PREFIX_T2), showT2Ref)), 'ct-t2');
+        const t1Sub = _tag(_refOf(_cloneHeadRowCells(t1Head, 1, PREFIX_T1), showT1Ref, 7), 'ct-t1');
+        const t2Sub = _tag(_addDividerToFirst(_refOf(_cloneHeadRowCells(t2Head, 1, PREFIX_T2), showT2Ref, 7)), 'ct-t2');
 
         // T3 has just one head row — extend it to span both row 2 and row 3.
         if ((_cloneHeadRowCells(t3Head, 1, PREFIX_T3)).length === 0) {
@@ -309,9 +285,9 @@
             const tr = document.createElement('tr');
             if (isNext) tr.classList.add('ct-next-row');
             _clonePrefixCells(t3).forEach(c => tr.appendChild(c));
-            _refOf(_cloneFamilyCells(t1Rows[i], PREFIX_T1), showT1Ref).forEach(c => tr.appendChild(c));
-            _addDividerToFirst(_refOf(_cloneFamilyCells(t2Rows[i], PREFIX_T2), showT2Ref)).forEach(c => tr.appendChild(c));
-            _addDividerToFirst(_refOfT3(_cloneFamilyCells(t3Rows[i], PREFIX_T3), showT3Ref)).forEach(c => tr.appendChild(c));
+            _refOf(_cloneFamilyCells(t1Rows[i], PREFIX_T1), showT1Ref, 7).forEach(c => tr.appendChild(c));
+            _addDividerToFirst(_refOf(_cloneFamilyCells(t2Rows[i], PREFIX_T2), showT2Ref, 7)).forEach(c => tr.appendChild(c));
+            _addDividerToFirst(_refOf(_cloneFamilyCells(t3Rows[i], PREFIX_T3), showT3Ref, 3)).forEach(c => tr.appendChild(c));
             _markPairBoundaries(tr);
             body.appendChild(tr);
         }

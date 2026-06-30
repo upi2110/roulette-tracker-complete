@@ -12,11 +12,10 @@
 
 describe('ui-mode-toggle module', () => {
     let UiModeToggle;
-    let overrideCalls;
+    let rerenderCalls;
 
     beforeEach(() => {
         jest.resetModules();
-        // Fresh DOM with the two toggle buttons + a body to mutate.
         document.body.innerHTML = `
             <button id="uiModeBtnModern"></button>
             <button id="uiModeBtnClassic"></button>
@@ -24,25 +23,20 @@ describe('ui-mode-toggle module', () => {
             <div id="gridWrapper2"></div>
             <div id="gridWrapper3"></div>
         `;
-        // Capture override calls from the renderer hook.
-        overrideCalls = [];
-        global.window.setUiClassicOverride = (allowed) => {
-            overrideCalls.push(allowed ? Array.from(allowed) : null);
-        };
-        // Reset localStorage.
+        // Capture rerender calls.
+        rerenderCalls = 0;
+        global.window.rerenderTables = () => { rerenderCalls++; };
         try { localStorage.clear(); } catch (e) {}
-        // Load the module (it self-invokes _init on DOMContentLoaded
-        // OR immediately if readyState !== 'loading').
         require('../../app/ui-mode-toggle.js');
         UiModeToggle = global.window.UiModeToggle;
     });
 
     afterEach(() => {
-        delete global.window.setUiClassicOverride;
+        delete global.window.rerenderTables;
         delete global.window.UiModeToggle;
     });
 
-    test('CLASSIC_ALLOWED contains exactly the 7 main-side families', () => {
+    test('CLASSIC_ALLOWED still exposes the 7 classic families', () => {
         expect(UiModeToggle.CLASSIC_ALLOWED.sort()).toEqual([
             'prev', 'prevMinus1', 'prevPlus1',
             'prevPrevMinus1', 'prevPrevPlus1',
@@ -56,32 +50,32 @@ describe('ui-mode-toggle module', () => {
         expect(document.body.classList.contains('ui-classic')).toBe(false);
     });
 
-    test('setMode(classic) flips body class and calls override with allowed keys', () => {
+    test('setMode(classic) flips body class + triggers re-render', () => {
+        const before = rerenderCalls;
         UiModeToggle.setMode('classic');
         expect(document.body.classList.contains('ui-classic')).toBe(true);
         expect(document.body.classList.contains('ui-modern')).toBe(false);
         expect(localStorage.getItem('ui.mode')).toBe('classic');
-        // Last override call should be the allowed list.
-        const last = overrideCalls[overrideCalls.length - 1];
-        expect(last).toEqual(expect.arrayContaining(UiModeToggle.CLASSIC_ALLOWED));
-        expect(last.length).toBe(UiModeToggle.CLASSIC_ALLOWED.length);
+        expect(rerenderCalls).toBeGreaterThan(before);
     });
 
-    test('setMode(modern) restores body class and clears override (null)', () => {
+    test('setMode(modern) restores body class + triggers re-render', () => {
         UiModeToggle.setMode('classic');
+        const before = rerenderCalls;
         UiModeToggle.setMode('modern');
         expect(document.body.classList.contains('ui-modern')).toBe(true);
         expect(document.body.classList.contains('ui-classic')).toBe(false);
         expect(localStorage.getItem('ui.mode')).toBe('modern');
-        expect(overrideCalls[overrideCalls.length - 1]).toBeNull();
+        expect(rerenderCalls).toBeGreaterThan(before);
     });
 
-    test('round-trip classic → modern → classic re-applies override', () => {
+    test('round-trip classic → modern → classic flips body class each time', () => {
         UiModeToggle.setMode('classic');
+        expect(document.body.classList.contains('ui-classic')).toBe(true);
         UiModeToggle.setMode('modern');
+        expect(document.body.classList.contains('ui-modern')).toBe(true);
         UiModeToggle.setMode('classic');
-        const last = overrideCalls[overrideCalls.length - 1];
-        expect(last).toEqual(expect.arrayContaining(UiModeToggle.CLASSIC_ALLOWED));
+        expect(document.body.classList.contains('ui-classic')).toBe(true);
     });
 
     test('clicking the Classic button switches mode', () => {

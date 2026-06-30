@@ -1202,6 +1202,22 @@ td.t1-flash, td.t2-flash {
 body.ui-modern #classicTableToggles { display: none; }
 body.ui-classic #classicTableToggles { display: inline-flex; align-items: center; }
 
+/* Classic-only filter dropdowns (cpf*) hidden in Modern; the Modern
+   filter dropdowns are hidden in Classic. Each mode sees its own
+   buttons and own filter state. */
+body.ui-classic #pairFilterDropdown,
+body.ui-classic #pairFilterDropdownT1,
+body.ui-classic #pairFilterDropdownT2,
+body.ui-classic #pairFilterDropdownT3 {
+    display: none !important;
+}
+body.ui-modern #cpfDropdown,
+body.ui-modern #cpfDropdownT1,
+body.ui-modern #cpfDropdownT2,
+body.ui-modern #cpfDropdownT3 {
+    display: none !important;
+}
+
 /* Show / hide rules per mode */
 body.ui-modern #classicView { display: none; }
 body.ui-classic .table-section { display: none; }
@@ -1224,25 +1240,22 @@ body.ui-classic #classicView { display: block; }
 #classicTable {
     border-collapse: collapse;
     background: #fff;
-    /* Fit the viewport: fixed layout + 100% width + max-width caps
-       total width at the wrapper. Re-fits on every rebuild when
-       columns toggle. */
-    table-layout: fixed;
+    /* Auto layout — browser sizes each column proportional to its
+       content (POS codes / PRJ chips get more room than bare numbers).
+       Combined with width:100% on the table and max-width:100% on the
+       wrapper, the total stays within the viewport while T3's wider
+       content cells naturally get more horizontal space than T1/T2's
+       short number cells. */
+    table-layout: auto;
     width: 100%;
     max-width: 100%;
 }
-/* Cells respect their share of the viewport — box-sizing makes border/
-   padding count toward width, min-width:0 lets columns shrink below
-   their content's intrinsic minimum, and we constrain inline content
-   (e.g. <strong> blocks Modern emits) so it can't push width out. */
 #classicTable th,
 #classicTable td {
     box-sizing: border-box;
-    min-width: 0;
 }
 #classicTable td > *,
 #classicTable th > * {
-    min-width: 0;
     max-width: 100%;
 }
 /* Sticky header */
@@ -1286,11 +1299,11 @@ body.ui-classic #classicView { display: block; }
 #classicTable thead .ct-group-header.ct-t3 { background: #bae6fd !important; }
 
 /* Cell borders — Excel-style "All Borders" + thick "box border" at
-   each pair-family boundary. Scoped to #classicTable so Modern keeps
-   its existing pair-separator look. */
+   each pair-family boundary. Medium gray so the inner grid lines are
+   clearly visible without overpowering the data. */
 #classicTable th,
 #classicTable td {
-    border: 1px solid #cbd5e1;
+    border: 1px solid #94a3b8;
 }
 /* Override Modern's 6px black .pair-separator and 3px white
    .copair-separator inside the classic table only — replace with a
@@ -1308,13 +1321,12 @@ body.ui-classic #classicView { display: block; }
 
 /* Cloned cells keep their Modern styles (.code-s/.code-o/.code-xx,
    anchor outlines, flash classes, PRJ chip layout) automatically.
-   Tightened to fit the viewport — content that overflows the narrow
-   column is clipped (text-overflow:clip). Drop columns next pass to
-   restore comfortable widths. */
+   Border colour matches the unified body-cell rule below so inner
+   grid lines are clearly visible without being heavy. */
 #classicTable tbody td {
     padding: 0 1px;
     text-align: center;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #94a3b8;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: clip;

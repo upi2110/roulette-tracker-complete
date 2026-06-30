@@ -69,21 +69,14 @@
         const body = document.body;
         body.classList.remove('ui-modern', 'ui-classic');
         body.classList.add('ui-' + mode);
-        if (mode === 'classic') {
-            if (typeof window.setUiClassicOverride === 'function') {
-                window.setUiClassicOverride(CLASSIC_ALLOWED);
-            }
-            // setUiClassicOverride triggers a Modern render with the
-            // 7-family filter active; classic-view.js' observer then
-            // rebuilds the unified table. Belt-and-braces: rebuild now
-            // in case the observer hasn't fired yet.
-            if (window.ClassicView && typeof window.ClassicView.rebuild === 'function') {
-                requestAnimationFrame(() => window.ClassicView.rebuild());
-            }
-        } else {
-            if (typeof window.setUiClassicOverride === 'function') {
-                window.setUiClassicOverride(null);
-            }
+        // Renderer reads body.classList directly to decide which
+        // filter set to apply, so just trigger a repaint.
+        if (typeof window.rerenderTables === 'function') {
+            window.rerenderTables();
+        }
+        if (mode === 'classic' && window.ClassicView
+            && typeof window.ClassicView.rebuild === 'function') {
+            requestAnimationFrame(() => window.ClassicView.rebuild());
         }
         _refreshButtonLabel(mode);
     }

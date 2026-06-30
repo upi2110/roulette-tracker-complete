@@ -104,6 +104,73 @@
                     </div>
                 </div>
             </div>
+
+            <!-- =========================================================
+                 CLASSIC-ONLY filter dropdowns (2026-06-30). Visible only
+                 when body.ui-classic. Operate on a SEPARATE filter state
+                 from Modern (see app/classic-pair-filter.js +
+                 window.setClassicVisibleUniversal / setClassicVisibleForTable
+                 in renderer-3tables.js). Modern's filter is never touched.
+                 ========================================================= -->
+            <div id="cpfDropdown" style="position:relative;">
+                <button type="button" id="cpfToggleBtn"
+                        style="padding:6px 12px;font-size:12px;font-weight:600;border:1px solid #6366f1;border-radius:6px;background:#eef2ff;color:#3730a3;cursor:pointer;">
+                    🏛 Pairs <span id="cpfCount" style="opacity:.75;font-weight:400;">(7/7)</span>
+                </button>
+                <div id="cpfPanel"
+                     style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #cbd5e1;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:10px 12px;min-width:230px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#475569;font-weight:600;">
+                        <span>Classic — visible pair-families</span>
+                        <button type="button" id="cpfAllBtn" style="font-size:10px;padding:2px 8px;border:1px solid #cbd5e1;border-radius:4px;background:#f1f5f9;color:#334155;cursor:pointer;">All</button>
+                    </div>
+                    <div id="cpfCheckboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;"></div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:10px;color:#64748b;">
+                        Classic-only universal scope. Independent of Modern. Survives mode toggle.
+                    </div>
+                </div>
+            </div>
+            <div id="cpfDropdownT1" style="position:relative;">
+                <button type="button" id="cpfToggleBtnT1"
+                        style="padding:6px 10px;font-size:11px;font-weight:600;border:1px solid #f59e0b;border-radius:6px;background:#fef3c7;color:#92400e;cursor:pointer;">
+                    🏛 T1 <span id="cpfCountT1" style="opacity:.75;font-weight:400;">(7/12)</span>
+                </button>
+                <div id="cpfPanelT1"
+                     style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #f59e0b;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:10px 12px;min-width:230px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#92400e;font-weight:600;">
+                        <span>Classic — visible on T1</span>
+                        <button type="button" id="cpfAllBtnT1" style="font-size:10px;padding:2px 8px;border:1px solid #f59e0b;border-radius:4px;background:#fef9c3;color:#92400e;cursor:pointer;">All</button>
+                    </div>
+                    <div id="cpfCheckboxesT1" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;"></div>
+                </div>
+            </div>
+            <div id="cpfDropdownT2" style="position:relative;">
+                <button type="button" id="cpfToggleBtnT2"
+                        style="padding:6px 10px;font-size:11px;font-weight:600;border:1px solid #10b981;border-radius:6px;background:#dcfce7;color:#065f46;cursor:pointer;">
+                    🏛 T2 <span id="cpfCountT2" style="opacity:.75;font-weight:400;">(5/10)</span>
+                </button>
+                <div id="cpfPanelT2"
+                     style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #10b981;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:10px 12px;min-width:230px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#065f46;font-weight:600;">
+                        <span>Classic — visible on T2</span>
+                        <button type="button" id="cpfAllBtnT2" style="font-size:10px;padding:2px 8px;border:1px solid #10b981;border-radius:4px;background:#dcfce7;color:#065f46;cursor:pointer;">All</button>
+                    </div>
+                    <div id="cpfCheckboxesT2" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;"></div>
+                </div>
+            </div>
+            <div id="cpfDropdownT3" style="position:relative;">
+                <button type="button" id="cpfToggleBtnT3"
+                        style="padding:6px 10px;font-size:11px;font-weight:600;border:1px solid #0ea5e9;border-radius:6px;background:#e0f2fe;color:#075985;cursor:pointer;">
+                    🏛 T3 <span id="cpfCountT3" style="opacity:.75;font-weight:400;">(5/10)</span>
+                </button>
+                <div id="cpfPanelT3"
+                     style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1000;background:#fff;border:1px solid #0ea5e9;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);padding:10px 12px;min-width:230px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#075985;font-weight:600;">
+                        <span>Classic — visible on T3</span>
+                        <button type="button" id="cpfAllBtnT3" style="font-size:10px;padding:2px 8px;border:1px solid #0ea5e9;border-radius:4px;background:#e0f2fe;color:#075985;cursor:pointer;">All</button>
+                    </div>
+                    <div id="cpfCheckboxesT3" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -238,6 +305,7 @@
 <script src="../roulette-wheel/table-lookup.js"></script>
 <script src="renderer-3tables.js"></script>
 <script src="ui-mode-toggle.js"></script>
+<script src="classic-pair-filter.js"></script>
 <script src="classic-view.js"></script>
 <!-- ai-data-loader now loaded from canonical training/data-loader/. -->
 <script src="../training/data-loader/ai-data-loader.js"></script>

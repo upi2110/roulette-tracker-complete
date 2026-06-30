@@ -1466,23 +1466,50 @@ function _effectiveVisible(tableId) {
     return out;
 }
 
-// Classic-UI override — VISUAL ONLY. When non-null, the per-table
-// cell renderers restrict their visible column groups to this Set
-// of pair-keys. The engine, analyser, snapshot bridge, and AI
-// prediction panel continue to use the user's saved per-table
-// filters unchanged (they read _effectiveVisible directly, which
-// does NOT consult this override).
-let _classicModeOverride = null;
+// Classic-UI filter state. Four independent Sets, parallel to but
+// SEPARATE from the Modern user filter (_visiblePairFamilies and
+// _visiblePairFamiliesT1/T2/T3). When body.ui-classic is active,
+// _filterVisibleColumnGroupsForRender + _t3HalfVisible read from
+// these instead. Modern is untouched (it reads _effectiveVisible
+// which is unchanged). UI lives in app/classic-pair-filter.js.
+const CLASSIC_DEFAULT_FAMILIES = ['ref0', 'ref19', 'prev', 'prevPlus1', 'prevMinus1', 'prevPrevPlus1', 'prevPrevMinus1'];
+let _classicUniversal = null;
+let _classicT1 = null;
+let _classicT2 = null;
+let _classicT3 = null;
+function _classicSet(slot) {
+    if (slot === 'universal') {
+        if (!_classicUniversal) _classicUniversal = new Set(CLASSIC_DEFAULT_FAMILIES);
+        return _classicUniversal;
+    }
+    if (slot === 'T1') {
+        if (!_classicT1) _classicT1 = new Set(CLASSIC_DEFAULT_FAMILIES); // main-only default
+        return _classicT1;
+    }
+    if (slot === 'T2') {
+        if (!_classicT2) _classicT2 = new Set(['prev', 'prevPlus1', 'prevMinus1', 'prevPrevPlus1', 'prevPrevMinus1']);
+        return _classicT2;
+    }
+    if (slot === 'T3') {
+        if (!_classicT3) _classicT3 = new Set(['prev', 'prevPlus1', 'prevMinus1', 'prevPrevPlus1', 'prevPrevMinus1']);
+        return _classicT3;
+    }
+    return new Set();
+}
+function _isClassicMode() {
+    return typeof document !== 'undefined'
+        && document.body
+        && document.body.classList.contains('ui-classic');
+}
 
 /** True if the named pair-family's pair-side OR 13-opp-side is
  *  currently visible on the table. Used by T3 rendering to drop
  *  groups entirely when both halves are off. */
 function _t3HalfVisible(family, side /* 'pair' | '13opp' */) {
-    // Classic-UI override: only main-side halves of the 7 allowed
-    // families are visible; 13-opp halves are always hidden.
-    if (_classicModeOverride) {
-        if (side === '13opp') return false;
-        return _classicModeOverride.has(family);
+    if (_isClassicMode()) {
+        const perTable = _classicSet('T3');
+        const key = (side === '13opp') ? (family + '_13opp') : family;
+        return perTable.has(key);
     }
     const eff = _effectiveVisible('T3');
     const key = (side === '13opp') ? (family + '_13opp') : family;
@@ -1501,18 +1528,38 @@ if (typeof window !== 'undefined') {
     window.getVisiblePairFamiliesForTable = function(tableId) {
         return _effectiveVisible(tableId);
     };
-    // Classic-UI override hook. Pass an iterable of allowed pair-keys
-    // (e.g. ['ref0','prev','prevPlus1',…]) to restrict ALL tables; pass
-    // null/undefined to clear. Triggers a render. Does NOT persist.
-    window.setUiClassicOverride = function(allowedPairKeys) {
-        _classicModeOverride = allowedPairKeys ? new Set(allowedPairKeys) : null;
+    // Classic-mode filter setters. Driven by Classic-only filter
+    // dropdowns in classic-pair-filter.js. Each takes an array (or
+    // iterable) of pair-keys (universal slot takes families). Triggers
+    // a re-render so the new filter applies immediately.
+    window.setClassicVisibleUniversal = function(families) {
+        _classicUniversal = new Set(families || []);
         if (typeof render === 'function') render();
     };
-    window.getUiClassicOverride = function() {
-        return _classicModeOverride ? new Set(_classicModeOverride) : null;
+    window.setClassicVisibleForTable = function(tableId, pairKeys) {
+        const set = new Set(pairKeys || []);
+        if (tableId === 'T1') _classicT1 = set;
+        else if (tableId === 'T2') _classicT2 = set;
+        else if (tableId === 'T3') _classicT3 = set;
+        if (typeof render === 'function') render();
     };
-    // Classic-only: hide ref0/ref19 from T1 (driven by the T1 Ref
-    // checkbox in classic-view.js).
+    window.getClassicVisibleUniversal = function() {
+        return new Set(_classicSet('universal'));
+    };
+    window.getClassicVisibleForTable = function(tableId) {
+        return new Set(_classicSet(tableId));
+    };
+    window.getClassicDefaultFamilies = function() {
+        return CLASSIC_DEFAULT_FAMILIES.slice();
+    };
+    // Trigger a full re-render. Used by ui-mode-toggle.js when mode
+    // changes (the filter functions read body.classList directly, so
+    // we just need to repaint).
+    window.rerenderTables = function() {
+        if (typeof render === 'function') render();
+    };
+    // Hide ref0/ref19 from T1 in Classic — controlled by the T1 Ref
+    // checkbox in the page header.
     window.setClassicT1RefHidden = function(hidden) {
         _classicT1RefHidden = !!hidden;
         if (typeof render === 'function') render();
@@ -1549,22 +1596,23 @@ function _setVisiblePairFamiliesForTable(tableId, set) {
 // snapshot / AI-panel code keeps calling _filterVisibleColumnGroups
 // directly and stays on the user's saved filters.
 function _filterVisibleColumnGroupsForRender(groups, tableId) {
-    // Classic mode: REPLACE the user's per-table/universal filter
-    // with the override list so the rendered tables always show the
-    // classic families — regardless of what the user previously
-    // hid in Modern. (The engine still consults _filterVisible-
-    // ColumnGroups directly and stays on the user's saved filters.)
+    // Classic mode: use the dedicated Classic filter Sets (driven by
+    // the Classic-only Pairs/T1/T2/T3 dropdowns in classic-pair-filter.js).
+    // Each cell must satisfy BOTH the universal Classic family filter
+    // AND the per-table pair-key filter. The Modern user filter is
+    // not consulted in this branch — Classic and Modern have fully
+    // independent state.
     //
-    // Per-table tweaks:
-    //   T2 — always drops ref0/ref19 (user spec 2026-06-29).
-    //   T1 — drops ref0/ref19 when window._classicT1RefHidden=true
-    //        (the "T1 Ref" checkbox controls this — those families
-    //        are pure reference columns).
-    if (_classicModeOverride) {
+    // The "T1 Ref" checkbox (window._classicT1RefHidden) additionally
+    // drops ref0/ref19 from T1 when set — it's a one-click shortcut
+    // for hiding the reference-only families.
+    if (_isClassicMode()) {
+        const fams = _classicSet('universal');
+        const perTable = _classicSet(tableId);
         return groups.filter(g => {
-            if (!_classicModeOverride.has(g.dataPair)) return false;
-            if (tableId === 'T2' && (g.dataPair === 'ref0' || g.dataPair === 'ref19')) return false;
-            if (tableId === 'T1' && _classicT1RefHidden && (g.dataPair === 'ref0' || g.dataPair === 'ref19')) return false;
+            const fam = _familyForDataPair(g.dataPair);
+            if (!fams.has(fam)) return false;
+            if (!perTable.has(g.dataPair)) return false;
             return true;
         });
     }
