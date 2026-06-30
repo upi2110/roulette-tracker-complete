@@ -16,6 +16,13 @@
              3 tables (T1/T2/T3) and the engine's pair pool (slice
              2g). Filter state persists in localStorage. -->
         <div style="display:flex;align-items:center;gap:6px;">
+            <!-- 2026-06-28: Modern / Classic UI mode toggle. Modern is
+                 the full UI below; Classic is a compact 7-family
+                 side-by-side view (see app/ui-mode-toggle.js). -->
+            <div id="uiModeToggleGroup" style="display:inline-flex;border:1px solid #475569;border-radius:6px;overflow:hidden;font-size:11px;font-weight:600;margin-right:4px;">
+                <button type="button" id="uiModeBtnModern" style="padding:6px 10px;border:none;background:#fff;color:#334155;cursor:pointer;">⚡ Modern</button>
+                <button type="button" id="uiModeBtnClassic" style="padding:6px 10px;border:none;border-left:1px solid #475569;background:#fff;color:#334155;cursor:pointer;">🏛 Classic</button>
+            </div>
             <div id="pairFilterDropdown" class="pair-filter-dropdown" style="position:relative;">
                 <button type="button" id="pairFilterToggleBtn" class="pair-filter-btn"
                         style="padding:6px 12px;font-size:12px;font-weight:600;border:1px solid #6366f1;border-radius:6px;background:#eef2ff;color:#3730a3;cursor:pointer;">
@@ -105,6 +112,21 @@
         <label for="zoomSlider">Zoom:</label>
         <input type="range" id="zoomSlider" min="50" max="150" value="100" step="5">
         <span class="zoom-value" id="zoomValue">100%</span>
+
+        <!-- Classic-only: per-table show/hide checkboxes. Hidden in
+             Modern via CSS. Drive classic-view.js to skip cloning
+             unchecked tables so the remaining ones get more width. -->
+        <span id="classicTableToggles" style="margin-left:16px;font-size:11px;">
+            <label style="margin-right:8px;background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:4px;border:1px solid #f59e0b;cursor:pointer;">
+                <input type="checkbox" id="classicShowT1" checked> T1 Ref
+            </label>
+            <label style="margin-right:8px;background:#dcfce7;color:#065f46;padding:2px 6px;border-radius:4px;border:1px solid #10b981;cursor:pointer;">
+                <input type="checkbox" id="classicShowT2" checked> T2 Ref
+            </label>
+            <label style="background:#e0f2fe;color:#075985;padding:2px 6px;border-radius:4px;border:1px solid #0ea5e9;cursor:pointer;">
+                <input type="checkbox" id="classicShowT3" checked> T3 Ref
+            </label>
+        </span>
     </div>
     
     <!-- TABLE 1: 10 Position Codes -->
@@ -150,6 +172,21 @@
                      after the Option-A extension). -->
                 <thead id="table3Head"></thead>
                 <tbody id="table3Body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===== CLASSIC UI — unified single-table view ===== -->
+    <!-- 2026-06-29: shown only when body.ui-classic. Built by
+         app/classic-view.js by CLONING the cells Modern renders into
+         T1/T2/T3 — so every Ref / sub-Ref / POS code / color /
+         anchor / PRJ chip carries over for free. Modern's own
+         renders happen invisibly in the background. -->
+    <div id="classicView">
+        <div id="classicViewScroll">
+            <table id="classicTable">
+                <thead></thead>
+                <tbody></tbody>
             </table>
         </div>
     </div>
@@ -200,6 +237,8 @@
 <!-- table-lookup now loaded from canonical roulette-wheel/. -->
 <script src="../roulette-wheel/table-lookup.js"></script>
 <script src="renderer-3tables.js"></script>
+<script src="ui-mode-toggle.js"></script>
+<script src="classic-view.js"></script>
 <!-- ai-data-loader now loaded from canonical training/data-loader/. -->
 <script src="../training/data-loader/ai-data-loader.js"></script>
 <!-- ai-sequence-model now loaded from canonical models/ai-sequence-model/. -->

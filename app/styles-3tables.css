@@ -1180,3 +1180,152 @@ td.t1-flash, td.t2-flash {
 #table2Checkboxes {
     transition: all 0.2s ease;
 }
+
+/* ==========================================================
+ * Classic UI mode (2026-06-29). Active when body.ui-classic.
+ * Modern view untouched (default body.ui-modern).
+ *
+ * Approach: Modern's renderer still populates T1/T2/T3 in the
+ * background (so all cell logic / colors / anchors / flashes are
+ * already done). Modern's .table-section divs are hidden via CSS
+ * in Classic; classic-view.js CLONES the rendered cells into one
+ * unified #classicTable that we show instead.
+ * ========================================================== */
+
+/* Active-button highlight inside the segmented toggle */
+#uiModeToggleGroup .active {
+    background: #1e293b !important;
+    color: #f8fafc !important;
+}
+
+/* Per-table show/hide checkboxes (T1/T2/T3) — only visible in Classic */
+body.ui-modern #classicTableToggles { display: none; }
+body.ui-classic #classicTableToggles { display: inline-flex; align-items: center; }
+
+/* Show / hide rules per mode */
+body.ui-modern #classicView { display: none; }
+body.ui-classic .table-section { display: none; }
+body.ui-classic #classicView { display: block; }
+
+/* Unified classic table — one wide table with a single horizontal +
+   vertical scroll container; ~18 rows visible. */
+#classicView {
+    margin: 0 0 8px 0;
+    border: 1px solid #94a3b8;
+    border-radius: 4px;
+    background: #fff;
+    overflow: hidden;
+}
+#classicViewScroll {
+    max-height: 432px;          /* ~18 rows */
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+#classicTable {
+    border-collapse: collapse;
+    background: #fff;
+    /* Fit the viewport: fixed layout + 100% width + max-width caps
+       total width at the wrapper. Re-fits on every rebuild when
+       columns toggle. */
+    table-layout: fixed;
+    width: 100%;
+    max-width: 100%;
+}
+/* Cells respect their share of the viewport — box-sizing makes border/
+   padding count toward width, min-width:0 lets columns shrink below
+   their content's intrinsic minimum, and we constrain inline content
+   (e.g. <strong> blocks Modern emits) so it can't push width out. */
+#classicTable th,
+#classicTable td {
+    box-sizing: border-box;
+    min-width: 0;
+}
+#classicTable td > *,
+#classicTable th > * {
+    min-width: 0;
+    max-width: 100%;
+}
+/* Sticky header */
+/* Match Modern's header colors: #34495e bg + white text + #2c3e50 border. */
+#classicTable thead th {
+    position: sticky;
+    top: 0;
+    background: #34495e;
+    color: white;
+    padding: 1px 2px;
+    text-align: center;
+    font-weight: 600;
+    border: 1px solid #2c3e50;
+    white-space: nowrap;
+    font-size: 9px;
+    z-index: 100;
+}
+#classicTable thead .ct-group-header {
+    background: #2c3e50;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+}
+/* Black vertical line between T1 | T2 | T3 sections — spans every
+   header row and every body row because _addDividerToFirst() tags
+   the first cell of T2 and T3 in every row. */
+#classicTable thead .ct-divider-left,
+#classicTable tbody td.ct-divider-left {
+    border-left: 2px solid #000 !important;
+}
+
+/* Per-table light color bands — header only (data cells keep Modern's
+   code-s/code-o/code-xx colors intact). Scoped to #classicTable so
+   Modern's own tables are not affected. T1 amber, T2 green, T3 blue
+   — matches the existing Pairs/T1/T2/T3 filter button palette. */
+#classicTable thead .ct-t1 { background: #fef3c7 !important; color: #92400e !important; }
+#classicTable thead .ct-t2 { background: #dcfce7 !important; color: #065f46 !important; }
+#classicTable thead .ct-t3 { background: #e0f2fe !important; color: #075985 !important; }
+/* Slightly stronger band for the super-group row (T1 | T2 | T3) */
+#classicTable thead .ct-group-header.ct-t1 { background: #fde68a !important; }
+#classicTable thead .ct-group-header.ct-t2 { background: #bbf7d0 !important; }
+#classicTable thead .ct-group-header.ct-t3 { background: #bae6fd !important; }
+
+/* Cell borders — Excel-style "All Borders" + thick "box border" at
+   each pair-family boundary. Scoped to #classicTable so Modern keeps
+   its existing pair-separator look. */
+#classicTable th,
+#classicTable td {
+    border: 1px solid #cbd5e1;
+}
+/* Override Modern's 6px black .pair-separator and 3px white
+   .copair-separator inside the classic table only — replace with a
+   single 2px medium gray line on the LEFT of each pair group. */
+#classicTable .pair-separator,
+#classicTable .copair-separator {
+    border-left: 2px solid #475569 !important;
+}
+/* Matching 2px medium gray on the RIGHT of the LAST cell of each
+   pair group (tagged ct-pair-end by classic-view.js). Together with
+   border-left above, each pair gets a complete box outline. */
+#classicTable .ct-pair-end {
+    border-right: 2px solid #475569 !important;
+}
+
+/* Cloned cells keep their Modern styles (.code-s/.code-o/.code-xx,
+   anchor outlines, flash classes, PRJ chip layout) automatically.
+   Tightened to fit the viewport — content that overflows the narrow
+   column is clipped (text-overflow:clip). Drop columns next pass to
+   restore comfortable widths. */
+#classicTable tbody td {
+    padding: 0 1px;
+    text-align: center;
+    border: 1px solid #e2e8f0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    font-size: 8px;
+}
+#classicTable thead th {
+    overflow: hidden;
+    text-overflow: clip;
+}
+
+#classicTable tbody tr.ct-next-row td {
+    background: #fef9c3;
+    font-weight: 700;
+}

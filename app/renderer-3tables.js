@@ -1466,10 +1466,24 @@ function _effectiveVisible(tableId) {
     return out;
 }
 
+// Classic-UI override — VISUAL ONLY. When non-null, the per-table
+// cell renderers restrict their visible column groups to this Set
+// of pair-keys. The engine, analyser, snapshot bridge, and AI
+// prediction panel continue to use the user's saved per-table
+// filters unchanged (they read _effectiveVisible directly, which
+// does NOT consult this override).
+let _classicModeOverride = null;
+
 /** True if the named pair-family's pair-side OR 13-opp-side is
  *  currently visible on the table. Used by T3 rendering to drop
  *  groups entirely when both halves are off. */
 function _t3HalfVisible(family, side /* 'pair' | '13opp' */) {
+    // Classic-UI override: only main-side halves of the 7 allowed
+    // families are visible; 13-opp halves are always hidden.
+    if (_classicModeOverride) {
+        if (side === '13opp') return false;
+        return _classicModeOverride.has(family);
+    }
     const eff = _effectiveVisible('T3');
     const key = (side === '13opp') ? (family + '_13opp') : family;
     return eff.has(key);
@@ -1487,6 +1501,26 @@ if (typeof window !== 'undefined') {
     window.getVisiblePairFamiliesForTable = function(tableId) {
         return _effectiveVisible(tableId);
     };
+    // Classic-UI override hook. Pass an iterable of allowed pair-keys
+    // (e.g. ['ref0','prev','prevPlus1',…]) to restrict ALL tables; pass
+    // null/undefined to clear. Triggers a render. Does NOT persist.
+    window.setUiClassicOverride = function(allowedPairKeys) {
+        _classicModeOverride = allowedPairKeys ? new Set(allowedPairKeys) : null;
+        if (typeof render === 'function') render();
+    };
+    window.getUiClassicOverride = function() {
+        return _classicModeOverride ? new Set(_classicModeOverride) : null;
+    };
+    // Classic-only: hide ref0/ref19 from T1 (driven by the T1 Ref
+    // checkbox in classic-view.js).
+    window.setClassicT1RefHidden = function(hidden) {
+        _classicT1RefHidden = !!hidden;
+        if (typeof render === 'function') render();
+    };
+    // Math helpers used by app/classic-view.js for the unified table.
+    // Additive only — no behaviour change for any existing caller.
+    window.calculateReferences   = calculateReferences;
+    window.calculatePositionCode = calculatePositionCode;
 }
 
 function _setVisiblePairFamilies(set) {
@@ -1509,6 +1543,35 @@ function _setVisiblePairFamiliesForTable(tableId, set) {
  * vs _13opp halves can hide independently); T3 (and legacy) check
  * by family.
  */
+// Render-only variant of _filterVisibleColumnGroups. Applies the
+// Classic-UI override after the normal filter, so ONLY the table-cell
+// rendering paths shrink to the Classic 7-family view; engine /
+// snapshot / AI-panel code keeps calling _filterVisibleColumnGroups
+// directly and stays on the user's saved filters.
+function _filterVisibleColumnGroupsForRender(groups, tableId) {
+    // Classic mode: REPLACE the user's per-table/universal filter
+    // with the override list so the rendered tables always show the
+    // classic families — regardless of what the user previously
+    // hid in Modern. (The engine still consults _filterVisible-
+    // ColumnGroups directly and stays on the user's saved filters.)
+    //
+    // Per-table tweaks:
+    //   T2 — always drops ref0/ref19 (user spec 2026-06-29).
+    //   T1 — drops ref0/ref19 when window._classicT1RefHidden=true
+    //        (the "T1 Ref" checkbox controls this — those families
+    //        are pure reference columns).
+    if (_classicModeOverride) {
+        return groups.filter(g => {
+            if (!_classicModeOverride.has(g.dataPair)) return false;
+            if (tableId === 'T2' && (g.dataPair === 'ref0' || g.dataPair === 'ref19')) return false;
+            if (tableId === 'T1' && _classicT1RefHidden && (g.dataPair === 'ref0' || g.dataPair === 'ref19')) return false;
+            return true;
+        });
+    }
+    return _filterVisibleColumnGroups(groups, tableId);
+}
+let _classicT1RefHidden = false;
+
 function _filterVisibleColumnGroups(groups, tableId) {
     const eff = _effectiveVisible(tableId);
     if (tableId === 'T1' || tableId === 'T2') {
@@ -1900,7 +1963,7 @@ function _renderTable1Head() {
 
     // Slice 2f: filter by the global pair-family dropdown so hidden
     // families don't render their thead columns either.
-    const VISIBLE = _filterVisibleColumnGroups(T1_COLUMN_GROUPS, "T1");
+    const VISIBLE = _filterVisibleColumnGroupsForRender(T1_COLUMN_GROUPS, "T1");
 
     // ── Row 1: pair-group labels (each colspan=7) ──
     // Pair-indicator-col fix: prepend a 1-wide blank header before
@@ -1957,7 +2020,7 @@ function renderTable1() {
     // hidden families drop out of placeholder / data / NEXT rows
     // automatically. Anchor positions, _blockHits indices and end-
     // of-row marker all derive from VISIBLE.length.
-    const VISIBLE = _filterVisibleColumnGroups(T1_COLUMN_GROUPS, "T1");
+    const VISIBLE = _filterVisibleColumnGroupsForRender(T1_COLUMN_GROUPS, "T1");
 
     const tbody = document.getElementById('table1Body');
     tbody.innerHTML = '';
@@ -2403,7 +2466,7 @@ function _renderTable2Head() {
     const SUB_LABELS = ['Ref', '1st', 'C', '2nd', 'C', '3rd', 'C'];
 
     // Slice 2f: filter by global pair-family dropdown.
-    const VISIBLE = _filterVisibleColumnGroups(T2_COLUMN_GROUPS, "T2");
+    const VISIBLE = _filterVisibleColumnGroupsForRender(T2_COLUMN_GROUPS, "T2");
 
     const row1Cells = VISIBLE.map(grp => {
         const sepCls = grp.prefix === 'pair-separator'   ? ' pair-separator'
@@ -2438,7 +2501,7 @@ function renderTable2() {
     _renderTable2Head();
 
     // Slice 2f: filter by global pair-family dropdown.
-    const VISIBLE = _filterVisibleColumnGroups(T2_COLUMN_GROUPS, "T2");
+    const VISIBLE = _filterVisibleColumnGroupsForRender(T2_COLUMN_GROUPS, "T2");
 
     const tbody = document.getElementById('table2Body');
     tbody.innerHTML = '';
@@ -2709,7 +2772,7 @@ function _computeFlashTargets(allSpins, startIdx, visibleCount) {
     // FILTERED T3 config so hidden pair-families are excluded from
     // golden-flash detection too (otherwise we'd flash cells the
     // user can't even see).
-    const refKeys = _filterVisibleColumnGroups(T3_COLUMN_GROUPS, "T3").map(g => g.engineRefKey);
+    const refKeys = _filterVisibleColumnGroupsForRender(T3_COLUMN_GROUPS, "T3").map(g => g.engineRefKey);
 
     function getRowInfo(idx) {
         const spin = allSpins[idx];
@@ -3016,7 +3079,7 @@ function _applyPm1Flash(tbody, allSpins, startIdx, visibleCount) {
     // Slice 2e-2 + 2f: derive from FILTERED T3 config (legacy
     // fallback flash path). Same rationale as _computeFlashTargets
     // above — hidden families don't participate.
-    const refKeys = _filterVisibleColumnGroups(T3_COLUMN_GROUPS, "T3").map(g => g.engineRefKey);
+    const refKeys = _filterVisibleColumnGroupsForRender(T3_COLUMN_GROUPS, "T3").map(g => g.engineRefKey);
 
     // Compute position codes + distances for a given spin index
     function getRowInfo(idx) {
@@ -3225,7 +3288,7 @@ function _renderTable3Head() {
         '<th>Actual</th>'
     ];
     // Slice 2f: filter by global pair-family dropdown.
-    const VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS, "T3");
+    const VISIBLE = _filterVisibleColumnGroupsForRender(T3_COLUMN_GROUPS, "T3");
     // T3-halfs aware header data-pair: pair-half (label + first POS)
     // gets "_pair", 13opp-half (label13 + second POS) gets "_13opp",
     // PRJ keeps the base key. When halfs is OFF every header uses
@@ -3279,7 +3342,7 @@ function renderTable3() {
     // Slice 2f: filter the column-group config by the global
     // pair-family dropdown. Used by placeholder / data / NEXT rows
     // below.
-    const VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS, "T3");
+    const VISIBLE = _filterVisibleColumnGroupsForRender(T3_COLUMN_GROUPS, "T3");
 
     // Clear any existing flash pulse interval before rebuilding DOM
     if (window._pm1PulseInterval) {
@@ -3560,8 +3623,14 @@ function renderTable3() {
         const prevPrevSpin = spins[spins.length - 2].actual;
         const prevRefs = calculateReferences(prevPrevSpin, spins.length > 2 ? spins[spins.length - 3].actual : prevPrevSpin);
 
+        // Engine-bound: iterate the user's FULL visible group set
+        // (not the Classic-UI render override). window.table3-
+        // DisplayProjections is consumed by the AI engine / orchestrator
+        // and must stay on the user's saved per-table filter, regardless
+        // of UI mode (Option β, 2026-06-28).
+        const ENGINE_VISIBLE = _filterVisibleColumnGroups(T3_COLUMN_GROUPS, "T3");
         const nextProjections = {};
-        VISIBLE.forEach(grp => {
+        ENGINE_VISIBLE.forEach(grp => {
             const refKey = grp.engineRefKey;
             const prevRefNum = prevRefs[refKey];
             const prevRef13Opp = DIGIT_13_OPPOSITES[prevRefNum];
