@@ -372,8 +372,8 @@ td[data-pair] {
 }
 /* Highlight selected pair columns across all tables */
 .t3-pair-selected {
-    outline: 3px solid #0ea5e9 !important;
-    outline-offset: -2px;
+    outline: 1.5px solid #0ea5e9 !important;
+    outline-offset: -1px;
     background-color: rgba(14, 165, 233, 0.15) !important;
 }
 /* Selected-pair HEADERS must be OPAQUE so they mask the data rows
@@ -1379,6 +1379,13 @@ body.ui-classic #classicView { display: block; }
     line-height: 0.95;
     margin: 0;
     padding: 0;
+}
+
+/* Pair-selected highlight: thinner outline in Classic (Modern stays
+   at 3px). Half-width for a cleaner look on the dense grid. */
+#classicTable .t3-pair-selected {
+    outline-width: 1.5px !important;
+    outline-offset: -1px !important;
 }
 /* T3 PRJ chip cells: minimal inner padding so chips hug the cell
    borders. Targets the 3rd cell of each T3 family group via the

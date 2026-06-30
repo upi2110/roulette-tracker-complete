@@ -350,12 +350,17 @@
     function _attachObserver() {
         const target = document.getElementById('table3Body');
         if (!target) return false;
+        // Watch childList (re-renders) AND attribute changes (Modern's
+        // .t3-pair-selected highlight class is added/removed on
+        // existing cells without re-rendering — without attribute
+        // watching the Classic table would never pick up selection
+        // state changes).
         const obs = new MutationObserver(() => { rebuild(); });
-        obs.observe(target, { childList: true, subtree: true });
-        // Also watch T1/T2 since they may update on flash intervals.
+        const opts = { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] };
+        obs.observe(target, opts);
         ['table1Body', 'table2Body'].forEach(id => {
             const t = document.getElementById(id);
-            if (t) obs.observe(t, { childList: true, subtree: true });
+            if (t) obs.observe(t, opts);
         });
         return true;
     }
@@ -388,12 +393,50 @@
         _syncT1RefHide();
     }
 
+    // Click handler: clone cells preserve data-pair / data-sub
+    // attributes but not their original event listeners. Reattach the
+    // same pair-selection / sub-anchor toggle logic Modern uses
+    // (defined inline in index-3tables.html). Cells are tagged
+    // ct-t1/ct-t2/ct-t3 in _tag() so we can recover the source table.
+    function _wireClicks() {
+        const ct = document.getElementById('classicTable');
+        if (!ct) return;
+        ct.addEventListener('click', function (e) {
+            const cell = e.target.closest('td[data-pair], th[data-pair]');
+            if (!cell) return;
+            const pairKey = cell.dataset.pair;
+            if (!pairKey) return;
+            if (!window.aiPanel) {
+                console.warn('AI panel not ready yet');
+                return;
+            }
+            // Determine source table from the ct-t* tag.
+            let tableId;
+            if (cell.classList.contains('ct-t1')) tableId = 'table1';
+            else if (cell.classList.contains('ct-t2')) tableId = 'table2';
+            else if (cell.classList.contains('ct-t3')) tableId = 'table3';
+            else return; // Dir / Actual cells — no pair to toggle.
+            // Sub-anchor click — only when T1/T2 break is ON.
+            const subKey = cell.dataset.sub;
+            if (subKey && (tableId === 'table1' || tableId === 'table2')) {
+                const breakOn = (typeof window !== 'undefined' && window.t1t2Breaks === true);
+                if (breakOn && typeof window.aiPanel.toggleSubAnchorFromTable === 'function') {
+                    e.stopPropagation();
+                    window.aiPanel.toggleSubAnchorFromTable(pairKey, tableId, subKey);
+                    return;
+                }
+            }
+            window.aiPanel.togglePairFromTable(pairKey, tableId);
+        });
+    }
+
     function _init() {
         if (!_attachObserver()) {
             setTimeout(_init, 100);
             return;
         }
         _wireToggles();
+        _wireClicks();
         rebuild();
     }
 
