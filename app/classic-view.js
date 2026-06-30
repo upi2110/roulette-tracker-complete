@@ -285,9 +285,9 @@
             const tr = document.createElement('tr');
             if (isNext) tr.classList.add('ct-next-row');
             _clonePrefixCells(t3).forEach(c => tr.appendChild(c));
-            _refOf(_cloneFamilyCells(t1Rows[i], PREFIX_T1), showT1Ref, 7).forEach(c => tr.appendChild(c));
-            _addDividerToFirst(_refOf(_cloneFamilyCells(t2Rows[i], PREFIX_T2), showT2Ref, 7)).forEach(c => tr.appendChild(c));
-            _addDividerToFirst(_refOf(_cloneFamilyCells(t3Rows[i], PREFIX_T3), showT3Ref, 3)).forEach(c => tr.appendChild(c));
+            _tag(_refOf(_cloneFamilyCells(t1Rows[i], PREFIX_T1), showT1Ref, 7), 'ct-t1').forEach(c => tr.appendChild(c));
+            _tag(_addDividerToFirst(_refOf(_cloneFamilyCells(t2Rows[i], PREFIX_T2), showT2Ref, 7)), 'ct-t2').forEach(c => tr.appendChild(c));
+            _tag(_addDividerToFirst(_refOf(_cloneFamilyCells(t3Rows[i], PREFIX_T3), showT3Ref, 3)), 'ct-t3').forEach(c => tr.appendChild(c));
             _markPairBoundaries(tr);
             body.appendChild(tr);
         }

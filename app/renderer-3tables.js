@@ -1504,9 +1504,21 @@ function _isClassicMode() {
 
 /** True if the named pair-family's pair-side OR 13-opp-side is
  *  currently visible on the table. Used by T3 rendering to drop
- *  groups entirely when both halves are off. */
-function _t3HalfVisible(family, side /* 'pair' | '13opp' */) {
+ *  groups entirely when both halves are off.
+ *
+ *  `purpose` (optional, default 'cell'):
+ *    'cell' — gates Ref/POS data cells. Classic respects the per-table
+ *             pair-key set (13opp halves hidden by default).
+ *    'proj' — gates PRJ chip rendering. In Classic, always returns true
+ *             for both halves of any family in the universal set, so
+ *             PRJ shows both purple (pair) AND green (13-opp) chips
+ *             even when the 13-opp data column is hidden.
+ */
+function _t3HalfVisible(family, side /* 'pair' | '13opp' */, purpose /* 'cell' | 'proj' */) {
     if (_isClassicMode()) {
+        if (purpose === 'proj') {
+            return _classicSet('universal').has(family);
+        }
         const perTable = _classicSet('T3');
         const key = (side === '13opp') ? (family + '_13opp') : family;
         return perTable.has(key);
@@ -3556,8 +3568,10 @@ function renderTable3() {
                 // only 'prev' (the one family where both forms match)
                 // works correctly.
                 const dataPair = _PAIR_REFKEY_TO_DATA_PAIR[key] || key;
-                const showPair = _t3HalfVisible(dataPair, 'pair');
-                const showOpp  = _t3HalfVisible(dataPair, '13opp');
+                // 'proj' purpose → in Classic, both halves render in PRJ
+                // even when the 13-opp data column is hidden.
+                const showPair = _t3HalfVisible(dataPair, 'pair', 'proj');
+                const showOpp  = _t3HalfVisible(dataPair, '13opp', 'proj');
                 const purpleArr = showPair ? p.purple : [];
                 const greenArr  = showOpp  ? p.green  : [];
                 const purpleHtml = purpleArr.map(a => `<span class="anchor-purple">${a}</span>`).join(' ');
@@ -3727,8 +3741,10 @@ function renderTable3() {
             // Same bug as projHtml above: `key` is the engineRefKey
             // (e.g. 'prev_plus_1') not the dataPair. Map first.
             const dataPair = _PAIR_REFKEY_TO_DATA_PAIR[key] || key;
-            const showPair = _t3HalfVisible(dataPair, 'pair');
-            const showOpp  = _t3HalfVisible(dataPair, '13opp');
+            // 'proj' purpose → in Classic, both halves render in PRJ
+            // even when the 13-opp data column is hidden.
+            const showPair = _t3HalfVisible(dataPair, 'pair', 'proj');
+            const showOpp  = _t3HalfVisible(dataPair, '13opp', 'proj');
             const purpleArr = showPair ? p.purple : [];
             const greenArr  = showOpp  ? p.green  : [];
             const purpleHtml = purpleArr.map(a => `<span class="anchor-purple">${a}</span>`).join(' ');

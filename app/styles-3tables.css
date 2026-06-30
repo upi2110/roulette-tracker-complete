@@ -1278,12 +1278,12 @@ body.ui-classic #classicView { display: block; }
     font-size: 10px;
     letter-spacing: 0.5px;
 }
-/* Black vertical line between T1 | T2 | T3 sections — spans every
-   header row and every body row because _addDividerToFirst() tags
-   the first cell of T2 and T3 in every row. */
+/* Thick black vertical line between T1 | T2 | T3 sections — spans
+   every header row and every body row because _addDividerToFirst()
+   tags the first cell of T2 and T3 in every row. */
 #classicTable thead .ct-divider-left,
 #classicTable tbody td.ct-divider-left {
-    border-left: 2px solid #000 !important;
+    border-left: 6px solid #000 !important;
 }
 
 /* Per-table light color bands — header only (data cells keep Modern's
@@ -1340,4 +1340,25 @@ body.ui-classic #classicView { display: block; }
 #classicTable tbody tr.ct-next-row td {
     background: #fef9c3;
     font-weight: 700;
+}
+
+/* Actual column (2nd cell in every body row) — bold + larger so the
+   spin number stands out vs the surrounding code/anchor cells. */
+#classicTable tbody td:nth-child(2),
+#classicTable tbody td:nth-child(2) strong {
+    font-weight: 700 !important;
+    font-size: 10px !important;
+}
+
+/* T3 PRJ cells: keep the two <div> blocks stacked (purple over
+   green) but shrink chip text so the column stays narrow. */
+#classicTable tbody td > div {
+    display: block;
+    line-height: 1;
+}
+#classicTable tbody td .anchor-purple,
+#classicTable tbody td .anchor-green {
+    font-size: 11px !important;
+    padding: 0 2px !important;
+    margin: 0 1px !important;
 }
