@@ -1240,13 +1240,12 @@ body.ui-classic #classicView { display: block; }
 #classicTable {
     border-collapse: collapse;
     background: #fff;
-    /* Auto layout — browser sizes each column proportional to its
-       content (POS codes / PRJ chips get more room than bare numbers).
-       Combined with width:100% on the table and max-width:100% on the
-       wrapper, the total stays within the viewport while T3's wider
-       content cells naturally get more horizontal space than T1/T2's
-       short number cells. */
-    table-layout: auto;
+    /* Fixed layout + weighted per-column widths in <colgroup> (built
+       in classic-view.js). Number cells (Ref/1st/2nd/3rd) get narrow
+       widths; POS code cells (C) get medium; T3 PRJ chip cells get
+       widest. Keeps alignment crisp AND distributes width
+       proportional to content type. */
+    table-layout: fixed;
     width: 100%;
     max-width: 100%;
 }
@@ -1356,9 +1355,36 @@ body.ui-classic #classicView { display: block; }
     display: block;
     line-height: 1;
 }
+/* T3 PRJ chips — same font as other body numbers (family + weight),
+   only colored text distinguishes pair-side (purple) from 13-opp
+   (green). No chip background/border. */
 #classicTable tbody td .anchor-purple,
 #classicTable tbody td .anchor-green {
+    display: inline !important;
+    font: inherit !important;
     font-size: 11px !important;
-    padding: 0 2px !important;
+    font-weight: 600 !important;        /* slightly thicker than normal */
+    padding: 0 !important;
     margin: 0 1px !important;
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    letter-spacing: 0;
+    line-height: 0.95 !important;       /* tighter row height */
+}
+/* Reduce vertical gap between the purple and green chip rows. */
+#classicTable tbody td.ct-t3 > div {
+    line-height: 0.95;
+    margin: 0;
+    padding: 0;
+}
+/* T3 PRJ chip cells: minimal inner padding so chips hug the cell
+   borders. Targets the 3rd cell of each T3 family group via the
+   ct-t3 marker, but applies generally to all T3 cells with chips. */
+#classicTable tbody td.ct-t3 > div {
+    line-height: 1;
+    padding: 0;
+    margin: 0;
 }

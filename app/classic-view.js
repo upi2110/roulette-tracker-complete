@@ -170,16 +170,54 @@
         return cells;
     }
 
-    // Build a <colgroup> with N <col> elements (no widths set) — just
-    // establishes the column count. With table-layout:auto the browser
-    // sizes each column based on its widest content cell, so T3's PRJ
-    // chips get more room than T1/T2's short reference numbers.
-    function _buildColgroup(totalCols) {
+    // Build a <colgroup> with weighted <col> widths based on each
+    // column's content type. Number cells (Ref/1st/2nd/3rd) get
+    // narrow widths; POS-code cells (C) get medium; T3 PRJ chip
+    // cells get widest. Total width sums to 100%.
+    //
+    // weights[] is an array of relative weights, one per column.
+    function _buildColgroup(weights) {
         const cg = document.createElement('colgroup');
-        for (let i = 0; i < totalCols; i++) {
-            cg.appendChild(document.createElement('col'));
-        }
+        const total = weights.reduce(function (s, w) { return s + w; }, 0) || 1;
+        weights.forEach(function (w) {
+            const c = document.createElement('col');
+            c.style.width = (w / total * 100).toFixed(4) + '%';
+            cg.appendChild(c);
+        });
         return cg;
+    }
+
+    // Compute per-column weights for a horizontal section of cells.
+    // `perFamily` = cells per family in the current section
+    //   (7 / 6 for T1+T2 with refs / without; 3 / 2 for T3).
+    // `tableKind`  = 't12' or 't3'.
+    //
+    // For T1/T2 the natural pattern is:
+    //   refs shown (7 cells): Ref | 1st | C | 2nd | C | 3rd | C
+    //   refs hidden (6 cells):       1st | C | 2nd | C | 3rd | C
+    //
+    // For T3 the natural pattern is:
+    //   refs shown (3 cells): label | POS | PRJ
+    //   refs hidden (2 cells):         POS | PRJ
+    //
+    // Weights — narrow numbers, wider codes, widest PRJ.
+    function _weightsFor(perFamily, familyCount, tableKind) {
+        const out = [];
+        let pattern;
+        if (tableKind === 't3') {
+            // T3 — PRJ widest so multi-anchor chips fit cleanly.
+            pattern = (perFamily === 3) ? [1.4, 2, 4.5]   // label, POS, PRJ
+                                        : [2, 4.5];       // POS, PRJ
+        } else {
+            // T1/T2 — Ref + number cells for 2-digit values; code
+            // cells slightly wider for 3-4 char codes (S+0/OR+1/XX).
+            pattern = (perFamily === 7) ? [1.4, 1.1, 1.7, 1.1, 1.7, 1.1, 1.7] // Ref, 1st, C, 2nd, C, 3rd, C
+                                        : [1.1, 1.7, 1.1, 1.7, 1.1, 1.7];    //       1st, C, 2nd, C, 3rd, C
+        }
+        for (let f = 0; f < familyCount; f++) {
+            pattern.forEach(function (w) { out.push(w); });
+        }
+        return out;
     }
 
     function rebuild() {
@@ -246,14 +284,26 @@
         const t2Colspan = t2Sub.length || t2Fam.length;
         const t3Colspan = t3Fam.length;
 
-        // Total columns = Dir + Actual + the three sections. Replace
-        // any existing <colgroup> so column widths re-fit on every
-        // rebuild (e.g. when a Ref checkbox is toggled).
-        const totalCols = 2 + t1Colspan + t2Colspan + t3Colspan;
+        // Build per-column weights for the colgroup.
+        //   prefix Dir+Actual: 2 narrow columns
+        //   T1/T2 per family : 7 cells (refs on) or 6 (refs off),
+        //                       weighted Ref:1.4 / num:1 / code:2
+        //   T3 per family    : 3 cells (refs on) or 2 (refs off),
+        //                       weighted label:1.4 / POS:2 / PRJ:4
+        const t1PerFam = showT1Ref ? 7 : 6;
+        const t2PerFam = showT2Ref ? 7 : 6;
+        const t3PerFam = showT3Ref ? 3 : 2;
+        const t1Fams = t1PerFam ? Math.round(t1Colspan / t1PerFam) : 0;
+        const t2Fams = t2PerFam ? Math.round(t2Colspan / t2PerFam) : 0;
+        const t3Fams = t3PerFam ? Math.round(t3Colspan / t3PerFam) : 0;
+        const weights = [1.2, 1.2]                                    // Dir, Actual
+            .concat(_weightsFor(t1PerFam, t1Fams, 't12'))
+            .concat(_weightsFor(t2PerFam, t2Fams, 't12'))
+            .concat(_weightsFor(t3PerFam, t3Fams, 't3'));
         const ct2 = document.getElementById('classicTable');
         const oldCg = ct2.querySelector('colgroup');
         if (oldCg) oldCg.remove();
-        ct2.insertBefore(_buildColgroup(totalCols), ct2.firstChild);
+        ct2.insertBefore(_buildColgroup(weights), ct2.firstChild);
 
         head.appendChild(_buildGroupHeader(t1Colspan, t2Colspan, t3Colspan));
 
