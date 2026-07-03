@@ -1297,6 +1297,21 @@ body.ui-classic #classicView { display: block; }
 #classicTable thead .ct-group-header.ct-t2 { background: #bbf7d0 !important; }
 #classicTable thead .ct-group-header.ct-t3 { background: #bae6fd !important; }
 
+/* Light tinted body cells — differentiates the 3 tables at a glance.
+   :not() excludes cells that already carry a semantic background
+   (position codes / opp13 highlight / gold flash / selection) so
+   Modern's data-driven colors stay intact and the tint only shows
+   on "plain" number/ref cells. */
+#classicTable tbody td.ct-t1:not(.code-s):not(.code-o):not(.code-xx):not(.opp13-cell):not(.t3-pm1-flash):not(.t1-flash):not(.t2-flash):not(.t3-pair-selected) {
+    background-color: #fffbeb;
+}
+#classicTable tbody td.ct-t2:not(.code-s):not(.code-o):not(.code-xx):not(.opp13-cell):not(.t3-pm1-flash):not(.t1-flash):not(.t2-flash):not(.t3-pair-selected) {
+    background-color: #f0fdf4;
+}
+#classicTable tbody td.ct-t3:not(.code-s):not(.code-o):not(.code-xx):not(.opp13-cell):not(.t3-pm1-flash):not(.t1-flash):not(.t2-flash):not(.t3-pair-selected) {
+    background-color: #f0f9ff;
+}
+
 /* Cell borders — Excel-style "All Borders" + thick "box border" at
    each pair-family boundary. Medium gray so the inner grid lines are
    clearly visible without overpowering the data. */
