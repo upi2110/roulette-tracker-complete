@@ -1829,6 +1829,40 @@ function _setupPerTablePairFilterDropdown(tableId) {
             _setVisiblePairFamiliesForTable(tableId, new Set(_allKeysForTable(tableId)));
         });
     }
+    // "All P" / "All 13o" — TOGGLE buttons. Each targets a half
+    // (main-side or 13-opp) independently of the other:
+    //   - If ALL keys of that half are currently selected → remove them
+    //     (turns the whole half OFF, leaving the other half intact).
+    //   - Otherwise → add every key of that half to the current Set.
+    // The two halves can be toggled on/off independently, and both
+    // ON at once is equivalent to "All".
+    const allMainBtn  = document.getElementById('pairFilterAllMainBtn'  + suffix);
+    const all13oppBtn = document.getElementById('pairFilterAll13oppBtn' + suffix);
+    const _toggleHalf = (predicate) => {
+        const halfKeys = _allKeysForTable(tableId).filter(predicate);
+        const current  = new Set(_perTableSet(tableId));
+        const allOn    = halfKeys.every(k => current.has(k));
+        if (allOn) {
+            halfKeys.forEach(k => current.delete(k));
+        } else {
+            halfKeys.forEach(k => current.add(k));
+        }
+        _setVisiblePairFamiliesForTable(tableId, current);
+    };
+    if (allMainBtn) {
+        allMainBtn.addEventListener('click', () => _toggleHalf(k => !k.endsWith('_13opp')));
+    }
+    if (all13oppBtn) {
+        all13oppBtn.addEventListener('click', () => _toggleHalf(k => k.endsWith('_13opp')));
+    }
+    // "None": uncheck every pair — hides the whole table's data until
+    // the user re-selects at least one.
+    const noneBtn = document.getElementById('pairFilterNoneBtn' + suffix);
+    if (noneBtn) {
+        noneBtn.addEventListener('click', () => {
+            _setVisiblePairFamiliesForTable(tableId, new Set());
+        });
+    }
     // Reset button → copy whatever the UNIVERSAL filter currently has
     // into this table's per-table set. For T1/T2, each universal
     // family expands to BOTH its main + _13opp halves so the table

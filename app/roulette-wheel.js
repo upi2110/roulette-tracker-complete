@@ -232,7 +232,25 @@ class RouletteWheel {
                 </div>
             </div>
             <div class="panel-content">
-                <div id="wheelFilters" style="display:flex; flex-direction:column; gap:4px; padding:6px 8px; background:#f1f5f9; border-radius:6px; margin-bottom:4px;">
+                <div id="wheelFilters" style="display:flex; flex-direction:column; gap:4px; padding:6px 8px; background:#f1f5f9; border-radius:6px; margin-bottom:4px; position:relative;">
+                    <!-- Bet size mirrored from money-management-panel.js
+                         (writes to #wheelBetSize alongside #nextBetValue).
+                         Absolutely positioned in the empty right-side
+                         area of the filter rows so it's visible at a
+                         glance while placing bets. -->
+                    <span id="wheelBetSize" style="
+                        position:absolute;
+                        top:6px; right:8px; bottom:6px;
+                        display:flex;
+                        flex-direction:column;
+                        align-items:center;
+                        justify-content:center;
+                        gap:2px;
+                        min-width:140px;
+                        padding:0 10px;
+                        white-space:nowrap;
+                        pointer-events:none;
+                    ">—</span>
                     <div style="display:flex; align-items:center; gap:10px;">
                         <span style="font-size:10px;font-weight:700;color:#475569;min-width:40px;">Table:</span>
                         <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#065f46;">

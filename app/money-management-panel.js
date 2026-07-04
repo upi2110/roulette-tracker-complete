@@ -1652,6 +1652,22 @@ class MoneyManagementPanel {
 
         // Next Bet
         const nextBetEl = document.getElementById('nextBetValue');
+        // Mirror onto the wheel-panel bet-size display (big green text
+        // next to "European Wheel"). Same source of truth — the
+        // money-management session data — so the wheel view always
+        // reflects the same bet size the money panel shows.
+        //
+        // Layout: two lines — top = per-number bet (small), bottom =
+        // total bet (large, bold, green) so the wager amount reads
+        // at a glance.
+        const wheelBetEl = document.getElementById('wheelBetSize');
+        const setWheelBet = (perBetTxt, totalTxt) => {
+            if (!wheelBetEl) return;
+            if (!totalTxt) { wheelBetEl.textContent = perBetTxt; return; }
+            wheelBetEl.innerHTML =
+                `<span style="font-size:20px;font-weight:800;color:#334155;line-height:1.1;letter-spacing:.5px;">${perBetTxt}</span>` +
+                `<span style="font-size:22px;font-weight:800;color:#16a34a;line-height:1.1;letter-spacing:.5px;">${totalTxt}</span>`;
+        };
         if (nextBetEl) {
             if (this.sessionData.isSessionActive && this.sessionData.lastBetAmount > 0) {
                 const bet = this.sessionData.lastBetAmount;
@@ -1659,13 +1675,16 @@ class MoneyManagementPanel {
                 const total = bet * count;
                 nextBetEl.textContent = `$${bet} × ${count} = $${total}`;
                 nextBetEl.className = 'stat-value';
+                setWheelBet(`$${bet} × ${count}`, `Total: $${total}`);
             } else if (this.sessionData.isSessionActive) {
                 nextBetEl.textContent = 'Waiting for prediction...';
                 nextBetEl.className = 'stat-value';
+                setWheelBet('—');
             } else {
                 nextBetEl.textContent = 'Session not started';
                 nextBetEl.className = 'stat-value';
                 nextBetEl.style.color = '#6c757d';
+                setWheelBet('—');
             }
         }
 
