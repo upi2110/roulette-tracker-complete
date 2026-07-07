@@ -1538,6 +1538,10 @@ class RouletteWheel {
                 if (!this.numberInfo[num]) {
                     this.numberInfo[num] = { category: 'grey', isAnchor: (num === anchorNum), type: type };
                 }
+                // Tag every grey-pool member — even primaries that
+                // happen to overlap — so drawHighlights can paint the
+                // "came from grey pool" ring on selected primaries too.
+                this.numberInfo[num].fromGreyPool = true;
             });
         });
 
@@ -1545,7 +1549,28 @@ class RouletteWheel {
             if (!this.numberInfo[num]) {
                 this.numberInfo[num] = { category: 'grey', isAnchor: false, type: null };
             }
+            this.numberInfo[num].fromGreyPool = true;
         });
+
+        // Include-grey ON merges greys INTO the primary bet upstream
+        // (see ai-prediction-panel.js), so extraAnchorGroups/extraLoose
+        // are empty in that mode. The AI panel preserves the pre-merge
+        // list on prediction.greyOriginNumbers so we can still tag the
+        // originating numbers for the amber-ring differentiator. Missing
+        // field → nothing to do; back-compat with older predictions.
+        try {
+            const raw = this._rawPrediction;
+            const origins = raw && raw.prediction && Array.isArray(raw.prediction.greyOriginNumbers)
+                ? raw.prediction.greyOriginNumbers
+                : null;
+            if (origins) {
+                origins.forEach(num => {
+                    if (this.numberInfo[num]) {
+                        this.numberInfo[num].fromGreyPool = true;
+                    }
+                });
+            }
+        } catch (_) { /* defensive */ }
 
         this._updateNumberLists();
         this.drawWheel();
@@ -1885,13 +1910,14 @@ class RouletteWheel {
             const pos = this._getHighlightPos(num);
             if (!pos) return;
 
+            let markerRadius;
             if (info.category === 'primary') {
                 const isPositive = this.POSITIVE.has(num);
                 const fillColor = isPositive ? '#22c55e' : '#1e293b';
-                const radius = info.isAnchor ? 14 : 11;
+                markerRadius = info.isAnchor ? 14 : 11;
 
                 ctx.beginPath();
-                ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
+                ctx.arc(pos.x, pos.y, markerRadius, 0, 2 * Math.PI);
                 ctx.fillStyle = fillColor;
                 ctx.fill();
 
@@ -1903,10 +1929,12 @@ class RouletteWheel {
                     ctx.fillText(info.type, pos.x, pos.y);
                 }
             } else {
-                const radius = info.isAnchor ? 12 : 9;
+                markerRadius = info.isAnchor ? 12 : 9;
 
+                // Original grey fill — preserves whatever ±ve / anchor
+                // metadata was already visible pre-differentiator.
                 ctx.beginPath();
-                ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
+                ctx.arc(pos.x, pos.y, markerRadius, 0, 2 * Math.PI);
                 ctx.fillStyle = '#9ca3af';
                 ctx.fill();
 
@@ -1917,6 +1945,23 @@ class RouletteWheel {
                     ctx.textBaseline = 'middle';
                     ctx.fillText(info.type, pos.x, pos.y);
                 }
+            }
+
+            // Grey-pool differentiator OVERLAY (2026-07-07): dashed
+            // amber ring sits OUTSIDE the marker. Painted for every
+            // number that came from the "include grey" pool — both
+            // pure grey extras AND primary selections that happen to
+            // overlap with the grey pool. No effect on the base
+            // ±ve / anchor cues.
+            if (info.fromGreyPool || info.category === 'grey') {
+                ctx.save();
+                ctx.setLineDash([3, 2]);
+                ctx.strokeStyle = '#f59e0b';   // amber-500
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, markerRadius + 3, 0, 2 * Math.PI);
+                ctx.stroke();
+                ctx.restore();
             }
         });
     }

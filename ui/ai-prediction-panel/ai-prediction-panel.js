@@ -2860,7 +2860,14 @@ class AIPredictionPanel {
             const includeGreyAsBet = (typeof window !== 'undefined' && typeof window.strategyLabIncludeGrey === 'boolean')
                 ? window.strategyLabIncludeGrey
                 : false;   // default OFF (user pref 2026-06-21)
+            // Preserve the pre-merge grey list here so the wheel can
+            // paint the amber "came from grey pool" ring on the
+            // promoted numbers. Attached to the prediction object
+            // once it's constructed further below (the variable
+            // doesn't exist yet at this line).
+            let greyOriginNumbers = [];
             if (includeGreyAsBet && extraNumbers.length > 0) {
+                greyOriginNumbers = extraNumbers.slice();
                 const merged = new Set(finalNumbers);
                 for (const n of extraNumbers) merged.add(n);
                 finalNumbers = Array.from(merged).sort((a, b) => (WHEEL_POS[a] ?? 99) - (WHEEL_POS[b] ?? 99));
@@ -3036,6 +3043,11 @@ class AIPredictionPanel {
                 loose: loose,
                 anchor_groups: anchorGroups,
                 extraNumbers: extraNumbers,
+                // Pre-merge grey list (empty when include-grey is off
+                // or when there were no greys). The wheel uses this
+                // to paint the amber "originated from grey pool" ring
+                // on promoted primaries.
+                greyOriginNumbers: greyOriginNumbers,
                 full_pool: finalNumbers,
                 confidence: 90,
                 mode: 'FRONTEND_MULTI_TABLE',
