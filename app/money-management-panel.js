@@ -25,7 +25,7 @@ class MoneyManagementPanel {
             isSessionActive: false,
             spinsWithBets: [],
             isBettingEnabled: false,  // NEW: User control for betting
-            bettingStrategy: 4,  // 1=Aggressive, 2=Conservative, 3=Cautious, 4=Defensive (default: Defensive)
+            bettingStrategy: 8,  // 1=Aggressive, 2=Conservative, 3=Cautious, 4=Defensive, 5=Logical, 6=Super Cautious, 7=Flat Bet, 8=Ethical (DEFAULT: Ethical)
             // ─── Strategy-4 Defensive variables (user-tunable) ───
             // Default escalation:
             //   +$1 after 6 consecutive losses, -$1 after 1 consecutive win.
@@ -76,6 +76,43 @@ class MoneyManagementPanel {
             s6SessionTarget:    100,
             s6MinBet:           2,
             s6MaxBet:           5,
+            // ─── Strategy-8 ETHICAL variables (user-tunable) ───
+            // Ethical = Cautious base + fractional loss accumulator
+            // (12 numbers per loss unit) + Super-Cautious smart cap
+            // (protects the $100 target so a win never overshoots).
+            // Defaults (rule spec 2026-07-04):
+            //   +$1 after 3 CUMULATIVE loss-units (miss adds
+            //     min(N, 12)/12 to s8LossUnits; wins do NOT reset).
+            //   -$2 after 2 CONSECUTIVE wins (floored at s8MinBet).
+            //   Smart cap: shrink bet so a full win lands at ≤
+            //     s8SessionTarget; when profit already past target,
+            //     hold at s8MinBet.
+            s8LossesToIncrease: 3,     // rule 3 — Tier-1 loss UNITS threshold
+            s8LossIncrement:    1,     // rule 3 — Tier-1 +$1 per escalation
+            s8WinsToDecrease:   2,     // rule 4 — Tier-1 consecutive wins trigger
+            s8WinDecrement:     2,     // rule 4 — Tier-1 -$2 per de-escalation
+            s8StartingBet:      2,     // rule 1 — floor
+            s8MinBet:           2,     // rule 1 — floor
+            s8SessionTarget:    100,   // rule 2 — hard target
+            s8SessionSoftMax:   125,   // rule 2 — acceptable overshoot
+            s8ReferenceN:       12,    // rule 6 — Tier-1 numbers per loss unit
+            s8LossUnits:        0,     // float — fractional accumulator
+            // ─── Ethical TIER LADDER (2026-07-04 spec extension) ───
+            // After each Tier-N escalation the strategy climbs one rung
+            // (harder to trigger, gives back less on wins). Any
+            // de-escalation on any tier resets to Tier 1. Tier 1 is
+            // editable via the ⚙️ variables panel (s8* fields above);
+            // Tiers 2 + 3 are hard-coded per user spec.
+            //
+            //   Tier | refN | +$/units | −$/wins
+            //   -----+------+----------+--------
+            //     1  |  12  | +1 / 3.0 | −2 / 2
+            //     2  |  18  | +1 / 2.0 | −1 / 1
+            //     3  |  24  | +2 / 2.0 | −1 / 2
+            //
+            //   s8Tier = 1-indexed rung (1..3). Advances on escalation
+            //   (caps at 3). Any de-escalation resets to 1.
+            s8Tier:             1,
             consecutiveWins: 0,  // Track consecutive wins for strategies 2 & 3
             peakBankroll: 4000,   // running max of currentBankroll — for max drawdown
             maxDrawdown: 0,       // largest peak-to-trough dip during the session
@@ -146,10 +183,10 @@ class MoneyManagementPanel {
                             border: none;
                             border-radius: 4px;
                             cursor: pointer;
-                            background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%);
+                            background: linear-gradient(135deg, #059669 0%, #065f46 100%);
                             color: white;
                             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                        ">🛡️ Strategy 4: Defensive</button>
+                        ">🕊 Strategy 8: Ethical</button>
                     <button id="strategyVarsBtn" type="button" title="Edit active-strategy variables (loss/win thresholds + bet step sizes)" style="
                             padding: 3px 6px;
                             font-size: 11px;
@@ -260,6 +297,43 @@ class MoneyManagementPanel {
                     </div>
                     <div id="s6VarsStatus" style="margin-top:6px;font-size:10px;color:#16a34a;min-height:12px;"></div>
                 </div>
+                <!-- Strategy-8 (Ethical) variables editor. Opens via the
+                     same ⚙️ button when S8 is the active strategy. -->
+                <div id="strategy8VarsPanel" style="display:none;margin-top:6px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;padding:8px;font-size:11px;color:#1f2937;position:relative;">
+                    <button id="s8VarsClose" type="button" title="Close" style="position:absolute;top:4px;right:4px;width:20px;height:20px;line-height:18px;font-size:14px;font-weight:700;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:3px;cursor:pointer;padding:0;">×</button>
+                    <div style="font-weight:700;color:#059669;margin-bottom:6px;padding-right:24px;">🕊 Strategy 8 — Ethical variables · <span id="s8CurrentTier" style="color:#0f766e;font-weight:700;">(Tier 1)</span></div>
+                    <!-- Tier ladder — read-only (Tier 1 is user-tunable
+                         below; Tiers 2/3 are locked per spec). -->
+                    <div style="font-size:10px;color:#475569;margin-bottom:6px;background:#fff;border:1px solid #e2e8f0;border-radius:3px;padding:4px 6px;line-height:1.5;">
+                        <div style="font-weight:700;color:#0f766e;">Tier ladder</div>
+                        <div>1 · refN 12 · +$1 / 3 units · −$2 / 2 wins &nbsp;<span style="color:#94a3b8;">(editable ↓)</span></div>
+                        <div>2 · refN 18 · +$1 / 2 units · −$1 / 1 win &nbsp;<span style="color:#94a3b8;">(locked)</span></div>
+                        <div>3 · refN 24 · +$2 / 2 units · −$1 / 2 wins &nbsp;<span style="color:#94a3b8;">(locked)</span></div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 60px;gap:4px 6px;align-items:center;">
+                        <label for="s8LossUnitsIn" title="How many CUMULATIVE loss-units before the bet is increased. Each miss adds min(N, ref)/ref to the accumulator. Default 3.">Increase after loss-units</label>
+                        <input id="s8LossUnitsIn" type="number" min="0.5" max="50" step="0.5" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s8LossIncIn" title="Dollar amount added to the per-number bet on each escalation.">Increase $</label>
+                        <input id="s8LossIncIn" type="number" min="0" max="100" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s8WinsIn" title="How many CONSECUTIVE wins before the bet is decreased.">Decrease bet after wins</label>
+                        <input id="s8WinsIn" type="number" min="1" max="50" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s8WinDecIn" title="Dollar amount removed from the per-number bet on each step-down (floored at min bet).">Decrease $</label>
+                        <input id="s8WinDecIn" type="number" min="0" max="100" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s8MinIn" title="Minimum bet/number. Escalation and smart-cap both respect this floor.">Min bet $</label>
+                        <input id="s8MinIn" type="number" min="1" max="100" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s8TargetIn" title="Session target in dollars. Smart-cap scales down so a win lands ≤ target.">Session target $</label>
+                        <input id="s8TargetIn" type="number" min="1" max="100000" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s8SoftMaxIn" title="Acceptable overshoot ceiling. Purely informational — smart-cap enforces the target above.">Soft-max $</label>
+                        <input id="s8SoftMaxIn" type="number" min="1" max="100000" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s8RefNIn" title="Reference numbers per loss-unit. A miss on N numbers adds min(N, ref)/ref to the accumulator. Default 12.">Reference N</label>
+                        <input id="s8RefNIn" type="number" min="1" max="36" step="1" style="padding:3px;font-size:11px;width:55px;">
+                    </div>
+                    <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end;">
+                        <button id="s8VarsCancel" type="button" style="padding:4px 10px;font-size:11px;border:1px solid #cbd5e1;background:#fff;border-radius:3px;cursor:pointer;">Cancel</button>
+                        <button id="s8VarsSave" type="button" style="padding:4px 10px;font-size:11px;border:none;background:#059669;color:#fff;border-radius:3px;cursor:pointer;font-weight:600;">Save</button>
+                    </div>
+                    <div id="s8VarsStatus" style="margin-top:6px;font-size:10px;color:#16a34a;min-height:12px;"></div>
+                </div>
             </div>
 
             <div class="panel-content" id="moneyPanelContent" style="display: block;">
@@ -272,14 +346,17 @@ class MoneyManagementPanel {
                         <label>Session Profit</label>
                         <div class="stat-value large" id="profitValue">$0</div>
                     </div>
+                    <div class="money-stat span-2 next-bet-tile">
+                        <div class="next-bet-left">
+                            <label>Next Bet</label>
+                            <div class="stat-value" id="nextBetValue">Waiting...</div>
+                            <div id="chipBreakdownDisplay"></div>
+                        </div>
+                        <div class="next-bet-right" id="nextBetProjection"></div>
+                    </div>
                     <div class="money-stat">
                         <label>Target</label>
                         <div class="stat-value" id="targetValue">$100</div>
-                    </div>
-                    <div class="money-stat">
-                        <label>Next Bet</label>
-                        <div class="stat-value" id="nextBetValue">Waiting...</div>
-                        <div id="chipBreakdownDisplay"></div>
                     </div>
                     <div class="money-stat">
                         <label>Total Bets</label>
@@ -410,8 +487,8 @@ class MoneyManagementPanel {
     }
 
     toggleStrategy() {
-        // Cycle through strategies: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 1
-        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 7) + 1;
+        // Cycle through strategies: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 1
+        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 8) + 1;
 
         // Reset counters when switching strategies
         this.sessionData.consecutiveWins = 0;
@@ -422,6 +499,9 @@ class MoneyManagementPanel {
         // (matches the "fresh start" semantics for s1–s4 consec counters).
         this.sessionData.s5LossUnits = 0;
         this.sessionData.s5WinUnits  = 0;
+        // Strategy-8 fractional accumulator + tier reset on every switch.
+        this.sessionData.s8LossUnits = 0;
+        this.sessionData.s8Tier      = 1;
 
         const btn = document.getElementById('toggleStrategyBtn');
         if (!btn) return;
@@ -487,7 +567,7 @@ class MoneyManagementPanel {
             console.log(`   • +$1 after ${this.sessionData.s6LossesToIncrease} CONSECUTIVE losses (capped at $${this.sessionData.s6MaxBet})`);
             console.log(`   • -$1 after ${this.sessionData.s6WinsToDecrease} CONSECUTIVE wins`);
             console.log(`   • Smart cap: scale bet down so wins don't overshoot +$${this.sessionData.s6SessionTarget}`);
-        } else {
+        } else if (this.sessionData.bettingStrategy === 7) {
             // Strategy 7: FLAT BET (Amber) — bet/num NEVER auto-adjusts.
             // User sets the amount via 💲 Adjust stake. Every spin
             // wagers exactly currentBetPerNumber × N. No streak counters,
@@ -497,6 +577,23 @@ class MoneyManagementPanel {
             console.log('✅ Strategy 7: Flat Bet');
             console.log(`   • Bet/num stays at $${this.sessionData.currentBetPerNumber} until you change it with 💲 Adjust stake`);
             console.log('   • No win/loss adjustments');
+        } else {
+            // Strategy 8: ETHICAL (Green) — the DEFAULT profile.
+            // Cautious escalation base + fractional loss accumulator
+            // (12 numbers per unit) + smart-cap to protect the target.
+            btn.textContent = '🕊 Strategy 8: Ethical';
+            btn.style.background = 'linear-gradient(135deg, #059669 0%, #065f46 100%)';
+            // Reset accumulators + tier + starting bet on switch IN to S8.
+            this.sessionData.currentBetPerNumber = parseInt(this.sessionData.s8StartingBet, 10) || 2;
+            this.sessionData.s8LossUnits = 0;
+            this.sessionData.s8Tier      = 1;
+            console.log('✅ Strategy 8: Ethical (DEFAULT — tiered ladder)');
+            console.log(`   • Initial bet $${this.sessionData.currentBetPerNumber}, min $${this.sessionData.s8MinBet}`);
+            console.log(`   • Tier 1 (refN 12): +$${this.sessionData.s8LossIncrement} after ${this.sessionData.s8LossesToIncrease} loss-units, −$${this.sessionData.s8WinDecrement} after ${this.sessionData.s8WinsToDecrease} consec wins`);
+            console.log(`   • Tier 2 (refN 18): +$1 after 2 loss-units, −$1 after 1 win`);
+            console.log(`   • Tier 3 (refN 24): +$2 after 2 loss-units, −$1 after 2 consec wins`);
+            console.log(`   • Each escalation climbs one tier (caps at 3). Any de-escalation resets to Tier 1.`);
+            console.log(`   • Smart cap: bet shrinks so a win lands at ≤ $${this.sessionData.s8SessionTarget} (accept up to $${this.sessionData.s8SessionSoftMax})`);
         }
 
         // Show/hide variables panel based on strategy (s4/s5 have one).
@@ -562,6 +659,23 @@ class MoneyManagementPanel {
         if (s6CloseBtn && !s6CloseBtn.hasListener) {
             s6CloseBtn.hasListener = true;
             s6CloseBtn.addEventListener('click', () => this.closeStrategyVarsEditor());
+        }
+
+        // ⚙️ Strategy-8 wiring — open is shared via openStrategyVarsEditor.
+        const s8SaveBtn = document.getElementById('s8VarsSave');
+        if (s8SaveBtn && !s8SaveBtn.hasListener) {
+            s8SaveBtn.hasListener = true;
+            s8SaveBtn.addEventListener('click', () => this.saveStrategy8Vars());
+        }
+        const s8CancelBtn = document.getElementById('s8VarsCancel');
+        if (s8CancelBtn && !s8CancelBtn.hasListener) {
+            s8CancelBtn.hasListener = true;
+            s8CancelBtn.addEventListener('click', () => this.closeStrategyVarsEditor());
+        }
+        const s8CloseBtn = document.getElementById('s8VarsClose');
+        if (s8CloseBtn && !s8CloseBtn.hasListener) {
+            s8CloseBtn.hasListener = true;
+            s8CloseBtn.addEventListener('click', () => this.closeStrategyVarsEditor());
         }
 
         // ℹ️ Strategy info popup — shows what the active strategy does.
@@ -658,6 +772,10 @@ class MoneyManagementPanel {
         // S6 — keep its own loss/win streaks aligned.
         if (this.sessionData.s6LossStreak != null) this.sessionData.s6LossStreak = 0;
         if (this.sessionData.s6WinStreak  != null) this.sessionData.s6WinStreak  = 0;
+        // S8 — fractional loss-units accumulator + tier reset so a
+        // manual stake change re-anchors the escalation at Tier 1.
+        if (this.sessionData.s8LossUnits  != null) this.sessionData.s8LossUnits  = 0;
+        if (this.sessionData.s8Tier       != null) this.sessionData.s8Tier       = 1;
         // lastBetAmount drives the "Next Bet" display.
         this.sessionData.lastBetAmount = v;
 
@@ -743,6 +861,19 @@ class MoneyManagementPanel {
                     '<b>Use when:</b> Protecting bankroll matters more than chasing recovery.<br>' +
                     '<b>Risk:</b> Lowest — bet is bounded on both sides.'
             },
+            8: {
+                title: 'Strategy 8 — Ethical 🕊 (DEFAULT)',
+                body:
+                    '<b>Base:</b> Cautious escalation with fractional loss accounting on a 3-tier ladder.<br>' +
+                    '<b>Ladder (each escalation climbs one rung; any de-escalation drops back to Tier 1):</b><br>' +
+                    '&nbsp;&nbsp;•&nbsp;<b>Tier 1 (refN 12):</b> +$1 after 3 loss-units, −$2 after 2 consec wins<br>' +
+                    '&nbsp;&nbsp;•&nbsp;<b>Tier 2 (refN 18):</b> +$1 after 2 loss-units, −$1 after 1 win<br>' +
+                    '&nbsp;&nbsp;•&nbsp;<b>Tier 3 (refN 24):</b> +$2 after 2 loss-units, −$1 after 2 consec wins<br>' +
+                    '<b>Loss units:</b> Each miss adds <code>min(N, refN)/refN</code> to the accumulator. Partial-coverage bets (fewer numbers) contribute less. Isolated wins do NOT reset the accumulator; only a de-escalation does.<br>' +
+                    '<b>Smart cap:</b> Bet shrinks so a full win never overshoots the +$100 target (soft-max $125). Once profit is at target, holds at $2/number.<br>' +
+                    '<b>Use when:</b> You want fractional-loss fairness with a progressive risk ladder and a hard cap on session upside.<br>' +
+                    '<b>Risk:</b> Lowest — session-capped upside plus fractional loss protection.'
+            },
         };
 
         const strat = this.sessionData.bettingStrategy;
@@ -763,11 +894,13 @@ class MoneyManagementPanel {
         const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
         const s4Panel = document.getElementById('strategyVarsPanel');
         const s6Panel = document.getElementById('strategy6VarsPanel');
+        const s8Panel = document.getElementById('strategy8VarsPanel');
         const strat = this.sessionData.bettingStrategy;
 
-        // Always close both first so we never show two at once.
+        // Always close all first so we never show two at once.
         if (s4Panel) s4Panel.style.display = 'none';
         if (s6Panel) s6Panel.style.display = 'none';
+        if (s8Panel) s8Panel.style.display = 'none';
 
         // Strategy 7 (Flat Bet) has no variables — ⚙️ is a no-op.
         // The user adjusts the stake directly via 💲 Adjust stake.
@@ -776,7 +909,21 @@ class MoneyManagementPanel {
             return;
         }
 
-        if (strat === 6) {
+        if (strat === 8) {
+            set('s8LossUnitsIn', this.sessionData.s8LossesToIncrease);
+            set('s8LossIncIn',   this.sessionData.s8LossIncrement);
+            set('s8WinsIn',      this.sessionData.s8WinsToDecrease);
+            set('s8WinDecIn',    this.sessionData.s8WinDecrement);
+            set('s8MinIn',       this.sessionData.s8MinBet);
+            set('s8TargetIn',    this.sessionData.s8SessionTarget);
+            set('s8SoftMaxIn',   this.sessionData.s8SessionSoftMax);
+            set('s8RefNIn',      this.sessionData.s8ReferenceN);
+            const tierBadge = document.getElementById('s8CurrentTier');
+            if (tierBadge) tierBadge.textContent = `(Tier ${this.sessionData.s8Tier || 1})`;
+            if (s8Panel) s8Panel.style.display = 'block';
+            const status = document.getElementById('s8VarsStatus');
+            if (status) status.textContent = '';
+        } else if (strat === 6) {
             set('s6LossesIn',  this.sessionData.s6LossesToIncrease);
             set('s6LossIncIn', this.sessionData.s6LossIncrement);
             set('s6WinsIn',    this.sessionData.s6WinsToDecrease);
@@ -841,8 +988,10 @@ class MoneyManagementPanel {
     closeStrategyVarsEditor() {
         const s4Panel = document.getElementById('strategyVarsPanel');
         const s6Panel = document.getElementById('strategy6VarsPanel');
+        const s8Panel = document.getElementById('strategy8VarsPanel');
         if (s4Panel) s4Panel.style.display = 'none';
         if (s6Panel) s6Panel.style.display = 'none';
+        if (s8Panel) s8Panel.style.display = 'none';
     }
 
     saveStrategyVars() {
@@ -916,6 +1065,55 @@ class MoneyManagementPanel {
             setTimeout(() => { if (status) status.textContent = ''; }, 3000);
         }
         console.log(`🪶 Strategy 6 variables updated: +$${lossInc} after ${lossesNeeded} losses, -$${winDec} after ${winsNeeded} wins, range $${minBet}-$${maxBet}, target $${target}`);
+    }
+
+    saveStrategy8Vars() {
+        // Read + validate the Ethical-strategy inputs, write back to
+        // sessionData. The S8 branch in recordBetResult() and the S8
+        // smart-cap helper both read these live.
+        const readInt = (id, fallback, min) => {
+            const el = document.getElementById(id);
+            if (!el) return fallback;
+            const v = parseInt(el.value, 10);
+            if (!Number.isFinite(v)) return fallback;
+            return Math.max(min, v);
+        };
+        const readFloat = (id, fallback, min) => {
+            const el = document.getElementById(id);
+            if (!el) return fallback;
+            const v = parseFloat(el.value);
+            if (!Number.isFinite(v)) return fallback;
+            return Math.max(min, v);
+        };
+        const lossUnitsNeeded = readFloat('s8LossUnitsIn', this.sessionData.s8LossesToIncrease, 0.5);
+        const lossInc         = readInt(  's8LossIncIn',   this.sessionData.s8LossIncrement,    0);
+        const winsNeeded      = readInt(  's8WinsIn',      this.sessionData.s8WinsToDecrease,   1);
+        const winDec          = readInt(  's8WinDecIn',    this.sessionData.s8WinDecrement,     0);
+        const minBet          = readInt(  's8MinIn',       this.sessionData.s8MinBet,           1);
+        const target          = readInt(  's8TargetIn',    this.sessionData.s8SessionTarget,    1);
+        const softMax         = readInt(  's8SoftMaxIn',   this.sessionData.s8SessionSoftMax,   1);
+        const refN            = readInt(  's8RefNIn',      this.sessionData.s8ReferenceN,       1);
+
+        this.sessionData.s8LossesToIncrease = lossUnitsNeeded;
+        this.sessionData.s8LossIncrement    = lossInc;
+        this.sessionData.s8WinsToDecrease   = winsNeeded;
+        this.sessionData.s8WinDecrement     = winDec;
+        this.sessionData.s8MinBet           = minBet;
+        this.sessionData.s8SessionTarget    = target;
+        this.sessionData.s8SessionSoftMax   = Math.max(target, softMax);
+        this.sessionData.s8ReferenceN       = Math.min(36, refN);
+
+        // Clamp the live current bet to the new floor so a save
+        // doesn't leave the user betting below their own min.
+        const cur = this.sessionData.currentBetPerNumber;
+        this.sessionData.currentBetPerNumber = Math.max(minBet, cur);
+
+        const status = document.getElementById('s8VarsStatus');
+        if (status) {
+            status.textContent = `✓ Saved — +$${lossInc}/${lossUnitsNeeded}u · -$${winDec}/${winsNeeded}W · min $${minBet} · target $${target} · refN ${refN}`;
+            setTimeout(() => { if (status) status.textContent = ''; }, 3000);
+        }
+        console.log(`🕊 Strategy 8 variables updated: +$${lossInc} after ${lossUnitsNeeded} loss-units, -$${winDec} after ${winsNeeded} wins, min $${minBet}, target $${target}, refN ${refN}`);
     }
 
     togglePanel() {
@@ -1578,9 +1776,79 @@ class MoneyManagementPanel {
             // where the user (or 💲 Adjust stake) set it. Logged for
             // visibility only.
             console.log(`➖ Strategy 7 (Flat): ${hit ? 'WIN' : 'LOSS'} → bet/num stays at $${this.sessionData.currentBetPerNumber}`);
+        } else if (this.sessionData.bettingStrategy === 8) {
+            // ═══ STRATEGY 8: ETHICAL (tiered ladder, 2026-07-04) ═══
+            // Rules 1-6 remain. Escalation now advances a 3-rung
+            // ladder — each successive tier widens the reference N
+            // (fewer misses register per round) and changes the
+            // step size / de-escalation slope:
+            //
+            //   Tier | refN | +$/unit-thresh | −$/consec-wins
+            //     1  |  12  |    +1  / 3.0   |    −2  / 2
+            //     2  |  18  |    +1  / 2.0   |    −1  / 1
+            //     3  |  24  |    +2  / 2.0   |    −1  / 2
+            //
+            // Tier 1's thresholds are user-tunable via ⚙️ (s8*
+            // fields). Tiers 2/3 are hard-coded from the spec.
+            // Escalation advances the tier (caps at 3); any
+            // de-escalation drops back to Tier 1 with a clean slate.
+            const s = this.sessionData;
+            const N = Math.max(1, parseInt(numbersCount, 10) || 12);
+            const tier = this._s8Tier(N);
+            s.s8Tier = 1;
+            const minBet = Math.max(1, parseInt(s.s8MinBet, 10) || 2);
+
+            if (hit) {
+                if (s.consecutiveWins >= tier.winsToDec) {
+                    s.currentBetPerNumber = Math.max(minBet, s.currentBetPerNumber - tier.winDec);
+                    s.consecutiveWins = 0;
+                    s.s8LossUnits = 0;
+                    console.log(`🕊 S8 (${N} nums): ${tier.winsToDec} CONSECUTIVE WINS → −$${tier.winDec} → base $${s.currentBetPerNumber} (units reset)`);
+                } else {
+                    console.log(`🕊 S8 (${N} nums): ${s.consecutiveWins} consecutive win(s) — need ${tier.winsToDec - s.consecutiveWins} more to decrease`);
+                }
+            } else {
+                // 2026-07-07 spec: each miss adds N/refN raw units
+                // (refN=12). Threshold check uses CEILING of the
+                // accumulated total so 3.87 units counts as 4.
+                const delta = N / tier.refN;
+                s.s8LossUnits = (parseFloat(s.s8LossUnits) || 0) + delta;
+                const ceilUnits = Math.ceil(s.s8LossUnits);
+                if (ceilUnits >= tier.lossUnitsToInc) {
+                    s.currentBetPerNumber += tier.lossInc;
+                    s.s8LossUnits = 0;
+                    console.log(`🕊 S8 (${N} nums): ceil(${s.s8LossUnits.toFixed(3)})=${ceilUnits} ≥ ${tier.lossUnitsToInc} → +$${tier.lossInc} → base $${s.currentBetPerNumber} (units reset)`);
+                } else {
+                    console.log(`🕊 S8 (${N} nums): loss units ${s.s8LossUnits.toFixed(3)} (ceil ${ceilUnits}) / ${tier.lossUnitsToInc} (+${delta.toFixed(3)})`);
+                }
+            }
         }
 
         console.log(`💵 Next bet amount: $${this.sessionData.currentBetPerNumber}/number`);
+
+        // Ordering fix (2026-07-07): the `await aiIntegration.processResult`
+        // above yields the event loop, and a concurrent updateFromPrediction
+        // may have already stamped `pendingBet` using the PRE-escalation
+        // currentBetPerNumber. Re-stamp it now so the next spin's placement
+        // reflects the just-applied escalation/de-escalation.
+        if (this.pendingBet && this.pendingBet.betAmount > 0) {
+            const nCount = this.pendingBet.numbersCount || 0;
+            if (nCount > 0) {
+                const freshBet = this.calculateBetAmount(nCount);
+                if (freshBet !== this.pendingBet.betAmount) {
+                    const prev = this.pendingBet.betAmount;
+                    this.pendingBet.betAmount = freshBet;
+                    this.pendingBet.totalBet  = freshBet * nCount;
+                    // Also update lastBetAmount / lastBetNumbers so the
+                    // "Next Bet" tile + wheel badge reflect the escalated
+                    // size. Without this the display kept showing the
+                    // pre-escalation $/num.
+                    this.sessionData.lastBetAmount  = freshBet;
+                    this.sessionData.lastBetNumbers = nCount;
+                    console.log(`🔁 Re-stamped pendingBet after strategy adjustment: $${prev}→$${freshBet}/num × ${nCount} = $${this.pendingBet.totalBet}`);
+                }
+            }
+        }
 
 
         // Add to history.
@@ -1661,9 +1929,67 @@ class MoneyManagementPanel {
         // total bet (large, bold, green) so the wager amount reads
         // at a glance.
         const wheelBetEl = document.getElementById('wheelBetSize');
+        // S8 projection lines: show the accumulated loss-units, next
+        // bet-per-number if the upcoming spin WINS, and next bet-per-
+        // number if it LOSES. Small, muted-orange so it doesn't
+        // compete with the big green Total.
+        // Compute S8 projection numbers (accumulator, W-side, L-side).
+        // Returns null when S8 isn't active so the projection column
+        // stays empty and the tile falls back to left-only layout.
+        const s8Proj = () => {
+            if (this.sessionData.bettingStrategy !== 8) return null;
+            const s = this.sessionData;
+            const N = Math.max(1, parseInt(s.lastBetNumbers, 10) || 12);
+            const tier = this._s8Tier(N);
+            const minBet = Math.max(1, parseInt(s.s8MinBet, 10) || 2);
+            const base = parseInt(s.currentBetPerNumber, 10) || minBet;
+            const units = parseFloat(s.s8LossUnits) || 0;
+
+            const unitsAfterLoss = units + (N / tier.refN);
+            const willLossTrigger = Math.ceil(unitsAfterLoss) >= tier.lossUnitsToInc;
+            const ifLoss = willLossTrigger ? (base + tier.lossInc) : base;
+
+            const winsAfter = (parseInt(s.consecutiveWins, 10) || 0) + 1;
+            const willWinTrigger = winsAfter >= tier.winsToDec;
+            const ifWin = willWinTrigger ? Math.max(minBet, base - tier.winDec) : base;
+
+            return { units, threshold: tier.lossUnitsToInc, ifWin, ifLoss };
+        };
+        const renderProjection = (targetEl, opts) => {
+            if (!targetEl) return;
+            const p = s8Proj();
+            if (!p) { targetEl.innerHTML = ''; return; }
+            // Wheel-side badge uses inline styles because the CSS
+            // classes live in styles-3tables.css and the wheel widget
+            // is styled locally; keep the two spellings in sync.
+            const accText  = `${p.units.toFixed(2)} / ${p.threshold.toFixed(0)}`;
+            const winText  = `$${p.ifWin}/num`;
+            const lossText = `$${p.ifLoss}/num`;
+            if (opts && opts.inline) {
+                // Wheel-side compact rendering. Uses inline styles
+                // because it lives outside the money-panel CSS scope.
+                const row = (label, value, color) =>
+                    `<div style="display:flex;align-items:baseline;gap:6px;line-height:1.1;">` +
+                        `<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;min-width:38px;">${label}</span>` +
+                        `<span style="font-size:13px;font-weight:800;color:${color};">${value}</span>` +
+                    `</div>`;
+                targetEl.innerHTML =
+                    row('Acc',  accText,  '#c2410c') +
+                    row('Win',  winText,  '#15803d') +
+                    row('Loss', lossText, '#b91c1c');
+            } else {
+                targetEl.innerHTML =
+                    `<div class="nb-row"><span class="nb-label">Acc</span><span class="nb-acc-val">${accText}</span></div>` +
+                    `<div class="nb-row"><span class="nb-label">If Win</span><span class="nb-win-val">${winText}</span></div>` +
+                    `<div class="nb-row"><span class="nb-label">If Loss</span><span class="nb-loss-val">${lossText}</span></div>`;
+            }
+        };
+        const projEl = document.getElementById('nextBetProjection');
         const setWheelBet = (perBetTxt, totalTxt) => {
             if (!wheelBetEl) return;
             if (!totalTxt) { wheelBetEl.textContent = perBetTxt; return; }
+            // Wheel-side badge is per-num + Total only. Projection
+            // (Acc / If Win / If Loss) lives on the money panel tile.
             wheelBetEl.innerHTML =
                 `<span style="font-size:20px;font-weight:800;color:#334155;line-height:1.1;letter-spacing:.5px;">${perBetTxt}</span>` +
                 `<span style="font-size:22px;font-weight:800;color:#16a34a;line-height:1.1;letter-spacing:.5px;">${totalTxt}</span>`;
@@ -1675,15 +2001,18 @@ class MoneyManagementPanel {
                 const total = bet * count;
                 nextBetEl.textContent = `$${bet} × ${count} = $${total}`;
                 nextBetEl.className = 'stat-value';
+                renderProjection(projEl);
                 setWheelBet(`$${bet} × ${count}`, `Total: $${total}`);
             } else if (this.sessionData.isSessionActive) {
                 nextBetEl.textContent = 'Waiting for prediction...';
                 nextBetEl.className = 'stat-value';
+                if (projEl) projEl.innerHTML = '';
                 setWheelBet('—');
             } else {
                 nextBetEl.textContent = 'Session not started';
                 nextBetEl.className = 'stat-value';
                 nextBetEl.style.color = '#6c757d';
+                if (projEl) projEl.innerHTML = '';
                 setWheelBet('—');
             }
         }
@@ -2048,6 +2377,9 @@ class MoneyManagementPanel {
         if (this.sessionData.bettingStrategy === 6) {
             return this._s6BetPerNumber(numberCount);
         }
+        if (this.sessionData.bettingStrategy === 8) {
+            return this._s8BetPerNumber(numberCount);
+        }
 
         // Strategies 1–4 — original safety check on bankroll.
         const maxBet = Math.floor(this.sessionData.currentBankroll / (numberCount * 2));
@@ -2168,6 +2500,99 @@ class MoneyManagementPanel {
         // sub-min bet to avoid overshooting.
         const final = Math.max(1, Math.min(baseBet, smartCap));
         return final;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  STRATEGY 8 — ETHICAL: helpers
+    // ═══════════════════════════════════════════════════════
+
+    /**
+     * S8 active-tier config. Tier 1 reads from user-tunable
+     * sessionData.s8* fields (⚙️ Variables panel). Tiers 2 and 3
+     * are hard-coded per the spec — refN widens each rung, step
+     * size and de-escalation slope change per the ladder table.
+     */
+    _s8Tier(_numbersCount) {
+        // 2026-07-07 spec simplification: no tier ladder. Single
+        // refN=12 threshold applies to every N. Each miss adds N/12
+        // units; escalation fires when the ceiling of accumulated
+        // units reaches lossUnitsToInc. All values are user-tunable
+        // via ⚙️ (s8* fields). The `idx: 1` is kept only so the
+        // UI badge and log formatting continue to work unchanged.
+        const sd = this.sessionData;
+        return {
+            idx: 1,
+            refN:             Math.max(1, parseInt(sd.s8ReferenceN,      10) || 12),
+            lossUnitsToInc:   Math.max(1, parseInt(sd.s8LossesToIncrease, 10) || 3),
+            lossInc:          Math.max(0, parseInt(sd.s8LossIncrement,   10) || 1),
+            winsToDec:        Math.max(1, parseInt(sd.s8WinsToDecrease,  10) || 2),
+            winDec:           Math.max(0, parseInt(sd.s8WinDecrement,    10) || 2)
+        };
+    }
+
+    /**
+     * S8 final bet/number for the current spin. Rules:
+     *   - Floor at s8MinBet ($2 default).
+     *   - Smart cap (rule 5): if the projected win (bet × (36−N))
+     *     would push cumulative profit past s8SessionTarget ($100),
+     *     shrink bet so the win lands at-or-under target. Floor
+     *     during smart-cap is s8MinBet (rule 1 — "min is $2 unless
+     *     it needed to land the target"; we stay honest to the
+     *     min-$2 rule).
+     *   - When profit is ALREADY past s8SessionTarget, hold at
+     *     s8MinBet (safe hold — matches S5 behaviour).
+     *
+     * Note: base bet mutation (escalation) is done in the S8 branch
+     * of recordBetResult; this function only applies the smart cap.
+     */
+    _s8BetPerNumber(numberCount) {
+        const sd = this.sessionData;
+        const minBet  = Math.max(1, parseInt(sd.s8MinBet, 10) || 2);
+        const N = Math.max(1, parseInt(numberCount, 10) || 12);
+
+        // Pre-bet escalation check (2026-07-07): a completed bet
+        // may leave accumulated units that don't hit threshold at
+        // the time (e.g. losses were interleaved so ceiling wasn't
+        // reached mid-run), but a subsequent placement should still
+        // reflect the escalation. Uses ceiling rule too.
+        const tier = this._s8Tier(N);
+        const units = parseFloat(sd.s8LossUnits) || 0;
+        const ceilUnits = Math.ceil(units);
+        if (ceilUnits >= tier.lossUnitsToInc) {
+            sd.currentBetPerNumber = (parseInt(sd.currentBetPerNumber, 10) || minBet) + tier.lossInc;
+            sd.s8LossUnits = 0;
+            sd.s8Tier = 1;
+            console.log(`🕊 S8 PRE-BET (${N} nums): ceil(${units.toFixed(3)})=${ceilUnits} ≥ ${tier.lossUnitsToInc} → +$${tier.lossInc} → base $${sd.currentBetPerNumber}`);
+        } else if (sd.consecutiveWins >= tier.winsToDec) {
+            sd.currentBetPerNumber = Math.max(minBet, (parseInt(sd.currentBetPerNumber, 10) || minBet) - tier.winDec);
+            sd.consecutiveWins = 0;
+            sd.s8LossUnits = 0;
+            sd.s8Tier = 1;
+            console.log(`🕊 S8 PRE-BET (${N} nums): ${tier.winsToDec} consec wins → −$${tier.winDec} → base $${sd.currentBetPerNumber}`);
+        }
+
+        const baseBet = Math.max(minBet, parseInt(sd.currentBetPerNumber, 10) || minBet);
+        const target = parseInt(sd.s8SessionTarget, 10) || 100;
+        const profit = parseFloat(sd.sessionProfit) || 0;
+        const remaining = target - profit;
+
+        // Profit already at/past target → hold at min. Rule 5 says
+        // "adjust automatically and min is $2", so we don't halt
+        // betting entirely; just size down to the floor.
+        if (remaining <= 0) {
+            return minBet;
+        }
+
+        // Normal path — apply smart cap only when a win would
+        // overshoot; otherwise keep the base bet as-is.
+        if (N < 36) {
+            const netPerWin = baseBet * (36 - N);
+            if (netPerWin > remaining) {
+                const safeBet = Math.floor(remaining / (36 - N));
+                return Math.max(minBet, safeBet);
+            }
+        }
+        return baseBet;
     }
 }
 

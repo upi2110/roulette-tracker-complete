@@ -1002,6 +1002,55 @@ td.t1-flash, td.t2-flash {
     grid-column: 1 / -1;
 }
 
+.money-stat.span-2 {
+    grid-column: span 2;
+}
+
+.money-stat.next-bet-tile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px;
+}
+.next-bet-left  {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+}
+.next-bet-right {
+    display: grid;
+    grid-template-rows: auto auto auto;
+    align-content: center;
+    gap: 4px;
+    padding-left: 12px;
+    border-left: 2px solid #e2e8f0;
+}
+.next-bet-right .nb-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    line-height: 1.1;
+}
+.next-bet-right .nb-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: #64748b;
+    min-width: 46px;
+}
+.next-bet-right .nb-acc-val  { font-size: 15px; font-weight: 800; color: #c2410c; }
+.next-bet-right .nb-win-val  { font-size: 15px; font-weight: 800; color: #15803d; }
+.next-bet-right .nb-loss-val { font-size: 15px; font-weight: 800; color: #b91c1c; }
+.next-bet-right .nb-sub {
+    font-size: 10px;
+    color: #94a3b8;
+    font-weight: 600;
+}
+
 .money-stat label {
     font-size: 11px;
     color: #6c757d;

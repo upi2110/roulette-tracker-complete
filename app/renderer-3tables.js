@@ -1010,7 +1010,7 @@ function resetAll() {
         try {
             if (window.moneyPanel) {
                 // Preserve current strategy selection across reset
-                const currentStrategy = window.moneyPanel.sessionData.bettingStrategy || 3;
+                const currentStrategy = window.moneyPanel.sessionData.bettingStrategy || 8;
                 window.moneyPanel.sessionData = {
                     startingBankroll: 4000,
                     currentBankroll: 4000,
@@ -1047,6 +1047,17 @@ function resetAll() {
                     s6WinsToDecrease:   1, s6WinDecrement:  1,
                     s6StartingBet:      2, s6SessionTarget: 100,
                     s6MinBet:           2, s6MaxBet:        5,
+                    // Strategy-8 ETHICAL tunables + accumulator (defaults).
+                    // Reset re-initialises the fractional loss counter,
+                    // the tier index, and all Tier-1 spec defaults so
+                    // S8 starts fresh after a session reset even if the
+                    // user was mid-escalation.
+                    s8LossesToIncrease: 3, s8LossIncrement: 1,
+                    s8WinsToDecrease:   2, s8WinDecrement:  2,
+                    s8StartingBet:      2, s8MinBet:        2,
+                    s8SessionTarget:    100, s8SessionSoftMax: 125,
+                    s8ReferenceN:       12, s8LossUnits:     0,
+                    s8Tier:             1,
                     sameArmed: false
                 };
                 window.moneyPanel.betHistory = [];

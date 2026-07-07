@@ -84,9 +84,9 @@ describe('MoneyManagementPanel - Defaults', () => {
         expect(mp.sessionData.isBettingEnabled).toBe(false);
     });
 
-    test('Default strategy is 3 (Cautious)', () => {
+    test('Default strategy is 8 (Ethical)', () => {
         const mp = createPanel();
-        expect(mp.sessionData.bettingStrategy).toBe(3);
+        expect(mp.sessionData.bettingStrategy).toBe(8);
     });
 
     test('Default bet per number is $2', () => {
@@ -408,18 +408,26 @@ describe('Strategy 3: Cautious', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('Strategy Toggle', () => {
-    test('Cycles 3 → 1 → 2 → 3', () => {
+    test('Cycles 8 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8', () => {
         const mp = createPanel();
-        expect(mp.sessionData.bettingStrategy).toBe(3);
+        expect(mp.sessionData.bettingStrategy).toBe(8);
 
         mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(1);
-
         mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(2);
-
         mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(3);
+        mp.toggleStrategy();
+        expect(mp.sessionData.bettingStrategy).toBe(4);
+        mp.toggleStrategy();
+        expect(mp.sessionData.bettingStrategy).toBe(5);
+        mp.toggleStrategy();
+        expect(mp.sessionData.bettingStrategy).toBe(6);
+        mp.toggleStrategy();
+        expect(mp.sessionData.bettingStrategy).toBe(7);
+        mp.toggleStrategy();
+        expect(mp.sessionData.bettingStrategy).toBe(8);
     });
 
     test('Switching strategy resets bet to $2', () => {
@@ -559,8 +567,12 @@ describe('Chip Breakdown', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('calculateBetAmount', () => {
+    // These tests target the S1-4 fallback path (bankroll cap + $1 floor).
+    // S5/6/8 have their own bet-sizing helpers (target-aware + fractional
+    // + smart caps) so force strategy 4 explicitly.
     test('Returns current strategy bet normally', () => {
         const mp = createPanel();
+        mp.sessionData.bettingStrategy = 4;
         mp.sessionData.currentBetPerNumber = 5;
         mp.sessionData.currentBankroll = 4000;
 
@@ -570,6 +582,7 @@ describe('calculateBetAmount', () => {
 
     test('Caps bet based on bankroll (cannot bet more than bankroll allows)', () => {
         const mp = createPanel();
+        mp.sessionData.bettingStrategy = 4;
         mp.sessionData.currentBetPerNumber = 100;
         mp.sessionData.currentBankroll = 100;
 
@@ -580,6 +593,7 @@ describe('calculateBetAmount', () => {
 
     test('Minimum bet is $1', () => {
         const mp = createPanel();
+        mp.sessionData.bettingStrategy = 4;
         mp.sessionData.currentBetPerNumber = 0;
         mp.sessionData.currentBankroll = 4000;
 
