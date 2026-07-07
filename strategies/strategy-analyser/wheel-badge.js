@@ -145,8 +145,18 @@
         const badge = document.getElementById(BADGE_ID);
         if (!badge) return;
 
-        // Badge is always visible — every strategy (including manual)
-        // gets a BET/WAIT indicator on the wheel.
+        // Visibility rule (2026-07-07): only surface the BET/WAIT
+        // indicator when the user is actively driving the bet pool
+        // from the wheel — i.e. Manual mode OR Wheel mode is ticked.
+        // In every other configuration (AI / Auto / Analytics / etc.)
+        // the badge is noise, so hide it.
+        const manualOn = !!(document.getElementById('wheelManualModeToggle') || {}).checked;
+        const wheelOn  = !!(document.getElementById('wheelWheelModeToggle')  || {}).checked;
+        if (!manualOn && !wheelOn) {
+            badge.style.display = 'none';
+            _lastDecisionKey = null;   // force repaint on next show
+            return;
+        }
         badge.style.display = 'block';
 
         const ui = window.aiAutoModeUI || {};

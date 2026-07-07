@@ -201,6 +201,7 @@ class RouletteWheel {
                     ">
                         <input type="checkbox" id="wheelSameModeToggle" style="vertical-align:middle;"> Same
                     </label>
+                    <button type="button" class="wheel-mode-info-btn" data-mode="same" title="What does Same mode do?" style="padding:2px 6px;font-size:10px;font-weight:800;line-height:1;border:1px solid #0284c7;background:#0ea5e9;color:#fff;border-radius:3px;cursor:pointer;">ℹ</button>
                     <!-- Wheel mode toggle: when ON, the bet pool is derived
                          from the wheel's Table / Sign / Set filters applied
                          to the full 0–36 universe (instead of T1/T2/T3 pair
@@ -215,6 +216,7 @@ class RouletteWheel {
                     ">
                         <input type="checkbox" id="wheelWheelModeToggle" style="vertical-align:middle;"> Wheel mode
                     </label>
+                    <button type="button" class="wheel-mode-info-btn" data-mode="wheel" title="What does Wheel mode do?" style="padding:2px 6px;font-size:10px;font-weight:800;line-height:1;border:1px solid #0284c7;background:#0ea5e9;color:#fff;border-radius:3px;cursor:pointer;">ℹ</button>
                     <!-- Manual toggle: when ON, the bet pool is built by
                          clicking pockets directly on the wheel below.
                          Pair predictions and Wheel-mode filters are
@@ -229,6 +231,14 @@ class RouletteWheel {
                     ">
                         <input type="checkbox" id="wheelManualModeToggle" style="vertical-align:middle;"> ✋ Manual
                     </label>
+                    <button type="button" class="wheel-mode-info-btn" data-mode="manual" title="What does Manual mode do?" style="padding:2px 6px;font-size:10px;font-weight:800;line-height:1;border:1px solid #0284c7;background:#0ea5e9;color:#fff;border-radius:3px;cursor:pointer;">ℹ</button>
+                </div>
+                <!-- Shared info popup for the three BET TRIGGER modes.
+                     Populated on click of any .wheel-mode-info-btn above. -->
+                <div id="wheelModeInfoPanel" style="display:none;margin-top:6px;background:#f8fafc;border:1px solid #0ea5e9;border-radius:4px;padding:8px 10px;font-size:11px;color:#0f172a;line-height:1.5;position:relative;">
+                    <button id="wheelModeInfoClose" type="button" title="Close" style="position:absolute;top:4px;right:4px;width:20px;height:20px;line-height:18px;font-size:14px;font-weight:700;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:3px;cursor:pointer;padding:0;">×</button>
+                    <div id="wheelModeInfoTitle" style="font-weight:800;color:#0369a1;margin-bottom:4px;padding-right:24px;">Mode info</div>
+                    <div id="wheelModeInfoBody"></div>
                 </div>
             </div>
             <div class="panel-content">
@@ -491,6 +501,65 @@ class RouletteWheel {
                 if (wheelT1T2BreaksCb.checked !== v) wheelT1T2BreaksCb.checked = v;
             });
         }
+
+        // ── ℹ️ Mode info popups ────────────────────────────────
+        // Each BET TRIGGER toggle (Same / Wheel mode / Manual) has a
+        // small ℹ button next to it. Clicking loads a short, plain
+        // explanation into the shared #wheelModeInfoPanel. This is
+        // documentation surface — no behaviour change.
+        const MODE_INFO = {
+            same: {
+                title: 'Same mode',
+                body:
+                    '<b>What it does:</b> Wait-for-trigger betting. No bet is placed until a spin lands inside the current bet pool. Once triggered, bet on the next spin.<br>' +
+                    '<b>Win:</b> stay armed — keep betting each spin.<br>' +
+                    '<b>Loss:</b> disarm — wait for the next spin that lands in the pool.<br>' +
+                    '<b>Bet pool:</b> whatever the active strategy or Wheel/Manual mode has selected. Same only gates <i>when</i> to bet, not <i>what</i>.<br>' +
+                    '<b>Use when:</b> You want to bet only during "hot" runs — after a hit confirms the pool is live.'
+            },
+            wheel: {
+                title: 'Wheel mode',
+                body:
+                    '<b>What it does:</b> The bet pool is derived from the wheel filters (Table / 2·12 / Sign / Set / Inverse) applied to 0–36, instead of from T1/T2/T3 pair predictions.<br>' +
+                    '<b>With pairs also selected:</b> intersects pair-pool ∩ wheel-pool (wheel filters act as a hard mask).<br>' +
+                    '<b>With no pairs:</b> the pool is the wheel filter output alone — lets you bet a filter set without picking any pair.<br>' +
+                    '<b>Same:</b> respects the active pool when Same is also on.<br>' +
+                    '<b>Use when:</b> You want to test a filter (e.g. only Set 5/6, only Sign +ve) without touching pair predictions.'
+            },
+            manual: {
+                title: 'Manual mode ✋',
+                body:
+                    '<b>What it does:</b> You build the bet pool by clicking pockets directly on the wheel below. Each click adds that pocket plus <b>±N neighbours</b> (N picker appears when Manual is on).<br>' +
+                    '<b>Ignores:</b> pair predictions AND wheel filters. The pool is exactly what you picked.<br>' +
+                    '<b>Bets:</b> every spin on your picks — no wait-for-trigger unless Same is also on.<br>' +
+                    '<b>Clear:</b> the Clear button empties your picks.<br>' +
+                    '<b>Use when:</b> You want full control over the pool — testing a specific set of numbers, replaying a bet from a session, or hand-picking neighbours around hot pockets.'
+            },
+        };
+        const infoPanel = document.getElementById('wheelModeInfoPanel');
+        const infoTitle = document.getElementById('wheelModeInfoTitle');
+        const infoBody  = document.getElementById('wheelModeInfoBody');
+        const infoClose = document.getElementById('wheelModeInfoClose');
+        document.querySelectorAll('.wheel-mode-info-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const mode = btn.getAttribute('data-mode');
+                const info = MODE_INFO[mode];
+                if (!info || !infoPanel || !infoTitle || !infoBody) return;
+                // Toggle off if the same button was clicked again.
+                if (infoPanel.style.display === 'block' && infoPanel.dataset.mode === mode) {
+                    infoPanel.style.display = 'none';
+                    infoPanel.dataset.mode = '';
+                    return;
+                }
+                infoTitle.textContent = info.title;
+                infoBody.innerHTML    = info.body;
+                infoPanel.dataset.mode = mode;
+                infoPanel.style.display = 'block';
+            });
+        });
+        if (infoClose) infoClose.addEventListener('click', () => {
+            if (infoPanel) { infoPanel.style.display = 'none'; infoPanel.dataset.mode = ''; }
+        });
 
         // Same toggle: wait-for-trigger betting. Source-of-truth global
         // is window.sameMode, persisted in localStorage('strategyLab.sameMode'),

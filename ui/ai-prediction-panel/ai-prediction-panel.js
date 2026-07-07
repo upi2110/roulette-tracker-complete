@@ -105,6 +105,16 @@ class AIPredictionPanel {
                         border:1px solid rgba(255,255,255,0.45);border-radius:4px;
                         font-weight:600;line-height:1;letter-spacing:.2px;
                     ">✕ Deselect Pairs</button>
+                    <!-- Toggle: when ON, every LOSS auto-clears all
+                         T1/T2/T3 pair selections (same effect as clicking
+                         Deselect Pairs manually). Setting is persisted
+                         in localStorage. Off by default. -->
+                    <button id="autoClearOnLossBtn" title="Auto Deselect on Loss — when ON, every losing spin automatically clears all pair selections across T1, T2, T3 (same as clicking Deselect Pairs). Setting is remembered across reloads." style="
+                        font-size:11px;padding:3px 9px;cursor:pointer;
+                        background:rgba(255,255,255,0.18);color:#fff;
+                        border:1px solid rgba(255,255,255,0.45);border-radius:4px;
+                        font-weight:600;line-height:1;letter-spacing:.2px;
+                    ">🔄 Auto-Clear on Loss: OFF</button>
                 </div>
                 <button class="btn-toggle" id="toggleAIPanel">−</button>
             </div>
@@ -217,19 +227,67 @@ class AIPredictionPanel {
         // one click. Does NOT touch spin history, money management,
         // training data, or any other panel. Safe to call anytime.
         const deselectBtn = document.getElementById('deselectAllPairsBtn');
+        const clearAllPairSelections = () => {
+            this.clearSelections();
+            if (window.rouletteWheel && typeof window.rouletteWheel.clearHighlights === 'function') {
+                window.rouletteWheel.clearHighlights();
+            }
+        };
         if (deselectBtn) {
             deselectBtn.addEventListener('click', () => {
                 try {
-                    this.clearSelections();
-                    if (window.rouletteWheel && typeof window.rouletteWheel.clearHighlights === 'function') {
-                        window.rouletteWheel.clearHighlights();
-                    }
+                    clearAllPairSelections();
                     console.log('✕ User clicked Deselect Pairs — all T1/T2/T3 selections cleared.');
                 } catch (e) {
                     console.warn('Deselect Pairs failed:', e && e.message);
                 }
             });
         }
+
+        // Auto-Clear on Loss toggle — persists in localStorage.
+        // When ON, subscribes to the 'manualEnhance:betResolved' event
+        // (dispatched by money-management-panel.recordBetResult) and
+        // clears all pair selections on every miss. Fires the same
+        // clearAllPairSelections() path as the manual button so the
+        // wheel highlights stay in sync.
+        const autoClearBtn = document.getElementById('autoClearOnLossBtn');
+        const AUTO_CLEAR_KEY = 'aiPanel.autoClearOnLoss';
+        const readAutoClear = () => {
+            try { return localStorage.getItem(AUTO_CLEAR_KEY) === '1'; }
+            catch (_) { return false; }
+        };
+        const paintAutoClearBtn = (on) => {
+            if (!autoClearBtn) return;
+            autoClearBtn.textContent = on ? '🔄 Auto-Clear on Loss: ON' : '🔄 Auto-Clear on Loss: OFF';
+            autoClearBtn.style.background = on ? 'rgba(34,197,94,0.28)' : 'rgba(255,255,255,0.18)';
+            autoClearBtn.style.borderColor = on ? 'rgba(134,239,172,0.75)' : 'rgba(255,255,255,0.45)';
+        };
+        paintAutoClearBtn(readAutoClear());
+        if (autoClearBtn) {
+            autoClearBtn.addEventListener('click', () => {
+                const next = !readAutoClear();
+                try { localStorage.setItem(AUTO_CLEAR_KEY, next ? '1' : '0'); } catch (_) {}
+                paintAutoClearBtn(next);
+                console.log(`🔄 Auto-Clear on Loss → ${next ? 'ON' : 'OFF'}`);
+            });
+        }
+        // Single subscription — checks the current toggle state at
+        // dispatch time so localStorage is the source of truth (a
+        // toggle flip takes effect on the NEXT resolved bet, not this
+        // one). Safe if the event never fires.
+        try {
+            window.addEventListener('manualEnhance:betResolved', (e) => {
+                try {
+                    if (!readAutoClear()) return;
+                    const hit = !!(e && e.detail && e.detail.hit);
+                    if (hit) return;
+                    clearAllPairSelections();
+                    console.log('🔄 Auto-Clear on Loss: bet lost → cleared all T1/T2/T3 selections');
+                } catch (err) {
+                    console.warn('Auto-Clear on Loss handler failed:', err && err.message);
+                }
+            });
+        } catch (_) { /* defensive */ }
 
         // Inverse-pair button — flips every currently selected T1 pair
         // to its 13-opposite, then re-mirrors T2 to {pair, opposite}
