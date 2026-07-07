@@ -64,11 +64,21 @@
             } catch (_) { /* defensive */ }
         });
 
-        // Inject right after the wheel panel header (.panel-header) if it
-        // exists, otherwise as the panel's first child.
-        const header = wheelPanel.querySelector('.panel-header')
-                    || wheelPanel.querySelector('h3');
-        if (header && header.parentNode) {
+        // Placement (2026-07-07): inject AFTER #wheelFilters so the
+        // badge sits below the filter row. #wheelBetSize is absolutely
+        // positioned inside #wheelFilters (top:6/right:8), so anchoring
+        // the badge above the filters used to visually collide with the
+        // bet-size / total lines on the right. Placing it after the
+        // filters keeps both fully readable at a glance.
+        //
+        // Fallbacks preserve the old behaviour so the badge still
+        // appears even if #wheelFilters hasn't been built yet.
+        const filters = wheelPanel.querySelector('#wheelFilters');
+        const header  = wheelPanel.querySelector('.panel-header')
+                     || wheelPanel.querySelector('h3');
+        if (filters && filters.parentNode) {
+            filters.parentNode.insertBefore(badge, filters.nextSibling);
+        } else if (header && header.parentNode) {
             header.parentNode.insertBefore(badge, header.nextSibling);
         } else {
             wheelPanel.insertBefore(badge, wheelPanel.firstChild);

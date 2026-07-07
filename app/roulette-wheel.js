@@ -309,22 +309,22 @@ class RouletteWheel {
                         <label style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;cursor:pointer;color:#7c3aed;">
                             <input type="checkbox" id="filterSet6" checked class="set-cb" style="accent-color:#7c3aed;"> 6
                         </label>
-                        <!-- Trigger status pill — visual indicator of
-                             whether the Same/Wheel trigger gate is
-                             currently ARMED (will bet on next spin)
-                             or WAITING (no trigger fired yet). Only
-                             shown when at least one trigger toggle is
-                             ON; hidden when both are OFF (every-spin
-                             betting, no gate). Updated by
-                             _refreshTriggerStatus(). -->
+                    </div>
+                    <!-- Trigger status pill + info button.
+                         Moved to its own row (2026-07-07) so the pill's
+                         margin-left:auto doesn't collide with the
+                         absolutely-positioned #wheelBetSize on the right
+                         side of #wheelFilters. Reserves right padding
+                         so the pill still stops before the bet-size
+                         column. Only visible when Same or Wheel mode is
+                         ON; hidden every-spin. Updated by
+                         _refreshTriggerStatus(). -->
+                    <div style="display:flex; align-items:center; gap:8px; padding-right:160px; min-height:22px;">
                         <span id="wheelTriggerStatus" title="Bet-trigger status — green = armed (bet on next spin), red = waiting for a spin in the bet pool. Only shown when Same or Wheel mode is ON." style="
                             display:none;margin-left:auto;font-size:10px;font-weight:800;letter-spacing:.4px;
                             padding:3px 10px;border-radius:12px;border:1px solid transparent;
                             background:#64748b;color:#fff;user-select:none;
                         ">—</span>
-                        <!-- Trigger-status "why?" info button. Visible
-                             only when the pill is shown. Click to
-                             toggle the explanation popup below. -->
                         <button id="wheelTriggerInfoBtn" type="button" title="Click for details on why the trigger is/isn't armed" style="
                             display:none;width:18px;height:18px;font-size:11px;font-weight:800;
                             border:1px solid #94a3b8;border-radius:50%;cursor:pointer;
@@ -336,8 +336,9 @@ class RouletteWheel {
                          the info button. Inside wheelFilters so it
                          sits naturally below the Set row. -->
                     <div id="wheelTriggerInfo" style="
-                        display:none;margin-top:4px;padding:6px 8px;font-size:10px;line-height:1.4;
+                        display:none;margin-top:4px;padding:6px 8px 6px 8px;font-size:10px;line-height:1.4;
                         background:#fffbeb;border:1px solid #fbbf24;border-radius:4px;color:#78350f;
+                        padding-right:160px;
                     "></div>
                     </div>
                 </div>
