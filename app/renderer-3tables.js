@@ -1058,6 +1058,9 @@ function resetAll() {
                     s8SessionTarget:    100, s8SessionSoftMax: 125,
                     s8ReferenceN:       12, s8LossUnits:     0,
                     s8Tier:             1,
+                    // Strategy 9 Sprint defaults — flat bet + target.
+                    s9StartingBet:      2, s9MinBet:        2,
+                    s9SessionTarget:    100,
                     sameArmed: false
                 };
                 window.moneyPanel.betHistory = [];

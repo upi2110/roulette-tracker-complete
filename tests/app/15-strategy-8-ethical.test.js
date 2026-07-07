@@ -263,10 +263,10 @@ describe('S8 switching', () => {
         mp.sessionData.currentBetPerNumber = 7;
         mp.sessionData.s8LossUnits = 2.5;
         // First cycle out of the default S8 …
-        mp.toggleStrategy(); // 8 → 1
-        expect(mp.sessionData.bettingStrategy).toBe(1);
-        // …then cycle 7 more times back to 8.
-        for (let i = 0; i < 7; i++) mp.toggleStrategy();
+        mp.toggleStrategy(); // 8 → 9
+        expect(mp.sessionData.bettingStrategy).toBe(9);
+        // …then cycle 8 more times back to 8.
+        for (let i = 0; i < 8; i++) mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(8);
         expect(mp.sessionData.currentBetPerNumber).toBe(2);
         expect(mp.sessionData.s8LossUnits).toBe(0);
@@ -282,9 +282,9 @@ describe('S8 switching', () => {
         expect(mp.sessionData.s8LossUnits).toBeCloseTo(2, 5);
         // Cycle away…
         mp.toggleStrategy();
-        expect(mp.sessionData.bettingStrategy).toBe(1);
-        // …and 7 more clicks back to S8.
-        for (let i = 0; i < 7; i++) mp.toggleStrategy();
+        expect(mp.sessionData.bettingStrategy).toBe(9);
+        // …and 8 more clicks back to S8.
+        for (let i = 0; i < 8; i++) mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(8);
         expect(mp.sessionData.s8LossUnits).toBe(0);
         expect(mp.sessionData.currentBetPerNumber).toBe(2);

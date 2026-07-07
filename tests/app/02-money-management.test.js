@@ -408,10 +408,12 @@ describe('Strategy 3: Cautious', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('Strategy Toggle', () => {
-    test('Cycles 8 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8', () => {
+    test('Cycles 8 → 9 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8', () => {
         const mp = createPanel();
         expect(mp.sessionData.bettingStrategy).toBe(8);
 
+        mp.toggleStrategy();
+        expect(mp.sessionData.bettingStrategy).toBe(9);
         mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(1);
         mp.toggleStrategy();
@@ -427,6 +429,18 @@ describe('Strategy Toggle', () => {
         mp.toggleStrategy();
         expect(mp.sessionData.bettingStrategy).toBe(7);
         mp.toggleStrategy();
+        expect(mp.sessionData.bettingStrategy).toBe(8);
+    });
+
+    test('setStrategy(n) jumps directly without cycling', () => {
+        const mp = createPanel();
+        mp.setStrategy(3);
+        expect(mp.sessionData.bettingStrategy).toBe(3);
+        mp.setStrategy(9);
+        expect(mp.sessionData.bettingStrategy).toBe(9);
+        mp.setStrategy(1);
+        expect(mp.sessionData.bettingStrategy).toBe(1);
+        mp.setStrategy(8);
         expect(mp.sessionData.bettingStrategy).toBe(8);
     });
 

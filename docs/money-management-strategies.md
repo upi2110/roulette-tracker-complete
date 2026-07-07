@@ -18,6 +18,7 @@ loss accounting, session-target smart cap, and modest $2 minimum stake.
 | 6 | 🪶 Super Cautious| +$1 after 3 consec losses (≤$5)  | −$1 after 1 consec win   | Hard $5 cap + smart target cap    |
 | 7 | ➖ Flat Bet      | none                             | none                     | Manual only, uses 💲 Adjust stake |
 | 8 | 🕊 Ethical (default) | +$1 when ceil(ΣN/12) ≥ 3          | −$2 after 2 consec wins   | Single refN=12, ceiling accum, smart cap |
+| 9 | ⚡ Sprint         | none — flat bet always            | none — flat bet always    | Flat bet + smart cap only                |
 
 ## Strategy 8 — Ethical (default)
 
@@ -85,6 +86,26 @@ still fires when the next bet's amount is calculated — the yellow
 | Session target $           | 100     | Smart-cap ceiling.                             |
 | Soft-max $                 | 125     | Informational — smart cap enforces target.    |
 | Reference N                | 12      | Numbers per loss-unit (rule 6 divisor).       |
+
+## Strategy 9 — Sprint (2026-07-07)
+
+Time-boxed target-hunt for ~20–30-minute sessions. Cuts everything
+S8 does except the smart cap:
+
+- **Flat bet.** `currentBetPerNumber` never changes automatically —
+  no escalation on losses, no de-escalation on wins.
+- **Smart cap.** Same as S8 — bet shrinks when a projected win would
+  overshoot `s9SessionTarget` ($100 default), floor `s9MinBet` ($2).
+- Manual stake adjust (`💲 Adjust stake`) still works — treat it as
+  the ONLY way to change the base bet under S9.
+- Losses do not auto-pause the session — the user decides when to
+  stop by hitting Pause. (Explicitly no stop-loss mechanic.)
+
+Why choose Sprint over Ethical? When the goal is "hit $100 fast,"
+escalation works against you: a run of unlucky spins pushes the bet
+up right before variance is likely to bite hardest. Sprint stays
+disciplined at the base bet and uses the smart cap to protect the
+target.
 
 ## Implementation notes
 

@@ -113,6 +113,14 @@ class MoneyManagementPanel {
             //   s8Tier = 1-indexed rung (1..3). Advances on escalation
             //   (caps at 3). Any de-escalation resets to 1.
             s8Tier:             1,
+            // ─── STRATEGY 9 — SPRINT (2026-07-07) ───────────────────
+            // Time-boxed target-hunt profile. Flat $2/num, NO
+            // escalation, NO de-escalation. Uses the same smart cap
+            // as S8 to shrink the bet as you approach target.
+            // Designed for 20–30-minute sessions.
+            s9StartingBet:      2,
+            s9MinBet:           2,
+            s9SessionTarget:    100,
             consecutiveWins: 0,  // Track consecutive wins for strategies 2 & 3
             peakBankroll: 4000,   // running max of currentBankroll — for max drawdown
             maxDrawdown: 0,       // largest peak-to-trough dip during the session
@@ -187,6 +195,27 @@ class MoneyManagementPanel {
                             color: white;
                             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                         ">🕊 Strategy 8: Ethical</button>
+                    <select id="strategySelect" title="Jump directly to a strategy (no clicking through)" style="
+                            padding:4px 6px;
+                            font-size:12px;
+                            font-weight:700;
+                            border:none;
+                            border-radius:4px;
+                            cursor:pointer;
+                            background:#1e293b;
+                            color:white;
+                            max-width:44px;
+                        ">
+                        <option value="1">🟢 1 Aggressive</option>
+                        <option value="2">🔵 2 Conservative</option>
+                        <option value="3">🟣 3 Cautious</option>
+                        <option value="4">🛡️ 4 Defensive</option>
+                        <option value="5">🧠 5 Logical</option>
+                        <option value="6">🪶 6 Super Cautious</option>
+                        <option value="7">➖ 7 Flat Bet</option>
+                        <option value="8" selected>🕊 8 Ethical</option>
+                        <option value="9">⚡ 9 Sprint</option>
+                    </select>
                     <button id="strategyVarsBtn" type="button" title="Edit active-strategy variables (loss/win thresholds + bet step sizes)" style="
                             padding: 3px 6px;
                             font-size: 11px;
@@ -301,14 +330,14 @@ class MoneyManagementPanel {
                      same ⚙️ button when S8 is the active strategy. -->
                 <div id="strategy8VarsPanel" style="display:none;margin-top:6px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;padding:8px;font-size:11px;color:#1f2937;position:relative;">
                     <button id="s8VarsClose" type="button" title="Close" style="position:absolute;top:4px;right:4px;width:20px;height:20px;line-height:18px;font-size:14px;font-weight:700;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:3px;cursor:pointer;padding:0;">×</button>
-                    <div style="font-weight:700;color:#059669;margin-bottom:6px;padding-right:24px;">🕊 Strategy 8 — Ethical variables · <span id="s8CurrentTier" style="color:#0f766e;font-weight:700;">(Tier 1)</span></div>
-                    <!-- Tier ladder — read-only (Tier 1 is user-tunable
-                         below; Tiers 2/3 are locked per spec). -->
+                    <div style="font-weight:700;color:#059669;margin-bottom:6px;padding-right:24px;">🕊 Strategy 8 — Ethical variables <span id="s8CurrentTier" style="display:none;"></span></div>
+                    <!-- Rule (2026-07-07): single refN=12, ceiling accum. -->
                     <div style="font-size:10px;color:#475569;margin-bottom:6px;background:#fff;border:1px solid #e2e8f0;border-radius:3px;padding:4px 6px;line-height:1.5;">
-                        <div style="font-weight:700;color:#0f766e;">Tier ladder</div>
-                        <div>1 · refN 12 · +$1 / 3 units · −$2 / 2 wins &nbsp;<span style="color:#94a3b8;">(editable ↓)</span></div>
-                        <div>2 · refN 18 · +$1 / 2 units · −$1 / 1 win &nbsp;<span style="color:#94a3b8;">(locked)</span></div>
-                        <div>3 · refN 24 · +$2 / 2 units · −$1 / 2 wins &nbsp;<span style="color:#94a3b8;">(locked)</span></div>
+                        <div style="font-weight:700;color:#0f766e;">Rule</div>
+                        <div>Each miss adds <code>N / refN</code> units.</div>
+                        <div>Escalate <b>+$1</b> when <code>ceil(units) ≥ 3</code> → units reset.</div>
+                        <div>De-escalate <b>−$2</b> after 2 consecutive wins → units reset.</div>
+                        <div>Smart cap: shrink bet so a win lands ≤ session target.</div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 60px;gap:4px 6px;align-items:center;">
                         <label for="s8LossUnitsIn" title="How many CUMULATIVE loss-units before the bet is increased. Each miss adds min(N, ref)/ref to the accumulator. Default 3.">Increase after loss-units</label>
@@ -333,6 +362,31 @@ class MoneyManagementPanel {
                         <button id="s8VarsSave" type="button" style="padding:4px 10px;font-size:11px;border:none;background:#059669;color:#fff;border-radius:3px;cursor:pointer;font-weight:600;">Save</button>
                     </div>
                     <div id="s8VarsStatus" style="margin-top:6px;font-size:10px;color:#16a34a;min-height:12px;"></div>
+                </div>
+                <!-- Strategy 9 (Sprint) variables editor. Flat bet
+                     with hard stop-loss + smart-cap target. -->
+                <div id="strategy9VarsPanel" style="display:none;margin-top:6px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;padding:8px;font-size:11px;color:#1f2937;position:relative;">
+                    <button id="s9VarsClose" type="button" title="Close" style="position:absolute;top:4px;right:4px;width:20px;height:20px;line-height:18px;font-size:14px;font-weight:700;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:3px;cursor:pointer;padding:0;">×</button>
+                    <div style="font-weight:700;color:#ea580c;margin-bottom:6px;padding-right:24px;">⚡ Strategy 9 — Sprint variables</div>
+                    <div style="font-size:10px;color:#475569;margin-bottom:6px;background:#fff;border:1px solid #e2e8f0;border-radius:3px;padding:4px 6px;line-height:1.5;">
+                        <div style="font-weight:700;color:#9a3412;">Rule</div>
+                        <div>Flat <code>currentBetPerNumber</code> — <b>no</b> escalation, <b>no</b> de-escalation.</div>
+                        <div>Smart cap: shrink bet so a win lands ≤ session target.</div>
+                        <div>Change the base bet manually via 💲 Adjust stake.</div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 60px;gap:4px 6px;align-items:center;">
+                        <label for="s9StartingIn" title="Starting bet/number when Sprint is switched IN. Resets currentBetPerNumber.">Starting bet $</label>
+                        <input id="s9StartingIn" type="number" min="1" max="1000" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s9MinIn" title="Minimum bet/number floor. Smart-cap never shrinks below this.">Min bet $</label>
+                        <input id="s9MinIn" type="number" min="1" max="1000" step="1" style="padding:3px;font-size:11px;width:55px;">
+                        <label for="s9TargetIn" title="Session target in dollars. Smart-cap scales down so a win lands ≤ target.">Session target $</label>
+                        <input id="s9TargetIn" type="number" min="1" max="100000" step="1" style="padding:3px;font-size:11px;width:55px;">
+                    </div>
+                    <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end;">
+                        <button id="s9VarsCancel" type="button" style="padding:4px 10px;font-size:11px;border:1px solid #cbd5e1;background:#fff;border-radius:3px;cursor:pointer;">Cancel</button>
+                        <button id="s9VarsSave" type="button" style="padding:4px 10px;font-size:11px;border:none;background:#ea580c;color:#fff;border-radius:3px;cursor:pointer;font-weight:600;">Save</button>
+                    </div>
+                    <div id="s9VarsStatus" style="margin-top:6px;font-size:10px;color:#c2410c;min-height:12px;"></div>
                 </div>
             </div>
 
@@ -488,7 +542,7 @@ class MoneyManagementPanel {
 
     toggleStrategy() {
         // Cycle through strategies: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 1
-        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 8) + 1;
+        this.sessionData.bettingStrategy = (this.sessionData.bettingStrategy % 9) + 1;
 
         // Reset counters when switching strategies
         this.sessionData.consecutiveWins = 0;
@@ -577,7 +631,7 @@ class MoneyManagementPanel {
             console.log('✅ Strategy 7: Flat Bet');
             console.log(`   • Bet/num stays at $${this.sessionData.currentBetPerNumber} until you change it with 💲 Adjust stake`);
             console.log('   • No win/loss adjustments');
-        } else {
+        } else if (this.sessionData.bettingStrategy === 8) {
             // Strategy 8: ETHICAL (Green) — the DEFAULT profile.
             // Cautious escalation base + fractional loss accumulator
             // (12 numbers per unit) + smart-cap to protect the target.
@@ -594,6 +648,15 @@ class MoneyManagementPanel {
             console.log(`   • Tier 3 (refN 24): +$2 after 2 loss-units, −$1 after 2 consec wins`);
             console.log(`   • Each escalation climbs one tier (caps at 3). Any de-escalation resets to Tier 1.`);
             console.log(`   • Smart cap: bet shrinks so a win lands at ≤ $${this.sessionData.s8SessionTarget} (accept up to $${this.sessionData.s8SessionSoftMax})`);
+        } else {
+            // Strategy 9: SPRINT (Orange) — time-boxed target-hunt.
+            // Flat bet, no escalation, hard stop-loss auto-pause.
+            btn.textContent = '⚡ Strategy 9: Sprint';
+            btn.style.background = 'linear-gradient(135deg, #ea580c 0%, #9a3412 100%)';
+            this.sessionData.currentBetPerNumber = parseInt(this.sessionData.s9StartingBet, 10) || 2;
+            console.log('✅ Strategy 9: Sprint');
+            console.log(`   • Flat $${this.sessionData.currentBetPerNumber}/num — NO escalation, NO de-escalation`);
+            console.log(`   • Smart cap: bet shrinks so a win lands at ≤ $${this.sessionData.s9SessionTarget}`);
         }
 
         // Show/hide variables panel based on strategy (s4/s5 have one).
@@ -602,7 +665,29 @@ class MoneyManagementPanel {
             if (varsPanel) varsPanel.style.display = 'none';
         } catch (_) {}
 
+        // Keep dropdown in sync with the cycle button (both write to
+        // sessionData.bettingStrategy; the dropdown must reflect the
+        // active choice).
+        try {
+            const sel = document.getElementById('strategySelect');
+            if (sel) sel.value = String(this.sessionData.bettingStrategy);
+        } catch (_) {}
+
         this.render();
+    }
+
+    /**
+     * Jump directly to a specific strategy without cycling. The
+     * dropdown next to the strategy button calls this on change.
+     * Steps the modulo back one so toggleStrategy()'s next-strategy
+     * math lands on the requested number, then delegates to the
+     * cycle path — this reuses all the button-label + reset
+     * behaviour for free.
+     */
+    setStrategy(n) {
+        const idx = Math.max(1, Math.min(9, parseInt(n, 10) || 1));
+        this.sessionData.bettingStrategy = ((idx - 2 + 9) % 9) + 1;
+        this.toggleStrategy();
     }
 
     setupBettingControl() {
@@ -616,6 +701,11 @@ class MoneyManagementPanel {
         if (strategyBtn && !strategyBtn.hasListener) {
             strategyBtn.hasListener = true;
             strategyBtn.addEventListener('click', () => this.toggleStrategy());
+        }
+        const strategySelect = document.getElementById('strategySelect');
+        if (strategySelect && !strategySelect.hasListener) {
+            strategySelect.hasListener = true;
+            strategySelect.addEventListener('change', (e) => this.setStrategy(e.target.value));
         }
 
         // ⚙️ Strategy-4 variables editor — open / save / cancel.
@@ -676,6 +766,23 @@ class MoneyManagementPanel {
         if (s8CloseBtn && !s8CloseBtn.hasListener) {
             s8CloseBtn.hasListener = true;
             s8CloseBtn.addEventListener('click', () => this.closeStrategyVarsEditor());
+        }
+
+        // ⚙️ Strategy-9 wiring — open is shared via openStrategyVarsEditor.
+        const s9SaveBtn = document.getElementById('s9VarsSave');
+        if (s9SaveBtn && !s9SaveBtn.hasListener) {
+            s9SaveBtn.hasListener = true;
+            s9SaveBtn.addEventListener('click', () => this.saveStrategy9Vars());
+        }
+        const s9CancelBtn = document.getElementById('s9VarsCancel');
+        if (s9CancelBtn && !s9CancelBtn.hasListener) {
+            s9CancelBtn.hasListener = true;
+            s9CancelBtn.addEventListener('click', () => this.closeStrategyVarsEditor());
+        }
+        const s9CloseBtn = document.getElementById('s9VarsClose');
+        if (s9CloseBtn && !s9CloseBtn.hasListener) {
+            s9CloseBtn.hasListener = true;
+            s9CloseBtn.addEventListener('click', () => this.closeStrategyVarsEditor());
         }
 
         // ℹ️ Strategy info popup — shows what the active strategy does.
@@ -864,15 +971,23 @@ class MoneyManagementPanel {
             8: {
                 title: 'Strategy 8 — Ethical 🕊 (DEFAULT)',
                 body:
-                    '<b>Base:</b> Cautious escalation with fractional loss accounting on a 3-tier ladder.<br>' +
-                    '<b>Ladder (each escalation climbs one rung; any de-escalation drops back to Tier 1):</b><br>' +
-                    '&nbsp;&nbsp;•&nbsp;<b>Tier 1 (refN 12):</b> +$1 after 3 loss-units, −$2 after 2 consec wins<br>' +
-                    '&nbsp;&nbsp;•&nbsp;<b>Tier 2 (refN 18):</b> +$1 after 2 loss-units, −$1 after 1 win<br>' +
-                    '&nbsp;&nbsp;•&nbsp;<b>Tier 3 (refN 24):</b> +$2 after 2 loss-units, −$1 after 2 consec wins<br>' +
-                    '<b>Loss units:</b> Each miss adds <code>min(N, refN)/refN</code> to the accumulator. Partial-coverage bets (fewer numbers) contribute less. Isolated wins do NOT reset the accumulator; only a de-escalation does.<br>' +
-                    '<b>Smart cap:</b> Bet shrinks so a full win never overshoots the +$100 target (soft-max $125). Once profit is at target, holds at $2/number.<br>' +
-                    '<b>Use when:</b> You want fractional-loss fairness with a progressive risk ladder and a hard cap on session upside.<br>' +
-                    '<b>Risk:</b> Lowest — session-capped upside plus fractional loss protection.'
+                    '<b>Rule (2026-07-07):</b> single reference <code>refN = 12</code>. Each miss adds <code>N / refN</code> units to the session-wide accumulator.<br>' +
+                    '<b>Escalation:</b> when <code>ceil(units) ≥ 3</code>, bet increases by <b>+$1</b> and units reset to 0.<br>' +
+                    '<b>De-escalation:</b> after <b>2 consecutive wins</b>, bet decreases by <b>−$2</b> (floored at $2), units reset.<br>' +
+                    '<b>Isolated wins</b> do NOT reset the accumulator — only a full de-escalation trigger does.<br>' +
+                    '<b>Ceiling rule:</b> <code>3.87 units</code> counts as <b>4</b>. Anything ≥ 3 triggers.<br>' +
+                    '<b>Smart cap:</b> Bet shrinks so a full win never overshoots the +$100 target. Past target, holds at $2/number.<br>' +
+                    '<b>Use when:</b> You want session-wide fractional-loss fairness and a hard cap on session upside.<br>' +
+                    '<b>Risk:</b> Low — protective escalation, capped upside.'
+            },
+            9: {
+                title: 'Strategy 9 — Sprint ⚡',
+                body:
+                    '<b>Adjustment:</b> <b>none</b> — flat bet, no escalation on losses, no de-escalation on wins.<br>' +
+                    '<b>Smart cap:</b> Same as S8 — bet shrinks so a projected win lands ≤ session target (floor $2).<br>' +
+                    '<b>Use when:</b> Time-boxed 20–30-minute target-hunts. You want to trust the AI\'s edge without progression amplifying variance.<br>' +
+                    '<b>Manual override:</b> Change the base bet only via 💲 Adjust stake — nothing else moves it.<br>' +
+                    '<b>Risk:</b> Bounded upside via smart cap. You control losses by pausing manually.'
             },
         };
 
@@ -895,12 +1010,14 @@ class MoneyManagementPanel {
         const s4Panel = document.getElementById('strategyVarsPanel');
         const s6Panel = document.getElementById('strategy6VarsPanel');
         const s8Panel = document.getElementById('strategy8VarsPanel');
+        const s9Panel = document.getElementById('strategy9VarsPanel');
         const strat = this.sessionData.bettingStrategy;
 
         // Always close all first so we never show two at once.
         if (s4Panel) s4Panel.style.display = 'none';
         if (s6Panel) s6Panel.style.display = 'none';
         if (s8Panel) s8Panel.style.display = 'none';
+        if (s9Panel) s9Panel.style.display = 'none';
 
         // Strategy 7 (Flat Bet) has no variables — ⚙️ is a no-op.
         // The user adjusts the stake directly via 💲 Adjust stake.
@@ -909,7 +1026,14 @@ class MoneyManagementPanel {
             return;
         }
 
-        if (strat === 8) {
+        if (strat === 9) {
+            set('s9StartingIn', this.sessionData.s9StartingBet);
+            set('s9MinIn',      this.sessionData.s9MinBet);
+            set('s9TargetIn',   this.sessionData.s9SessionTarget);
+            if (s9Panel) s9Panel.style.display = 'block';
+            const status = document.getElementById('s9VarsStatus');
+            if (status) status.textContent = '';
+        } else if (strat === 8) {
             set('s8LossUnitsIn', this.sessionData.s8LossesToIncrease);
             set('s8LossIncIn',   this.sessionData.s8LossIncrement);
             set('s8WinsIn',      this.sessionData.s8WinsToDecrease);
@@ -989,9 +1113,11 @@ class MoneyManagementPanel {
         const s4Panel = document.getElementById('strategyVarsPanel');
         const s6Panel = document.getElementById('strategy6VarsPanel');
         const s8Panel = document.getElementById('strategy8VarsPanel');
+        const s9Panel = document.getElementById('strategy9VarsPanel');
         if (s4Panel) s4Panel.style.display = 'none';
         if (s6Panel) s6Panel.style.display = 'none';
         if (s8Panel) s8Panel.style.display = 'none';
+        if (s9Panel) s9Panel.style.display = 'none';
     }
 
     saveStrategyVars() {
@@ -1114,6 +1240,39 @@ class MoneyManagementPanel {
             setTimeout(() => { if (status) status.textContent = ''; }, 3000);
         }
         console.log(`🕊 Strategy 8 variables updated: +$${lossInc} after ${lossUnitsNeeded} loss-units, -$${winDec} after ${winsNeeded} wins, min $${minBet}, target $${target}, refN ${refN}`);
+    }
+
+    saveStrategy9Vars() {
+        // Read + validate Sprint inputs, write back to sessionData.
+        // The S9 branch in recordBetResult() reads s9StopLoss; the
+        // _s9BetPerNumber helper reads s9MinBet + s9SessionTarget.
+        const readInt = (id, fallback, min) => {
+            const el = document.getElementById(id);
+            if (!el) return fallback;
+            const v = parseInt(el.value, 10);
+            if (!Number.isFinite(v)) return fallback;
+            return Math.max(min, v);
+        };
+        const startingBet = readInt('s9StartingIn', this.sessionData.s9StartingBet,   1);
+        const minBet      = readInt('s9MinIn',      this.sessionData.s9MinBet,        1);
+        const target      = readInt('s9TargetIn',   this.sessionData.s9SessionTarget, 1);
+
+        this.sessionData.s9StartingBet   = startingBet;
+        this.sessionData.s9MinBet        = minBet;
+        this.sessionData.s9SessionTarget = target;
+
+        // Clamp live current bet to new floor.
+        const cur = this.sessionData.currentBetPerNumber;
+        this.sessionData.currentBetPerNumber = Math.max(minBet, cur);
+
+        const status = document.getElementById('s9VarsStatus');
+        if (status) {
+            status.textContent = `✓ Saved — start $${startingBet} · min $${minBet} · target $${target}`;
+            setTimeout(() => { if (status) status.textContent = ''; }, 3000);
+        }
+        console.log(`⚡ Strategy 9 vars saved — start $${startingBet}, min $${minBet}, target $${target}`);
+
+        this.render();
     }
 
     togglePanel() {
@@ -1822,6 +1981,16 @@ class MoneyManagementPanel {
                     console.log(`🕊 S8 (${N} nums): loss units ${s.s8LossUnits.toFixed(3)} (ceil ${ceilUnits}) / ${tier.lossUnitsToInc} (+${delta.toFixed(3)})`);
                 }
             }
+        } else if (this.sessionData.bettingStrategy === 9) {
+            // ═══ STRATEGY 9: SPRINT (2026-07-07) ═══
+            // No bet mutation — flat currentBetPerNumber every spin.
+            // Smart cap is applied at bet-calc time in _s9BetPerNumber.
+            const nS9 = Math.max(1, parseInt(numbersCount, 10) || 12);
+            if (hit) {
+                console.log(`⚡ S9 (${nS9} nums): WIN — flat bet stays at $${this.sessionData.currentBetPerNumber}/num`);
+            } else {
+                console.log(`⚡ S9 (${nS9} nums): LOSS — flat bet stays at $${this.sessionData.currentBetPerNumber}/num`);
+            }
         }
 
         console.log(`💵 Next bet amount: $${this.sessionData.currentBetPerNumber}/number`);
@@ -1955,8 +2124,42 @@ class MoneyManagementPanel {
 
             return { units, threshold: tier.lossUnitsToInc, ifWin, ifLoss };
         };
+        // S9 shows a target-progress right-column instead of the
+        // Ethical accumulator projection.
+        const s9Proj = () => {
+            if (this.sessionData.bettingStrategy !== 9) return null;
+            const s = this.sessionData;
+            const target = parseInt(s.s9SessionTarget, 10) || 100;
+            const profit = parseFloat(s.sessionProfit) || 0;
+            return {
+                progress: Math.max(0, Math.min(100, Math.round((profit / target) * 100))),
+                profit,
+                target,
+                remaining: Math.max(0, target - profit),
+            };
+        };
         const renderProjection = (targetEl, opts) => {
             if (!targetEl) return;
+            const s9 = s9Proj();
+            if (s9) {
+                if (opts && opts.inline) {
+                    const row = (label, value, color) =>
+                        `<div style="display:flex;align-items:baseline;gap:6px;line-height:1.1;">` +
+                            `<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;min-width:38px;">${label}</span>` +
+                            `<span style="font-size:13px;font-weight:800;color:${color};">${value}</span>` +
+                        `</div>`;
+                    targetEl.innerHTML =
+                        row('Progress',   `${s9.progress}%`,                  '#15803d') +
+                        row('Profit',     `$${s9.profit} / $${s9.target}`,   '#0369a1') +
+                        row('To Target',  `$${s9.remaining}`,                '#c2410c');
+                } else {
+                    targetEl.innerHTML =
+                        `<div class="nb-row"><span class="nb-label">Progress</span><span class="nb-win-val">${s9.progress}%</span></div>` +
+                        `<div class="nb-row"><span class="nb-label">Profit</span><span class="nb-acc-val">$${s9.profit} / $${s9.target}</span></div>` +
+                        `<div class="nb-row"><span class="nb-label">To Target</span><span class="nb-loss-val">$${s9.remaining}</span></div>`;
+                }
+                return;
+            }
             const p = s8Proj();
             if (!p) { targetEl.innerHTML = ''; return; }
             // Wheel-side badge uses inline styles because the CSS
@@ -2380,6 +2583,9 @@ class MoneyManagementPanel {
         if (this.sessionData.bettingStrategy === 8) {
             return this._s8BetPerNumber(numberCount);
         }
+        if (this.sessionData.bettingStrategy === 9) {
+            return this._s9BetPerNumber(numberCount);
+        }
 
         // Strategies 1–4 — original safety check on bankroll.
         const maxBet = Math.floor(this.sessionData.currentBankroll / (numberCount * 2));
@@ -2585,6 +2791,31 @@ class MoneyManagementPanel {
 
         // Normal path — apply smart cap only when a win would
         // overshoot; otherwise keep the base bet as-is.
+        if (N < 36) {
+            const netPerWin = baseBet * (36 - N);
+            if (netPerWin > remaining) {
+                const safeBet = Math.floor(remaining / (36 - N));
+                return Math.max(minBet, safeBet);
+            }
+        }
+        return baseBet;
+    }
+
+    /**
+     * S9 Sprint bet/number. Flat currentBetPerNumber with S8-style
+     * smart cap (shrink so a full win lands ≤ target). No escalation
+     * mutation; the recordBetResult S9 branch is stop-loss-only.
+     */
+    _s9BetPerNumber(numberCount) {
+        const sd = this.sessionData;
+        const minBet  = Math.max(1, parseInt(sd.s9MinBet, 10) || 2);
+        const baseBet = Math.max(minBet, parseInt(sd.currentBetPerNumber, 10) || minBet);
+        const N = Math.max(1, parseInt(numberCount, 10) || 12);
+
+        const target = parseInt(sd.s9SessionTarget, 10) || 100;
+        const profit = parseFloat(sd.sessionProfit) || 0;
+        const remaining = target - profit;
+        if (remaining <= 0) return minBet;
         if (N < 36) {
             const netPerWin = baseBet * (36 - N);
             if (netPerWin > remaining) {
